@@ -1,0 +1,8 @@
+portago
+tmp
+
+1.env
+1.py
+env
+webui/node_modules
+webui/dist
