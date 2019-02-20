@@ -1,0 +1,6 @@
+
+[server]
+port=3000
+
+[system]
+gentoo="/etc/portage/repos.conf/gentoo.conf"
