@@ -179,6 +179,5 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 
 	}
 
-
 	return &Config{tolerent: tolerant, unmatchedRemoval: unmatchedRemoval, localConfig: local_config}
 }

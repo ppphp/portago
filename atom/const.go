@@ -1,5 +1,11 @@
 package atom
 
+import (
+	"os"
+	"path"
+	"strings"
+)
+
 // portage/lib/portage/const
 
 const (
@@ -38,12 +44,6 @@ const (
 	// NOTE: Use realpath(__file__) so that python module symlinks in site-packages
 	// are followed back to the real location of the whole portage installation.
 	// NOTE: Please keep PORTAGE_BASE_PATH in one line to help substitutions.
-	//PORTAGE_BASE_PATH        = os.path.join(os.sep, os.sep.join(os.path.realpath(__file__.rstrip("co")).split(os.sep)[:-3]))
-	//PORTAGE_BIN_PATH         = PORTAGE_BASE_PATH + "/bin"
-	//PORTAGE_PYM_PATH         = os.path.realpath(os.path.join(__file__, '../..'))
-	//LOCALE_DATA_PATH         = PORTAGE_BASE_PATH + "/locale"  // FIXME: not used
-	//EBUILD_SH_BINARY         = PORTAGE_BIN_PATH + "/ebuild.sh"
-	//MISC_SH_BINARY           = PORTAGE_BIN_PATH + "/misc-functions.sh"
 	SandboxBinary  = "/usr/bin/sandbox"
 	FakerootBinary = "/usr/bin/fakeroot"
 	BashBinary     = "/bin/bash"
@@ -74,7 +74,6 @@ const (
 	// a config instance (since it's possible to contruct a config instance with
 	// a different EPREFIX). Therefore, the EPREFIX constant should *NOT* be used
 	// in the definition of any other constants within this file.
-	EPREFIX = ""
 
 	// Time formats used in various places like metadata.chk.
 	TimestampFormat = "%a, %d %b %Y %H:%M:%S +0000" // to be used with time.gmtime()
@@ -94,5 +93,15 @@ const (
 )
 
 var (
+	tmpPORTAGE_BASE_PATH = strings.Split(path.Clean(strings.TrimSuffix(os.Args[0],"co")), string(os.PathSeparator))
+	PORTAGE_BASE_PATH    = path.Join(string(os.PathSeparator),strings.Join(tmpPORTAGE_BASE_PATH[:len(tmpPORTAGE_BASE_PATH)-2], string(os.PathSeparator)))
+	PORTAGE_BIN_PATH         = PORTAGE_BASE_PATH + "/bin"
+	PORTAGE_PYM_PATH         = path.Clean(path.Join(os.Args[0], "../.."))
+	LOCALE_DATA_PATH         = PORTAGE_BASE_PATH + "/locale"
+	EBUILD_SH_BINARY         = PORTAGE_BIN_PATH + "/ebuild.sh"
+	MISC_SH_BINARY           = PORTAGE_BIN_PATH + "/misc-functions.sh"
+
+	EPREFIX = ""
+
 	VcsDirs = map[string]bool{"CVS": true, "RCS": true, "SCCS": true, ".bzr": true, ".git": true, ".hg": true, ".svn": true}
 )
