@@ -9,6 +9,7 @@ import (
 )
 
 const (
+	_unknown_repo = "__unknown__"
 	slot = `([\w+][\w+.-]*)`
 	cat  = `[\w+][\w+.-]*`
 	v    = `(?P<major>\d+)(?P<minors>(?P<minor>\.\d+)*)(?P<letter>[a-z]?)(?P<additional>(?P<suffix>_(?P<status>pre|p|beta|alpha|rc)\d*)*)`
@@ -39,7 +40,7 @@ var (
 	endversion_keys = []string{"pre", "p", "alpha", "beta", "rc"}
 
 	slotReCache = map[string]*regexp.Regexp{}
-	pvReCache   = map[string]*regexp.Regexp{}
+	pvReCache   = map[bool]*regexp.Regexp{}
 )
 
 func getSlotRe(eapiAttrs interface{ SlotOperator() string }) *regexp.Regexp {
@@ -64,17 +65,16 @@ func getSlotRe(eapiAttrs interface{ SlotOperator() string }) *regexp.Regexp {
 	return slotRe
 }
 
-func getPvRe(eapiAttrs interface{ dotsInPN() string }) *regexp.Regexp {
+func getPvRe(eapiAttrs eapiAttrs) *regexp.Regexp {
 
-	cache_key := eapiAttrs.dotsInPN()
-	pvRe, ok := pvReCache[cache_key]
+	cacheKey := eapiAttrs.DotsInPn
+	pvRe, ok := pvReCache[cacheKey]
 	if ok {
 		return pvRe
 	}
 
 	p := ""
-	if eapiAttrs.dotsInPN() != "" {
-
+	if eapiAttrs.DotsInPn {
 		p = pv["dots_allowed_in_PN"]
 	} else {
 		p = pv["dots_disallowed_in_PN"]
@@ -82,7 +82,7 @@ func getPvRe(eapiAttrs interface{ dotsInPN() string }) *regexp.Regexp {
 
 	pvRe = regexp.MustCompile("^" + p + "$")
 
-	pvReCache[cache_key] = pvRe
+	pvReCache[cacheKey] = pvRe
 	return pvRe
 }
 
@@ -222,7 +222,25 @@ func pkgCmp(pkg1, pkg2 [3]string) (int, error){
 	return verCmp(strings.Join(pkg1[1:], "-"),strings.Join(pkg2[1:], "-"))
 }
 
+func pkgSplit(mypkg, eapi string) (string,string,string){
+	if !getPvRe(getEapiAttrs(eapi)).MatchString(mypkg) {
+		return "","",""
+	}
+	re := getPvRe(getEapiAttrs(eapi))
+	if getNamedRegexp(re, mypkg, "pn_inval") != ""{
+		return "","",""
+	}
+	rev := getNamedRegexp(re, mypkg, "pn_inval")
+	if rev == "" {
+		rev = "0"
+	}
+	rev = "r" + rev
+	return getNamedRegexp(re, mypkg, "pn"), getNamedRegexp(re, mypkg, "ver"), rev
+}
 
+func catPkgSplit(mydata string, silent int, eapi string){
+
+}
 func catsplit(mydep string) []string {
 	return strings.SplitN(mydep, "/", 2)
 }

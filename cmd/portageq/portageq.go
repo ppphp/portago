@@ -139,7 +139,7 @@ func envvar(args []string) int {
 				println("WARNING: 'portageq envvar "+a+"' is deprecated. Use any of 'get_repos, get_repo_path, repos_config' instead.")
 			}
 		}
-		value := atom.Settings.get(a)
+		value := ""//atom.Settings.get(a)
 		if value == "" {
 			return 1
 		}

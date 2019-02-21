@@ -6,6 +6,7 @@ import (
 )
 
 var shellQuoteRe = regexp.MustCompile("[\\s><=*\\\\\\\"'$`]")
+var initializingGlobals *bool
 
 func ShellQuote(s string) string {
 

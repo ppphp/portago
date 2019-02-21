@@ -134,7 +134,7 @@ var (
 func lazyIuseRegex(s []string) string {
 	r := []string{}
 	for _, v := range s {
-		r= append(r, regexp.QuoteMeta(v))
+		r = append(r, regexp.QuoteMeta(v))
 	}
 	sort.Strings(r)
 	str := fmt.Sprintf("^(%s)$", strings.Join(r, "|"))
@@ -143,25 +143,42 @@ func lazyIuseRegex(s []string) string {
 }
 
 type Config struct {
-	locked int
+	tolerent                                                                                                                                                                                 bool
+	locked                                                                                                                                                                                   int
+	unmatchedRemoval, localConfig                                                                                                                                                            bool
+	mycpv, setcpvArgsHash, puse, penv, modifiedkeys, uvlist, acceptChostRe, acceptProperties, acceptRestrict, featuresOverrides, makeDefaults, parentStable, sonameProvided, unknownFeatures *int
 }
 
 func (c *Config) Lock() {
 	c.locked = 1
 }
-func (c *Config) Unlock(){
+func (c *Config) Unlock() {
 	c.locked = 0
 }
-func (c *Config) Modifying() error{
+func (c *Config) Modifying() error {
 	if c.locked != 0 {
 		return errors.New("")
 	}
 	return nil
 }
+func (c *Config) SetCpv(cpv string, useCache map[string]string, myDb string) {
+	if useCache != nil {
+		// warn here
+	}
+	c.Modifying()
+}
 
 var eapiCache = map[string]bool{}
 
-func NewConfig(clone *Config, mycpv, configProfilePath string, configIncrementals []int, config_root, target_root, sysroot, eprefix string, local_config bool, env map[string]string, _unmatched_removal bool, repositories string) *Config {
+func NewConfig(clone *Config, mycpv, configProfilePath string, configIncrementals []int, config_root, target_root, sysroot, eprefix string, local_config bool, env map[string]string, unmatchedRemoval bool, repositories string) *Config {
 	eapiCache = make(map[string]bool)
-	return nil
+	tolerant := initializingGlobals == nil
+	if clone != nil {
+
+	} else {
+
+	}
+
+
+	return &Config{tolerent: tolerant, unmatchedRemoval: unmatchedRemoval, localConfig: local_config}
 }
