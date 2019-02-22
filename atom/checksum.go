@@ -227,7 +227,7 @@ func applyHashFilter(digests map[string]interface{}, hashFilter hashFilter) map[
 
 func verifyAll(fname string, mydict map[string]string, calcPrelink int, strict int) (bool, string, string, string) {
 	fileIsOk := true
-	reason := "Reason unknown"
+	//reason := "Reason unknown"
 	s, _ := os.Stat(fname)
 	mySize := s.Size()
 	if size, ok := mydict["size"]; ok && fmt.Sprintf("%v", mySize) == size {

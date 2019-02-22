@@ -10,11 +10,11 @@ import (
 
 const (
 	_unknown_repo = "__unknown__"
-	slot = `([\w+][\w+.-]*)`
-	cat  = `[\w+][\w+.-]*`
-	v    = `(?P<major>\d+)(?P<minors>(?P<minor>\.\d+)*)(?P<letter>[a-z]?)(?P<additional>(?P<suffix>_(?P<status>pre|p|beta|alpha|rc)\d*)*)`
-	rev  = `\d+`
-	vr   = v + "(?P<revision>-r(" + rev + "))?"
+	slot          = `([\w+][\w+.-]*)`
+	cat           = `[\w+][\w+.-]*`
+	v             = `(?P<major>\d+)(?P<minors>(?P<minor>\.\d+)*)(?P<letter>[a-z]?)(?P<additional>(?P<suffix>_(?P<status>pre|p|beta|alpha|rc)\d*)*)`
+	rev           = `\d+`
+	vr            = v + "(?P<revision>-r(" + rev + "))?"
 )
 
 var (
@@ -215,20 +215,20 @@ func verCmp(ver1, ver2 string) (int, error) {
 
 }
 
-func pkgCmp(pkg1, pkg2 [3]string) (int, error){
-	if pkg1[0] !=pkg2[0]{
+func pkgCmp(pkg1, pkg2 [3]string) (int, error) {
+	if pkg1[0] != pkg2[0] {
 		return 0, errors.New("")
 	}
-	return verCmp(strings.Join(pkg1[1:], "-"),strings.Join(pkg2[1:], "-"))
+	return verCmp(strings.Join(pkg1[1:], "-"), strings.Join(pkg2[1:], "-"))
 }
 
-func pkgSplit(mypkg, eapi string) (string,string,string){
+func pkgSplit(mypkg, eapi string) (string, string, string) {
 	if !getPvRe(getEapiAttrs(eapi)).MatchString(mypkg) {
-		return "","",""
+		return "", "", ""
 	}
 	re := getPvRe(getEapiAttrs(eapi))
-	if getNamedRegexp(re, mypkg, "pn_inval") != ""{
-		return "","",""
+	if getNamedRegexp(re, mypkg, "pn_inval") != "" {
+		return "", "", ""
 	}
 	rev := getNamedRegexp(re, mypkg, "pn_inval")
 	if rev == "" {
@@ -238,9 +238,36 @@ func pkgSplit(mypkg, eapi string) (string,string,string){
 	return getNamedRegexp(re, mypkg, "pn"), getNamedRegexp(re, mypkg, "ver"), rev
 }
 
-func catPkgSplit(mydata string, silent int, eapi string){
+var (
+	catRe      = regexp.MustCompile(fmt.Sprintf("^%s$", cat))
+	missingCat = "null"
+)
 
+func catPkgSplit(mydata string, silent int, eapi string) (string, string, string, string) {
+	// return mydata.cpv_split // if can
+	mySplit := strings.SplitN(mydata, "/", 1)
+	var a, b, c, cat string
+	if len(mySplit) == 1 {
+		cat = missingCat
+		a, b, c = pkgSplit(mydata, eapi)
+	} else if len(mySplit) == 2 {
+		cat = mySplit[0]
+		if catRe.MatchString(cat) {
+			a, b, c = pkgSplit(mySplit[1], eapi)
+		}
+	}
+	if a == "" && b == "" && c == "" {
+		return "", "", "", ""
+	}
+	return cat, a, b, c
 }
+
+type pkgStr struct {
+	string
+}
+
+
+
 func catsplit(mydep string) []string {
 	return strings.SplitN(mydep, "/", 2)
 }
