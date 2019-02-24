@@ -174,7 +174,13 @@ func eapiIsSupported(eapi string) bool {
 }
 
 type eapiAttrs struct {
-	allowsPackageProvided, bdepend, broot, DotsInPn, dotsInUseFlags, emptyGroupsAlwaysTrue, exportsEbuildPhaseFunc, exportsPortdir, exportsEclassdir, featureFlagTest, featureFlagTargetroot, hdepend, iuseDefaults, iuseEffective, pathVariablesEndWithTrailingSlash, posixishLocale, repoDeps, requiredUse, requiredUseAtMostOneOf, slotDeps, slotOperator, srcUriArrows, strongBlocks, sysroot, useDeps, useDepDefaults bool
+	allowsPackageProvided, bdepend, broot, DotsInPn, dotsInUseFlags,
+	emptyGroupsAlwaysTrue, exportsEbuildPhaseFunc, exportsPortdir,
+	exportsEclassdir, featureFlagTest, featureFlagTargetroot, hdepend,
+	iuseDefaults, iuseEffective, pathVariablesEndWithTrailingSlash,
+	posixishLocale, repoDeps, requiredUse, requiredUseAtMostOneOf,
+	slotDeps, SlotOperator, srcUriArrows, strongBlocks, sysroot,
+	useDeps, useDepDefaults bool
 }
 
 var eapiAttrsCache map[string]eapiAttrs

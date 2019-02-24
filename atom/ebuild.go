@@ -2,15 +2,15 @@ package atom
 
 import (
 	"bufio"
-	"regexp"
 	"os"
 	"path"
+	"regexp"
 	"strings"
 )
 
-const (
-	pmsEapiRe          = `^[ \t]*EAPI=(['\"][A-Za-z0-9+_.-]*['\"])|([A-Za-z0-9+_.-]*)[ \t]*([ \t]#.*)?$`
-	commentOrBlankLine = `^\s*(#.*)?$`
+var (
+	pmsEapiRe          = regexp.MustCompile(`^[ \t]*EAPI=(['\"]?)([A-Za-z0-9+_.-]*)\1[ \t]*([ \t]#.*)?$`)
+	commentOrBlankLine = regexp.MustCompile(`^\s*(#.*)?$`)
 )
 
 //func init() {
@@ -38,21 +38,13 @@ func ebuild(pkg string, action []string, config map[string]string) error {
 	}
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
-	c, err := regexp.Compile(commentOrBlankLine)
-	if err != nil {
-		return err
-	}
-	e, err := regexp.Compile(pmsEapiRe)
-	if err != nil {
-		return err
-	}
 	eapi := ""
 	for scanner.Scan() {
 		b := scanner.Bytes()
-		if c.Match(b) {
+		if commentOrBlankLine.Match(b) {
 			continue
 		}
-		if eapi = string(e.Find(b)); eapi != "" {
+		if eapi = string(pmsEapiRe.Find(b)); eapi != "" {
 			break
 		}
 	}
@@ -104,4 +96,25 @@ func iterIuseVars(env map[string]string) [][2]string {
 	}
 
 	return kv
+}
+
+func firstExisting(p string) string{
+	for _, pa := range iterParents(p) {
+		_, err := os.Lstat(pa)
+		if err != nil {
+			continue
+		}
+		return pa
+		}
+	return string(os.PathSeparator)
+}
+
+func iterParents(p string) []string {
+	d := []string{}
+	d = append(d, p)
+	for p != string(os.PathSeparator) {
+		p = path.Dir(p)
+		d = append(d, p)
+	}
+	return d
 }

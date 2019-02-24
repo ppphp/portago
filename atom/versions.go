@@ -9,12 +9,12 @@ import (
 )
 
 const (
-	_unknown_repo = "__unknown__"
-	slot          = `([\w+][\w+.-]*)`
-	cat           = `[\w+][\w+.-]*`
-	v             = `(?P<major>\d+)(?P<minors>(?P<minor>\.\d+)*)(?P<letter>[a-z]?)(?P<additional>(?P<suffix>_(?P<status>pre|p|beta|alpha|rc)\d*)*)`
-	rev           = `\d+`
-	vr            = v + "(?P<revision>-r(" + rev + "))?"
+	unknownRepo = "__unknown__"
+	slot        = `([\w+][\w+.-]*)`
+	cat         = `[\w+][\w+.-]*`
+	v           = `(?P<major>\d+)(?P<minors>(?P<minor>\.\d+)*)(?P<letter>[a-z]?)(?P<additional>(?P<suffix>_(?P<status>pre|p|beta|alpha|rc)\d*)*)`
+	rev         = `\d+`
+	vr          = v + "(?P<revision>-r(" + rev + "))?"
 )
 
 var (
@@ -39,20 +39,20 @@ var (
 	suffix_value    = map[string]int{"pre": -2, "p": 0, "alpha": -4, "beta": -3, "rc": -1}
 	endversion_keys = []string{"pre", "p", "alpha", "beta", "rc"}
 
-	slotReCache = map[string]*regexp.Regexp{}
+	slotReCache = map[bool]*regexp.Regexp{}
 	pvReCache   = map[bool]*regexp.Regexp{}
 )
 
-func getSlotRe(eapiAttrs interface{ SlotOperator() string }) *regexp.Regexp {
+func getSlotRe(eapiAttrs eapiAttrs) *regexp.Regexp {
 
-	cache_key := eapiAttrs.SlotOperator()
+	cache_key := eapiAttrs.SlotOperator
 	slotRe, ok := slotReCache[cache_key]
 	if ok {
 		return slotRe
 	}
 
 	s := ""
-	if eapiAttrs.SlotOperator() != "" {
+	if eapiAttrs.SlotOperator {
 		s = slot + "(/" + slot + ")?"
 	} else {
 
@@ -222,20 +222,20 @@ func pkgCmp(pkg1, pkg2 [3]string) (int, error) {
 	return verCmp(strings.Join(pkg1[1:], "-"), strings.Join(pkg2[1:], "-"))
 }
 
-func pkgSplit(mypkg, eapi string) (string, string, string) {
+func pkgSplit(mypkg, eapi string) [3]string {
 	if !getPvRe(getEapiAttrs(eapi)).MatchString(mypkg) {
-		return "", "", ""
+		return [3]string{}
 	}
 	re := getPvRe(getEapiAttrs(eapi))
 	if getNamedRegexp(re, mypkg, "pn_inval") != "" {
-		return "", "", ""
+		return [3]string{}
 	}
 	rev := getNamedRegexp(re, mypkg, "pn_inval")
 	if rev == "" {
 		rev = "0"
 	}
 	rev = "r" + rev
-	return getNamedRegexp(re, mypkg, "pn"), getNamedRegexp(re, mypkg, "ver"), rev
+	return [3]string{getNamedRegexp(re, mypkg, "pn"), getNamedRegexp(re, mypkg, "ver"), rev}
 }
 
 var (
@@ -243,31 +243,212 @@ var (
 	missingCat = "null"
 )
 
-func catPkgSplit(mydata string, silent int, eapi string) (string, string, string, string) {
+func catPkgSplit(mydata string, silent int, eapi string) [4]string {
 	// return mydata.cpv_split // if can
 	mySplit := strings.SplitN(mydata, "/", 1)
-	var a, b, c, cat string
+	var cat string
+	var p [3]string
 	if len(mySplit) == 1 {
 		cat = missingCat
-		a, b, c = pkgSplit(mydata, eapi)
+		p = pkgSplit(mydata, eapi)
 	} else if len(mySplit) == 2 {
 		cat = mySplit[0]
 		if catRe.MatchString(cat) {
-			a, b, c = pkgSplit(mySplit[1], eapi)
+			p = pkgSplit(mySplit[1], eapi)
 		}
 	}
-	if a == "" && b == "" && c == "" {
-		return "", "", "", ""
+	if p==[3]string{} {
+		return [4]string{}
 	}
-	return cat, a, b, c
+	return [4]string{cat, p[0],p[1],p[2]}
 }
 
 type pkgStr struct {
 	string
+	metadata, settings                                                                              map[string]string
+	eapi, repo, slot, build_time, build_id, file_size, mtime, db, cp, version, subSlot, slotInvalid, _stable string
+	cpv_split                                                                                       [4]string
+	cpv                                                                                             *pkgStr
 }
 
+func (p *pkgStr) stable() string {
+	if p._stable != "" {
+		return p._stable
+	}
+	// TODO
+	//if !settings.localConfig{}
+	//settings := p.settings
+	//stable := settings.isStable(p)
+	//p._stable = stable
+	//return stable
+	return ""
+}
 
+func NewPkgStr(cpv string, metadata, settings map[string]string, eapi, repo, slot, build_time, build_id, file_size, mtime, db string) *pkgStr {
+	p := &pkgStr{string: cpv}
+	if len(metadata) != 0 {
+		p.metadata = metadata
+		if a, ok := metadata["SLOT"]; ok {
+			slot = a
+		}
+		if a, ok := metadata["repository"]; ok {
+			repo = a
+		}
+		if a, ok := metadata["EAPI"]; ok {
+			slot = a
+		}
+		if a, ok := metadata["BUILD_TIME"]; ok {
+			build_time = a
+		}
+		if a, ok := metadata["SIZE"]; ok {
+			file_size = a
+		}
+		if a, ok := metadata["BUILD_ID"]; ok {
+			build_id = a
+		}
+		if a, ok := metadata["_mtime_"]; ok {
+			mtime = a
+		}
+	}
+	if settings != nil {
+		p.settings = settings
+	}
+	if db != "" {
+		p.db = db
+	}
+	if eapi != "" {
+		p.eapi = eapi
+	}
+	p.build_time = build_time // int
+	p.file_size = file_size   // int
+	p.build_id = build_id     // int
+	p.mtime = mtime           // int
+	p.cpv_split = catPkgSplit(cpv, 1, eapi)
+	p.cp = p.cpv_split[0] + "/" + p.cpv_split[1]
+	if p.cpv_split[len(p.cpv_split)-1] == "r0" && cpv[len(cpv)-3:] != "-r0" {
+		p.version = strings.Join(p.cpv_split[2:4], "-")
+	} else {
+		p.version = strings.Join(p.cpv_split[2:], "-")
+	}
+	p.cpv = p
+	if slot != "" {
+		eapiAttrs := getEapiAttrs(eapi)
+		slotMatch := getSlotRe(eapiAttrs).FindAllString(slot, -1)
+		if len(slotMatch) == 0 {
+			p.slot = "0"
+			p.subSlot = "0"
+			p.slotInvalid = slot
+		} else {
+			if eapiAttrs.SlotOperator {
+				slotSplit := strings.Split(slot, "/")
+				p.slot = slotSplit[0]
+				if len(slotSplit) > 1 {
+					p.subSlot = slotSplit[1]
+				} else {
+					p.subSlot = slotSplit[0]
+				}
+			} else {
+				p.slot = slot
+				p.subSlot = slot
+			}
+		}
+		if repo != "" {
+			repo = genValidRepo(repo)
+			if repo == ""{
+				repo = unknownRepo
+			}
+			p.repo = repo
+		}
+	}
+	return p
+}
+
+func PkgSplit(mypkg string, silent int, eapi string) [3]string {
+	catPSplit := catPkgSplit(mypkg, 1, eapi)
+	if catPSplit == [4]string{} {
+		return [3]string{}
+	}
+	cat, pn, ver, rev := catPSplit[0],catPSplit[1],catPSplit[2],catPSplit[3]
+	if cat == missingCat && !strings.Contains(mypkg, "/") {
+		return [3]string{pn, ver, rev}
+	}
+	return [3]string{cat + "/" + pn, ver, rev}
+}
+
+func cpvGetKey(mycpv , eapi string) string {
+	//return mycpv.cp //TODO
+	mySplit := catPkgSplit(mycpv, 1, eapi)
+	if mySplit != [4]string{} {
+		return mySplit[0]+"/"+mySplit[1]
+	}
+	// warnings.warn("portage.versions.cpv_getkey() " + \
+	// "called with invalid cpv: '%s'" % (mycpv,),
+	// DeprecationWarning, stacklevel=2) //TODO
+	mySlash := strings.SplitN(mycpv, "/", 2)
+	myNSplit := pkgSplit(mySlash[0], eapi)
+	if myNSplit ==[3]string{}{
+		return ""
+	}
+	myLen := len(mySlash)
+	if myLen == 2 {
+		return mySlash[0] +"/"+mySplit[0]
+	} else {
+		return mySplit[0]
+	}
+}
+
+func cpvGetVersion(mycpv, eapi string) string {
+	//return mycpv.version //TODO
+	cp := cpvGetKey(mycpv, eapi)
+	if cp == ""{
+		return ""
+	}
+	return mycpv[len(cp+"-"):]
+}
+
+var splitCache = map[string]*pkgStr{}
+func cmpCpv(cpv1, cpv2, eapi string) (int, error) {
+	split1, ok:=splitCache[cpv1]
+	if !ok {
+		//split1 = cpv1.pv //TODO
+		split1 = NewPkgStr(cpv1, nil, nil, eapi, "", "", "", "", "", "", "")
+		splitCache[cpv1] = split1
+	}
+	split2 := NewPkgStr(cpv1, nil, nil, eapi, "", "", "", "", "", "", "")
+	splitCache[cpv2] = split2
+	//return verCmp(cpv1.version, cpv2.version)
+	return verCmp(cpv1, cpv2)
+}
+
+func cpvSortKey(eapi string) func (string,string,string,)(int, error){
+	return cmpCpv // a sort key
+}
 
 func catsplit(mydep string) []string {
 	return strings.SplitN(mydep, "/", 2)
 }
+
+func best(myMatches []string, eapi string) string {
+	if len(myMatches) == 0 {
+		return ""
+	}
+	if len(myMatches) == 1 {
+		return myMatches[0]
+	}
+	bestMatch := myMatches[0]
+	//v2 := bestmatch.version //TODO
+	//v2 := NewPkgStr(bestMatch, nil, nil, eapi, "", "", "", "", "", "", "")
+	v2 := bestMatch
+	for _, x := range myMatches[1:] {
+		//v1 := x.version //TODO
+		//v1 := NewPkgStr(x, nil, nil, eapi, "", "", "", "", "", "", "")
+		v1 := x
+		v, _ := verCmp(v1, v2)
+		if v > 0 {
+			bestMatch = x
+			v2 = v1
+		}
+	}
+	return bestMatch
+}
+

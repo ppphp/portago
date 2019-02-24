@@ -161,6 +161,133 @@ func grabLines(fname string, recursive, rememberSourceFile bool) [][2]string {
 	return mylines
 }
 
+func stackDictlist(originalDicts []map[string][]string, incremental int, incrementals []string, ignoreNone int) map[string][]string{
+	finalDict := map[string][]string{}
+	for _, mydict := range originalDicts {
+		if mydict == nil {
+			continue
+		}
+		for y := range mydict {
+			if _, ok := finalDict[y]; !ok {
+				finalDict[y] = []string{}
+			}
+			for _, thing := range mydict[y] {
+				if thing != "" {
+					c := false
+					for _, v := range incrementals {
+						if v == y {
+							c=true
+							break
+						}
+					}
+					if incremental != 0 || c {
+						if thing == "-*" {
+							finalDict[y] = []string{}
+							continue
+						} else if thing[:1] == "-" {
+							tmp := []string{}
+							for _, v := range finalDict[y] {
+								if thing[:1] != v {
+									tmp = append(tmp, v)
+								}
+							}
+							finalDict[y] = tmp
+							continue
+						}
+					}
+					c2 := false
+					for _, v := range finalDict[y]{
+						if v == thing {
+							c2 = true
+							break
+						}
+					}
+					if c2 {
+						finalDict[y] = append(finalDict[y], thing)
+					}
+				}
+			}
+			if _, ok := finalDict[y]; ok && finalDict[y] != nil {
+				delete(finalDict, y)
+			}
+		}
+	}
+	return finalDict
+}
+
+func stackDicts(dicts []map[string]string, incremental int, incrementals []string, ignoreNone int) map[string]string{
+	finalDict := map[string]string {}
+	for _, mydict := range dicts {
+		if mydict == nil {
+			continue
+		}
+		for k,v := range mydict {
+			c := false
+			for _, r := range incrementals {
+				if r ==k {
+					c = true
+					break
+				}
+			}
+			if _, ok := finalDict[k]; ok && incremental!= 0 && c {
+				finalDict[k] += " "+v
+			} else {}
+			finalDict[k] = v
+		}
+	}
+	return finalDict
+}
+
+func appendRepo(atomList []string, repoName string, rememberSourceFile bool) {
+	if rememberSourceFile {
+
+	}else {
+
+	}
+}
+
+type SB struct{
+	S string
+	B bool
+}
+
+func stackLists(lists [][]SB, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) {
+	matchedRemovals := map[string]bool {}
+	unmatchedRemovals := map[string]bool {}
+	newList := []string{}
+	for _, subList :=range lists{
+		for _, token := range subList {
+			tokenKey := token
+			sourceFile := false
+			t := token.S
+			if rememberSourceFile {
+				sourceFile = token.B
+			} else {
+				sourceFile = false
+			}
+			if t == "" {
+				continue
+			}
+			if incremental != 0 {
+				if t == "-*" {
+					newList = []string{}
+				} else if t[:1] == "-" {
+					matched := false
+					if ignoreRepo && !strings.Contains(t, "::") {
+						toBeRemoved := []string{}
+						tokenSlice := token[1:]
+						for _, atom := range newList {
+							atomWithoutRepo := atom
+							if atom
+						}
+					}
+				}
+			}
+		}
+	}
+
+}
+
 type sss struct {
 	S string
 	SS []string
