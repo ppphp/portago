@@ -3,7 +3,9 @@ package atom
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -150,12 +152,258 @@ func parenEnclose(myList [][]string, unevaluatedAtom, opconvert bool) string {
 	return strings.Join(myStrParts, " ")
 }
 
+func inSliceS(str string, slice []string) bool {
+	for _, s := range slice {
+		if s == str {
+			return true
+		}
+	}
+	return false
+}
+
 func parenEncloses(myList []string, unevaluatedAtom, opconvert bool) string {
 	myStrParts := []string{}
 	for _, x := range myList {
+		//if unevaluated_atom: // TODO
+		//    x = getattr(x, 'unevaluated_atom', x)
 		myStrParts = append(myStrParts, x)
 	}
 	return strings.Join(myStrParts, " ")
+}
+
+func isActive(conditional string, uselist, masklist []string, matchall bool, excludeall []string, is_src_uri bool, eapi string, opconvert, flat bool, isValidFlag func(string) bool, tokenClass func(string) *atom, matchnone bool, useFlagRe *regexp.Regexp) bool {
+	flag := ""
+	isNegated := false
+	if strings.HasPrefix(conditional, "!") {
+		flag = conditional[1 : len(conditional)-1]
+		isNegated = true
+	} else {
+		flag = conditional[:len(conditional)-1]
+		isNegated = false
+	}
+	if isValidFlag != nil {
+		if !isValidFlag(flag) {
+			//e = InvalidData(msg, category='IUSE.missing') // TODO
+			//raise InvalidDependString(msg, errors=(e,))
+		}
+	} else {
+		if !useFlagRe.MatchString(flag) {
+			//raise InvalidDependString(
+			//	_("invalid use flag '%s' in conditional '%s'") % (flag, conditional))
+		}
+	}
+
+	if isNegated && inSliceS(flag, excludeall) {
+		return false
+	}
+	if inSliceS(flag, masklist) {
+		return false
+	}
+	if matchall {
+		return true
+	}
+	if matchnone {
+		return false
+	}
+	return (inSliceS(flag, uselist) && !isNegated) || (!inSliceS(flag, uselist) && isNegated)
+}
+
+func missingWhiteSpaceCheck(token string, pos int) error {
+	for _, x := range []string{")", "(", "||"} {
+		if strings.HasPrefix(token, x) || strings.HasSuffix(token, x) {
+			return fmt.Errorf("missing whitespace around '%s' at '%s', token %s", x, token, pos+1)
+		}
+	}
+	return nil
+}
+
+func useReduce(depstr string, uselist, masklist []string, matchall bool, excludeall []string, isSrcUri bool, eapi string, opconvert, flat bool, isValidFlag func(string) bool, tokenClass func(string) *atom, matchnone bool) []string {
+	if opconvert && flat {
+		// ValueError("portage.dep.use_reduce: 'opconvert' and 'flat' are mutually exclusive")
+	}
+	if matchall && matchnone {
+		// ValueError("portage.dep.use_reduce: 'opconvert' and 'flat' are mutually exclusive")
+	}
+	eapiAttrs := getEapiAttrs(eapi)
+	useFlagRe := getUseflagRe(eapi)
+	mySplit := strings.Fields(depstr)
+	level := 0
+	stack := [][]string{}
+	needBracket := false
+	needSimpleToken := false
+	for pos, token := range mySplit {
+		if token == "(" {
+			if needSimpleToken {
+				//raise InvalidDependString(
+				//	_("expected: file name, got: '%s', token %s") % (token, pos+1))
+			}
+			if len(mySplit) >= pos+2 && mySplit[pos+1] == ")" {
+				//raise InvalidDependString(
+				//	_("expected: dependency string, got: ')', token %s") % (pos+1,))
+			}
+			needBracket = false
+			stack = append(stack, []string{})
+			level += 1
+		} else if token == "(" {
+			if needBracket {
+				//raise InvalidDependString(
+				//	_("expected: '(', got: '%s', token %s") % (token, pos+1))
+			}
+			if needSimpleToken {
+				//raise InvalidDependString(
+				//	_("expected: file name, got: '%s', token %s") % (token, pos+1))
+			}
+			if level > 0 {
+				level -= 1
+				l := stack[len(stack)-1]
+				stack = stack[:len(stack)-1]
+				isSingle := len(l) == 1 || (opconvert && len(l) != 0 && l[0] == "||") || (!opconvert && len(l) == 2 && l[0] == "||")
+				ignore := false
+				if flat {
+					if len(stack[level]) != 0 && strings.HasSuffix(stack[level][len(stack[level])-1], "?") {
+						if isActive(stack[level][len(stack[level])-1], uselist, masklist, matchall, excludeall, isSrcUri, eapi, opconvert, flat, isValidFlag, tokenClass, matchnone, useFlagRe) {
+							stack[level] = stack[level][:len(stack[level])-1]
+							stack[level] = append(stack[level], l...)
+						} else {
+							stack[level] = stack[level][:len(stack[level])-1]
+						}
+					} else {
+						stack[level] = append(stack[level], l...)
+					}
+					continue
+				}
+				if len(stack[level]) != 0 {
+					if stack[level][len(stack[level])-1] == "||" && len(l) != 0 {
+						if !eapiAttrs.emptyGroupsAlwaysTrue {
+							l = append(l, "__const__/empty-any-of")
+						}
+						stack[level] = stack[level][:len(stack[level])-1]
+					} else if strings.HasSuffix(stack[level][len(stack[level])-1], "?") {
+						if !isActive(stack[level][len(stack[level])-1], uselist, masklist, matchall, excludeall, isSrcUri, eapi, opconvert, flat, isValidFlag, tokenClass, matchnone, useFlagRe) {
+							ignore = true
+						}
+						stack[level] = stack[level][:len(stack[level])-1]
+					}
+				}
+				endsInAnyOfDep := func(k int) bool { return k >= 0 && len(stack) != 0 && stack[level][len(stack[level])-1] == "||" }
+				//lastAnyOfOperatorLevel := func(k int) int {
+				//	for k >= 0 {
+				//		if len(stack[k]) > 0 && stack[k][len(stack[k])-1] != "" {
+				//			if stack[k][len(stack[k])-1] == "||" {
+				//				return k
+				//			} else if !strings.HasSuffix(stack[k][len(stack[k])-1], "?") {
+				//				return -1
+				//			}
+				//		}
+				//	}
+				//	return -1
+				//}
+				specialAppend := func() {
+					if isSingle {
+						if l[0] == "||" && endsInAnyOfDep(level-1) {
+							if opconvert {
+								stack[level] = append(stack[level], l[1:]...)
+							} else {
+								stack[level] = append(stack[level], l[1])
+							}
+						} else {
+							stack[level] = append(stack[level], l[0])
+						}
+					} else {
+						//if opconvert && len(stack[level])!=0 && stack[level][len(stack[level] )-1]== "||" { //TODO check?
+						//	stack[level][len(stack[level] )-1] = "||"+l
+						//}
+					}
+				}
+				if len(l) != 0 && !ignore {
+					if !endsInAnyOfDep(level - 1) && !endsInAnyOfDep(level) {
+						stack[level] = append(stack[level], l...)
+					} else if len(stack[level]) == 0 {
+						specialAppend()
+					} else if isSingle && endsInAnyOfDep(level) {
+						stack[level] = stack[level][:len(stack[level])-1]
+						specialAppend()
+					} else if endsInAnyOfDep(level) && endsInAnyOfDep(level-1) {
+						stack[level] = stack[level][:len(stack[level])-1]
+						stack[level] = append(stack[level], l...)
+					} else {
+						if opconvert && endsInAnyOfDep(level) {
+							stack[level] = append(stack[level], "||")
+							stack[level] = append(stack[level], l...)
+						} else {
+							specialAppend()
+						}
+					}
+				}
+			} else {
+				//raise InvalidDependString( // TODO
+				//	_("no matching '%s' for '%s', token %s") % ("(", ")", pos+1))
+			}
+		} else if token == "||" {
+			if isSrcUri {
+				//raise InvalidDependString(
+				//	_("any-of dependencies are not allowed in SRC_URI: token %s") % (pos+1,))
+			}
+			if needBracket {
+				//raise InvalidDependString(
+				//_("expected: '(', got: '%s', token %s") % (token, pos+1))
+			}
+			needBracket = true
+			stack[level] = append(stack[level], token)
+		} else if token == "->" {
+			if needSimpleToken {
+				//raise InvalidDependString(
+				//	_("expected: file name, got: '%s', token %s") % (token, pos+1))
+			}
+			if !isSrcUri {
+				//raise InvalidDependString(
+				//	_("SRC_URI arrow are only allowed in SRC_URI: token %s") % (pos+1,))
+			}
+			if !eapiAttrs.srcUriArrows {
+				//raise InvalidDependString(
+				//	_("SRC_URI arrow not allowed in EAPI %s: token %s") % (eapi, pos+1))
+			}
+			needSimpleToken = true
+			stack[level] = append(stack[level], token)
+		} else {
+			if needBracket {
+				//raise InvalidDependString(
+				//	_("expected: '(', got: '%s', token %s") % (token, pos+1))
+			}
+			if needSimpleToken && strings.Contains(token, "/") {
+				//raise InvalidDependString(
+				//	_("expected: file name, got: '%s', token %s") % (token, pos+1))
+			}
+			if strings.HasSuffix(token, "?") {
+				needBracket = true
+			} else {
+				needBracket = false
+				if tokenClass != nil && !isSrcUri {
+					//token = tokenClass()// TODO
+					t := tokenClass(token)
+					if !matchall {
+						//token = t.evaluateConditionals(uselist)
+					}
+				}
+			}
+			stack[level] = append(stack[level], token)
+		}
+	}
+	if level != 0 {
+		//raise InvalidDependString(
+		//	_("Missing '%s' at end of string") % (")",))
+	}
+
+	if needBracket {
+		//raise InvalidDependString(
+		//	_("Missing '%s' at end of string") % ("(",))
+	}
+
+	if needSimpleToken {
+		//raise InvalidDependString(
+		//	_("Missing file name at end of string"))
+	}
+	return stack[0]
 }
 
 type overlap struct {
@@ -178,6 +426,10 @@ type atom struct {
 	valueDict         map[string]string
 	ispackage, soname bool
 	blocker           *blocker
+}
+
+func (a *atom) evaluateConditionals(use []string) *atom {
+	return nil
 }
 
 func NewAtom(s string, unevaluatedAtom string, allowWildcard bool, allowRepo *bool, use, eapi string, isValidFlag, allowBuildId *bool) (*atom, error) {
@@ -326,4 +578,53 @@ func NewAtom(s string, unevaluatedAtom string, allowWildcard bool, allowRepo *bo
 	a.valueDict["cp"] = extendedVersion
 	a.valueDict["repo"] = repo
 	return a, nil
+}
+
+func extractUnpackDependencies(srcUri string, unpackers map[string]string) string {
+	srcUris := strings.Fields(srcUri)
+	depend := []string{}
+	for i := range srcUris {
+		if strings.HasSuffix(srcUris[i], "?") || srcUris[i] == "(" || srcUris[i] == ")" {
+			depend = append(depend, srcUris[i])
+		} else if (i+1 < len(srcUris) && srcUris[i+1] == "->") || srcUris[i] == "->"{
+			continue
+		} else {
+			keys := []string{}
+			for k := range unpackers {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, suffix := range keys {
+				suffix = strings.ToLower(suffix)
+				if strings.HasSuffix(strings.ToLower(srcUris[i]), suffix){
+					depend = append(depend, unpackers[suffix])
+				}
+				break
+			}
+		}
+	}
+	for {
+		cleanedDepend := CopySliceS(depend)
+		for i := range cleanedDepend {
+			if cleanedDepend[i] == "" {
+				continue
+			} else if cleanedDepend[i] == "(" && cleanedDepend[i+1] == ")" {
+				cleanedDepend[i] = ""
+				cleanedDepend[i+1] = ""
+			} else if strings.HasSuffix(cleanedDepend[i], "?") &&cleanedDepend[i+1] == "(" && cleanedDepend[i+2] == ")"{
+				cleanedDepend[i] = ""
+				cleanedDepend[i+1] = ""
+				cleanedDepend[i+2] = ""
+			}
+		}
+		if reflect.DeepEqual(cleanedDepend, depend) {
+			break
+		} else {
+			depend = []string{}
+			for _, x := range cleanedDepend {
+				depend = append(depend, x)
+			}
+		}
+	}
+	return strings.Join(depend, " ")
 }
