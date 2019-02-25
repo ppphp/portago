@@ -580,6 +580,101 @@ func NewAtom(s string, unevaluatedAtom string, allowWildcard bool, allowRepo *bo
 	return a, nil
 }
 
+func extractAffectingUse(mystr string, atom *atom, eapi string) map[string]bool{
+	useflagRe := getUseflagRe(eapi)
+	mySplit := strings.Fields(mystr)
+	level := 0
+	stack := [][]string{}
+	needBracket := false
+	affectingUse := map[string]bool{}
+	flag := func(conditional string)string{
+		flag := ""
+		if strings.HasPrefix(conditional, "!") {
+			flag = conditional[1:len(conditional)-1]
+		} else {
+			flag = conditional[:len(conditional)-1]
+		}
+		if !useflagRe.MatchString(flag){
+			//raise InvalidDependString(
+			//	_("invalid use flag '%s' in conditional '%s'") % \
+			//(flag, conditional))
+		}
+		return flag
+	}
+	for _, token := range mySplit {
+		if token =="(" {
+			needBracket = false
+			stack = append(stack, []string{})
+			level += 1
+		}else if token ==")" {
+			if needBracket {
+				//raise InvalidDependString(
+				//	_("malformed syntax: '%s'") % mystr)
+			}
+			if level>0{
+				level-=1
+				l := stack[len(stack)-1]
+				stack=stack[:len(stack)-1]
+				//isSingle := (len(l) == 1 ||(len(l) == 2 &&(l[0] == "||"||strings.HasSuffix(l[0], "?"))))
+
+				endsInAnyOfDep := func(k int) bool { return k >= 0 && len(stack) != 0 && stack[level][len(stack[level])-1] == "||" }
+				endsInOperator := func(k int) bool {return k >= 0 && len(stack) != 0 && (stack[level][len(stack[level])-1] == "||" || strings.HasSuffix(stack[level][len(stack[level])-1], "?")) }
+				specialAppend := func() {
+							stack[level] = append(stack[level], l[0])
+				}
+				if len(l)!= 0 {
+					if !endsInAnyOfDep(level-1) && !endsInOperator(level) {
+						stack[level] = append(stack[level], l...)
+					} else if len(stack[level]) ==0{
+						specialAppend()
+					} else if len(stack[level]) == 1 && endsInAnyOfDep(level) {
+						stack=stack[:len(stack)-1]
+						specialAppend()
+						if strings.HasSuffix(l[0], "?") {
+							affectingUse[flag(l[0])] = true
+						}
+					} else{
+						if len(stack[level]) != 0 && (stack[level][len(stack[level])-1] == "||"|| strings.HasSuffix(stack[level][len(stack[level])-1], "?")){
+							stack=stack[:len(stack)-1]
+						}
+						specialAppend()
+					}
+				} else {
+					if len(stack[level]) != 0 && (stack[level][len(stack[level])-1] == "||"|| strings.HasSuffix(stack[level][len(stack[level])-1], "?")){
+						stack=stack[:len(stack)-1]
+					}
+				}
+			} else {
+				//raise InvalidDependString(
+				//	_("malformed syntax: '%s'") % mystr)
+			}
+		} else if token == "||"{
+			if needBracket {
+				//raise InvalidDependString(
+				//	_("malformed syntax: '%s'") % mystr)
+			}
+			needBracket = true
+			stack[level] = append(stack[level], token)
+		} else {
+			if needBracket {
+				//raise InvalidDependString(
+				//	_("malformed syntax: '%s'") % mystr)
+			}
+			if strings.HasSuffix(token, "?") {
+				needBracket = true
+				stack[level] = append(stack[level], token)
+			}
+			//else if token == atom
+			//	stack[level].append(token)
+		}
+	}
+	if level != 0 && needBracket {
+		//raise InvalidDependString(
+		//	_("malformed syntax: '%s'") % mystr)
+	}
+	return affectingUse
+}
+
 func extractUnpackDependencies(srcUri string, unpackers map[string]string) string {
 	srcUris := strings.Fields(srcUri)
 	depend := []string{}

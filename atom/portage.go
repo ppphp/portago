@@ -36,6 +36,27 @@ func getcwd() string {
 		return s
 	}
 }
+func init(){
+	getcwd()
+}
+
+var auxdbkeys = map[string]bool{
+	"DEPEND":true,    "RDEPEND":true,   "SLOT":true,      "SRC_URI":true,
+	"RESTRICT":true,  "HOMEPAGE":true,  "LICENSE":true,   "DESCRIPTION":true,
+	"KEYWORDS":true,  "INHERITED":true, "IUSE":true, "REQUIRED_USE":true,
+	"PDEPEND":true,   "BDEPEND":true, "EAPI":true,
+	"PROPERTIES":true, "DEFINED_PHASES":true, "HDEPEND":true, "UNUSED_04":true,
+	"UNUSED_03":true, "UNUSED_02":true, "UNUSED_01":true,
+}
+var auxdbkeylen = len(auxdbkeys)
+
+type treesDict struct {
+	runningEroot, targetEroot string
+}
+
+func NewTreesDict() *treesDict{
+	return &treesDict{}
+}
 
 func absSymlink(symlink, target string) string {
 	mylink := ""

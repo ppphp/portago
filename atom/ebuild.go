@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -55,7 +56,6 @@ func ebuild(pkg string, action []string, config map[string]string) error {
 		}
 	}
 
-
 	return nil
 	//cpv := fmt.Sprintf("%v/%v",  strings.TrimSuffix(p, ".ebuild"))
 }
@@ -71,26 +71,26 @@ func santinizeFds() {
 func iterIuseVars(env map[string]string) [][2]string {
 	kv := make([][2]string, 0)
 
-	for _, k := range []string{"IUSE_IMPLICIT", "USE_EXPAND_IMPLICIT", "USE_EXPAND_UNPREFIXED", "USE_EXPAND"}{
+	for _, k := range []string{"IUSE_IMPLICIT", "USE_EXPAND_IMPLICIT", "USE_EXPAND_UNPREFIXED", "USE_EXPAND"} {
 		if v, ok := env[k]; ok {
-			kv = append(kv, [2]string{k,v})
+			kv = append(kv, [2]string{k, v})
 		}
 	}
 	re := regexp.MustCompile("\\s+")
 	useExpandImplicit := re.Split(env["USE_EXPAND_IMPLICIT"], -1)
-	for _, v := range append(re.Split(env["USE_EXPAND_UNPREFIXED"], -1), re.Split(env["USE_EXPAND"], -1)...){
+	for _, v := range append(re.Split(env["USE_EXPAND_UNPREFIXED"], -1), re.Split(env["USE_EXPAND"], -1)...) {
 		equal := false
 		for _, k := range useExpandImplicit {
-			if k == v{
+			if k == v {
 				equal = true
 				break
 			}
 		}
-		if equal{
+		if equal {
 			k := "USE_EXPAND_VALUES_" + v
 			v, ok := env[k]
 			if ok {
-				kv = append(kv, [2]string{k,v})
+				kv = append(kv, [2]string{k, v})
 			}
 		}
 	}
@@ -98,14 +98,14 @@ func iterIuseVars(env map[string]string) [][2]string {
 	return kv
 }
 
-func firstExisting(p string) string{
+func firstExisting(p string) string {
 	for _, pa := range iterParents(p) {
 		_, err := os.Lstat(pa)
 		if err != nil {
 			continue
 		}
 		return pa
-		}
+	}
 	return string(os.PathSeparator)
 }
 
@@ -117,4 +117,36 @@ func iterParents(p string) []string {
 		d = append(d, p)
 	}
 	return d
+}
+
+var (
+	portage1Directories = map[string]bool{
+		"package.mask": true, "package.provided": true,
+		"package.use": true, "package.use.mask": true, "package.use.force": true,
+		"use.mask": true, "use.force": true}
+
+	allowParentColon = map[string]bool{"portage-2": true}
+)
+
+type profileNode struct {
+	profileNode, location, portage1Directories, userConfig, profileFormats, eapi, allowBuildId string
+}
+
+type LocationManager struct {
+}
+
+func (l * LocationManager) loadProfiles(repositories, knownRepositoryPaths []string) {
+	k := map[string]bool
+	for _, x := range knownRepositoryPaths{
+		s,_:=filepath.EvalSymlinks(x)
+		k[s] = true
+	}
+	knownRepos := []string{}
+	for x := range k {
+
+	}
+}
+
+func NewLocationsManager() *locationsManager{
+	return &locationsManager{}
 }
