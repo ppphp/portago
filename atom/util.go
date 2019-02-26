@@ -433,9 +433,80 @@ func NormalizePath(mypath string) string {
 	return path.Clean(mypath)
 }
 
-//func installMaskDir(baseDir string){
-//	baseDir = normalizePath(baseDir)
-//	baseDirLen := len(baseDir) + 1
-//	dir_stack := make([]string,0)
-//}
+func applyPermissions(filename string, uid, gid, mode, mask int, statCached os.FileInfo, followLinks bool) {
+	modified := false
+	if statCached == nil{
+		statCached, _ = doStat(filename, followLinks)
+	}
+	if (uid != -1 && uid != int(statCached.Sys().(*syscall.Stat_t).Uid))||(gid != -1 && gid != int(statCached.Sys().(*syscall.Stat_t).Gid))){
+		if followLinks {
+			syscall.Chown(filename, uid, gid)
+		} else {
+			os.Lchown(filename, uid, gid)
+		}
+		modified = true
+	}// TODO check errno
+	newMode := -1
+	stMode :=  statCached.Mode()&07777
+	if mask >=0 {
+		if mode == -1 {
+			mode = 0
+		} else {
+			mode = mode &07777
+		}
+		if (stMode&os.FileMode(mask) != os.FileMode(mode) ) || ((os.FileMode(mask)^stMode)&stMode != stMode) {
+			newMode = mode | stMode
+		}
+	}
+}
 
+func ensureDirs(dirpath string, kwargs string) string {
+	createdDir := false
+	if err := os.MkdirAll(dirpath, 0755); err == nil {
+		createdDir = true
+	} // TODO check errno
+
+}
+
+func NewProjectFilename(mydest, newmd5 string, force bool) string{
+	protNum := -1
+	lastFile := ""
+	if _, err := os.Open(mydest);!force&&!os.IsNotExist(err){
+		return mydest
+	}
+	realFilename := path.Base(mydest)
+	realDirname := path.Dir(mydest)
+	files, _ := ioutil.ReadDir(realDirname)
+	for _,pfile := range files {
+		if pfile.Name()[0:5] != "._cfg" {
+			continue
+		}
+		if pfile.Name()[10:] != realFilename{
+			continue
+		}
+		newProtNum, _ := strconv.Atoi(pfile.Name()[5:9])
+		if newProtNum > protNum {
+			protNum = newProtNum
+			lastFile = pfile.Name()
+		}
+	}
+	protNum ++
+	newPfile := NormalizePath(path.Join(realDirname, ".cfg"+fmt.Sprintf("%04s",string(protNum))+"_"+realFilename))
+	oldPfile := NormalizePath(path.Join(realDirname, lastFile))
+	if len(lastFile) != 0 && len(newmd5) != 0{
+		oldPfileSt,err := os.Lstat(oldPfile)
+		if err != nil {
+			if oldPfileSt.Mode() & os.ModeSymlink != 0{
+				pfileLink, err := os.Readlink(oldPfile)
+				if err != nil {
+					if pfileLink == newmd5{
+						return oldPfile
+					}
+				}
+			} else {
+				//lastPfileMd5 := string(performMd5Merge(oldPfile, 0))
+			}
+		}
+	}
+	return newPfile
+}
