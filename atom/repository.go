@@ -1,6 +1,8 @@
 package atom
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -38,10 +40,11 @@ func findInvalidPathChar(path string, pos int, endpos int) int {
 }
 
 type repoConfig struct {
-	allowMissingManifest, allowProvideVirtual, autoSync, cacheFormats, cloneDepth, createManifest, disableManifest, eapi, eclassDb, eclassLocations, findInvalidPathChar, format, location, mainRepo, manifest_hashes, manifest_required_hashes, missing_repo_name, module_specific_options, name, portage1_profiles, portage1_profiles_compat, profile_formats, sign_commit, sign_manifest, strict_misc_digests, sync_allow_hardlinks, sync_depth, sync_hooks_only_on_change, sync_openpgp_key_path, sync_openpgp_key_refresh_retry_count, sync_openpgp_key_refresh_retry_delay_exp_base, sync_openpgp_key_refresh_retry_delay_max, sync_openpgp_key_refresh_retry_delay_mult, sync_openpgp_key_refresh_retry_overall_timeout, sync_rcu, sync_rcu_spare_snapshots, sync_rcu_store_dir, sync_rcu_ttl_days, sync_type, sync_umask, sync_uri, sync_user, thin_manifest, update_changelog, user_location, _eapis_banned, _eapis_deprecated, _masters_orig string
-	force, aliases, eclassOverrides, masters                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     map[string]bool
-	localConfig                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  bool
-	priority int
+	allowMissingManifest, allowProvideVirtual, autoSync, cacheFormats, cloneDepth, createManifest, disableManifest, eapi, eclassDb, eclassLocations, findInvalidPathChar, format, location, mainRepo, manifest_hashes, manifest_required_hashes, missing_repo_name, name, portage1_profiles, portage1_profiles_compat, profile_formats, sign_commit, sign_manifest, sync_depth, sync_openpgp_key_path, sync_openpgp_key_refresh_retry_count, sync_openpgp_key_refresh_retry_delay_exp_base, sync_openpgp_key_refresh_retry_delay_max, sync_openpgp_key_refresh_retry_delay_mult, sync_openpgp_key_refresh_retry_overall_timeout, syncRcuStoreDir, sync_type, sync_umask, sync_uri, sync_user, thin_manifest, update_changelog, user_location, _eapis_banned, _eapis_deprecated, _masters_orig string
+	force, aliases, eclassOverrides, masters                                           map[string]bool
+	moduleSpecificOptions                                                              map[string]string
+	localConfig, syncHooksOnlyOnChange, strictMiscDigests, syncAllowHardlinks, syncRcu bool
+	priority, syncRcuSpareSnapshots, syncRcuTtlDays                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    int
 }
 
 func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *repoConfig {
@@ -113,14 +116,59 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 		r.sync_user = strings.TrimSpace(syncUser)
 	}
 	autoSync, ok := repoOpts["auto-sync"]
-	if ok{
+	if ok {
 		r.autoSync = strings.ToLower(strings.TrimSpace(autoSync))
-	} else{
+	} else {
 		r.autoSync = "yes"
 	}
 	r.cloneDepth = repoOpts["clone-depth"]
 	r.sync_depth = repoOpts["sync-depth"]
 
+	if s, ok := repoOpts["sync-hooks-only-on-change"]; ok {
+		r.syncHooksOnlyOnChange = strings.ToLower(s) == "true"
+	} else {
+		r.syncHooksOnlyOnChange = strings.ToLower("false") == "true"
+	}
+
+	if s, ok := repoOpts["sync-allow-hardlinks"]; ok {
+		r.strictMiscDigests = strings.ToLower(s) == "true"
+	} else {
+		r.strictMiscDigests = strings.ToLower("true") == "true"
+	}
+
+	if s, ok := repoOpts["sync-openpgp-key-path"]; ok {
+		r.syncAllowHardlinks = strings.ToLower(s) == "true"
+	} else {
+		r.syncAllowHardlinks = strings.ToLower("true") == "true"
+	}
+	r.sync_openpgp_key_refresh_retry_count = repoOpts[strings.Replace("sync_openpgp_key_refresh_retry_count", "_", "-", -1)]
+	r.sync_openpgp_key_refresh_retry_delay_exp_base = repoOpts[strings.Replace("sync_openpgp_key_refresh_retry_delay_exp_base", "_", "-", -1)]
+	r.sync_openpgp_key_refresh_retry_delay_max = repoOpts[strings.Replace("sync_openpgp_key_refresh_retry_delay_max", "_", "-", -1)]
+	r.sync_openpgp_key_refresh_retry_delay_mult = repoOpts[strings.Replace("sync_openpgp_key_refresh_retry_delay_mult", "_", "-", -1)]
+	r.sync_openpgp_key_refresh_retry_overall_timeout = repoOpts[strings.Replace("sync_openpgp_key_refresh_retry_overall_timeout", "_", "-", -1)]
+
+	if s, ok := repoOpts["sync-rcu"]; ok {
+		r.syncRcu = strings.ToLower(s) == "true" || strings.ToLower(s) == "yes"
+	} else {
+		r.syncRcu = strings.ToLower("false") == "true"
+	}
+
+	r.syncRcuStoreDir = repoOpts["sync-rcu-store-dir"]
+	r.syncRcuSpareSnapshots, _ = strconv.Atoi(strings.TrimSpace(repoOpts["sync-rcu-spare-snapshots"]))
+	r.syncRcuTtlDays, _ = strconv.Atoi(strings.TrimSpace(repoOpts["sync-rcu-ttl-days"]))
+
+	r.moduleSpecificOptions =map[string]string {}
+	r.format = strings.TrimSpace(repoOpts["format"])
+
+	if s, _:=os.Stat(repoOpts["location"]); s.IsDir() ||syncMode {
+		r.user_location= repoOpts["location"]
+		r.location, _  = filepath.EvalSymlinks(repoOpts["location"])
+	}
+	missing := true
+	r.name = name
+	if len(r.location) > 0 {
+
+	}
 
 	return r
 }

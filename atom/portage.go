@@ -22,6 +22,7 @@ func ShellQuote(s string) string {
 	}
 	return "\"" + s + "\""
 }
+var syncMode = false
 
 func getStdin() *os.File{
 	return os.Stdin
