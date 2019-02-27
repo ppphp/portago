@@ -433,12 +433,12 @@ func NormalizePath(mypath string) string {
 	return path.Clean(mypath)
 }
 
-func applyPermissions(filename string, uid, gid, mode, mask int, statCached os.FileInfo, followLinks bool) {
+func applyPermissions(filename string, uid, gid, mode, mask int, statCached os.FileInfo, followLinks bool) bool {
 	modified := false
 	if statCached == nil{
 		statCached, _ = doStat(filename, followLinks)
 	}
-	if (uid != -1 && uid != int(statCached.Sys().(*syscall.Stat_t).Uid))||(gid != -1 && gid != int(statCached.Sys().(*syscall.Stat_t).Gid))){
+	if (uid != -1 && uid != int(statCached.Sys().(*syscall.Stat_t).Uid))||(gid != -1 && gid != int(statCached.Sys().(*syscall.Stat_t).Gid)){
 		if followLinks {
 			syscall.Chown(filename, uid, gid)
 		} else {
@@ -446,8 +446,8 @@ func applyPermissions(filename string, uid, gid, mode, mask int, statCached os.F
 		}
 		modified = true
 	}// TODO check errno
-	newMode := -1
-	stMode :=  statCached.Mode()&07777
+	var newMode os.FileMode
+	stMode :=  statCached.Mode()&os.FileMode(07777)
 	if mask >=0 {
 		if mode == -1 {
 			mode = 0
@@ -455,9 +455,16 @@ func applyPermissions(filename string, uid, gid, mode, mask int, statCached os.F
 			mode = mode &07777
 		}
 		if (stMode&os.FileMode(mask) != os.FileMode(mode) ) || ((os.FileMode(mask)^stMode)&stMode != stMode) {
-			newMode = mode | stMode
+			newMode = os.FileMode(mode) | stMode
+			newMode = (os.FileMode(mask)^newMode)&newMode
+		}
+	} else if mode != -1{
+		mode = mode & 07777
+		if os.FileMode(mode) != stMode {
+
 		}
 	}
+	return modified
 }
 
 func ensureDirs(dirpath string, kwargs string) string {

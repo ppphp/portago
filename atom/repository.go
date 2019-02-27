@@ -243,7 +243,7 @@ func loadRepositoryConfig(settings *Config, extraFiles string){
 			repoconfigpaths = append(repoconfigpaths,path.Join(settings.globalConfigPath, "repos.conf"))
 		}
 	}
-	repoconfigpaths.append(os.path.join(settings["PORTAGE_CONFIGROOT"], USER_CONFIG_PATH, "repos.conf"))
+	repoconfigpaths = append(repoconfigpaths,path.Join(settings.valueDict["PORTAGE_CONFIGROOT"], UserConfigPath, "repos.conf"))
 	if extra_files:
 	repoconfigpaths.extend(extra_files)
 	return RepoConfigLoader(repoconfigpaths, settings)
