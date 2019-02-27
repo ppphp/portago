@@ -189,11 +189,12 @@ type Config struct {
 	tolerent, unmatchedRemoval, localConfig                                                                                                                                                                                                                                                                                                                                               bool
 	locked                                                                                                                                                                                                                                                                                                                                                                                int
 	mycpv, setcpvArgsHash, penv, modifiedkeys, uvlist, acceptChostRe, makeDefaults, parentStable, sonameProvided                                                                                                                                                                                                                                                                          *int
-	puse, categories, depcachedir, incrementals, modulePriority, profilePath, profiles, packages, repositories, unpackDependencies, defaultFeaturesUse, iuseEffective, iuseImplicitMatch, nonUserVariables, envDBlacklist, pbashrc, repoMakeDefaults, usemask, useforce, userProfileDir, makeDefaultsUse, profileBashrc, locationsManager, useManager, modules, backupenv, licenseManager string
+	puse, categories, depcachedir, incrementals, modulePriority, profilePath, profiles, packages, repositories, unpackDependencies, defaultFeaturesUse, iuseEffective, iuseImplicitMatch, nonUserVariables, envDBlacklist, pbashrc, repoMakeDefaults, usemask, useforce, userProfileDir, makeDefaultsUse, profileBashrc,  useManager, modules, backupenv, licenseManager string
 	configList, lookupList, featuresOverrides                                                                                                                                                                                                                                                                                                                                             []string
 	configDict, useExpandDict, prevmaskdict, pprovideddict, virtualsManagerObj, virtualsManager, acceptProperties, ppropertiesdict, acceptRestrict, pacceptRestrict, penvdict, pbashrcdict, expandMap, keywordsManagerObj, maskManagerObj                                                                                                                                                 map[string]string
 	unknownFeatures                                                                                                                                                                                                                                                                                                                                                                       map[string]bool
 	features                                                                                                                                                                                                                                                                                                                                                                              *featuresSet
+	locationsManager *locationsManager
 }
 
 func (c *Config) Lock() {
@@ -217,10 +218,10 @@ func (c *Config) SetCpv(cpv string, useCache map[string]string, myDb string) {
 
 var eapiCache = map[string]bool{}
 
-func NewConfig(clone *Config, mycpv, configProfilePath string, configIncrementals []int, config_root, target_root, sysroot, eprefix string, local_config bool, env map[string]string, unmatchedRemoval bool, repositories string) *Config {
+func NewConfig(clone *Config, mycpv, configProfilePath string, configIncrementals []int, configRoot, targetRoot, sysroot, eprefix string, localConfig bool, env map[string]string, unmatchedRemoval bool, repositories string) *Config {
 	eapiCache = make(map[string]bool)
 	tolerant := initializingGlobals == nil
-	c := &Config{tolerent: tolerant, unmatchedRemoval: unmatchedRemoval, localConfig: local_config}
+	c := &Config{tolerent: tolerant, unmatchedRemoval: unmatchedRemoval, localConfig: localConfig}
 	if clone != nil {
 		c.tolerent = clone.tolerent
 		c.unmatchedRemoval = clone.unmatchedRemoval
@@ -294,7 +295,25 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		c.keywordsManagerObj = nil
 		c.maskManagerObj = nil
 		c.virtualsManagerObj = nil
-		//locationsManager :=
+		locationsManager := NewLocaitonsManager(configRoot, eprefix, configProfilePath, localConfig, targetRoot, sysroot)
+		c.locationsManager = locationsManager
+		eprefix := locationsManager.eprefix
+		configRoot = locationsManager.configRoot
+		sysroot = locationsManager.sysroot
+		esysroot := locationsManager.esysroot
+		broot := locationsManager.broot
+		absUserConfig := locationsManager.absUserConfig
+		makeConfPaths := []string{path.Join(configRoot, "etc","make.conf"), path.Join(configRoot, MakeConfFile)}
+		p0, _ := filepath.EvalSymlinks(makeConfPaths[0])
+		p1, _ := filepath.EvalSymlinks(makeConfPaths[1])
+		if p0 ==  p1 {
+			makeConfPaths = makeConfPaths[:len(makeConfPaths)-1]
+		}
+		makeConfCount := 0
+		makeConf := map[string]string{}
+		for _, x:=range makeConfPaths{
+			mygcfg :=
+		}
 	}
 	if mycpv != "" {
 		c.SetCpv(mycpv, nil, "")
@@ -480,10 +499,43 @@ func NewFeaturesSet(settings *Config) *featuresSet {
 	return &featuresSet{settings: settings, features: map[string]bool{}}
 }
 
+var (
+	portage1Directories = map[string]bool{
+		"package.mask": true, "package.provided": true,
+		"package.use": true, "package.use.mask": true, "package.use.force": true,
+		"use.mask": true, "use.force": true}
+
+	allowParentColon = map[string]bool{"portage-2": true}
+)
+
+type profileNode struct {
+	profileNode, location, portage1Directories, userConfig, profileFormats, eapi, allowBuildId string
+}
+
 type locationsManager struct {
-	userProfileDir, localRepoConfPath, eprefix, configRoot, targetRoot, sysroot, absUserConfig, configProfilePath, esysroot, broot, portdir, portdirOverlay string
+	userProfileDir, localRepoConfPath, eprefix, configRoot, targetRoot, sysroot, absUserConfig, configProfilePath, esysroot, broot, portdir, portdirOverlay, eroot, globalConfigPath string
 	userConfig                                                                                                                                              bool
 	overlayProfiles, profileLocations, profileAndUserLocations                                                                                                                                         []string
+}
+
+func (l *locationsManager) loadProfiles(repositories, knownRepositoryPaths []string){
+	k := map[string]bool{}
+	for _, v := range knownRepositoryPaths {
+		x, _:= filepath.EvalSymlinks(v)
+		k[x] = true
+	}
+	knownRepos := []string{}
+	for x:= range k {
+		repo :=
+	}
+}
+
+func (l *locationsManager) addProfiles(){
+
+}
+
+func (l *locationsManager) expandParentColon(){
+
 }
 
 func (l *locationsManager) checkVarDirectory(varname, varr string) error {
@@ -511,7 +563,14 @@ func (l *locationsManager) setRootOverride(rootOverwrite string) error {
 		"equal / or ROOT (currently %s).\n", l.sysroot, l.targetRoot), 1, nil)
 		return errors.New("InvalidLocation")// raise InvalidLocation(self.sysroot)
 	}
-	//ensure
+	ensureDirs(l.targetRoot, -1 ,-1 ,-1 ,-1 ,nil, false)
+	l.checkVarDirectory("ROOT", l.targetRoot)
+	l.eroot  = strings.TrimSuffix(l.targetRoot, string(os.PathSeparator)) + l.eprefix + string(os.PathSeparator)
+	l.globalConfigPath = GlobalConfigPath
+	if EPREFIX != "" {
+		l.globalConfigPath = path.Join(EPREFIX, strings.TrimPrefix(GlobalConfigPath, string(os.PathSeparator)))
+	}
+	return nil
 }
 
 func (l *locationsManager) setPortDirs(portdir, portdirOverlay string) {

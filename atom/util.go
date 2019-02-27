@@ -254,7 +254,7 @@ type SB struct{
 func stackLists(lists [][]SB, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) {
 	matchedRemovals := map[string]bool {}
 	unmatchedRemovals := map[string]bool {}
-	newList := []string{}
+	newList := []*atom{}
 	for _, subList :=range lists{
 		for _, token := range subList {
 			tokenKey := token
@@ -342,6 +342,113 @@ func findUpdatedConfigFiles(targetRoot string, configProtect []string) []sss {
 		}
 	}
 	return ssss
+}
+
+var invalidVarNameRe = regexp.MustCompile("^\\d|\\W")
+
+func getConfig(mycfg string, tolerant, allow_sourcing, expand, recursive bool, expandMap map[string]string) {
+	if len(expandMap) >0 {
+		expand = true
+	} else {
+		expandMap = map[string]string{}
+	}
+	myKeys := map[string]string{}
+
+	if recursive{
+		if !expand {
+			expandMap = map[string]string{}
+		}
+		for _, fname := range recursiveFileList(mycfg){
+			myKeys
+		}
+		return myKeys
+	}
+
+	f, _ := os.Open(mycfg)
+	c, _ := ioutil.ReadAll(f)
+	content := string(c)
+	f.Close()
+
+	if content != "" && content[len(content)-1] != '\n'{
+		content += "\n"
+	}
+	if strings.Contains(content, "\r") {
+		writeMsg(fmt.Sprintf("!!! Please use dos2unix to convert line endings in config file: '%s'\n", mycfg) , -1, nil)
+	}
+	lex := ""
+
+try:
+	# The default shlex.sourcehook() implementation
+	# only joins relative paths when the infile
+	# attribute is properly set.
+	lex = _getconfig_shlex(instream=content, infile=mycfg, posix=True,
+	portage_tolerant=tolerant)
+	lex.wordchars = portage._native_string(string.digits +
+	string.ascii_letters + r"~!@#$%*_\:;?,./-+{}")
+	lex.quotes = portage._native_string("\"'")
+	if allow_sourcing:
+	lex.allow_sourcing(expand_map)
+
+	while True:
+	key = _unicode_decode(lex.get_token())
+	if key == "export":
+	key = _unicode_decode(lex.get_token())
+	if key is None:
+	#normal end of file
+	break
+
+	equ = _unicode_decode(lex.get_token())
+	if not equ:
+	msg = lex.error_leader() + _("Unexpected EOF")
+	if not tolerant:
+	raise ParseError(msg)
+	else:
+	writemsg("%s\n" % msg, noiselevel=-1)
+	return mykeys
+
+	elif equ != "=":
+	msg = lex.error_leader() + \
+	_("Invalid token '%s' (not '=')") % (equ,)
+	if not tolerant:
+	raise ParseError(msg)
+	else:
+	writemsg("%s\n" % msg, noiselevel=-1)
+	return mykeys
+
+	val = _unicode_decode(lex.get_token())
+	if val is None:
+	msg = lex.error_leader() + \
+	_("Unexpected end of config file: variable '%s'") % (key,)
+	if not tolerant:
+	raise ParseError(msg)
+	else:
+	writemsg("%s\n" % msg, noiselevel=-1)
+	return mykeys
+
+	if _invalid_var_name_re.search(key) is not None:
+	msg = lex.error_leader() + \
+	_("Invalid variable name '%s'") % (key,)
+	if not tolerant:
+	raise ParseError(msg)
+	writemsg("%s\n" % msg, noiselevel=-1)
+	continue
+
+	if expand:
+	mykeys[key] = varexpand(val, mydict=expand_map,
+	error_leader=lex.error_leader)
+	expand_map[key] = mykeys[key]
+	else:
+	mykeys[key] = val
+	except SystemExit as e:
+	raise
+	except Exception as e:
+	if isinstance(e, ParseError) or lex is None:
+	raise
+	msg = "%s%s" % (lex.error_leader(), e)
+	writemsg("%s\n" % msg, noiselevel=-1)
+	raise
+
+	return mykeys
 }
 
 var ldSoIncludeRe = regexp.MustCompile(`^include\s+(\S.*)`)
@@ -446,33 +553,58 @@ func applyPermissions(filename string, uid, gid, mode, mask int, statCached os.F
 		}
 		modified = true
 	}// TODO check errno
-	var newMode os.FileMode
-	stMode :=  statCached.Mode()&os.FileMode(07777)
+	newMode :=-1
+	stMode :=  int(uint32(statCached.Mode())&07777)
 	if mask >=0 {
 		if mode == -1 {
 			mode = 0
 		} else {
 			mode = mode &07777
 		}
-		if (stMode&os.FileMode(mask) != os.FileMode(mode) ) || ((os.FileMode(mask)^stMode)&stMode != stMode) {
-			newMode = os.FileMode(mode) | stMode
-			newMode = (os.FileMode(mask)^newMode)&newMode
+		if (stMode&mask != mode ) || ((mask^int(uint32(stMode)))&stMode != stMode) {
+			newMode = mode | int(uint32(stMode))
+			newMode = (mask^newMode)&newMode
 		}
 	} else if mode != -1{
 		mode = mode & 07777
-		if os.FileMode(mode) != stMode {
-
+		if mode != int(uint32(stMode)) {
+			newMode = mode
 		}
+	}
+	if modified && int(uint32(stMode)) ==-1 && (int(uint32(stMode))&unix.S_ISUID != 0||int(uint32(stMode))&unix.S_ISGID != 0) {
+		if mode == -1 {
+			newMode = stMode
+		} else {
+			mode = mode & 0777
+			if mask >= 0 {
+				newMode = mode |stMode
+				newMode = (mask^newMode)&newMode
+			}else {
+				newMode = mode
+			}
+		}
+	}
+	if !followLinks &&  statCached.Mode()&os.ModeSymlink!=0{
+		newMode = -1
+	}
+	if newMode!=-1{
+		os.Chmod(filename, os.FileMode(newMode))
 	}
 	return modified
 }
 
-func ensureDirs(dirpath string, kwargs string) string {
+func ensureDirs(dirpath string,uid, gid, mode, mask int, statCached os.FileInfo, followLinks bool) bool {
 	createdDir := false
 	if err := os.MkdirAll(dirpath, 0755); err == nil {
 		createdDir = true
 	} // TODO check errno
-
+	permsModified := false
+	if uid !=-1 || gid != -1 || mode != -1 || mask != -1 ||statCached != nil|| followLinks  {
+		permsModified = applyPermissions(dirpath, uid, gid, mode, mask , statCached , followLinks)
+	} else {
+		permsModified = false
+	}
+	return createdDir || permsModified
 }
 
 func NewProjectFilename(mydest, newmd5 string, force bool) string{
