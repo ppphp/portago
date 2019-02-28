@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"unicode"
 )
 
 var noiseLimit = 0
@@ -344,9 +345,25 @@ func findUpdatedConfigFiles(targetRoot string, configProtect []string) []sss {
 	return ssss
 }
 
+type getConfigShlex struct{
+	source string
+	varExpandMap map[string]string
+	portageTolerant      bool
+}
+
+func (g *getConfigShlex) allowSourcing(varExpandMap map[string]string) {
+	g.source = "source"
+	g.varExpandMap = varExpandMap
+}
+
+func NewGetConfgShlex(portageTolerant bool)*getConfigShlex{
+	//shlex.shlex.__init__(self, **kwargs)
+	return &getConfigShlex{portageTolerant:portageTolerant}
+}
+
 var invalidVarNameRe = regexp.MustCompile("^\\d|\\W")
 
-func getConfig(mycfg string, tolerant, allow_sourcing, expand, recursive bool, expandMap map[string]string) {
+func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, expandMap map[string]string) map[string]string {
 	if len(expandMap) >0 {
 		expand = true
 	} else {
@@ -358,8 +375,15 @@ func getConfig(mycfg string, tolerant, allow_sourcing, expand, recursive bool, e
 		if !expand {
 			expandMap = map[string]string{}
 		}
-		for _, fname := range recursiveFileList(mycfg){
-			myKeys
+		fname := ""
+		for _, fname = range recursiveFileList(mycfg){
+			newKeys := getConfig(fname, tolerant,allowSourcing, true,false,expandMap)
+			for k, v := range newKeys{
+				myKeys[k]=v
+			}
+		}
+		if fname==""{
+			return nil
 		}
 		return myKeys
 	}
@@ -375,80 +399,200 @@ func getConfig(mycfg string, tolerant, allow_sourcing, expand, recursive bool, e
 	if strings.Contains(content, "\r") {
 		writeMsg(fmt.Sprintf("!!! Please use dos2unix to convert line endings in config file: '%s'\n", mycfg) , -1, nil)
 	}
-	lex := ""
+	//lex := NewGetConfgShlex(tolerant)
+	lex := shlex.NewLexer(f)
+	//lex.wordchars = portage._native_string(string.digits + string.ascii_letters + r"~!@#$%*_\:;?,./-+{}")
+	//lex.quotes = portage._native_string("\"'")
+	//if allowSourcing {
+	//	lex.allowSourcing(expandMap)
+	//}
+	for {
+		key, _ := lex.Next()
+		if key == "export"{
+			key,_=lex.Next()
+		}
+		if key == ""{
+			break
+		}
+		equ, _ := lex.Next()
+		if equ==""{
+			msg := "Unexpected EOF" //TODO error_leader
+			if !tolerant{
+				//raise ParseError(msg)
+			} else{
+				writeMsg(fmt.Sprintf("%s\n" , msg), -1, nil)
+				return myKeys
+			}
+		}else if equ != "="{
+			msg := fmt.Sprintf("Invalid token '%s' (not '=')",equ) //TODO error_leader
+			if !tolerant{
+				//raise ParseError(msg)
+			} else{
+				writeMsg(fmt.Sprintf("%s\n" , msg), -1, nil)
+				return myKeys
+			}
+		}
+		val, _ := lex.Next()
+		if val==""{
+			msg := fmt.Sprintf("Unexpected end of config file: variable '%s'",key) //TODO error_leader
+			if !tolerant{
+				//raise ParseError(msg)
+			} else{
+				writeMsg(fmt.Sprintf("%s\n" , msg), -1, nil)
+				return myKeys
+			}
+		}
+		if invalidVarNameRe.MatchString(key){
+			msg := fmt.Sprintf("Invalid variable name '%s'",key) //TODO error_leader
+			if !tolerant{
+				//raise ParseError(msg)
+			} else{
+				writeMsg(fmt.Sprintf("%s\n" , msg), -1, nil)
+				continue
+			}
+		}
+		if expand{
+			myKeys[key] = varExpand(val, expandMap, "")//TODO lex.error_leader
+		} else {
+			myKeys[key] = val
+		}
+	}
+	return myKeys
+}
 
-try:
-	# The default shlex.sourcehook() implementation
-	# only joins relative paths when the infile
-	# attribute is properly set.
-	lex = _getconfig_shlex(instream=content, infile=mycfg, posix=True,
-	portage_tolerant=tolerant)
-	lex.wordchars = portage._native_string(string.digits +
-	string.ascii_letters + r"~!@#$%*_\:;?,./-+{}")
-	lex.quotes = portage._native_string("\"'")
-	if allow_sourcing:
-	lex.allow_sourcing(expand_map)
-
-	while True:
-	key = _unicode_decode(lex.get_token())
-	if key == "export":
-	key = _unicode_decode(lex.get_token())
-	if key is None:
-	#normal end of file
-	break
-
-	equ = _unicode_decode(lex.get_token())
-	if not equ:
-	msg = lex.error_leader() + _("Unexpected EOF")
-	if not tolerant:
-	raise ParseError(msg)
-	else:
-	writemsg("%s\n" % msg, noiselevel=-1)
-	return mykeys
-
-	elif equ != "=":
-	msg = lex.error_leader() + \
-	_("Invalid token '%s' (not '=')") % (equ,)
-	if not tolerant:
-	raise ParseError(msg)
-	else:
-	writemsg("%s\n" % msg, noiselevel=-1)
-	return mykeys
-
-	val = _unicode_decode(lex.get_token())
-	if val is None:
-	msg = lex.error_leader() + \
-	_("Unexpected end of config file: variable '%s'") % (key,)
-	if not tolerant:
-	raise ParseError(msg)
-	else:
-	writemsg("%s\n" % msg, noiselevel=-1)
-	return mykeys
-
-	if _invalid_var_name_re.search(key) is not None:
-	msg = lex.error_leader() + \
-	_("Invalid variable name '%s'") % (key,)
-	if not tolerant:
-	raise ParseError(msg)
-	writemsg("%s\n" % msg, noiselevel=-1)
-	continue
-
-	if expand:
-	mykeys[key] = varexpand(val, mydict=expand_map,
-	error_leader=lex.error_leader)
-	expand_map[key] = mykeys[key]
-	else:
-	mykeys[key] = val
-	except SystemExit as e:
-	raise
-	except Exception as e:
-	if isinstance(e, ParseError) or lex is None:
-	raise
-	msg = "%s%s" % (lex.error_leader(), e)
-	writemsg("%s\n" % msg, noiselevel=-1)
-	raise
-
-	return mykeys
+var(
+varexpandWordChars        = map[uint8]bool{'a':true,	'b':true,	'c':true,	'd':true,	'e':true,	'f':true,	'g':true,	'h':true,	'i':true,	'j':true,	'k':true,	'l':true,	'm':true,	'n':true,	'o':true,	'p':true,	'q':true,	'r':true,	's':true,	't':true,	'u':true,	'v':true,	'w':true,	'x':true,	'y':true,	'z':true,	'A':true,	'B':true,	'C':true,	'D':true,	'E':true,	'F':true,	'G':true,	'H':true,	'I':true,	'J':true,	'K':true,	'L':true,	'M':true,	'N':true,	'O':true,	'P':true,	'Q':true,	'R':true,	'S':true,	'T':true,	'U':true,	'V':true,	'W':true,	'X':true,	'Y':true,	'Z':true,	'0':true,	'1':true,	'2':true,	'3':true,	'4':true,	'5':true,	'6':true,	'7':true,	'8':true,	'9':true,	'_':true,}
+varexpandUnexpectedEofMsg = "unexpected EOF while looking for matching `}'"
+)
+func varExpand(myString string, mydict map[string]string, errorLeader string) string{
+	if mydict == nil {
+		mydict=map[string]string{}
+	}
+	var numVars, insing, indoub, pos int
+	length := len(myString)
+	newString:= []string{}
+	for pos <length {
+		current := myString[pos]
+		if current == ' ' {
+			if indoub > 0{
+				newString =append(newString, "'")
+			}else{
+				newString =append(newString, "'")
+				insing = 1-insing
+			}
+			pos +=1
+			continue
+		} else if current == '"'{
+			if insing >0{
+				newString =append(newString, "\"")
+			}else {
+				newString =append(newString, "\"")
+				indoub = 1-indoub
+			}
+			continue
+		}
+		if insing<=0{
+			if current == '\n'{
+				newString =append(newString, " ")
+				pos+=1
+			}else if current == '\\'{
+				if pos + 1 >= len(myString) {
+					newString = append(newString, string(current))
+					break
+				} else {
+					current = myString[pos + 1]
+					pos += 2
+					if current == '$' {
+						newString = append(newString, string(current))
+					}else if current == '\\'{
+						newString = append(newString, string(current))
+						if pos < length && (myString[pos] == '\''||myString[pos] == '"'||myString[pos] == '$'){
+							newString = append(newString, string(myString[pos]))
+							pos += 1
+						}
+					}else if current == '\n'{
+					}else {
+						newString = append(newString, myString[pos-2:pos])
+					}
+					continue
+				}
+			} else if current == '$'{
+				pos +=1
+				if pos ==length{
+					newString = append(newString, string(current))
+					continue
+				}
+				braced :=false
+				if myString[pos]=='{'{
+					pos +=1
+					if pos == length{
+						msg := varexpandUnexpectedEofMsg
+						if errorLeader != ""{
+							msg = errorLeader + msg
+						}
+						writeMsg(msg+"\n", -1, nil)
+						return ""
+					}
+					braced = true
+				}else {
+					braced = false
+				}
+				myvStart := pos
+				for varexpandWordChars[myString[pos]]{
+					if pos +1 >= len(myString){
+						if braced {
+							msg := varexpandUnexpectedEofMsg
+							if errorLeader != ""{
+								msg = errorLeader + msg
+							}
+							writeMsg(msg+"\n", -1, nil)
+							return ""
+						} else {
+							pos+=1
+							break
+						}
+					}
+					pos+=1
+				}
+				myVarName:=myString[myvStart:pos]
+				if braced {
+					if myString[pos] != '{'{
+						msg := varexpandUnexpectedEofMsg
+						if errorLeader != ""{
+							msg = errorLeader + msg
+						}
+						writeMsg(msg+"\n", -1, nil)
+						return ""
+					} else {
+						pos +=1
+					}
+				}
+				if len(myVarName) == 0 {
+					msg := "$"
+					if braced{
+						msg += "{}"
+					}
+					msg += ": bad substitution"
+					if errorLeader != ""{
+						msg = errorLeader + msg
+					}
+					writeMsg(msg+"\n", -1, nil)
+					return ""
+				}
+				numVars +=1
+				if _, ok := mydict[myVarName];ok{
+					newString = append(newString,string(myVarName))
+				}
+			}else{
+				newString = append(newString,string(current))
+				pos +=1
+			}
+		}else{
+			newString = append(newString,string(current))
+			pos +=1
+		}
+	}
+	return strings.Join(newString, "")
 }
 
 var ldSoIncludeRe = regexp.MustCompile(`^include\s+(\S.*)`)

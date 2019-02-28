@@ -188,13 +188,14 @@ type Config struct {
 	valueDict                                                                                                                                                                                                                                                                                                                                                                             map[string]string
 	tolerent, unmatchedRemoval, localConfig                                                                                                                                                                                                                                                                                                                                               bool
 	locked                                                                                                                                                                                                                                                                                                                                                                                int
-	mycpv, setcpvArgsHash, penv, modifiedkeys, uvlist, acceptChostRe, makeDefaults, parentStable, sonameProvided                                                                                                                                                                                                                                                                          *int
-	puse, categories, depcachedir, incrementals, modulePriority, profilePath, profiles, packages, repositories, unpackDependencies, defaultFeaturesUse, iuseEffective, iuseImplicitMatch, nonUserVariables, envDBlacklist, pbashrc, repoMakeDefaults, usemask, useforce, userProfileDir, makeDefaultsUse, profileBashrc,  useManager, modules, backupenv, licenseManager string
-	configList, lookupList, featuresOverrides                                                                                                                                                                                                                                                                                                                                             []string
-	configDict, useExpandDict, prevmaskdict, pprovideddict, virtualsManagerObj, virtualsManager, acceptProperties, ppropertiesdict, acceptRestrict, pacceptRestrict, penvdict, pbashrcdict, expandMap, keywordsManagerObj, maskManagerObj                                                                                                                                                 map[string]string
-	unknownFeatures                                                                                                                                                                                                                                                                                                                                                                       map[string]bool
+	mycpv, setcpvArgsHash, penv, modifiedkeys, uvlist, acceptChostRe, makeDefaults, parentStable, sonameProvided                                                                                                                                                                                                                                                                           *int
+	puse, categories, depcachedir,   profilePath, profiles, packages, repositories, unpackDependencies, defaultFeaturesUse, iuseEffective, iuseImplicitMatch, nonUserVariables, envDBlacklist, pbashrc, repoMakeDefaults, usemask, useforce, userProfileDir, makeDefaultsUse, profileBashrc,  useManager, modules, backupenv, licenseManager, globalConfigPath string
+	configList, lookupList, featuresOverrides                                                                                                                                                                                                                                                                                                                                              []string
+	defaultGlobals, deprecatedKeys, configDict, useExpandDict, prevmaskdict, pprovideddict, virtualsManagerObj, virtualsManager, acceptProperties, ppropertiesdict, acceptRestrict, pacceptRestrict, penvdict, pbashrcdict, expandMap, keywordsManagerObj, maskManagerObj                                                                                                                                                  map[string]string
+	modulePriority,incrementals,envBlacklist         ,	environFilter  ,	environWhitelist  ,	validateCommands    ,	globalOnlyVars      ,caseInsensitiveVars, setcpvAuxKeys, constantKeys, unknownFeatures                                                                                                                                                                                                                                                                                                                                                                       map[string]bool
 	features                                                                                                                                                                                                                                                                                                                                                                              *featuresSet
 	locationsManager *locationsManager
+	environWhitelistRe  *regexp.Regexp
 }
 
 func (c *Config) Lock() {
@@ -218,11 +219,22 @@ func (c *Config) SetCpv(cpv string, useCache map[string]string, myDb string) {
 
 var eapiCache = map[string]bool{}
 
-func NewConfig(clone *Config, mycpv, configProfilePath string, configIncrementals []int, configRoot, targetRoot, sysroot, eprefix string, localConfig bool, env map[string]string, unmatchedRemoval bool, repositories string) *Config {
+func NewConfig(clone *Config, mycpv, configProfilePath string, configIncrementals []string, configRoot, targetRoot, sysroot, eprefix string, localConfig bool, env map[string]string, unmatchedRemoval bool, repositories string) *Config {
 	eapiCache = make(map[string]bool)
 	tolerant := initializingGlobals == nil
 	c := &Config{tolerent: tolerant, unmatchedRemoval: unmatchedRemoval, localConfig: localConfig}
-	if clone != nil {
+	c.constantKeys = constantKeys
+	c.deprecatedKeys=deprecatedKeys
+	c.setcpvAuxKeys=setcpvAuxKeys
+	c.caseInsensitiveVars=caseInsensitiveVars
+	c.defaultGlobals=defaultGlobals
+	c.envBlacklist=envBlacklist
+	c.environFilter=environFilter
+	c.environWhitelist=environWhitelist
+	c.validateCommands=validateCommands
+	c.globalOnlyVars=globalOnlyVars
+	c.environWhitelistRe=environWhitelistRe
+		if clone != nil {
 		c.tolerent = clone.tolerent
 		c.unmatchedRemoval = clone.unmatchedRemoval
 		c.categories = clone.categories
@@ -312,9 +324,58 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		makeConfCount := 0
 		makeConf := map[string]string{}
 		for _, x:=range makeConfPaths{
-			mygcfg :=
+			mygcfg :=getConfig(x,tolerant, true,true, true, makeConf)
+			if len(mygcfg) > 0{
+				for k, v := range {
+					makeConf[k]=v
+					makeConfCount += 1
+				}
+			}
 		}
-	}
+		if makeConfCount == 2 {
+			writeMsg(fmt.Sprintf("!!! %s\nFound 2 make.conf files, using both '%s' and '%s'", makeConfPaths), -1, nil)
+		}
+		locationsManager.setRootOverride(makeConf["ROOT"])
+		targetRoot = locationsManager.targetRoot
+		eroot := locationsManager.eroot
+		c.globalConfigPath = locationsManager.globalConfigPath
+		envD := getConfig(path.Join(eroot, "etc", "profile.env"), tolerant, false, false, false , nil)
+		expandMap := CopyMapSS(envD)
+		c.expandMap = expandMap
+		expandMap["EPREFIX"] = eprefix
+		expandMap["PORTAGE_CONFIGROOT"] = configRoot
+		makeGlobalsPath := ""
+		if notInstalled {
+			makeGlobalsPath = path.Join(PORTAGE_BASE_PATH, "cnf", "make.globals")
+		} else {
+			makeGlobalsPath = path.Join(c.globalConfigPath, "make.globals")
+		}
+		oldMakeGlobals := path.Join(configRoot, "etc","make.globals")
+		if s, _:=os.Stat(oldMakeGlobals);!s.IsDir()&& filepath.EvalSymlinks(makeGlobalsPath) != filepath.EvalSymlinks(oldMakeGlobals) {
+			writeMsg(fmt.Sprintf("!!!Found obsolete make.globals file: '%s', (using '%s' instead)\n",		oldMakeGlobals, makeGlobalsPath),-1,nil)
+		}
+		makeGlobals := getConfig(makeGlobalsPath, tolerant, false, true, false, expandMap)
+		if makeGlobals == nil {
+			makeGlobals = map[string]string{}
+		}
+		for k,v := range c.defaultGlobals {
+			if _, ok := makeGlobals[k]; !ok {
+				makeGlobals[k]=v
+			}
+		}
+		if configIncrementals == nil {
+			c.incrementals = INCREMENTALS
+		} else {
+			c.incrementals = map[string]bool{}
+			for _, v := range configIncrementals{
+				c.incrementals[v]=true
+			}
+		}
+		c.modulePriority = map[string]bool {"user":true, "default":true}
+		c.modules := {}
+		modulesFile := path.Join(configRoot, ModulesFilePath)
+		modulesLoader :=
+		}
 	if mycpv != "" {
 		c.SetCpv(mycpv, nil, "")
 	}
