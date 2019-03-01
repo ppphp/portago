@@ -225,194 +225,217 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 	r.mastersOrig = ""
 
 	if len(r.location) >0{
-		layoutData:=
+		layoutData :=
 		r.mastersOrig = layoutData["masters"]
 	}
 
 	return r
 }
 
-func loadRepositoryConfig(settings *Config, extraFiles string){
+func loadRepositoryConfig(settings *Config, extraFiles string) {
 	repoconfigpaths := []string{}
-	if pr , ok:= settings.valueDict["PORTAGE_REPOSITORIES"]; ok {
+	if pr, ok := settings.valueDict["PORTAGE_REPOSITORIES"]; ok {
 		repoconfigpaths = append(repoconfigpaths, pr)
-	}	else{
-		if notInstalled{
+	} else {
+		if notInstalled {
 			repoconfigpaths = append(repoconfigpaths, path.Join(PORTAGE_BASE_PATH, "cnf", "repos.conf"))
-		} else{
-			repoconfigpaths = append(repoconfigpaths,path.Join(settings.globalConfigPath, "repos.conf"))
+		} else {
+			repoconfigpaths = append(repoconfigpaths, path.Join(settings.globalConfigPath, "repos.conf"))
 		}
 	}
-	repoconfigpaths = append(repoconfigpaths,path.Join(settings.valueDict["PORTAGE_CONFIGROOT"], UserConfigPath, "repos.conf"))
-	if extra_files:
-	repoconfigpaths.extend(extra_files)
-	return RepoConfigLoader(repoconfigpaths, settings)
+	repoconfigpaths = append(repoconfigpaths, path.Join(settings.valueDict["PORTAGE_CONFIGROOT"], UserConfigPath, "repos.conf"))
+	if extraFiles != "" {
+		repoconfigpaths = append(repoconfigpaths, extraFiles)
+	}
+	return NewRepoConfigLoader(repoconfigpaths, settings)
+}
 
-	def _get_repo_name(repo_location, cached=None):
-	if cached is not None:
-	return cached
-	name, missing = RepoConfig._read_repo_name(repo_location)
-	if missing:
-	return None
+func getRepoName(repo_location, cached string)string{
+	if cached != ""{
+		return cached
+	}
+	name, missing := repoConfig{}.readRepoName(repo_location)
+	if missing{
+		return ""
+	}
 	return name
 }
 
-def parse_layout_conf(repo_location, repo_name=None):
-eapi = read_corresponding_eapi_file(os.path.join(repo_location, REPO_NAME_LOC))
+func parse_layout_conf(repo_location, repo_name string){
+	eapi := readCorrespondingEapiFile(path.Join(repo_location, RepoNameLoc), "0")
 
-layout_filename = os.path.join(repo_location, "metadata", "layout.conf")
-layout_file = KeyValuePairFileLoader(layout_filename, None, None)
-layout_data, layout_errors = layout_file.load()
+	layout_filename := path.Join(repo_location, "metadata", "layout.conf")
+	layout_file := NewKeyValuePairFileLoader(layout_filename, nil, nil)
+	layout_data, layout_errors := layout_file.load()
 
-data = {}
+	data := map[string][]string{}
 
-# None indicates abscence of a masters setting, which later code uses
-# to trigger a backward compatibility fallback that sets an implicit
-# master. In order to avoid this fallback behavior, layout.conf can
-# explicitly set masters to an empty value, which will result in an
-# empty tuple here instead of None.
-masters = layout_data.get('masters')
-if masters is not None:
-masters = tuple(masters.split())
-data['masters'] = masters
-data['aliases'] = tuple(layout_data.get('aliases', '').split())
+	if v, ok := layout_data["masters"];ok {
+		data["masters"] = strings.Fields(v[0])
+	}
+	if v, ok := layout_data["aliases"];ok {
+		data["aliases"] = strings.Fields(v[0])
+	}
+	if v, ok := layout_data["eapis-banned"];ok {
+		data["eapis-banned"] = strings.Fields(v[0])
+	}
+	if v, ok := layout_data["eapis-deprecated"];ok {
+		data["eapis-deprecated"] = strings.Fields(v[0])
+	}
+	if v, ok := layout_data["sign-commit"];ok &&v[0]=="true" {
+		data["sign-commit"] = []string{layout_data["sign-commit"][0]}
+	} else {
+		data["sign-commit"] = nil
+	}
+	if v, ok := layout_data["sign-manifest"];!ok ||(ok &&v[0]=="true"){
+		data["sign-manifest"] = []string{"true"}
+	} else {
+		data["sign-manifest"] = nil
+	}
+	if v, ok := layout_data["thin-manifest"];ok &&v[0]=="true" {
+		data["thin-manifest"] = []string{"true"}
+	} else {
+		data["thin-manifest"] = nil
+	}
+	if v, ok := layout_data["repo-name"];ok {
+		data["repo-name"] = []string{genValidRepo(v[0])}
+	} else {
+		data["repo-name"] = []string{genValidRepo("")}
+	}
 
-data['eapis-banned'] = tuple(layout_data.get('eapis-banned', '').split())
-data['eapis-deprecated'] = tuple(layout_data.get('eapis-deprecated', '').split())
+	if v, ok := layout_data["use-manifests"]; ok && strings.ToLower(v[0]) != "strict" {
+		mp := strings.ToLower(v[0])
+		if mp == "false" {
+			data["allow-missing-manifest"] = []string{"true"}
+			data["create-manifest"] = nil
+			data["disable-manifest"] = []string{"true"}
+		} else {
+			data["allow-missing-manifest"] = []string{"true"}
+			data["create-manifest"] = []string{"true"}
+			data["disable-manifest"] = nil
+		}
+	} else {
+		data["allow-missing-manifest"] = nil
+		data["create-manifest"] = []string{"true"}
+		data["disable-manifest"] = nil
+	}
 
-data['sign-commit'] = layout_data.get('sign-commits', 'false').lower() \
-== 'true'
+	cache_formats := []string{}
+	if v, ok := layout_data["cache-formats"];ok {
+		cache_formats = strings.Fields(strings.ToLower(v[0]))
+	} else {
+		cache_formats = []string{}
+	}
+	if len(cache_formats) == 0{
+		if s, _ := os.Stat(path.Join(repo_location, "metadata", "md5-cache")); s.IsDir(){
+			cache_formats = append(cache_formats, "md5-dict")
+		}
+		if s, _ := os.Stat(path.Join(repo_location, "metadata", "ache")); s.IsDir(){
+			cache_formats = append(cache_formats, "pms")
+		}
+	}
+	data["cache-formats"]=cache_formats
 
-data['sign-manifest'] = layout_data.get('sign-manifests', 'true').lower() \
-== 'true'
+	manifest_hashes := layout_data["manifest-hashes"]
+	manifest_required_hashes := layout_data["manifest-required-hashes"]
 
-data['thin-manifest'] = layout_data.get('thin-manifests', 'false').lower() \
-== 'true'
+	if len(manifest_required_hashes) != 0 && len(manifest_hashes)==0 {
+		repo_name = getRepoName(repo_location, repo_name)
+		//warnings.warn((_("Repository named '%(repo_name)s' specifies "
+		//"'manifest-required-hashes' setting without corresponding "
+		//"'manifest-hashes'. Portage will default it to match "
+		//"the required set but please add the missing entry "
+		//"to: %(layout_filename)s") %
+		//{"repo_name": repo_name or 'unspecified',
+		//"layout_filename":layout_filename}),
+		//SyntaxWarning)
+		manifest_hashes = manifest_required_hashes
+	}
 
-data['repo-name'] = _gen_valid_repo(layout_data.get('repo-name', ''))
+	if len(manifest_hashes)!=0{
+		manifest_required_hashes = manifest_hashes
+		manifest_required_hashes = frozenset(manifest_required_hashes.upper().split())
+		manifest_hashes = frozenset(manifest_hashes.upper().split())
+		missing_required_hashes = manifest_required_hashes.difference(
+			manifest_hashes)
+		if missing_required_hashes:
+		repo_name = _get_repo_name(repo_location, cached=repo_name)
+		warnings.warn((_("Repository named '%(repo_name)s' has a "
+		"'manifest-hashes' setting that does not contain "
+		"the '%(hash)s' hashes which are listed in "
+		"'manifest-required-hashes'. Please fix that file "
+		"if you want to generate valid manifests for this "
+		"repository: %(layout_filename)s") %
+		{"repo_name": repo_name or 'unspecified',
+		"hash": ' '.join(missing_required_hashes),
+		"layout_filename":layout_filename}),
+		SyntaxWarning)
+		unsupported_hashes = manifest_hashes.difference(
+			get_valid_checksum_keys())
+		if unsupported_hashes:
+		repo_name = _get_repo_name(repo_location, cached=repo_name)
+		warnings.warn((_("Repository named '%(repo_name)s' has a "
+		"'manifest-hashes' setting that contains one "
+		"or more hash types '%(hashes)s' which are not supported by "
+		"this portage version. You will have to upgrade "
+		"portage if you want to generate valid manifests for "
+		"this repository: %(layout_filename)s") %
+		{"repo_name": repo_name or 'unspecified',
+		"hashes":" ".join(sorted(unsupported_hashes)),
+		"layout_filename":layout_filename}),
+		DeprecationWarning)
+	}
 
-manifest_policy = layout_data.get('use-manifests', 'strict').lower()
-data['allow-missing-manifest'] = manifest_policy != 'strict'
-	data['create-manifest'] = manifest_policy != 'false'
-	data['disable-manifest'] = manifest_policy == 'false'
+	data['manifest-hashes'] = manifest_hashes
+	data['manifest-required-hashes'] = manifest_required_hashes
 
-# for compatibility w/ PMS, fallback to pms; but also check if the
-# cache exists or not.
-cache_formats = layout_data.get('cache-formats', '').lower().split()
-if not cache_formats:
-# Auto-detect cache formats, and prefer md5-cache if available.
-# This behavior was deployed in portage-2.1.11.14, so that the
-# default egencache format could eventually be changed to md5-dict
-# in portage-2.1.11.32. WARNING: Versions prior to portage-2.1.11.14
-# will NOT recognize md5-dict format unless it is explicitly
-# listed in layout.conf.
-cache_formats = []
-if os.path.isdir(os.path.join(repo_location, 'metadata', 'md5-cache')):
-cache_formats.append('md5-dict')
-if os.path.isdir(os.path.join(repo_location, 'metadata', 'cache')):
-cache_formats.append('pms')
-data['cache-formats'] = tuple(cache_formats)
+	data['update-changelog'] = layout_data.get('update-changelog', 'false').lower() \
+	== 'true'
 
-manifest_hashes = layout_data.get('manifest-hashes')
-manifest_required_hashes = layout_data.get('manifest-required-hashes')
+	raw_formats = layout_data.get('profile-formats')
+	if raw_formats is None:
+	if eapi_allows_directories_on_profile_level_and_repository_level(eapi):
+	raw_formats = ('portage-1',)
+	else:
+	raw_formats = ('portage-1-compat',)
+	else:
+	raw_formats = set(raw_formats.split())
+	unknown = raw_formats.difference(_valid_profile_formats)
+	if unknown:
+	repo_name = _get_repo_name(repo_location, cached=repo_name)
+	warnings.warn((_("Repository named '%(repo_name)s' has unsupported "
+	"profiles in use ('profile-formats = %(unknown_fmts)s' setting in "
+	"'%(layout_filename)s; please upgrade portage.") %
+	dict(repo_name=repo_name or 'unspecified',
+	layout_filename=layout_filename,
+	unknown_fmts=" ".join(unknown))),
+	DeprecationWarning)
+	raw_formats = tuple(raw_formats.intersection(_valid_profile_formats))
+	data['profile-formats'] = raw_formats
 
-if manifest_required_hashes is not None and manifest_hashes is None:
-repo_name = _get_repo_name(repo_location, cached=repo_name)
-warnings.warn((_("Repository named '%(repo_name)s' specifies "
-"'manifest-required-hashes' setting without corresponding "
-"'manifest-hashes'. Portage will default it to match "
-"the required set but please add the missing entry "
-"to: %(layout_filename)s") %
-{"repo_name": repo_name or 'unspecified',
-"layout_filename":layout_filename}),
-SyntaxWarning)
-manifest_hashes = manifest_required_hashes
+	try:
+	eapi = layout_data['profile_eapi_when_unspecified']
+	except KeyError:
+	pass
+	else:
+	if 'profile-default-eapi' not in raw_formats:
+	warnings.warn((_("Repository named '%(repo_name)s' has "
+	"profile_eapi_when_unspecified setting in "
+	"'%(layout_filename)s', but 'profile-default-eapi' is "
+	"not listed in the profile-formats field. Please "
+	"report this issue to the repository maintainer.") %
+	dict(repo_name=repo_name or 'unspecified',
+	layout_filename=layout_filename)),
+	SyntaxWarning)
+	elif not portage.eapi_is_supported(eapi):
+	warnings.warn((_("Repository named '%(repo_name)s' has "
+	"unsupported EAPI '%(eapi)s' setting in "
+	"'%(layout_filename)s'; please upgrade portage.") %
+	dict(repo_name=repo_name or 'unspecified',
+	eapi=eapi, layout_filename=layout_filename)),
+	SyntaxWarning)
+	else:
+	data['profile_eapi_when_unspecified'] = eapi
 
-if manifest_hashes is not None:
-# require all the hashes unless specified otherwise
-if manifest_required_hashes is None:
-manifest_required_hashes = manifest_hashes
-
-manifest_required_hashes = frozenset(manifest_required_hashes.upper().split())
-manifest_hashes = frozenset(manifest_hashes.upper().split())
-missing_required_hashes = manifest_required_hashes.difference(
-manifest_hashes)
-if missing_required_hashes:
-repo_name = _get_repo_name(repo_location, cached=repo_name)
-warnings.warn((_("Repository named '%(repo_name)s' has a "
-"'manifest-hashes' setting that does not contain "
-"the '%(hash)s' hashes which are listed in "
-"'manifest-required-hashes'. Please fix that file "
-"if you want to generate valid manifests for this "
-"repository: %(layout_filename)s") %
-{"repo_name": repo_name or 'unspecified',
-"hash": ' '.join(missing_required_hashes),
-"layout_filename":layout_filename}),
-SyntaxWarning)
-unsupported_hashes = manifest_hashes.difference(
-get_valid_checksum_keys())
-if unsupported_hashes:
-repo_name = _get_repo_name(repo_location, cached=repo_name)
-warnings.warn((_("Repository named '%(repo_name)s' has a "
-"'manifest-hashes' setting that contains one "
-"or more hash types '%(hashes)s' which are not supported by "
-"this portage version. You will have to upgrade "
-"portage if you want to generate valid manifests for "
-"this repository: %(layout_filename)s") %
-{"repo_name": repo_name or 'unspecified',
-"hashes":" ".join(sorted(unsupported_hashes)),
-"layout_filename":layout_filename}),
-DeprecationWarning)
-
-data['manifest-hashes'] = manifest_hashes
-data['manifest-required-hashes'] = manifest_required_hashes
-
-data['update-changelog'] = layout_data.get('update-changelog', 'false').lower() \
-== 'true'
-
-raw_formats = layout_data.get('profile-formats')
-if raw_formats is None:
-if eapi_allows_directories_on_profile_level_and_repository_level(eapi):
-raw_formats = ('portage-1',)
-else:
-raw_formats = ('portage-1-compat',)
-else:
-raw_formats = set(raw_formats.split())
-unknown = raw_formats.difference(_valid_profile_formats)
-if unknown:
-repo_name = _get_repo_name(repo_location, cached=repo_name)
-warnings.warn((_("Repository named '%(repo_name)s' has unsupported "
-"profiles in use ('profile-formats = %(unknown_fmts)s' setting in "
-"'%(layout_filename)s; please upgrade portage.") %
-dict(repo_name=repo_name or 'unspecified',
-layout_filename=layout_filename,
-unknown_fmts=" ".join(unknown))),
-DeprecationWarning)
-raw_formats = tuple(raw_formats.intersection(_valid_profile_formats))
-data['profile-formats'] = raw_formats
-
-try:
-eapi = layout_data['profile_eapi_when_unspecified']
-except KeyError:
-pass
-else:
-if 'profile-default-eapi' not in raw_formats:
-warnings.warn((_("Repository named '%(repo_name)s' has "
-"profile_eapi_when_unspecified setting in "
-"'%(layout_filename)s', but 'profile-default-eapi' is "
-"not listed in the profile-formats field. Please "
-"report this issue to the repository maintainer.") %
-dict(repo_name=repo_name or 'unspecified',
-layout_filename=layout_filename)),
-SyntaxWarning)
-elif not portage.eapi_is_supported(eapi):
-warnings.warn((_("Repository named '%(repo_name)s' has "
-"unsupported EAPI '%(eapi)s' setting in "
-"'%(layout_filename)s'; please upgrade portage.") %
-dict(repo_name=repo_name or 'unspecified',
-eapi=eapi, layout_filename=layout_filename)),
-SyntaxWarning)
-else:
-data['profile_eapi_when_unspecified'] = eapi
-
-return data, layout_errors
+	return data, layout_errors
+}
