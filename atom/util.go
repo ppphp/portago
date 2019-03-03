@@ -3,9 +3,9 @@ package atom
 // a colleciton of util in lib/portage/util
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
+	"github.com/ppphp/configparser"
 	"github.com/google/shlex"
 	"golang.org/x/sys/unix"
 	"io/ioutil"
@@ -392,7 +392,7 @@ func stackLists(lists [][]SB, incremental int, rememberSourceFile, warnForUnmatc
 						tokenSlice := token[1:]
 						for _, atom := range newList {
 							atomWithoutRepo := atom
-							if atom
+							if atom.repo
 						}
 					}
 				}
@@ -904,4 +904,10 @@ func NewProjectFilename(mydest, newmd5 string, force bool) string {
 		}
 	}
 	return newPfile
+}
+
+func readConfigs(parser *configparser.Configuration, paths []string){
+	for _, p := range paths {
+		parser.ReadFile(p)
+	}
 }

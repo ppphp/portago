@@ -10,7 +10,6 @@ var (
 	haveColor = 1
 	doTitles  = 1
 	styles    = map[string][]string{
-
 		"NORMAL":                  {"normal"},
 		"GOOD":                    {"green"},
 		"WARN":                    {"yellow"},

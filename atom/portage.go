@@ -92,7 +92,7 @@ func parseEapiEbuildHead(f []string) (string, int) {
 		if !commentOrBlankLine.MatchString(line) {
 			eapiLineno = lineno
 			if pmsEapiRe.MatchString(line) {
-				eapi := pmsEapiRe.FindAllString(line, -1)[2]
+				eapi = pmsEapiRe.FindAllString(line, -1)[2]
 			}
 			break
 		}

@@ -189,11 +189,15 @@ type Config struct {
 	tolerent, unmatchedRemoval, localConfig                                                                                                                                                                                                                                                                                                                                               bool
 	locked                                                                                                                                                                                                                                                                                                                                                                                int
 	mycpv, setcpvArgsHash, penv, modifiedkeys, uvlist, acceptChostRe, makeDefaults, parentStable, sonameProvided                                                                                                                                                                                                                                                                           *int
-	puse, categories, depcachedir,   profilePath, profiles, packages, repositories, unpackDependencies, defaultFeaturesUse, iuseEffective, iuseImplicitMatch, nonUserVariables, envDBlacklist, pbashrc, repoMakeDefaults, usemask, useforce, userProfileDir, makeDefaultsUse, profileBashrc,  useManager, modules, backupenv, licenseManager, globalConfigPath string
-	configList, lookupList, featuresOverrides                                                                                                                                                                                                                                                                                                                                              []string
-	defaultGlobals, deprecatedKeys, configDict, useExpandDict, prevmaskdict, pprovideddict, virtualsManagerObj, virtualsManager, acceptProperties, ppropertiesdict, acceptRestrict, pacceptRestrict, penvdict, pbashrcdict, expandMap, keywordsManagerObj, maskManagerObj                                                                                                                                                  map[string]string
+	puse, categories, depcachedir,   profilePath, profiles, packages, unpackDependencies, defaultFeaturesUse, iuseEffective, iuseImplicitMatch, nonUserVariables, envDBlacklist, pbashrc, repoMakeDefaults, usemask, useforce, userProfileDir, profileBashrc,  useManager, licenseManager, globalConfigPath string
+	makeDefaultsUse, featuresOverrides                                                                                                                                                                                                                                                                                                                                              []string
+	lookupList, configList []map[string]string
+	configDict map[string]map[string]string
+	backupenv, defaultGlobals, deprecatedKeys, useExpandDict, prevmaskdict, pprovideddict, virtualsManagerObj, virtualsManager, acceptProperties, ppropertiesdict, acceptRestrict, pacceptRestrict, penvdict, pbashrcdict, expandMap, keywordsManagerObj, maskManagerObj                                                                                                                                                  map[string]string
 	modulePriority,incrementals,envBlacklist         ,	environFilter  ,	environWhitelist  ,	validateCommands    ,	globalOnlyVars      ,caseInsensitiveVars, setcpvAuxKeys, constantKeys, unknownFeatures                                                                                                                                                                                                                                                                                                                                                                       map[string]bool
 	features                                                                                                                                                                                                                                                                                                                                                                              *featuresSet
+	repositories *repoConfigLoader
+	modules map[string]map[string][]string
 	locationsManager *locationsManager
 	environWhitelistRe  *regexp.Regexp
 }
@@ -219,7 +223,7 @@ func (c *Config) SetCpv(cpv string, useCache map[string]string, myDb string) {
 
 var eapiCache = map[string]bool{}
 
-func NewConfig(clone *Config, mycpv, configProfilePath string, configIncrementals []string, configRoot, targetRoot, sysroot, eprefix string, localConfig bool, env map[string]string, unmatchedRemoval bool, repositories string) *Config {
+func NewConfig(clone *Config, mycpv, configProfilePath string, configIncrementals []string, configRoot, targetRoot, sysroot, eprefix string, localConfig bool, env map[string]string, unmatchedRemoval bool, repositories *repoConfigLoader) *Config {
 	eapiCache = make(map[string]bool)
 	tolerant := initializingGlobals == nil
 	c := &Config{tolerent: tolerant, unmatchedRemoval: unmatchedRemoval, localConfig: localConfig}
@@ -272,7 +276,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		c.modules = clone.modules       // TODO deepcopy
 		c.penv = clone.penv             // TODO deepcopy
 		c.configDict = clone.configDict // TODO deepcopy
-		c.configList = []string{
+		c.configList = []map[string]string{
 			c.configDict["env.d"],
 			c.configDict["repo"],
 			c.configDict["features"],
@@ -326,7 +330,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		for _, x:=range makeConfPaths{
 			mygcfg :=getConfig(x,tolerant, true,true, true, makeConf)
 			if len(mygcfg) > 0{
-				for k, v := range {
+				for k, v := range mygcfg{
 					makeConf[k]=v
 					makeConfCount += 1
 				}
@@ -372,10 +376,95 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 			}
 		}
 		c.modulePriority = map[string]bool {"user":true, "default":true}
-		c.modules := {}
+		c.modules = map[string]map[string][]string{}
 		modulesFile := path.Join(configRoot, ModulesFilePath)
-		modulesLoader :=
+		modulesLoader :=NewKeyValuePairFileLoader(modulesFile, nil,nil)
+		modulesDict, _ := modulesLoader.load()
+		c.modules["user"] = modulesDict
+		if len(c.modules["user"])==0{
+			c.modules["user"]=map[string][]string{}
 		}
+		c.modules["default"] = map[string][]string{"portdbapi.auxdbmodule":  {"portage.cache.flat_hash.mtime_md5_database"}}
+		c.configList = []map[string]string{}
+		c.configDict = map[string]map[string]string{}
+		c.useExpandDict  = map[string]string{}
+		c.configList = append(c.configList, map[string]string{})
+		c.configDict["env.d"] = c.configList[len(c.configList)-1]
+		c.configList = append(c.configList, map[string]string{})
+		c.configDict["repo"] = c.configList[len(c.configList)-1]
+		c.configList = append(c.configList, map[string]string{})
+		c.configDict["features"] = c.configList[len(c.configList)-1]
+		c.configList = append(c.configList, map[string]string{})
+		c.configDict["pkginternal"] = c.configList[len(c.configList)-1]
+		if len(envD)>0{
+			for k,v := range envD{
+				c.configDict["env.d"][k]=v
+			}
+		}
+		if env == nil {
+			env = map[string]string{}
+			for _,v := range os.Environ(){
+				s := strings.SplitN(v,"=",2)
+				env[s[0]] = s[1]
+			}
+		}
+		c.backupenv=CopyMapSS(env)
+		if len(envD) > 0 {
+			for k,v := range envD {
+				if c.backupenv[k] == v {
+					delete(c.backupenv,k)
+				}
+			}
+		}
+		c.configList = append(c.configList, makeGlobals)
+		c.configDict["globals"] = c.configList[len(c.configList)-1]
+		c.makeDefaultsUse = []string{}
+		c.valueDict["PORTAGE_CONFIGROOT"] = configRoot
+		c.valueDict["ROOT"] = targetRoot
+		c.valueDict["SYSROOT"] = sysroot
+		c.valueDict["EPREFIX"] = eprefix
+		c.valueDict["EROOT"] = eroot
+		c.valueDict["ESYSROOT"] = esysroot
+		c.valueDict["BROOT"] = broot
+		knownRepos := []string{}
+		portDir := ""
+		portDirOverlay := ""
+		portDirSync := ""
+		for _, confs := range []map[string]string{makeGlobals, makeConf, c.configDict["env"]}{
+			if v, ok := confs["PORTDIR"]; ok{
+				portDir = v
+				knownRepos = append(knownRepos, v)
+			}
+			if v, ok := confs["PORTDIR_OVERLAY"]; ok{
+				portDirOverlay = v
+				ss ,_:=shlex.Split(v)
+				knownRepos = append(knownRepos, ss...)
+			}
+			if v, ok := confs["SYNC"]; ok{
+				portDirSync = v
+			}
+			if _, ok := confs["PORTAGE_RSYNC_EXTRA_OPTS"];ok{
+				c.valueDict["PORTAGE_RSYNC_EXTRA_OPTS"]=confs["PORTAGE_RSYNC_EXTRA_OPTS"]
+			}
+		}
+		c.valueDict["PORTDIR"] = portDir
+		c.valueDict["PORTDIR_OVERLAY"] = portDirOverlay
+		if portDirSync!= ""{
+			c.valueDict["SYNC"] = portDirSync
+		}
+		c.lookupList = []map[string]string{c.configDict["env"]}
+		if repositories ==nil{
+			c.repositories = loadRepositoryConfig(c, "")
+		}
+		for _, v := range c.repositories.prepos {
+			knownRepos = append(knownRepos, v.location)
+		}
+		kr := map[string]bool{}
+		for _, v := range knownRepos {
+			kr[v] =true
+		}
+		c.valueDict["PORTAGE_REPOSITORIES"] = c.repositories
+	}
 	if mycpv != "" {
 		c.SetCpv(mycpv, nil, "")
 	}
@@ -587,7 +676,7 @@ func (l *locationsManager) loadProfiles(repositories, knownRepositoryPaths []str
 	}
 	knownRepos := []string{}
 	for x:= range k {
-		repo :=
+		repo := repositories
 	}
 }
 

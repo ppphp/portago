@@ -2,18 +2,20 @@ package atom
 
 import (
 	"bufio"
+	"fmt"
+	"github.com/google/shlex"
+	"github.com/ppphp/configparser"
 	"golang.org/x/sys/unix"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
 
-var (
-	repoNameSubRe = regexp.MustCompile(`[^\w-]`)
-)
+var repoNameSubRe = regexp.MustCompile(`[^\w-]`)
 
 func genValidRepo(name string) string {
 	name = repoNameSubRe.ReplaceAllString(strings.TrimSpace(name), " ")
@@ -28,7 +30,6 @@ var (
 		"pms": true, "portage-1": true, "portage-2": true, "profile-bashrcs": true, "profile-set": true,
 		"profile-default-eapi": true, "build-id": true,
 	}
-
 	portage1ProfilesAllowDirectories = map[string]bool{"portage-1-compat": true, "portage-1": true, "portage-2": true}
 )
 
@@ -43,12 +44,38 @@ func findInvalidPathChar(path string, pos int, endpos int) int {
 }
 
 type repoConfig struct {
-	allowMissingManifest, autoSync, cacheFormats, cloneDepth, eapi, eclassDb, eclassLocations, format, location, mainRepo, manifestHashes, manifestRequiredHashes, name, profile_formats, sync_depth, syncOpenpgpKeyPath, syncOpenpgpKeyRefreshRetryCount, syncOpenpgpKeyRefreshRetryDelayExpBase, syncOpenpgpKeyRefreshRetryDelayMax, syncOpenpgpKeyRefreshRetryDelayMult, syncOpenpgpKeyRefreshRetryOverallTimeout, syncRcuStoreDir, sync_type, sync_umask, sync_uri, sync_user, user_location, _eapis_banned, _eapis_deprecated, mastersOrig string
-	force, aliases, eclassOverrides, masters                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    map[string]bool
-	moduleSpecificOptions                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         map[string]string
-	localConfig, syncHooksOnlyOnChange, strictMiscDigests, syncAllowHardlinks, syncRcu, missingRepoName, signCommit, signManifest, thinManifest, allowProvideVirtual, createManifest, disableManifest, updateChangelog, portage1Profiles, portage1ProfilesCompat                                                                                                                                                                                                                                                                                  bool
+	allowMissingManifest, autoSync, cloneDepth, eapi, eclassDb, eclassLocations, format, location, mainRepo, manifestHashes, manifestRequiredHashes, name, syncDepth, syncOpenpgpKeyPath, syncOpenpgpKeyRefreshRetryCount, syncOpenpgpKeyRefreshRetryDelayExpBase, syncOpenpgpKeyRefreshRetryDelayMax, syncOpenpgpKeyRefreshRetryDelayMult, syncOpenpgpKeyRefreshRetryOverallTimeout, syncRcuStoreDir, syncType, syncUmask, syncUri, syncUser, userLocation, mastersOrig string
+	eapisBanned, eapisDeprecated, force, aliases, eclassOverrides                                                                                                                                                                                                                                                                                                                                                                                                                      map[string]bool
+	cacheFormats,masters, profileFormats                                                                                                                                                                                                                                                                                                                                                                                                                                                                  []string
+	moduleSpecificOptions                                                                                                                                                                                                                                                                                                                                                                                                                                                                    map[string]string
+	localConfig, syncHooksOnlyOnChange, strictMiscDigests, syncAllowHardlinks, syncRcu, missingRepoName, signCommit, signManifest, thinManifest, allowProvideVirtual, createManifest, disableManifest, updateChangelog, portage1Profiles, portage1ProfilesCompat                                                                                                                                                                                                                             bool
 	priority, syncRcuSpareSnapshots, syncRcuTtlDays                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               int
 	findInvalidPathChar                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           func(string, int, int) int
+}
+
+func (r *repoConfig) setModuleSpecificOpt(opt, val string) {
+	r.moduleSpecificOptions[opt] = val
+}
+
+func (r *repoConfig) eapiIsBanned(eapi string) bool {
+	return r.eapisBanned[eapi]
+}
+
+func (r *repoConfig) eapiIsDeprecated(eapi string) bool {
+	return r.eapisDeprecated[eapi]
+}
+
+func (r *repoConfig) iterPregeneratedCaches(auxdbkeys string, readonly, force bool){ // truefalse
+	formats := r.cacheFormats
+	if len(formats)== 0{
+		if !force{
+			return
+		}
+		formats = []string{"md5-dict"}
+	}
+	//for _, fmt := range formats{
+	//	name
+	//}
 }
 
 func (r *repoConfig) writable() bool {
@@ -65,6 +92,7 @@ func (r *repoConfig) readValidRepoName(repoPath string) (string, bool) {
 	}
 	return name, missing
 }
+
 func (r *repoConfig) readRepoName(repoPath string) (string, bool) {
 	repoNamePath := path.Join(repoPath, RepoNameLoc)
 	f, _ := os.Open(repoNamePath)
@@ -82,7 +110,6 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 		for _, x := range strings.Fields(force) {
 			f[x] = true
 		}
-
 	}
 	r.force = f
 	r.localConfig = localConfig
@@ -110,12 +137,12 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 	r.eclassDb = ""
 	r.eclassLocations = ""
 
-	m := map[string]bool{}
+	m := []string{}
 	if localConfig || f["masters"] {
 		masters, ok := repoOpts["masters"]
 		if ok {
 			for _, x := range strings.Fields(masters) {
-				m[x] = true
+				m = append(m,x)
 			}
 		}
 	}
@@ -128,19 +155,19 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 	}
 	syncType, ok := repoOpts["sync-type"]
 	if ok {
-		r.sync_type = strings.TrimSpace(syncType)
+		r.syncType = strings.TrimSpace(syncType)
 	}
 	syncUmask, ok := repoOpts["sync-umask"]
 	if ok {
-		r.sync_umask = strings.TrimSpace(syncUmask)
+		r.syncUmask = strings.TrimSpace(syncUmask)
 	}
 	syncUri, ok := repoOpts["sync-uri"]
 	if ok {
-		r.sync_uri = strings.TrimSpace(syncUri)
+		r.syncUri = strings.TrimSpace(syncUri)
 	}
 	syncUser, ok := repoOpts["sync-user"]
 	if ok {
-		r.sync_user = strings.TrimSpace(syncUser)
+		r.syncUser = strings.TrimSpace(syncUser)
 	}
 	autoSync, ok := repoOpts["auto-sync"]
 	if ok {
@@ -149,7 +176,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 		r.autoSync = "yes"
 	}
 	r.cloneDepth = repoOpts["clone-depth"]
-	r.sync_depth = repoOpts["sync-depth"]
+	r.syncDepth = repoOpts["sync-depth"]
 
 	if s, ok := repoOpts["sync-hooks-only-on-change"]; ok {
 		r.syncHooksOnlyOnChange = strings.ToLower(s) == "true"
@@ -188,7 +215,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 	r.format = strings.TrimSpace(repoOpts["format"])
 
 	if s, _ := os.Stat(repoOpts["location"]); s.IsDir() || syncMode {
-		r.user_location = repoOpts["location"]
+		r.userLocation = repoOpts["location"]
 		r.location, _ = filepath.EvalSymlinks(repoOpts["location"])
 	}
 	missing := true
@@ -218,21 +245,431 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 	r.manifestHashes = ""
 	r.manifestRequiredHashes = ""
 	r.updateChangelog = false
-	r.cacheFormats = ""
+	r.cacheFormats = nil
 	r.portage1Profiles = true
 	r.portage1ProfilesCompat = false
 	r.findInvalidPathChar = findInvalidPathChar
 	r.mastersOrig = ""
 
 	if len(r.location) >0{
-		layoutData :=
-		r.mastersOrig = layoutData["masters"]
+		layoutData, _ := parseLayoutConf(r.location, r.name)
+		r.mastersOrig = layoutData["masters"][0]
+		if r.masters == nil {
+			r.masters = layoutData["masters"]
+		}
+		if (localConfig || f["aliases"]) && len(layoutData["aliases"]) != 0 {
+			aliases:= r.aliases
+			if len(aliases) == 0 {
+				aliases = map[string]bool{}
+			}
+			r.aliases = map[string]bool{}
+			for _, s:= range layoutData["aliases"] {
+				r.aliases[s]=true
+			}
+			for k:= range aliases {
+				r.aliases[k] = true
+			}
+		}
+		if len(layoutData["allow-missing-manifest"])>0{
+			r.allowMissingManifest=layoutData["allow-missing-manifest"][0]
+		}
+		if len(layoutData["repo-name"]) > 0 {
+			r.name  = layoutData["repo-name"][0]
+			r.missingRepoName =false
+		}
+		r.cacheFormats=layoutData["cache-formats"]
+		if len(layoutData["create-manifest"])>0{
+			r.createManifest=layoutData["create-manifest"][0]=="true"
+		}
+		if len(layoutData["disable-manifest"])>0{
+			r.disableManifest=layoutData["disable-manifest"][0]=="true"
+		}
+		if len(layoutData["manifest-hashes"])>0{
+			r.manifestHashes=layoutData["manifest-hashes"][0]
+		}
+		if len(layoutData["manifest-required-hashes"])>0{
+			r.manifestRequiredHashes=layoutData["manifest-required-hashes"][0]
+		}
+		if len(layoutData["profile-formats"])>0{
+			r.profileFormats =layoutData["profile-formats"]
+		}
+		if len(layoutData["sign-commit"])>0{
+			r.signCommit=layoutData["sign-commit"][0]=="true"
+		}
+		if len(layoutData["sign-manifest"])>0{
+			r.signCommit=layoutData["sign-manifest"][0]=="true"
+		}
+		if len(layoutData["thin-manifest"])>0{
+			r.thinManifest=layoutData["thin-manifest"][0]=="true"
+		}
+		if len(layoutData["update-changelog"])>0{
+			r.updateChangelog=layoutData["update-changelog"][0]=="true"
+		}
+		if len(layoutData["profile_eapi_when_unspecified"])>0{
+			r.eapi=layoutData["profile_eapi_when_unspecified"][0]
+		} else {
+			r.eapi = "0"
+		}
+
+		eapi := readCorrespondingEapiFile(path.Join(r.location, RepoNameLoc), r.eapi)
+		r.portage1Profiles = eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi)
+		for _, v := range layoutData["profile-formats"]{
+			if portage1ProfilesAllowDirectories[v] {
+				r.portage1Profiles =true
+				break
+			}
+		}
+		r.portage1ProfilesCompat = ! eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi) && len(layoutData["profile-formats"])==1&&layoutData["profile-formats"][0]=="portage-1-compat"
+		r.eapisBanned = map[string]bool{}
+		for _, v := range layoutData["eapis-banned"]{
+			r.eapisBanned[v]=true
+		}
+		r.eapisDeprecated = map[string]bool{}
+		for _, v := range layoutData["eapis-deprecated"]{
+			r.eapisDeprecated[v]=true
+		}
+
 	}
 
 	return r
 }
 
-func loadRepositoryConfig(settings *Config, extraFiles string) {
+type repoConfigLoader struct{
+	locationMap map[string]string
+	prepos map[string]*repoConfig
+	missingRepoNames map[string]bool
+}
+
+func (r * repoConfigLoader) addRepositories(portDir, portdirOverlay string, prepos map[string]*repoConfig, ignoredMap map[string][]string, localConfig bool, defaultPortdir string)string{
+	overlays := []string{}
+	portDirOrig := ""
+	if portDir != ""{
+		portDir = NormalizePath(portDir)
+		portDirOrig = portDir
+		overlays = append(overlays, portDir)
+	}
+	portOv := []string{}
+	sl, err := shlex.Split(portdirOverlay)
+	if err != nil {
+		writeMsg(fmt.Sprintf("!!! Invalid PORTDIR_OVERLAY:%s: %s\n", err, portdirOverlay), -1, nil)
+	} else {
+		for _, i :=range sl{
+			portOv = append(portOv, NormalizePath(i))
+		}
+	}
+	overlays = append(overlays, portOv...)
+	defaultRepoOpt := map[string]string{}
+	if prepos["DEFAULT"].aliases != nil{
+		s:=[]string{}
+		for k := range prepos["DEFAULT"].aliases{
+			s = append(s,k)
+		}
+		defaultRepoOpt["aliases"] = strings.Join(s, "k")
+	}
+	if prepos["DEFAULT"].eclassOverrides != nil{
+		s:=[]string{}
+		for k := range prepos["DEFAULT"].eclassOverrides{
+			s = append(s,k)
+		}
+		defaultRepoOpt["eclass-overrides"] = strings.Join(s, "k")
+	}
+	if prepos["DEFAULT"].masters != nil{
+		defaultRepoOpt["aliases"] = strings.Join(prepos["DEFAULT"].masters, "k")
+	}
+	if len(overlays)!= 0 {
+		reposConf := map[string]*repoConfig{}
+		for k,v := range prepos{
+			reposConf[k]=v
+		}
+		basePriority := 0
+		for _,ov := range overlays{
+			if isdirRaiseEaccess(ov) || (basePriority==0&&ov == portDir){
+				repoOpts := map[string]string{}
+				for k,v := range defaultRepoOpt{
+					repoOpts[k]=v
+				}
+				repoOpts["location"] = ov
+				name := ""
+				if ov == portDir{
+					name = prepos["DEFAULT"].mainRepo
+				}
+				repo := NewRepoConfig(name, repoOpts, localConfig)
+				reposConfOpts := reposConf[repo.name]
+				if reposConfOpts!= nil{
+					if reposConfOpts.aliases != nil {
+						repo.aliases = reposConfOpts.aliases
+					}
+					if reposConfOpts.autoSync != "" {
+						repo.autoSync = reposConfOpts.autoSync
+					}
+					if reposConfOpts.cloneDepth != "" {
+						repo.cloneDepth = reposConfOpts.cloneDepth
+					}
+					if reposConfOpts.force != nil {
+						repo.force = reposConfOpts.force
+					}
+					if reposConfOpts.masters != nil {
+						repo.masters = reposConfOpts.masters
+					}
+					if reposConfOpts.moduleSpecificOptions != nil {
+						repo.moduleSpecificOptions = reposConfOpts.moduleSpecificOptions
+					}
+					if reposConfOpts.priority != 0 {
+						repo.priority = reposConfOpts.priority
+					}
+					if reposConfOpts.strictMiscDigests != false {
+						repo.strictMiscDigests = reposConfOpts.strictMiscDigests
+					}
+					if reposConfOpts.syncAllowHardlinks != false {
+						repo.syncAllowHardlinks = reposConfOpts.syncAllowHardlinks
+					}
+					if reposConfOpts.syncDepth != "" {
+						repo.syncDepth = reposConfOpts.syncDepth
+					}
+					if reposConfOpts.syncHooksOnlyOnChange != false {
+						repo.syncHooksOnlyOnChange = reposConfOpts.syncHooksOnlyOnChange
+					}
+					if reposConfOpts.syncOpenpgpKeyPath != "" {
+						repo.syncOpenpgpKeyPath = reposConfOpts.syncOpenpgpKeyPath
+					}
+					if reposConfOpts.syncOpenpgpKeyRefreshRetryCount != "" {
+						repo.syncOpenpgpKeyRefreshRetryCount = reposConfOpts.syncOpenpgpKeyRefreshRetryCount
+					}
+					if reposConfOpts.syncOpenpgpKeyRefreshRetryDelayExpBase != "" {
+						repo.syncOpenpgpKeyRefreshRetryDelayExpBase = reposConfOpts.syncOpenpgpKeyRefreshRetryDelayExpBase
+					}
+					if reposConfOpts.syncOpenpgpKeyRefreshRetryDelayMax != "" {
+						repo.syncOpenpgpKeyRefreshRetryDelayMax = reposConfOpts.syncOpenpgpKeyRefreshRetryDelayMax
+					}
+					if reposConfOpts.syncOpenpgpKeyRefreshRetryDelayMult != "" {
+						repo.syncOpenpgpKeyRefreshRetryDelayMult = reposConfOpts.syncOpenpgpKeyRefreshRetryDelayMult
+					}
+					if reposConfOpts.syncOpenpgpKeyRefreshRetryOverallTimeout != "" {
+						repo.syncOpenpgpKeyRefreshRetryOverallTimeout = reposConfOpts.syncOpenpgpKeyRefreshRetryOverallTimeout
+					}
+					if reposConfOpts.syncRcu != false {
+						repo.syncRcu = reposConfOpts.syncRcu
+					}
+					if reposConfOpts.syncRcuSpareSnapshots != 0 {
+						repo.syncRcuSpareSnapshots = reposConfOpts.syncRcuSpareSnapshots
+					}
+					if reposConfOpts.syncRcuStoreDir != "" {
+						repo.syncRcuStoreDir = reposConfOpts.syncRcuStoreDir
+					}
+					if reposConfOpts.syncRcuTtlDays != 0 {
+						repo.syncRcuTtlDays = reposConfOpts.syncRcuTtlDays
+					}
+					if reposConfOpts.syncType != "" {
+						repo.syncType = reposConfOpts.syncType
+					}
+					if reposConfOpts.syncUmask != "" {
+						repo.syncUmask = reposConfOpts.syncUmask
+					}
+					if reposConfOpts.syncUri != "" {
+						repo.syncUri = reposConfOpts.syncUri
+					}
+					if reposConfOpts.syncUser != "" {
+						repo.syncUser = reposConfOpts.syncUser
+					}
+				}
+				if _, ok := prepos[repo.name]; ok{
+					oldLocation := prepos[repo.name].location
+					if oldLocation!= "" && oldLocation!=repo.location&&!(basePriority==0 &&oldLocation== defaultPortdir){
+						if ignoredMap[repo.name] == nil{
+							ignoredMap[repo.name] = []string{}
+						}
+						ignoredMap[repo.name] = append(ignoredMap[repo.name], oldLocation)
+						if oldLocation == portDir {
+							portDir = repo.location
+						}
+					}
+				}
+				if repo.priority == 0 {
+					if basePriority == 0 && ov == portDirOrig{
+					}else{
+						repo.priority= basePriority
+						basePriority += 1
+					}
+				}
+			}else{
+				if !syncMode{
+					writeMsg(fmt.Sprintf("!!! Invalid PORTDIR_OVERLAY (not a dir): '%s'\n",ov), -1,nil)
+				}
+			}
+		}
+	}
+	return portDir
+}
+
+func (r * repoConfigLoader) parse(paths []string, prepos map[string]*repoConfig, localConfig bool, defaultOpts map[string]string) error {
+	parser := configparser.NewConfiguration()
+	//parser.Default(defaultopts)
+	recursivePaths := []string{}
+	for _, p := range paths {
+		recursivePaths = append(recursivePaths, recursiveFileList(p)...)
+	}
+
+	readConfigs(parser, recursivePaths)
+
+	prepos["DEFAULT"] = NewRepoConfig("DEFAULT", parser.Default(), localConfig)
+	secs, err := parser.Sections("")
+	if err!= nil {
+		return err
+	}
+	for _, sname := range secs {
+		optdict := map[string]string{}
+		repo := NewRepoConfig(sname.Name(), optdict, localConfig)
+		for o := range moduleSpecificOptions(repo){
+			if v:=sname.ValueOf(o);v!= ""{
+				repo.setModuleSpecificOpt(o, v)
+			}
+			prepos[sname.Name()] = repo
+		}
+	}
+	return nil
+}
+
+func (r * repoConfigLoader) mainRepoLocation()string{
+	mainRepo := r.prepos["DEFAULT"].mainRepo
+	if _, ok := r.prepos[mainRepo];mainRepo == ""||!ok{
+		return ""
+	}
+	return r.prepos[mainRepo].location
+}
+
+func (r * repoConfigLoader) mainRepo()*repoConfig{
+	mainRepo := r.prepos["DEFAULT"].mainRepo
+	if mainRepo == ""{
+		return nil
+	}
+	return r.prepos[mainRepo]
+}
+
+func (r * repoConfigLoader) getNameForLocation(location string) string {
+	return r.locationMap[location]
+}
+
+func (r * repoConfigLoader)getitem(repoName string)*repoConfig{
+	return r.prepos[repoName]
+}
+
+func (r * repoConfigLoader)contains(repoName string)bool{
+	_, ok := r.prepos[repoName]
+	return ok
+}
+func (r * repoConfigLoader)configString()string{
+	config_string := ""
+	repoName := []string{}
+	for r := range r.prepos{
+		if r != "DEFAULT"{
+			repoName = append(repoName, r)
+		}
+	}
+	sort.Strings(repoName)
+	repoName = append(repoName, "DEFAULT")
+	for _, v := range repoName{
+		config_string += fmt.Sprintf("\n[%s]\n", v)
+		repo := r.prepos[v]
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("strict_misc_digests","_","-",-1),repo.strictMiscDigests)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_allow_hardlinks","_","-",-1),repo.syncAllowHardlinks)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_rcu","_","-",-1),repo.syncRcu)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("auto_sync","_","-",-1),repo.autoSync)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("clone_depth","_","-",-1),repo.cloneDepth)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("format","_","-",-1),repo.format)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("location","_","-",-1),repo.location)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("main_repo","_","-",-1),repo.mainRepo)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("priority","_","-",-1),repo.priority)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_depth","_","-",-1),repo.syncDepth)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_path","_","-",-1),repo.syncOpenpgpKeyPath)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_refresh_retry_count","_","-",-1),repo.syncOpenpgpKeyRefreshRetryCount)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_refresh_retry_delay_exp_base","_","-",-1),repo.syncOpenpgpKeyRefreshRetryDelayExpBase)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_refresh_retry_delay_max","_","-",-1),repo.syncOpenpgpKeyRefreshRetryDelayMax)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_refresh_retry_delay_mult","_","-",-1),repo.syncOpenpgpKeyRefreshRetryDelayMult)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_refresh_retry_overall_timeout","_","-",-1),repo.syncOpenpgpKeyRefreshRetryOverallTimeout)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_rcu_spare_snapshots","_","-",-1),repo.syncRcuSpareSnapshots)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_rcu_store_dir","_","-",-1),repo.syncRcuStoreDir)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_rcu_ttl_days","_","-",-1),repo.syncRcuTtlDays)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_type","_","-",-1),repo.syncType)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_umask","_","-",-1),repo.syncUmask)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_uri","_","-",-1),repo.syncUri)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_user","_","-",-1),repo.syncUser)
+		aliases := []string{}
+		for k:= range repo.aliases{
+			aliases = append(aliases,k)
+		}
+		sort.Strings(aliases)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("aliases","_","-",-1),strings.Join(aliases," "))
+		eclassOverrides := []string{}
+		for k:= range repo.eclassOverrides{
+			eclassOverrides = append(eclassOverrides,k)
+		}
+		sort.Strings(eclassOverrides)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("eclass_overrides","_","-",-1),strings.Join(eclassOverrides," "))
+		force := []string{}
+		for k:= range repo.force{
+			force = append(force,k)
+		}
+		sort.Strings(force)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("force","_","-",-1),strings.Join(force," "))
+		masters := []string{}
+		for _,k:= range repo.masters{
+			masters = append(masters,k)//k.name
+		}
+		sort.Strings(masters)
+		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("masters","_","-",-1), strings.Join(masters," "))
+		if v == "DEFAULT" {
+			config_string += ""
+		}
+
+		keys := []string{}
+		for o := range repo.moduleSpecificOptions {
+			keys = append(keys, o)
+		}
+		sort.Strings(keys)
+		for _,v := range keys{
+			config_string += fmt.Sprintf("%s = %s\n", v, repo.moduleSpecificOptions[v])
+		}
+	}
+	return strings.TrimPrefix(config_string,"\n")
+}
+
+func NewRepoConfigLoader(paths []string, settings *Config)*repoConfigLoader{
+	r:=&repoConfigLoader{}
+	prepos, locationMap, treeMap, ignoredMap,defaultOpts := map[string]*repoConfig{},map[string]string{},map[string]string{},map[string][]string{},map[string]string{"EPREFIX" : settings.valueDict["EPREFIX"], "EROOT" : settings.valueDict["EROOT"], "PORTAGE_CONFIGROOT" : settings.valueDict["PORTAGE_CONFIGROOT"], "ROOT" : settings.valueDict["ROOT"],}
+	portDir, portDirOverlay := "",""
+
+	if _, ok := settings.valueDict["PORTAGE_REPOSITORIES"]; !ok {
+		portDir = settings.valueDict["PORTDIR"]
+		portDirOverlay = settings.valueDict["PORTDIR_OVERLAY"]
+	}
+	defaultOpts["sync-rsync-extra-opts"]=settings.valueDict["PORTAGE_RSYNC_EXTRA_OPTS"]
+	if err := r.parse(paths, prepos, settings.localConfig, defaultOpts); err != nil{
+		writeMsg(fmt.Sprintf("!!! Error while reading repo config file: %s\n", err),-1,nil)
+		prepos = map[string]*repoConfig{}
+		prepos["DEFAULT"] = NewRepoConfig("DEFAULT",nil,settings.localConfig)
+		locationMap = map[string]string{}
+		treeMap = map[string]string{}
+	}
+	defaultPortDir := path.Join(string(os.PathSeparator), strings.TrimPrefix(settings.valueDict["EPREFIX"],string(os.PathSeparator)),"usr","portage")
+	portDir = r.addRepositories(portDir, portDirOverlay, prepos, ignoredMap, settings.localConfig, defaultPortDir)
+	if portDir != "" && strings.TrimSpace(portDir) == ""{
+		portDir,_ = filepath.EvalSymlinks(portDir)
+	}
+	ignoredRepos := []sss{}
+	for k,v := range ignoredMap{
+		ignoredRepos =append(ignoredRepos, sss{k,v})
+	}
+	r.missingRepoNames = map[string]bool{}
+	for _,repo := range prepos{
+		if repo.location!="" && repo.missingRepoName{
+			r.missingRepoNames[repo.location] = true
+		}
+	}
+
+	return r
+}
+
+func loadRepositoryConfig(settings *Config, extraFiles string) *repoConfigLoader{
 	repoconfigpaths := []string{}
 	if pr, ok := settings.valueDict["PORTAGE_REPOSITORIES"]; ok {
 		repoconfigpaths = append(repoconfigpaths, pr)
@@ -261,49 +698,49 @@ func getRepoName(repo_location, cached string)string{
 	return name
 }
 
-func parse_layout_conf(repo_location, repo_name string){
-	eapi := readCorrespondingEapiFile(path.Join(repo_location, RepoNameLoc), "0")
+func parseLayoutConf(repoLocation, repoName string)(map[string][]string,map[string][]string){
+	eapi := readCorrespondingEapiFile(path.Join(repoLocation, RepoNameLoc), "0")
 
-	layout_filename := path.Join(repo_location, "metadata", "layout.conf")
-	layout_file := NewKeyValuePairFileLoader(layout_filename, nil, nil)
-	layout_data, layout_errors := layout_file.load()
+	layoutFilename := path.Join(repoLocation, "metadata", "layout.conf")
+	layoutFile := NewKeyValuePairFileLoader(layoutFilename, nil, nil)
+	layoutData, layoutErrors := layoutFile.load()
 
 	data := map[string][]string{}
 
-	if v, ok := layout_data["masters"];ok {
+	if v, ok := layoutData["masters"];ok {
 		data["masters"] = strings.Fields(v[0])
 	}
-	if v, ok := layout_data["aliases"];ok {
+	if v, ok := layoutData["aliases"];ok {
 		data["aliases"] = strings.Fields(v[0])
 	}
-	if v, ok := layout_data["eapis-banned"];ok {
+	if v, ok := layoutData["eapis-banned"];ok {
 		data["eapis-banned"] = strings.Fields(v[0])
 	}
-	if v, ok := layout_data["eapis-deprecated"];ok {
+	if v, ok := layoutData["eapis-deprecated"];ok {
 		data["eapis-deprecated"] = strings.Fields(v[0])
 	}
-	if v, ok := layout_data["sign-commit"];ok &&v[0]=="true" {
-		data["sign-commit"] = []string{layout_data["sign-commit"][0]}
+	if v, ok := layoutData["sign-commit"];ok &&v[0]=="true" {
+		data["sign-commit"] = []string{layoutData["sign-commit"][0]}
 	} else {
 		data["sign-commit"] = nil
 	}
-	if v, ok := layout_data["sign-manifest"];!ok ||(ok &&v[0]=="true"){
+	if v, ok := layoutData["sign-manifest"];!ok ||(ok &&v[0]=="true"){
 		data["sign-manifest"] = []string{"true"}
 	} else {
 		data["sign-manifest"] = nil
 	}
-	if v, ok := layout_data["thin-manifest"];ok &&v[0]=="true" {
+	if v, ok := layoutData["thin-manifest"];ok &&v[0]=="true" {
 		data["thin-manifest"] = []string{"true"}
 	} else {
 		data["thin-manifest"] = nil
 	}
-	if v, ok := layout_data["repo-name"];ok {
+	if v, ok := layoutData["repo-name"];ok {
 		data["repo-name"] = []string{genValidRepo(v[0])}
 	} else {
 		data["repo-name"] = []string{genValidRepo("")}
 	}
 
-	if v, ok := layout_data["use-manifests"]; ok && strings.ToLower(v[0]) != "strict" {
+	if v, ok := layoutData["use-manifests"]; ok && strings.ToLower(v[0]) != "strict" {
 		mp := strings.ToLower(v[0])
 		if mp == "false" {
 			data["allow-missing-manifest"] = []string{"true"}
@@ -320,27 +757,27 @@ func parse_layout_conf(repo_location, repo_name string){
 		data["disable-manifest"] = nil
 	}
 
-	cache_formats := []string{}
-	if v, ok := layout_data["cache-formats"];ok {
-		cache_formats = strings.Fields(strings.ToLower(v[0]))
+	cacheFormats := []string{}
+	if v, ok := layoutData["cache-formats"];ok {
+		cacheFormats = strings.Fields(strings.ToLower(v[0]))
 	} else {
-		cache_formats = []string{}
+		cacheFormats = []string{}
 	}
-	if len(cache_formats) == 0{
-		if s, _ := os.Stat(path.Join(repo_location, "metadata", "md5-cache")); s.IsDir(){
-			cache_formats = append(cache_formats, "md5-dict")
+	if len(cacheFormats) == 0{
+		if s, _ := os.Stat(path.Join(repoLocation, "metadata", "md5-cache")); s.IsDir(){
+			cacheFormats = append(cacheFormats, "md5-dict")
 		}
-		if s, _ := os.Stat(path.Join(repo_location, "metadata", "ache")); s.IsDir(){
-			cache_formats = append(cache_formats, "pms")
+		if s, _ := os.Stat(path.Join(repoLocation, "metadata", "ache")); s.IsDir(){
+			cacheFormats = append(cacheFormats, "pms")
 		}
 	}
-	data["cache-formats"]=cache_formats
+	data["cache-formats"]= cacheFormats
 
-	manifest_hashes := layout_data["manifest-hashes"]
-	manifest_required_hashes := layout_data["manifest-required-hashes"]
+	manifestHashes := layoutData["manifest-hashes"]
+	manifestRequiredHashes := layoutData["manifest-required-hashes"]
 
-	if len(manifest_required_hashes) != 0 && len(manifest_hashes)==0 {
-		repo_name = getRepoName(repo_location, repo_name)
+	if len(manifestRequiredHashes) != 0 && len(manifestHashes)==0 {
+		repoName = getRepoName(repoLocation, repoName)
 		//warnings.warn((_("Repository named '%(repo_name)s' specifies "
 		//"'manifest-required-hashes' setting without corresponding "
 		//"'manifest-hashes'. Portage will default it to match "
@@ -349,93 +786,145 @@ func parse_layout_conf(repo_location, repo_name string){
 		//{"repo_name": repo_name or 'unspecified',
 		//"layout_filename":layout_filename}),
 		//SyntaxWarning)
-		manifest_hashes = manifest_required_hashes
+		manifestHashes = manifestRequiredHashes
 	}
 
-	if len(manifest_hashes)!=0{
-		manifest_required_hashes = manifest_hashes
-		manifest_required_hashes = frozenset(manifest_required_hashes.upper().split())
-		manifest_hashes = frozenset(manifest_hashes.upper().split())
-		missing_required_hashes = manifest_required_hashes.difference(
-			manifest_hashes)
-		if missing_required_hashes:
-		repo_name = _get_repo_name(repo_location, cached=repo_name)
-		warnings.warn((_("Repository named '%(repo_name)s' has a "
-		"'manifest-hashes' setting that does not contain "
-		"the '%(hash)s' hashes which are listed in "
-		"'manifest-required-hashes'. Please fix that file "
-		"if you want to generate valid manifests for this "
-		"repository: %(layout_filename)s") %
-		{"repo_name": repo_name or 'unspecified',
-		"hash": ' '.join(missing_required_hashes),
-		"layout_filename":layout_filename}),
-		SyntaxWarning)
-		unsupported_hashes = manifest_hashes.difference(
-			get_valid_checksum_keys())
-		if unsupported_hashes:
-		repo_name = _get_repo_name(repo_location, cached=repo_name)
-		warnings.warn((_("Repository named '%(repo_name)s' has a "
-		"'manifest-hashes' setting that contains one "
-		"or more hash types '%(hashes)s' which are not supported by "
-		"this portage version. You will have to upgrade "
-		"portage if you want to generate valid manifests for "
-		"this repository: %(layout_filename)s") %
-		{"repo_name": repo_name or 'unspecified',
-		"hashes":" ".join(sorted(unsupported_hashes)),
-		"layout_filename":layout_filename}),
-		DeprecationWarning)
+	if len(manifestHashes)!=0{
+		if len(manifestRequiredHashes) == 0 {
+			manifestRequiredHashes = manifestHashes
+		}
+		manifestRequiredHashes = strings.Fields(strings.ToUpper(manifestRequiredHashes[0]))
+		manifestHashes = strings.Fields(strings.ToUpper(manifestHashes[0]))
+		missingRequiredHashes :=[]string{}
+		for _, v := range manifestRequiredHashes {
+			in := false
+			for _, w := range manifestHashes {
+				if v == w {
+					in = true
+					break
+				}
+			}
+			if !in {
+				missingRequiredHashes = append(missingRequiredHashes, v)
+			}
+		}
+		if len(missingRequiredHashes) > 0{
+			repoName = getRepoName(repoLocation, repoName)
+			//warnings.warn((_("Repository named '%(repo_name)s' has a "
+			//"'manifest-hashes' setting that does not contain "
+			//"the '%(hash)s' hashes which are listed in "
+			//"'manifest-required-hashes'. Please fix that file "
+			//"if you want to generate valid manifests for this "
+			//"repository: %(layout_filename)s") %
+			//{"repo_name": repo_name or 'unspecified',
+			//"hash": ' '.join(missing_required_hashes),
+			//"layout_filename":layout_filename}),
+			//SyntaxWarning)
+		}
+		unsupported_hashes :=[]string{}
+		for _, v := range manifestHashes {
+			in := false
+			for w := range getValidChecksumKeys() {
+				if v == w {
+					in = true
+					break
+				}
+			}
+			if !in {
+				unsupported_hashes = append(unsupported_hashes, v)
+			}
+		}
+		if len(unsupported_hashes) > 0{
+
+			repoName = getRepoName(repoLocation, repoName)
+			//warnings.warn((_("Repository named '%(repo_name)s' has a "
+			//"'manifest-hashes' setting that contains one "
+			//"or more hash types '%(hashes)s' which are not supported by "
+			//"this portage version. You will have to upgrade "
+			//"portage if you want to generate valid manifests for "
+			//"this repository: %(layout_filename)s") %
+			//{"repo_name": repo_name or 'unspecified',
+			//"hashes":" ".join(sorted(unsupported_hashes)),
+			//"layout_filename":layout_filename}),
+			//DeprecationWarning)
+		}
 	}
 
-	data['manifest-hashes'] = manifest_hashes
-	data['manifest-required-hashes'] = manifest_required_hashes
+	data["manifest-hashes"] = manifestHashes
+	data["manifest-required-hashes"] = manifestRequiredHashes
 
-	data['update-changelog'] = layout_data.get('update-changelog', 'false').lower() \
-	== 'true'
+	if v, ok := layoutData["update-changelog"]; ok && strings.ToLower(v[0]) =="true" {
+		data["update-changelog"] = v
+	}
 
-	raw_formats = layout_data.get('profile-formats')
-	if raw_formats is None:
-	if eapi_allows_directories_on_profile_level_and_repository_level(eapi):
-	raw_formats = ('portage-1',)
-	else:
-	raw_formats = ('portage-1-compat',)
-	else:
-	raw_formats = set(raw_formats.split())
-	unknown = raw_formats.difference(_valid_profile_formats)
-	if unknown:
-	repo_name = _get_repo_name(repo_location, cached=repo_name)
-	warnings.warn((_("Repository named '%(repo_name)s' has unsupported "
-	"profiles in use ('profile-formats = %(unknown_fmts)s' setting in "
-	"'%(layout_filename)s; please upgrade portage.") %
-	dict(repo_name=repo_name or 'unspecified',
-	layout_filename=layout_filename,
-	unknown_fmts=" ".join(unknown))),
-	DeprecationWarning)
-	raw_formats = tuple(raw_formats.intersection(_valid_profile_formats))
-	data['profile-formats'] = raw_formats
+	rawFormats := layoutData["profile-formats"]
+	if rawFormats ==nil{
+		if eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi){
+			rawFormats = []string{"portage-1"}
+		} else{
 
-	try:
-	eapi = layout_data['profile_eapi_when_unspecified']
-	except KeyError:
-	pass
-	else:
-	if 'profile-default-eapi' not in raw_formats:
-	warnings.warn((_("Repository named '%(repo_name)s' has "
-	"profile_eapi_when_unspecified setting in "
-	"'%(layout_filename)s', but 'profile-default-eapi' is "
-	"not listed in the profile-formats field. Please "
-	"report this issue to the repository maintainer.") %
-	dict(repo_name=repo_name or 'unspecified',
-	layout_filename=layout_filename)),
-	SyntaxWarning)
-	elif not portage.eapi_is_supported(eapi):
-	warnings.warn((_("Repository named '%(repo_name)s' has "
-	"unsupported EAPI '%(eapi)s' setting in "
-	"'%(layout_filename)s'; please upgrade portage.") %
-	dict(repo_name=repo_name or 'unspecified',
-	eapi=eapi, layout_filename=layout_filename)),
-	SyntaxWarning)
-	else:
-	data['profile_eapi_when_unspecified'] = eapi
+			rawFormats = []string{"portage-1-compat"}
+		}
+	} else{
+		rawFormats = strings.Fields(rawFormats[0])
 
-	return data, layout_errors
+		unknown :=[]string{}
+		for _, v := range rawFormats {
+			_, ok := validProfileFormats[v]
+			if !ok {
+				unknown = append(unknown, v)
+			}
+		}
+		if len(unknown) > 0 {
+			repoName = getRepoName(repoLocation, repoName)
+			//warnings.warn((_("Repository named '%(repo_name)s' has unsupported "
+			//"profiles in use ('profile-formats = %(unknown_fmts)s' setting in "
+			//"'%(layout_filename)s; please upgrade portage.") %
+			//dict(repo_name=repo_name or 'unspecified',
+			//layout_filename=layout_filename,
+			//	unknown_fmts=" ".join(unknown))),
+			//DeprecationWarning)
+		}
+		rf := []string{}
+		for _, v := range rawFormats {
+			if validProfileFormats[v] {
+				rf = append(rf, v)
+			}
+		}
+		rawFormats = rf
+	}
+	data["profile-formats"] = rawFormats
+
+	e, ok := layoutData["profile_eapi_when_unspecified"]
+	if ok {
+		eapi = e[0]
+		in := false
+		for _, v := range rawFormats {
+			if v == "profile-default-eapi"{
+				in = true
+				break
+			}
+		}
+		if in {
+			//warnings.warn((_("Repository named '%(repo_name)s' has "
+			//"profile_eapi_when_unspecified setting in "
+			//"'%(layout_filename)s', but 'profile-default-eapi' is "
+			//"not listed in the profile-formats field. Please "
+			//"report this issue to the repository maintainer.") %
+			//dict(repo_name=repo_name or 'unspecified',
+			//layout_filename=layout_filename)),
+			//SyntaxWarning)
+		} else if !eapiIsSupported(eapi){
+			//warnings.warn((_("Repository named '%(repo_name)s' has "
+			//"unsupported EAPI '%(eapi)s' setting in "
+			//"'%(layout_filename)s'; please upgrade portage.") %
+			//dict(repo_name=repo_name or 'unspecified',
+			//eapi=eapi, layout_filename=layout_filename)),
+			//SyntaxWarning)
+		} else{
+			data["profile_eapi_when_unspecified"] = []string{eapi}
+		}
+	}
+
+	return data, layoutErrors
 }
