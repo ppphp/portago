@@ -668,24 +668,23 @@ type locationsManager struct {
 	overlayProfiles, profileLocations, profileAndUserLocations                                                                                                                                         []string
 }
 
-func (l *locationsManager) loadProfiles(repositories, knownRepositoryPaths []string){
+func (l *locationsManager) loadProfiles(repositories *repoConfigLoader, knownRepositoryPaths []string){
 	k := map[string]bool{}
 	for _, v := range knownRepositoryPaths {
 		x, _:= filepath.EvalSymlinks(v)
 		k[x] = true
 	}
-	knownRepos := []string{}
+	knownRepos := [][2]string{}
 	for x:= range k {
-		repo := repositories
+		repo := repositories.getRepoForLocation(x)
+		layoutData := map[string][]string{}
+		if repo== nil {
+			layoutData,_ = parseLayoutConf(x, "")
+		}else {
+			layoutData = map[string][]string{"profile-formats":repo.profileFormats, "profile-eapi_when_unspecified":{repo.eapi}}
+		}
+		knownRepos = append(knownRepos, )
 	}
-}
-
-func (l *locationsManager) addProfiles(){
-
-}
-
-func (l *locationsManager) expandParentColon(){
-
 }
 
 func (l *locationsManager) checkVarDirectory(varname, varr string) error {
@@ -696,6 +695,26 @@ func (l *locationsManager) checkVarDirectory(varname, varr string) error {
 	}
 	return nil
 }
+
+func (l *locationsManager) addProfile(currentPath, repositories, known_repos string){
+	currentAbsPath,_ := filepath.Abs(currentPath)
+	allowDirectories := true
+	allowParentColon := true
+	repoLoc := ""
+	compatMode := false
+	currentFormats := []string{}
+	eapi := ""
+	intersectingRepos := map[string]bool{}
+	for x:= range known_repos{
+
+	}
+
+}
+
+func (l *locationsManager) expandParentColon(){
+
+}
+
 func (l *locationsManager) setRootOverride(rootOverwrite string) error {
 	if l.targetRoot != "" && rootOverwrite != ""{
 		l.targetRoot = rootOverwrite

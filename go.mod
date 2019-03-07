@@ -9,10 +9,9 @@ require (
 	github.com/google/shlex v0.0.0-20181106134648-c34317bd91bf
 	github.com/jzelinskie/whirlpool v0.0.0-20170603002051-c19460b8caa6
 	github.com/martinlindhe/gogost v0.0.0-20170914195721-31862914ae20
-	github.com/ppphp/configparser v0.0.0-20190303091157-5a4cc43be5f3 // indirect
+	github.com/ppphp/configparser v0.0.0-20190303091157-5a4cc43be5f3
 	github.com/sirupsen/logrus v1.3.0
 	github.com/spf13/pflag v1.0.3
-	github.com/spf13/viper v1.3.1
 	golang.org/x/crypto v0.0.0-20181203042331-505ab145d0a9
 	golang.org/x/sys v0.0.0-20181221143128-b4a75ba826a6
 )

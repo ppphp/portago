@@ -266,7 +266,8 @@ func catPkgSplit(mydata string, silent int, eapi string) [4]string {
 type pkgStr struct {
 	string
 	metadata, settings                                                                              map[string]string
-	eapi, repo, slot, build_time, build_id, file_size, mtime, db, cp, version, subSlot, slotInvalid, _stable string
+	eapi, repo, slot, build_time, build_id, file_size, db, cp, version, subSlot, slotInvalid, _stable string
+	mtime int
 	cpv_split                                                                                       [4]string
 	cpv                                                                                             *pkgStr
 }
@@ -284,7 +285,7 @@ func (p *pkgStr) stable() string {
 	return ""
 }
 
-func NewPkgStr(cpv string, metadata, settings map[string]string, eapi, repo, slot, build_time, build_id, file_size, mtime, db string) *pkgStr {
+func NewPkgStr(cpv string, metadata, settings map[string]string, eapi, repo, slot, build_time, build_id, file_size string, mtime int, db string) *pkgStr {
 	p := &pkgStr{string: cpv}
 	if len(metadata) != 0 {
 		p.metadata = metadata
@@ -307,7 +308,7 @@ func NewPkgStr(cpv string, metadata, settings map[string]string, eapi, repo, slo
 			build_id = a
 		}
 		if a, ok := metadata["_mtime_"]; ok {
-			mtime = a
+			mtime, _ = strconv.Atoi(a)
 		}
 	}
 	if settings != nil {
@@ -411,10 +412,10 @@ func cmpCpv(cpv1, cpv2, eapi string) (int, error) {
 	split1, ok:=splitCache[cpv1]
 	if !ok {
 		//split1 = cpv1.pv //TODO
-		split1 = NewPkgStr(cpv1, nil, nil, eapi, "", "", "", "", "", "", "")
+		split1 = NewPkgStr(cpv1, nil, nil, eapi, "", "", "", "", "", 0, "")
 		splitCache[cpv1] = split1
 	}
-	split2 := NewPkgStr(cpv1, nil, nil, eapi, "", "", "", "", "", "", "")
+	split2 := NewPkgStr(cpv1, nil, nil, eapi, "", "", "", "", "", 0, "")
 	splitCache[cpv2] = split2
 	//return verCmp(cpv1.version, cpv2.version)
 	return verCmp(cpv1, cpv2)

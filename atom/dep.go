@@ -71,6 +71,7 @@ func getAtomRe(attrs eapiAttrs) *regexp.Regexp {
 	atomReCache[cacheKey] = atomRe
 	return atomRe
 }
+
 func getAtomWildcardRe(attrs eapiAttrs) *regexp.Regexp {
 	cacheKey := attrs.DotsInPn
 	atomRe, ok := atomWildcardReCache[cacheKey]
@@ -382,7 +383,7 @@ func useReduce(depstr string, uselist, masklist []string, matchall bool, exclude
 					//token = tokenClass()// TODO
 					t := tokenClass(token)
 					if !matchall {
-						//token = t.evaluateConditionals(uselist)
+						token = t.evaluateConditionals(uselist)
 					}
 				}
 			}
