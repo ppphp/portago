@@ -319,7 +319,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 				break
 			}
 		}
-		r.portage1ProfilesCompat = ! eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi) && len(layoutData["profile-formats"]) == 1 && layoutData["profile-formats"][0] == "portage-1-compat"
+		r.portage1ProfilesCompat = !eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi) && len(layoutData["profile-formats"]) == 1 && layoutData["profile-formats"][0] == "portage-1-compat"
 		r.eapisBanned = map[string]bool{}
 		for _, v := range layoutData["eapis-banned"] {
 			r.eapisBanned[v] = true
@@ -335,9 +335,11 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 }
 
 type repoConfigLoader struct {
-	locationMap, treeMap      map[string]string
-	prepos           map[string]*repoConfig
-	missingRepoNames map[string]bool
+	locationMap, treeMap map[string]string
+	prepos, preposOrder  map[string]*repoConfig
+	missingRepoNames     map[string]bool
+	preposChanged        bool
+	repoLocationList     []string
 }
 
 func (r *repoConfigLoader) addRepositories(portDir, portdirOverlay string, prepos map[string]*repoConfig, ignoredMap map[string][]string, localConfig bool, defaultPortdir string) string {
@@ -545,12 +547,52 @@ func (r *repoConfigLoader) mainRepo() *repoConfig {
 	return r.prepos[mainRepo]
 }
 
+func (r *repoConfigLoader) RepoLocationList() []string {
+	if r.preposChanged {
+		repoLocationList := []string{}
+		for repo := range r.preposOrder {
+			if r.prepos[repo].location != "" {
+				repoLocationList = append(repoLocationList, r.prepos[repo].location)
+			}
+		}
+		r.repoLocationList = repoLocationList
+		r.preposChanged = false
+	}
+	return r.repoLocationList
+}
+
+func (r *repoConfigLoader) checkLocations() {
+	for name, re := range r.prepos {
+		if name != "DEFAULT" {
+			if re.location != "" {
+				writeMsg(fmt.Sprintf("!!! Location not set for repository %s\n", name), -1, nil)
+			} else {
+				if !isdirRaiseEaccess(re.location) && !syncMode {
+					delete(r.preposOrder, name)
+					writeMsg(fmt.Sprintf("!!! Invalid Repository Location (not a dir): '%s'\n", re.location), -1, nil)
+				}
+			}
+		}
+	}
+}
+
+func (r *repoConfigLoader) reposWithProfiles() []*repoConfig {
+	rp := []*repoConfig{}
+	for repoName := range r.preposOrder {
+		repo := r.prepos[repoName]
+		if repo.format != "unavailable" {
+			rp = append(rp, repo)
+		}
+	}
+	return rp
+}
+
 func (r *repoConfigLoader) getNameForLocation(location string) string {
 	return r.locationMap[location]
 }
 
 func (r *repoConfigLoader) getLocationForName(repoName string) string {
-	if repoName == ""{
+	if repoName == "" {
 		return ""
 	}
 	return r.treeMap[repoName]
@@ -564,9 +606,44 @@ func (r *repoConfigLoader) getitem(repoName string) *repoConfig {
 	return r.prepos[repoName]
 }
 
+func (r *repoConfigLoader) delitem(repoName string)  {
+	if repoName == r.prepos["DEFAULT"].mainRepo {
+		r.prepos["DEFAULT"].mainRepo = ""
+	}
+	location := r.prepos[repoName].location
+	delete(r.prepos,repoName)
+	if _, ok := r.preposOrder[repoName]; ok {
+		delete(r.preposOrder,repoName)
+
+	}
+	for k, v := range CopyMapSS(r.locationMap){
+		if v == repoName{
+			delete(r.locationMap, k)
+		}
+	}
+	if _, ok := r.treeMap[repoName]; ok {
+		delete(r.treeMap, repoName)
+	}
+	rll := []string{}
+	for _,x := range r.repoLocationList {
+		if x!= location{
+			rll = append(rll, x)
+		}
+	}
+	r.repoLocationList = rll
+}
+
 func (r *repoConfigLoader) contains(repoName string) bool {
 	_, ok := r.prepos[repoName]
 	return ok
+}
+
+func (r *repoConfigLoader) iter() []*repoConfig {
+	rp := []*repoConfig{}
+	for _, repo := range r.preposOrder {
+		rp = append(rp, repo)
+	}
+	return rp
 }
 
 func (r *repoConfigLoader) configString() string {
@@ -647,7 +724,7 @@ func (r *repoConfigLoader) configString() string {
 
 func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 	r := &repoConfigLoader{}
-	prepos, locationMap, treeMap, ignoredMap, defaultOpts := map[string]*repoConfig{}, map[string]string{}, map[string]string{}, map[string][]string{}, map[string]string{"EPREFIX": settings.valueDict["EPREFIX"], "EROOT": settings.valueDict["EROOT"], "PORTAGE_CONFIGROOT": settings.valueDict["PORTAGE_CONFIGROOT"], "ROOT": settings.valueDict["ROOT"],}
+	prepos, locationMap, treeMap, ignoredMap, defaultOpts := map[string]*repoConfig{}, map[string]string{}, map[string]string{}, map[string][]string{}, map[string]string{"EPREFIX": settings.valueDict["EPREFIX"], "EROOT": settings.valueDict["EROOT"], "PORTAGE_CONFIGROOT": settings.valueDict["PORTAGE_CONFIGROOT"], "ROOT": settings.valueDict["ROOT"]}
 	portDir, portDirOverlay := "", ""
 
 	if _, ok := settings.valueDict["PORTAGE_REPOSITORIES"]; !ok {
@@ -710,6 +787,25 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 			treeMap[repoName] = repo.location
 		}
 	}
+	for repoName, repo := range prepos {
+		names := map[string]bool{}
+		names[repoName] = true
+		if len(repo.aliases) > 0{
+			aliases := stackLists([], 1, false, false, false, false)
+			for k := range aliases {
+				names[k] = true
+			}
+		}
+		for name := range names {
+			if _, ok := prepos[name] ; ok && prepos[name].location != ""{
+				if name ==repoName{
+					continue
+				}
+				writeMsgLevel(fmt.Sprintf("!!! Repository name or alias '%s', defined for repository '%s', overrides existing alias or repository.\n", name, repoName), 40, -1)
+				continue
+			}
+		}
+	}
 	return r
 }
 
@@ -731,11 +827,11 @@ func loadRepositoryConfig(settings *Config, extraFiles string) *repoConfigLoader
 	return NewRepoConfigLoader(repoconfigpaths, settings)
 }
 
-func getRepoName(repo_location, cached string) string {
+func getRepoName(repoLocation, cached string) string {
 	if cached != "" {
 		return cached
 	}
-	name, missing := repoConfig{}.readRepoName(repo_location)
+	name, missing := repoConfig{}.readRepoName(repoLocation)
 	if missing {
 		return ""
 	}

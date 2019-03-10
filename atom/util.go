@@ -188,12 +188,31 @@ func stackDicts(dicts []map[string]string, incremental int, incrementals []strin
 	return finalDict
 }
 
-func appendRepo(atomList []string, repoName string, rememberSourceFile bool) {
+type SB struct {
+	S string
+	B bool
+}
+
+type AS struct {
+	A *atom
+	S string
+}
+
+func appendRepo(atomList []AS, repoName string, rememberSourceFile bool) []SB{
+	sb := []SB{}
 	if rememberSourceFile {
-
+		for _ , v := range atomList {
+			atom := v.A
+			source := v.S
+			sb = append(sb, SB{B:atom.repo!= "" && atom != nil || atom.withRepo(repoName)!=nil, S:source})
+		}
 	} else {
-
+		for _ , v := range atomList {
+			atom := v.A
+			sb = append(sb, SB{B:atom.repo!= "" && atom != nil || atom.withRepo(repoName)!=nil, S:""})
+		}
 	}
+	return sb
 }
 
 func grabDict(myFileName string, justStrings, empty, recursive, incremental, newLines bool) map[string][]string { // 00010
@@ -360,46 +379,99 @@ func grabLines(fname string, recursive, rememberSourceFile bool) [][2]string {
 	return mylines
 }
 
-type SB struct {
-	S string
-	B bool
-}
-
-func stackLists(lists [][]SB, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) {
-	matchedRemovals := map[string]bool{}
-	unmatchedRemovals := map[string]bool{}
-	newList := []*atom{}
+func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[string]bool{
+	matchedRemovals := map[[2]string]bool{}
+	unmatchedRemovals := map[string][]string{}
+	newList := []AS{}
 	for _, subList := range lists {
-		for _, token := range subList {
-			tokenKey := token
-			sourceFile := false
-			t := token.S
+		for _, t := range subList {
+			tokenKey := t
+			token := t[0]
+			sourceFile := ""
 			if rememberSourceFile {
-				sourceFile = token.B
+				sourceFile = t[1]
 			} else {
-				sourceFile = false
+				sourceFile = ""
 			}
-			if t == "" {
+			if token == "" {
 				continue
 			}
 			if incremental != 0 {
-				if t == "-*" {
-					newList = []string{}
-				} else if t[:1] == "-" {
+				if token == "-*" {
+					newList = []AS{}
+				} else if token[:1] == "-" {
 					matched := false
-					if ignoreRepo && !strings.Contains(t, "::") {
-						toBeRemoved := []string{}
+					if ignoreRepo && !strings.Contains(token, "::") {
+						toBeRemoved := []*atom{}
 						tokenSlice := token[1:]
-						for _, atom := range newList {
-							atomWithoutRepo := atom
-							if atom.repo
+						for atom := range newList {
+							atomWithoutRepo := atom.value
+							if atom.repo != "" {
+								atomWithoutRepo = strings.Replace(atom.value, "::" + atom.repo,"",1)
+							}
+							if atomWithoutRepo == tokenSlice {
+								toBeRemoved = append(toBeRemoved, atom)
+							}
 						}
+						if len(toBeRemoved)!= 0 {
+							n := map[string]*atom{}
+							for v := range newList{
+								find := false
+								for _, u := range toBeRemoved {
+									if u == v {
+										find = true
+										break
+									}
+								}
+								if !find{
+									n = append(n, v)
+								}
+							}
+							newList = n
+							matched =true
+						}
+					} else {
+						n := []*atom{}
+						for v := range newList{
+							if v.value != token[1:]{
+								n = append(n, v)
+							} else {
+								matched = true
+							}
+						}
+						newList = n
 					}
+					if !matched {
+						if sourceFile!="" &&(strictWarnForUnmatchedRemoval||!matchedRemovals[tokenKey]) {
+							if unmatchedRemovals[sourceFile] == nil {
+								unmatchedRemovals[sourceFile] = map[string]bool{token:true}
+							} else {
+								unmatchedRemovals[sourceFile][token] = true
+							}
+						}
+					} else {
+						matchedRemovals[tokenKey] = true
+					}
+				}else {
+					newList[token] = sourceFile
 				}
+			} else {
+				newList[&atom{token}] = sourceFile
 			}
 		}
 	}
-
+	if warnForUnmatchedRemoval {
+		for sourceFile, tokens := range unmatchedRemovals {
+			if len(tokens) > 3 {
+				selected := []string{tokens[len(tokens)-1],tokens[len(tokens)-2],tokens[len(tokens)-3] }
+				tokens = tokens[:len(tokens)-3]
+				writeMsg(fmt.Sprintf("--- Unmatched removal atoms in %s: %s and %s more\n",sourceFile, strings.Join(selected,", "), len(tokens)),-1,nil)
+			} else {
+				writeMsg(fmt.Sprintf("--- Unmatched removal atom(s) in %s: %s\n", sourceFile, strings.Join(tokens, ", ")), -1, nil)
+			}
+		}
+	}
+	return newList
 }
 
 type sss struct {

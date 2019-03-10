@@ -29,6 +29,7 @@ func init() {
 	ni, _ := os.Stat(path.Join(PORTAGE_BASE_PATH, ".portage_not_installed"))
 	notInstalled = !ni.IsDir()
 }
+
 var internalCaller = false
 var syncMode = false
 
@@ -99,3 +100,11 @@ func parseEapiEbuildHead(f []string) (string, int) {
 	}
 	return eapi, eapiLineno
 }
+
+type newsManager struct {
+	news_path, unread_path, language_id, config, vdb, portdb, _uid, _gid, _file_mode, _dir_mode, _mode_mask string
+}
+
+//func NewNewsManager(portdb, vardb, news_path, unread_path, language_id string)*newsManager { // 'en'
+//	n := &newsManager{portdb:portdb, unread_path:unread_path, language_id:language_id, config: vardb.setting, vdb: vardb, portdb:portdb}
+//}
