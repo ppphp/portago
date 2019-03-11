@@ -6,4 +6,4 @@ tmp
 env
 webui/node_modules
 webui/dist
-cmd/portageq/portageq
+#cmd/portageq/portageq

@@ -282,14 +282,14 @@ func readCorrespondingEapiFile(filename, defaults string) string { // "0"
 	return eapi
 }
 
-func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, allow_wildcard, allow_repo, allow_build_id, allow_use, verify_eapi bool, eapi, eapi_default string) { //000ffftf none 0
+func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, allow_wildcard, allow_repo, allow_build_id, allow_use, verify_eapi bool, eapi, eapi_default string) map[*atom][]string { //000ffftf none 0
 	fileList := []string{}
 	if recursive {
 		fileList = recursiveFileList(myfilename)
 	} else {
 		fileList = []string{myfilename}
 	}
-	atoms := map[*atom]string{}
+	atoms := map[*atom][]string{}
 	var d map[string][]string
 	for _, filename := range fileList{
 		d = grabDict(filename, false, true, false, true, newlines)
@@ -300,19 +300,30 @@ func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, a
 			eapi = readCorrespondingEapiFile(myfilename, eapi_default)
 		}
 		for k, v := range d {
-			a, err := NewAtom(k, "",allow_wildcard,&allow_repo,"",eapi, nil, &allow_build_id)
+			a, err := NewAtom(k, nil,allow_wildcard,&allow_repo,nil,eapi, nil, &allow_build_id)
 			if err != nil {
-				writeMsg(fmt.Sprintf("--- Invalid atom in %s: %s\n",filename, err),				-1,nil)
+				writeMsg(fmt.Sprintf("--- Invalid atom in %s: %s\n",filename, err),-1,nil)
 			} else {
-				if !allow_use && a.use{
+				if !allow_use && a.use!= nil{
 					writeMsg(fmt.Sprintf("--- Atom is not allowed to have USE flag(s) in %s: %s\n",filename, k), -1, nil)
 					continue
+				}
+				if atoms[a] == nil {
+					atoms[a] = v
+				} else {
+					atoms[a] = append(atoms[a], v...)
 				}
 			}
 		}
 	}
-
+	if juststrings {
+		for k,v := range atoms {
+			atoms[k] = []string{strings.Join(v, " ")}
+		}
+	}
+	return atoms
 }
+
 func recursiveBasenameFileter(f string) bool {
 	return (!strings.HasPrefix(f, ".")) && (!strings.HasSuffix(f, "~"))
 }
