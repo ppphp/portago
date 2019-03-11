@@ -791,9 +791,13 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 		names := map[string]bool{}
 		names[repoName] = true
 		if len(repo.aliases) > 0{
-			aliases := stackLists([], 1, false, false, false, false)
+			a := [][2]string{}
+			for v := range repo.aliases{
+				a = append(a, [2]string{v})
+			}
+			aliases := stackLists([][][2]string{a}, 1, false, false, false, false)
 			for k := range aliases {
-				names[k] = true
+				names[k.value] = true
 			}
 		}
 		for name := range names {
@@ -804,7 +808,29 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 				writeMsgLevel(fmt.Sprintf("!!! Repository name or alias '%s', defined for repository '%s', overrides existing alias or repository.\n", name, repoName), 40, -1)
 				continue
 			}
+			prepos[name] = repo
+			if repo.location!= ""{
+				if _, ok := locationMap[repo.location]; !ok {
+					locationMap[repo.location] = name
+				}
+				treeMap[name] = repo.location
+			}
 		}
+	}
+	mainRepo := prepos["DEFAULT"].mainRepo
+	if _, ok := prepos[mainRepo];mainRepo!= ""||!ok {
+		mainRepo = locationMap[portDir]
+		if mainRepo != ""{
+			prepos["DEFAULT"].mainRepo = mainRepo
+		} else {
+			prepos["DEFAULT"].mainRepo = ""
+			if portDir!= "" && !syncMode {
+				writeMsg(fmt.Sprintf("!!! main-repo not set in DEFAULT and PORTDIR is empty.\n"), -1, nil)
+			}
+		}
+	}
+	if mainRepo!= "" && prepos[mainRepo].priority != 0 {
+
 	}
 	return r
 }

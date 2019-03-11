@@ -390,10 +390,10 @@ func grabLines(fname string, recursive, rememberSourceFile bool) [][2]string {
 	return mylines
 }
 
-func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[string]bool{
+func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[*atom]string{
 	matchedRemovals := map[[2]string]bool{}
 	unmatchedRemovals := map[string][]string{}
-	newList := []AS{}
+	newList := map[*atom]string{}
 	for _, subList := range lists {
 		for _, t := range subList {
 			tokenKey := t
@@ -409,7 +409,7 @@ func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 			}
 			if incremental != 0 {
 				if token == "-*" {
-					newList = []AS{}
+					newList = map[*atom]string{}
 				} else if token[:1] == "-" {
 					matched := false
 					if ignoreRepo && !strings.Contains(token, "::") {
@@ -425,49 +425,35 @@ func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 							}
 						}
 						if len(toBeRemoved)!= 0 {
-							n := map[string]*atom{}
-							for v := range newList{
-								find := false
-								for _, u := range toBeRemoved {
-									if u == v {
-										find = true
-										break
-									}
-								}
-								if !find{
-									n = append(n, v)
-								}
+							for _, atom := range toBeRemoved{
+								delete(newList,atom)
 							}
-							newList = n
 							matched =true
 						}
 					} else {
-						n := []*atom{}
 						for v := range newList{
-							if v.value != token[1:]{
-								n = append(n, v)
-							} else {
+							if v.value == token[1:]{
+								delete(newList, v)
 								matched = true
 							}
 						}
-						newList = n
 					}
 					if !matched {
 						if sourceFile!="" &&(strictWarnForUnmatchedRemoval||!matchedRemovals[tokenKey]) {
 							if unmatchedRemovals[sourceFile] == nil {
-								unmatchedRemovals[sourceFile] = map[string]bool{token:true}
+								unmatchedRemovals[sourceFile] = []string{token}
 							} else {
-								unmatchedRemovals[sourceFile][token] = true
+								unmatchedRemovals[sourceFile] = append(unmatchedRemovals[sourceFile], token)
 							}
 						}
 					} else {
 						matchedRemovals[tokenKey] = true
 					}
 				}else {
-					newList[token] = sourceFile
+					newList[&atom{value:token}] = sourceFile
 				}
 			} else {
-				newList[&atom{token}] = sourceFile
+				newList[&atom{value:token}] = sourceFile
 			}
 		}
 	}
