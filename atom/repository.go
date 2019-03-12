@@ -987,7 +987,7 @@ func getRepoName(repoLocation, cached string) string {
 	if cached != "" {
 		return cached
 	}
-	name, missing := repoConfig{}.readRepoName(repoLocation)
+	name, missing := (&repoConfig{}).readRepoName(repoLocation)
 	if missing {
 		return ""
 	}

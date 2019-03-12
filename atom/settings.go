@@ -202,23 +202,35 @@ type Config struct {
 	environWhitelistRe  *regexp.Regexp
 }
 
-func (c *Config) Lock() {
+func (c *Config) backupChanges(key string){
+	c.modifying()
+	if _, ok := c.configDict["env"][key];key != "" &&ok {
+		c.backupenv[key] = c.configDict["env"][key]
+	} else {
+		//raise KeyError(_("No such key defined in environment: %s") % key)
+	}
+}
+
+func (c *Config) lock() {
 	c.locked = 1
 }
-func (c *Config) Unlock() {
+
+func (c *Config) unlock() {
 	c.locked = 0
 }
-func (c *Config) Modifying() error {
+
+func (c *Config) modifying() error {
 	if c.locked != 0 {
 		return errors.New("")
 	}
 	return nil
 }
+
 func (c *Config) SetCpv(cpv string, useCache map[string]string, myDb string) {
 	if useCache != nil {
 		// warn here
 	}
-	c.Modifying()
+	c.modifying()
 }
 
 var eapiCache = map[string]bool{}
@@ -235,10 +247,12 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 	c.envBlacklist=envBlacklist
 	c.environFilter=environFilter
 	c.environWhitelist=environWhitelist
-	c.validateCommands=validateCommands
 	c.globalOnlyVars=globalOnlyVars
 	c.environWhitelistRe=environWhitelistRe
-		if clone != nil {
+
+	//c.validateCommands=validateCommands
+
+	if clone != nil {
 		c.tolerent = clone.tolerent
 		c.unmatchedRemoval = clone.unmatchedRemoval
 		c.categories = clone.categories
@@ -355,7 +369,9 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 			makeGlobalsPath = path.Join(c.globalConfigPath, "make.globals")
 		}
 		oldMakeGlobals := path.Join(configRoot, "etc","make.globals")
-		if s, _:=os.Stat(oldMakeGlobals);!s.IsDir()&& filepath.EvalSymlinks(makeGlobalsPath) != filepath.EvalSymlinks(oldMakeGlobals) {
+		f1, _ :=	filepath.EvalSymlinks(makeGlobalsPath)
+		f2,_ := filepath.EvalSymlinks(oldMakeGlobals)
+			if s, _:=os.Stat(oldMakeGlobals);!s.IsDir()&& f1!=f2{
 			writeMsg(fmt.Sprintf("!!!Found obsolete make.globals file: '%s', (using '%s' instead)\n",		oldMakeGlobals, makeGlobalsPath),-1,nil)
 		}
 		makeGlobals := getConfig(makeGlobalsPath, tolerant, false, true, false, expandMap)
@@ -463,7 +479,37 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		for _, v := range knownRepos {
 			kr[v] =true
 		}
-		c.valueDict["PORTAGE_REPOSITORIES"] = c.repositories
+		c.valueDict["PORTAGE_REPOSITORIES"] = c.repositories.configString()
+		c.backupChanges("PORTAGE_REPOSITORIES")
+		mainRepo := c.repositories.mainRepo()
+		if mainRepo!= nil {
+			c.valueDict["PORTDIR"] = mainRepo.location
+			c.backupChanges("PORTDIR")
+			expandMap["PORTDIR"] = c.valueDict["PORTDIR"]
+		}
+		portDirOverlay1 := c.repositories.repoLocationList
+		if len(portDirOverlay1) > 0 &&portDirOverlay1[0]==c.valueDict["PORTDIR"]{
+			portDirOverlay1 = portDirOverlay1[1:]
+		}
+		newOv := []string{}
+		if len(portDirOverlay1) > 0 {
+			for _ ,ov := range portDirOverlay1 {
+				ov = NormalizePath(ov)
+				if isdirRaiseEaccess(ov) || syncMode {
+					newOv = append(newOv, ShellQuote(ov))
+				}else {
+					writeMsg(fmt.Sprintf("!!! Invalid PORTDIR_OVERLAY(not a dir): '%s'\n", ov), -1, nil)
+				}
+			}
+		}
+		c.valueDict["PORTDIR_OVERLAY"] = strings.Join(newOv, " ")
+		c.backupChanges("PORTDIR_OVERLAY")
+		expandMap["PORTDIR_OVERLAY"] = c.valueDict["PORTDIR_OVERLAY"]
+		locationsManager.setPortDirs(c.valueDict["PORTDIR"], c.valueDict["PORTDIR_OVERLAY"])
+		locationsManager.loadProfiles(c.repositories, knownRepos)
+
+
+
 	}
 	if mycpv != "" {
 		c.SetCpv(mycpv, nil, "")
@@ -525,7 +571,7 @@ func (f *featuresSet) syncEnvVar() {
 }
 
 func (f *featuresSet) add(k string) {
-	f.settings.Modifying()
+	f.settings.modifying()
 	f.settings.featuresOverrides = append(f.settings.featuresOverrides, k)
 	if !f.features[k] {
 		f.features[k] = true
@@ -534,7 +580,7 @@ func (f *featuresSet) add(k string) {
 }
 
 func (f *featuresSet) update(values []string) {
-	f.settings.Modifying()
+	f.settings.modifying()
 	f.settings.featuresOverrides = append(f.settings.featuresOverrides, values...)
 	needSync := false
 	for _, k := range values {
@@ -550,7 +596,7 @@ func (f *featuresSet) update(values []string) {
 }
 
 func (f *featuresSet) differenceUpdate(values []string) {
-	f.settings.Modifying()
+	f.settings.modifying()
 	removeUs := []string{}
 	for _, v := range values {
 		f.settings.featuresOverrides = append(f.settings.featuresOverrides, "-"+v)
@@ -571,7 +617,7 @@ func (f *featuresSet) remove(k string) {
 }
 
 func (f *featuresSet) discard(k string) {
-	f.settings.Modifying()
+	f.settings.modifying()
 	f.settings.featuresOverrides = append(f.settings.featuresOverrides, "-"+v)
 	if f.features[v] {
 		delete(f.features, k)

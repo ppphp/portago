@@ -246,11 +246,15 @@ func grabDict(myFileName string, justStrings, empty, recursive, incremental, new
 				newDict[myLine[0]] = []string{}
 			}
 			newDict[myLine[0]] = myLine[1:]
+		} else {
+			newDict[myLine[0]] = myLine[1:]
 		}
 	}
-	//if juststrings:
-	//for k, v in newdict.items():
-	//newdict[k] = " ".join(v)
+	if justStrings{
+		for k, v :=range newDict{
+			newDict[k] = []string{strings.Join(v," ")}
+		}
+	}
 	return newDict
 }
 
