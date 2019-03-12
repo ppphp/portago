@@ -44,10 +44,11 @@ func findInvalidPathChar(path string, pos int, endpos int) int {
 }
 
 type repoConfig struct {
-	allowMissingManifest, autoSync, cloneDepth, eapi, eclassDb, format, location, mainRepo, manifestHashes, manifestRequiredHashes, name, syncDepth, syncOpenpgpKeyPath, syncOpenpgpKeyRefreshRetryCount, syncOpenpgpKeyRefreshRetryDelayExpBase, syncOpenpgpKeyRefreshRetryDelayMax, syncOpenpgpKeyRefreshRetryDelayMult, syncOpenpgpKeyRefreshRetryOverallTimeout, syncRcuStoreDir, syncType, syncUmask, syncUri, syncUser, userLocation, mastersOrig string
+	allowMissingManifest, autoSync, cloneDepth, eapi, format, location, mainRepo, manifestHashes, manifestRequiredHashes, name, syncDepth, syncOpenpgpKeyPath, syncOpenpgpKeyRefreshRetryCount, syncOpenpgpKeyRefreshRetryDelayExpBase, syncOpenpgpKeyRefreshRetryDelayMax, syncOpenpgpKeyRefreshRetryDelayMult, syncOpenpgpKeyRefreshRetryOverallTimeout, syncRcuStoreDir, syncType, syncUmask, syncUri, syncUser, userLocation, mastersOrig string
+	eclassDb *cache
 	eapisBanned, eapisDeprecated, force, aliases, eclassOverrides                                                                                                                                                                                                                                                                                                                                                                                                        map[string]bool
-	cacheFormats,  profileFormats ,eclassLocations                                                                                                                                                                                                                                                                                                                                                                                                                               []string
-	masters []*repoConfig
+	cacheFormats,  profileFormats ,masters,eclassLocations                                                                                                                                                                                                                                                                                                                                                                                                                               []string
+	mastersRepo []*repoConfig
 	moduleSpecificOptions                                                                                                                                                                                                                                                                                                                                                                                                                                                map[string]string
 	localConfig, syncHooksOnlyOnChange, strictMiscDigests, syncAllowHardlinks, syncRcu, missingRepoName, signCommit, signManifest, thinManifest, allowProvideVirtual, createManifest, disableManifest, updateChangelog, portage1Profiles, portage1ProfilesCompat                                                                                                                                                                                                         bool
 	priority, syncRcuSpareSnapshots, syncRcuTtlDays                                                                                                                                                                                                                                                                                                                                                                                                                      int
@@ -135,7 +136,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 		}
 	}
 	r.eclassOverrides = e
-	r.eclassDb = ""
+	r.eclassDb = nil
 	r.eclassLocations = []string{}
 
 	m := []string{}
@@ -713,7 +714,7 @@ func (r *repoConfigLoader) configString() string {
 		sort.Strings(force)
 		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("force", "_", "-", -1), strings.Join(force, " "))
 		masters := []string{}
-		for _, k := range repo.masters {
+		for _, k := range repo.mastersRepo {
 			masters = append(masters, k.name)
 		}
 		sort.Strings(masters)
@@ -879,16 +880,16 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 		}
 		if repo.masters == nil {
 			if r.mainRepo()!= nil && repoName != r.mainRepo().name{
-				repo.masters = []*repoConfig{r.mainRepo()}
+				repo.mastersRepo = []*repoConfig{r.mainRepo()}
 			} else {
-				repo.masters = []*repoConfig{}
+				repo.mastersRepo = []*repoConfig{}
 			}
 		} else {
 			if len(repo.masters) > 0 {
 				continue
 			}
 			masterRepos := [] *repoConfig{}
-			for _, masterName:=range repo.masters {
+			for _, masterName:=range repo.mastersRepo {
 				if _, ok := prepos[masterName.name]; !ok {
 					layoutFilename := path.Join(repo.location, "metadata", "layout.conf")
 					writeMsgLevel(fmt.Sprintf("Unavailable repository '%s' referenced by masters entry in '%s'\n",masterName.name, layoutFilename), 40, -1)
@@ -896,7 +897,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 					masterRepos = append(masterRepos, prepos[masterName.name])
 				}
 			}
-			repo.masters = masterRepos
+			repo.mastersRepo = masterRepos
 		}
 	}
 	for repoName, repo := range prepos {
@@ -904,7 +905,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 			continue
 		}
 		eclassLocations := []string{}
-		for _, masterRepo := range repo.masters {
+		for _, masterRepo := range repo.mastersRepo {
 			eclassLocations = append(eclassLocations, masterRepo.location)
 		}
 		in := false
@@ -930,18 +931,25 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 	}
 
 
-	eclassDBs := map[string]string{}
+	eclassDBs := map[string]*cache{}
 	for repoName, repo := range prepos {
 		if repoName == "DEFAULT"{
 			continue
 		}
-		var eclassDB map[string]*string = nil
+		var eclassDB *cache = nil
 		for _, eclassLocation := range repo.eclassLocations {
-			treeDb := eclassDB[eclassLocation]
+			treeDb := eclassDBs[eclassLocation]
 			if treeDb==nil {
-				treeDb =
+				treeDb = NewCache(eclassLocation, "")
+				eclassDBs[eclassLocation] = treeDb
+			}
+			if eclassDB == nil {
+				eclassDB = treeDb.copy()
+			} else {
+				eclassDB.append(treeDb)
 			}
 		}
+		repo.eclassDb = eclassDB
 	}
 	for repoName, repo := range prepos {
 		if repoName == "DEFAULT"{
