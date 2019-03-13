@@ -13,5 +13,6 @@ require (
 	github.com/sirupsen/logrus v1.3.0
 	github.com/spf13/pflag v1.0.3
 	golang.org/x/crypto v0.0.0-20181203042331-505ab145d0a9
+	golang.org/x/net v0.0.0-20181220203305-927f97764cc3
 	golang.org/x/sys v0.0.0-20181221143128-b4a75ba826a6
 )

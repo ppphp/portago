@@ -1,6 +1,7 @@
 package atom
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"github.com/google/shlex"
@@ -189,8 +190,8 @@ type Config struct {
 	tolerent, unmatchedRemoval, localConfig                                                                                                                                                                                                                                                                                                                                               bool
 	locked                                                                                                                                                                                                                                                                                                                                                                                int
 	mycpv, setcpvArgsHash, penv, modifiedkeys, uvlist, acceptChostRe, makeDefaults, parentStable, sonameProvided                                                                                                                                                                                                                                                                           *int
-	puse, categories, depcachedir,   profilePath, profiles, packages, unpackDependencies, defaultFeaturesUse, iuseEffective, iuseImplicitMatch, nonUserVariables, envDBlacklist, pbashrc, repoMakeDefaults, usemask, useforce, userProfileDir, profileBashrc,  useManager, licenseManager, globalConfigPath string
-	makeDefaultsUse, featuresOverrides                                                                                                                                                                                                                                                                                                                                              []string
+	puse, categories, depcachedir,   profilePath,  packages, unpackDependencies, defaultFeaturesUse, iuseEffective, iuseImplicitMatch, nonUserVariables, envDBlacklist, pbashrc, repoMakeDefaults, usemask, useforce, userProfileDir, profileBashrc,  useManager, licenseManager, globalConfigPath string
+	makeDefaultsUse, featuresOverrides, profiles                                                                                                                                                                                                                                                                                                                                              []string
 	lookupList, configList []map[string]string
 	configDict map[string]map[string]string
 	backupenv, defaultGlobals, deprecatedKeys, useExpandDict, prevmaskdict, pprovideddict, virtualsManagerObj, virtualsManager, acceptProperties, ppropertiesdict, acceptRestrict, pacceptRestrict, penvdict, pbashrcdict, expandMap, keywordsManagerObj, maskManagerObj                                                                                                                                                  map[string]string
@@ -507,8 +508,11 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		expandMap["PORTDIR_OVERLAY"] = c.valueDict["PORTDIR_OVERLAY"]
 		locationsManager.setPortDirs(c.valueDict["PORTDIR"], c.valueDict["PORTDIR_OVERLAY"])
 		locationsManager.loadProfiles(c.repositories, knownRepos)
-
-
+		profilesComplex := locationsManager.profilesComplex
+		c.profiles = locationsManager.profiles
+		c.profilePath = locationsManager.profilePath
+		c.userProfileDir = locationsManager.userProfileDir
+		packageList := grabFilePackage()
 
 	}
 	if mycpv != "" {
@@ -705,13 +709,21 @@ var (
 )
 
 type profileNode struct {
-	profileNode, location, portage1Directories, userConfig, profileFormats, eapi, allowBuildId string
+	location, eapi string
+	 profileFormats []string
+	allowBuildId, portage1Directories,userConfig bool
 }
 
 type locationsManager struct {
-	userProfileDir, localRepoConfPath, eprefix, configRoot, targetRoot, sysroot, absUserConfig, configProfilePath, esysroot, broot, portdir, portdirOverlay, eroot, globalConfigPath string
+	userProfileDir, localRepoConfPath, eprefix, configRoot, targetRoot, sysroot, absUserConfig, profilePath, configProfilePath, esysroot, broot, portdir, portdirOverlay, eroot, globalConfigPath string
 	userConfig                                                                                                                                              bool
-	overlayProfiles, profileLocations, profileAndUserLocations                                                                                                                                         []string
+	overlayProfiles, profileLocations, profileAndUserLocations, profiles                                                                                                                                         []string
+	profilesComplex []*profileNode
+}
+
+type SMSSS struct {
+	S string
+	MSSS map[string][]string
 }
 
 func (l *locationsManager) loadProfiles(repositories *repoConfigLoader, knownRepositoryPaths []string){
@@ -720,7 +732,7 @@ func (l *locationsManager) loadProfiles(repositories *repoConfigLoader, knownRep
 		x, _:= filepath.EvalSymlinks(v)
 		k[x] = true
 	}
-	knownRepos := [][2]string{}
+	knownRepos := []SMSSS{}
 	for x:= range k {
 		repo := repositories.getRepoForLocation(x)
 		layoutData := map[string][]string{}
@@ -729,7 +741,32 @@ func (l *locationsManager) loadProfiles(repositories *repoConfigLoader, knownRep
 		}else {
 			layoutData = map[string][]string{"profile-formats":repo.profileFormats, "profile-eapi_when_unspecified":{repo.eapi}}
 		}
-		knownRepos = append(knownRepos, )
+		knownRepos = append(knownRepos, SMSSS{S:x+"/", MSSS:layoutData})
+	}
+	if l.configProfilePath==""{
+		deprecatedProfilePath := path.Join(l.configRoot, "etc", "make.profile")
+		l.configProfilePath = path.Join(l.configRoot, ProfilePath)
+		if isdirRaiseEaccess(l.configProfilePath){
+			l.profilePath = l.configProfilePath
+			if isdirRaiseEaccess(deprecatedProfilePath) && path.Clean(l.profilePath)!= deprecatedProfilePath{
+				writeMsg(fmt.Sprintf("!!! %s\nFound 2 make.profile dirs: using '%s', ignoring '%s'",l.profilePath, deprecatedProfilePath), -1,nil)
+			}
+		}else{
+			l.configProfilePath = deprecatedProfilePath
+			if isdirRaiseEaccess(l.configProfilePath){
+				l.profilePath = l.configProfilePath
+			} else {
+				l.profilePath = ""
+			}
+		}
+	}else {
+		l.profilePath = l.configProfilePath
+	}
+	l.profiles = [] string{}
+	l.profilesComplex = []*profileNode{}
+	if len(l.profilePath) > 0 {
+		rp , _ := filepath.EvalSymlinks(l.profilePath)
+		l.addProfile(rp, repositories, knownRepos)
 	}
 }
 
@@ -742,7 +779,7 @@ func (l *locationsManager) checkVarDirectory(varname, varr string) error {
 	return nil
 }
 
-func (l *locationsManager) addProfile(currentPath, repositories, known_repos string){
+func (l *locationsManager) addProfile(currentPath string, repositories *repoConfigLoader, known_repos []SMSSS){
 	currentAbsPath,_ := filepath.Abs(currentPath)
 	allowDirectories := true
 	allowParentColon := true
@@ -750,15 +787,145 @@ func (l *locationsManager) addProfile(currentPath, repositories, known_repos str
 	compatMode := false
 	currentFormats := []string{}
 	eapi := ""
-	intersectingRepos := map[string]bool{}
-	for x:= range known_repos{
-
+	intersectingRepos := []SMSSS{}
+	for _,x:= range known_repos{
+		if strings.HasPrefix(currentAbsPath,x.S){
+			intersectingRepos = append(intersectingRepos, x)
+		}
 	}
-
+	var layoutData map[string][]string = nil
+	if len(intersectingRepos) > 0 {
+		for _, x := range intersectingRepos {
+			if len(x.S) > len(repoLoc){
+				repoLoc = x.S
+				layoutData = x.MSSS
+			}
+		}
+		if len(layoutData["profile_eapi_when_unspecified"]) > 0 {
+			eapi = layoutData["profile_eapi_when_unspecified"][0]
+		}
+	}
+	eapiFile := path.Join(currentPath, "eapi")
+	if eapi == ""{
+		eapi = "0"
+	}
+	if f, err := os.Open(eapiFile);err == nil{
+		bd := bufio.NewReader(f)
+		l, _, err := bd.ReadLine()
+		if err == nil {
+			eapi = strings.TrimSpace(string(l))
+			if !eapiIsSupported(eapi){
+				//raise ParseError(_(
+				//	"Profile contains unsupported "
+				//"EAPI '%s': '%s'") % \
+				//(eapi, os.path.realpath(eapi_file),))
+			}
+		}
+		f.Close()
+	}
+	if len(intersectingRepos) > 0 {
+		for _, x := range layoutData["profile-formats"]{
+			if portage1ProfilesAllowDirectories[x]{
+				allowDirectories = true
+				break
+			}
+		}
+		if !allowDirectories{
+			allowDirectories = eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi)
+		}
+		compatMode = !eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi)&&len(layoutData["profile-formats"])==1&&layoutData["profile-formats"][0]=="portage-1-compat"
+		for _, x := range layoutData["profile-formats"]{
+			if "portage-2"==x{
+				allowParentColon = true
+				break
+			}
+		}
+		currentFormats = layoutData["profile-formats"]
+	}
+	if compatMode {
+		offenders := CopyMapSB(portage1ProfilesAllowDirectories)
+		fs, _ := filepath.Glob(currentPath+"/*")
+		for _, x := range fs {
+			offenders[x] = true
+		}
+		o := []string{}
+		for x := range offenders {
+			s, _ := os.Stat(path.Join(currentPath,x))
+			if s.IsDir() {
+				o = append(o,x)
+			}
+		}
+		sort.Strings(o)
+		if len(o) > 0 {
+			//warnings.warn(_(
+			//	"\nThe selected profile is implicitly using the 'portage-1' format:\n"
+			//"\tprofile = %(profile_path)s\n"
+			//"But this repository is not using that format:\n"
+			//"\trepo = %(repo_name)s\n"
+			//"This will break in the future.  Please convert these dirs to files:\n"
+			//"\t%(files)s\n"
+			//"Or, add this line to the repository's layout.conf:\n"
+			//"\tprofile-formats = portage-1")
+			//% dict(profile_path=currentPath, repo_name=repo_loc,
+			//	files='\n\t'.join(offenders)))
+		}
+	}
+	parentsFile := path.Join(currentPath, "parent")
+	if existsRaiseEaccess(parentsFile) {
+		parents := grabFile(parentsFile,0,false,false)
+		if len(parents) == 0 {
+			//raise ParseError(
+			//	_("Empty parent file: '%s'") % parentsFile)
+		}
+		for _, p := range parents{
+			parentPath := p[0]
+			absParent := parentPath[:1]==string(os.PathSeparator)
+			if !absParent && allowParentColon {
+				parentPath = l.expandParentColon(parentsFile, parentPath, repoLoc, repositories)
+			}
+			parentPath = NormalizePath(path.Join(currentPath,parentPath))
+			if absParent || repoLoc == "" || strings.HasPrefix(parentPath,repoLoc){
+				parentPath, _ = filepath.EvalSymlinks(parentPath)
+			}
+			if existsRaiseEaccess(parentPath){
+				l.addProfile(parentPath, repositories, known_repos)
+			} else {
+				//raise ParseError(
+				//	_("Parent '%s' not found: '%s'") %  \
+				//(parentPath, parentsFile))
+			}
+		}
+	}
+	l.profiles = append(l.profiles, currentPath)
+	in := false
+	for _, x:=range currentFormats {
+		if x == "build-id"{
+			in = true
+			break
+		}
+	}
+	l.profilesComplex = append(l.profilesComplex, &profileNode{location:currentPath, portage1Directories:allowDirectories, userConfig:false, profileFormats:currentFormats, eapi:eapi, allowBuildId:in})
 }
 
-func (l *locationsManager) expandParentColon(){
-
+func (l *locationsManager) expandParentColon(parentsFile, parentPath, repoLoc string, repositories *repoConfigLoader) string{
+	colon := strings.Index(parentPath, ":")
+	if colon == -1 {
+		return parentPath
+	}
+	if colon == 0 {
+		if repoLoc == "" {
+			//raise ParseError(
+			//	_("Parent '%s' not found: '%s'") %  \
+			//(parentPath, parentsFile))
+		}else {
+			parentPath = NormalizePath(path.Join(repoLoc, "profiles",parentPath[colon+1:]))
+		}
+	}else {
+		pRepoName := parentPath[:colon]
+		pRepoLoc := repositories.getLocationForName(pRepoName)
+		parentPath = NormalizePath(path.Join(pRepoLoc, "profiles",parentPath[colon+1:]))
+	}
+	return parentPath
 }
 
 func (l *locationsManager) setRootOverride(rootOverwrite string) error {
