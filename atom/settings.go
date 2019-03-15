@@ -186,26 +186,29 @@ func NewIuseImplicitMatchCache(setting map[string]string) {
 }
 
 type Config struct {
-	valueDict                                                                                                                                                                                                                                                                                                                                                                             map[string]string
-	tolerent, unmatchedRemoval, localConfig                                                                                                                                                                                                                                                                                                                                               bool
-	locked                                                                                                                                                                                                                                                                                                                                                                                int
-	mycpv, setcpvArgsHash, penv, modifiedkeys, uvlist, acceptChostRe, makeDefaults, parentStable, sonameProvided                                                                                                                                                                                                                                                                           *int
-	puse, categories, depcachedir,   profilePath,  packages, unpackDependencies, defaultFeaturesUse, iuseEffective, iuseImplicitMatch, nonUserVariables, envDBlacklist, pbashrc, repoMakeDefaults, usemask, useforce, userProfileDir, profileBashrc,  useManager, licenseManager, globalConfigPath string
-	makeDefaultsUse, featuresOverrides, profiles                                                                                                                                                                                                                                                                                                                                              []string
-	lookupList, configList []map[string]string
-	configDict map[string]map[string]string
-	backupenv, defaultGlobals, deprecatedKeys, useExpandDict, prevmaskdict, pprovideddict, virtualsManagerObj, virtualsManager, acceptProperties, ppropertiesdict, acceptRestrict, pacceptRestrict, penvdict, pbashrcdict, expandMap, keywordsManagerObj, maskManagerObj                                                                                                                                                  map[string]string
-	modulePriority,incrementals,envBlacklist         ,	environFilter  ,	environWhitelist  ,	validateCommands    ,	globalOnlyVars      ,caseInsensitiveVars, setcpvAuxKeys, constantKeys, unknownFeatures                                                                                                                                                                                                                                                                                                                                                                       map[string]bool
-	features                                                                                                                                                                                                                                                                                                                                                                              *featuresSet
-	repositories *repoConfigLoader
-	modules map[string]map[string][]string
-	locationsManager *locationsManager
-	environWhitelistRe  *regexp.Regexp
+	valueDict                                                                                                                                                                                                                                                    map[string]string
+	tolerent, unmatchedRemoval, localConfig                                                                                                                                                                                                                      bool
+	locked                                                                                                                                                                                                                                                       int
+	mycpv, setcpvArgsHash, penv, modifiedkeys, uvlist, acceptChostRe, makeDefaults, parentStable, sonameProvided                                                                                                                                                 *int
+	puse, categories, depcachedir, profilePath, defaultFeaturesUse, iuseEffective, iuseImplicitMatch, nonUserVariables, envDBlacklist, pbashrc, repoMakeDefaults, usemask, useforce, userProfileDir, profileBashrc, useManager, licenseManager, globalConfigPath string
+	unpackDependencies                                                                                                                                                                                                                                           map[string]map[string]map[string]string
+	packages                                                                                                                                                                                                                                                     map[*atom]string
+	makeDefaultsUse, featuresOverrides, profiles                                                                                                                                                                                                                 []string
+	lookupList, configList                                                                                                                                                                                                                                       []map[string]string
+	configDict                                                                                                                                                                                                                                                   map[string]map[string]string
+	backupenv, defaultGlobals, deprecatedKeys, useExpandDict, pprovideddict, virtualsManagerObj, virtualsManager, acceptProperties, ppropertiesdict, acceptRestrict, pacceptRestrict, penvdict, pbashrcdict, expandMap, keywordsManagerObj, maskManagerObj       map[string]string
+	prevmaskdict                                                                                                                                                                                                                                                 map[string][]*atom
+	modulePriority, incrementals, envBlacklist, environFilter, environWhitelist, validateCommands, globalOnlyVars, caseInsensitiveVars, setcpvAuxKeys, constantKeys, unknownFeatures                                                                             map[string]bool
+	features                                                                                                                                                                                                                                                     *featuresSet
+	repositories                                                                                                                                                                                                                                                 *repoConfigLoader
+	modules                                                                                                                                                                                                                                                      map[string]map[string][]string
+	locationsManager                                                                                                                                                                                                                                             *locationsManager
+	environWhitelistRe                                                                                                                                                                                                                                           *regexp.Regexp
 }
 
-func (c *Config) backupChanges(key string){
+func (c *Config) backupChanges(key string) {
 	c.modifying()
-	if _, ok := c.configDict["env"][key];key != "" &&ok {
+	if _, ok := c.configDict["env"][key]; key != "" && ok {
 		c.backupenv[key] = c.configDict["env"][key]
 	} else {
 		//raise KeyError(_("No such key defined in environment: %s") % key)
@@ -241,15 +244,15 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 	tolerant := initializingGlobals == nil
 	c := &Config{tolerent: tolerant, unmatchedRemoval: unmatchedRemoval, localConfig: localConfig}
 	c.constantKeys = constantKeys
-	c.deprecatedKeys=deprecatedKeys
-	c.setcpvAuxKeys=setcpvAuxKeys
-	c.caseInsensitiveVars=caseInsensitiveVars
-	c.defaultGlobals=defaultGlobals
-	c.envBlacklist=envBlacklist
-	c.environFilter=environFilter
-	c.environWhitelist=environWhitelist
-	c.globalOnlyVars=globalOnlyVars
-	c.environWhitelistRe=environWhitelistRe
+	c.deprecatedKeys = deprecatedKeys
+	c.setcpvAuxKeys = setcpvAuxKeys
+	c.caseInsensitiveVars = caseInsensitiveVars
+	c.defaultGlobals = defaultGlobals
+	c.envBlacklist = envBlacklist
+	c.environFilter = environFilter
+	c.environWhitelist = environWhitelist
+	c.globalOnlyVars = globalOnlyVars
+	c.environWhitelistRe = environWhitelistRe
 
 	//c.validateCommands=validateCommands
 
@@ -307,7 +310,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		ReverseSlice(c.lookupList)
 		c.useExpandDict = CopyMapSS(clone.useExpandDict)
 		c.backupenv = c.configDict["backupenv"]
-		c.prevmaskdict = CopyMapSS(clone.prevmaskdict)
+		c.prevmaskdict = clone.prevmaskdict // CopyMapSS(clone.prevmaskdict)
 		c.pprovideddict = CopyMapSS(clone.pprovideddict)
 		c.features = NewFeaturesSet(c)
 		c.features.features = CopyMapSB(clone.features.features)
@@ -334,19 +337,19 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		esysroot := locationsManager.esysroot
 		broot := locationsManager.broot
 		absUserConfig := locationsManager.absUserConfig
-		makeConfPaths := []string{path.Join(configRoot, "etc","make.conf"), path.Join(configRoot, MakeConfFile)}
+		makeConfPaths := []string{path.Join(configRoot, "etc", "make.conf"), path.Join(configRoot, MakeConfFile)}
 		p0, _ := filepath.EvalSymlinks(makeConfPaths[0])
 		p1, _ := filepath.EvalSymlinks(makeConfPaths[1])
-		if p0 ==  p1 {
+		if p0 == p1 {
 			makeConfPaths = makeConfPaths[:len(makeConfPaths)-1]
 		}
 		makeConfCount := 0
 		makeConf := map[string]string{}
-		for _, x:=range makeConfPaths{
-			mygcfg :=getConfig(x,tolerant, true,true, true, makeConf)
-			if len(mygcfg) > 0{
-				for k, v := range mygcfg{
-					makeConf[k]=v
+		for _, x := range makeConfPaths {
+			mygcfg := getConfig(x, tolerant, true, true, true, makeConf)
+			if len(mygcfg) > 0 {
+				for k, v := range mygcfg {
+					makeConf[k] = v
 					makeConfCount += 1
 				}
 			}
@@ -358,7 +361,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		targetRoot = locationsManager.targetRoot
 		eroot := locationsManager.eroot
 		c.globalConfigPath = locationsManager.globalConfigPath
-		envD := getConfig(path.Join(eroot, "etc", "profile.env"), tolerant, false, false, false , nil)
+		envD := getConfig(path.Join(eroot, "etc", "profile.env"), tolerant, false, false, false, nil)
 		expandMap := CopyMapSS(envD)
 		c.expandMap = expandMap
 		expandMap["EPREFIX"] = eprefix
@@ -369,42 +372,42 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		} else {
 			makeGlobalsPath = path.Join(c.globalConfigPath, "make.globals")
 		}
-		oldMakeGlobals := path.Join(configRoot, "etc","make.globals")
-		f1, _ :=	filepath.EvalSymlinks(makeGlobalsPath)
-		f2,_ := filepath.EvalSymlinks(oldMakeGlobals)
-			if s, _:=os.Stat(oldMakeGlobals);!s.IsDir()&& f1!=f2{
-			writeMsg(fmt.Sprintf("!!!Found obsolete make.globals file: '%s', (using '%s' instead)\n",		oldMakeGlobals, makeGlobalsPath),-1,nil)
+		oldMakeGlobals := path.Join(configRoot, "etc", "make.globals")
+		f1, _ := filepath.EvalSymlinks(makeGlobalsPath)
+		f2, _ := filepath.EvalSymlinks(oldMakeGlobals)
+		if s, _ := os.Stat(oldMakeGlobals); !s.IsDir() && f1 != f2 {
+			writeMsg(fmt.Sprintf("!!!Found obsolete make.globals file: '%s', (using '%s' instead)\n", oldMakeGlobals, makeGlobalsPath), -1, nil)
 		}
 		makeGlobals := getConfig(makeGlobalsPath, tolerant, false, true, false, expandMap)
 		if makeGlobals == nil {
 			makeGlobals = map[string]string{}
 		}
-		for k,v := range c.defaultGlobals {
+		for k, v := range c.defaultGlobals {
 			if _, ok := makeGlobals[k]; !ok {
-				makeGlobals[k]=v
+				makeGlobals[k] = v
 			}
 		}
 		if configIncrementals == nil {
 			c.incrementals = INCREMENTALS
 		} else {
 			c.incrementals = map[string]bool{}
-			for _, v := range configIncrementals{
-				c.incrementals[v]=true
+			for _, v := range configIncrementals {
+				c.incrementals[v] = true
 			}
 		}
-		c.modulePriority = map[string]bool {"user":true, "default":true}
+		c.modulePriority = map[string]bool{"user": true, "default": true}
 		c.modules = map[string]map[string][]string{}
 		modulesFile := path.Join(configRoot, ModulesFilePath)
-		modulesLoader :=NewKeyValuePairFileLoader(modulesFile, nil,nil)
+		modulesLoader := NewKeyValuePairFileLoader(modulesFile, nil, nil)
 		modulesDict, _ := modulesLoader.load()
 		c.modules["user"] = modulesDict
-		if len(c.modules["user"])==0{
-			c.modules["user"]=map[string][]string{}
+		if len(c.modules["user"]) == 0 {
+			c.modules["user"] = map[string][]string{}
 		}
-		c.modules["default"] = map[string][]string{"portdbapi.auxdbmodule":  {"portage.cache.flat_hash.mtime_md5_database"}}
+		c.modules["default"] = map[string][]string{"portdbapi.auxdbmodule": {"portage.cache.flat_hash.mtime_md5_database"}}
 		c.configList = []map[string]string{}
 		c.configDict = map[string]map[string]string{}
-		c.useExpandDict  = map[string]string{}
+		c.useExpandDict = map[string]string{}
 		c.configList = append(c.configList, map[string]string{})
 		c.configDict["env.d"] = c.configList[len(c.configList)-1]
 		c.configList = append(c.configList, map[string]string{})
@@ -413,23 +416,23 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		c.configDict["features"] = c.configList[len(c.configList)-1]
 		c.configList = append(c.configList, map[string]string{})
 		c.configDict["pkginternal"] = c.configList[len(c.configList)-1]
-		if len(envD)>0{
-			for k,v := range envD{
-				c.configDict["env.d"][k]=v
+		if len(envD) > 0 {
+			for k, v := range envD {
+				c.configDict["env.d"][k] = v
 			}
 		}
 		if env == nil {
 			env = map[string]string{}
-			for _,v := range os.Environ(){
-				s := strings.SplitN(v,"=",2)
+			for _, v := range os.Environ() {
+				s := strings.SplitN(v, "=", 2)
 				env[s[0]] = s[1]
 			}
 		}
-		c.backupenv=CopyMapSS(env)
+		c.backupenv = CopyMapSS(env)
 		if len(envD) > 0 {
-			for k,v := range envD {
+			for k, v := range envD {
 				if c.backupenv[k] == v {
-					delete(c.backupenv,k)
+					delete(c.backupenv, k)
 				}
 			}
 		}
@@ -447,30 +450,30 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		portDir := ""
 		portDirOverlay := ""
 		portDirSync := ""
-		for _, confs := range []map[string]string{makeGlobals, makeConf, c.configDict["env"]}{
-			if v, ok := confs["PORTDIR"]; ok{
+		for _, confs := range []map[string]string{makeGlobals, makeConf, c.configDict["env"]} {
+			if v, ok := confs["PORTDIR"]; ok {
 				portDir = v
 				knownRepos = append(knownRepos, v)
 			}
-			if v, ok := confs["PORTDIR_OVERLAY"]; ok{
+			if v, ok := confs["PORTDIR_OVERLAY"]; ok {
 				portDirOverlay = v
-				ss ,_:=shlex.Split(v)
+				ss, _ := shlex.Split(v)
 				knownRepos = append(knownRepos, ss...)
 			}
-			if v, ok := confs["SYNC"]; ok{
+			if v, ok := confs["SYNC"]; ok {
 				portDirSync = v
 			}
-			if _, ok := confs["PORTAGE_RSYNC_EXTRA_OPTS"];ok{
-				c.valueDict["PORTAGE_RSYNC_EXTRA_OPTS"]=confs["PORTAGE_RSYNC_EXTRA_OPTS"]
+			if _, ok := confs["PORTAGE_RSYNC_EXTRA_OPTS"]; ok {
+				c.valueDict["PORTAGE_RSYNC_EXTRA_OPTS"] = confs["PORTAGE_RSYNC_EXTRA_OPTS"]
 			}
 		}
 		c.valueDict["PORTDIR"] = portDir
 		c.valueDict["PORTDIR_OVERLAY"] = portDirOverlay
-		if portDirSync!= ""{
+		if portDirSync != "" {
 			c.valueDict["SYNC"] = portDirSync
 		}
 		c.lookupList = []map[string]string{c.configDict["env"]}
-		if repositories ==nil{
+		if repositories == nil {
 			c.repositories = loadRepositoryConfig(c, "")
 		}
 		for _, v := range c.repositories.prepos {
@@ -478,27 +481,27 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		}
 		kr := map[string]bool{}
 		for _, v := range knownRepos {
-			kr[v] =true
+			kr[v] = true
 		}
 		c.valueDict["PORTAGE_REPOSITORIES"] = c.repositories.configString()
 		c.backupChanges("PORTAGE_REPOSITORIES")
 		mainRepo := c.repositories.mainRepo()
-		if mainRepo!= nil {
+		if mainRepo != nil {
 			c.valueDict["PORTDIR"] = mainRepo.location
 			c.backupChanges("PORTDIR")
 			expandMap["PORTDIR"] = c.valueDict["PORTDIR"]
 		}
 		portDirOverlay1 := c.repositories.repoLocationList
-		if len(portDirOverlay1) > 0 &&portDirOverlay1[0]==c.valueDict["PORTDIR"]{
+		if len(portDirOverlay1) > 0 && portDirOverlay1[0] == c.valueDict["PORTDIR"] {
 			portDirOverlay1 = portDirOverlay1[1:]
 		}
 		newOv := []string{}
 		if len(portDirOverlay1) > 0 {
-			for _ ,ov := range portDirOverlay1 {
+			for _, ov := range portDirOverlay1 {
 				ov = NormalizePath(ov)
 				if isdirRaiseEaccess(ov) || syncMode {
 					newOv = append(newOv, ShellQuote(ov))
-				}else {
+				} else {
 					writeMsg(fmt.Sprintf("!!! Invalid PORTDIR_OVERLAY(not a dir): '%s'\n", ov), -1, nil)
 				}
 			}
@@ -512,7 +515,28 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		c.profiles = locationsManager.profiles
 		c.profilePath = locationsManager.profilePath
 		c.userProfileDir = locationsManager.userProfileDir
-		packageList := grabFilePackage()
+		packageList := [][][2]string{}
+		for _, x := range profilesComplex {
+			packageList = append(packageList, grabFilePackage(path.Join(x.location, "packages"), 0, 0, false, false, x.allowBuildId, false, true, x.eapi, ""))
+		}
+		c.packages = stackLists(packageList, 1, false, false, false, false)
+		c.prevmaskdict = map[string][]*atom{}
+		for x := range c.packages {
+			if c.prevmaskdict[x.cp] == nil {
+				c.prevmaskdict[x.cp] = []*atom{x}
+			} else {
+				c.prevmaskdict[x.cp] = append(c.prevmaskdict[x.cp], x)
+			}
+		}
+		c.unpackDependencies = loadUnpackDependenciesConfiguration(c.repositories)
+		mygcfg := map[string]string{}
+		if len(profilesComplex) != 0 {
+			mygcfgDlists := []map[string]string{}
+			for _, x := range profilesComplex {
+				mygcfgDlists = append(mygcfgDlists, getConfig(path.Join(x.location, "make.defaults"), tolerant, false, true, x.portage1Directories, expandMap))
+			}
+			c.makeDefaults = mygcfgDlists
+		}
 
 	}
 	if mycpv != "" {
@@ -709,63 +733,63 @@ var (
 )
 
 type profileNode struct {
-	location, eapi string
-	 profileFormats []string
-	allowBuildId, portage1Directories,userConfig bool
+	location, eapi                                string
+	profileFormats                                []string
+	allowBuildId, portage1Directories, userConfig bool
 }
 
 type locationsManager struct {
 	userProfileDir, localRepoConfPath, eprefix, configRoot, targetRoot, sysroot, absUserConfig, profilePath, configProfilePath, esysroot, broot, portdir, portdirOverlay, eroot, globalConfigPath string
-	userConfig                                                                                                                                              bool
-	overlayProfiles, profileLocations, profileAndUserLocations, profiles                                                                                                                                         []string
-	profilesComplex []*profileNode
+	userConfig                                                                                                                                                                                    bool
+	overlayProfiles, profileLocations, profileAndUserLocations, profiles                                                                                                                          []string
+	profilesComplex                                                                                                                                                                               []*profileNode
 }
 
 type SMSSS struct {
-	S string
+	S    string
 	MSSS map[string][]string
 }
 
-func (l *locationsManager) loadProfiles(repositories *repoConfigLoader, knownRepositoryPaths []string){
+func (l *locationsManager) loadProfiles(repositories *repoConfigLoader, knownRepositoryPaths []string) {
 	k := map[string]bool{}
 	for _, v := range knownRepositoryPaths {
-		x, _:= filepath.EvalSymlinks(v)
+		x, _ := filepath.EvalSymlinks(v)
 		k[x] = true
 	}
 	knownRepos := []SMSSS{}
-	for x:= range k {
+	for x := range k {
 		repo := repositories.getRepoForLocation(x)
 		layoutData := map[string][]string{}
-		if repo== nil {
-			layoutData,_ = parseLayoutConf(x, "")
-		}else {
-			layoutData = map[string][]string{"profile-formats":repo.profileFormats, "profile-eapi_when_unspecified":{repo.eapi}}
+		if repo == nil {
+			layoutData, _ = parseLayoutConf(x, "")
+		} else {
+			layoutData = map[string][]string{"profile-formats": repo.profileFormats, "profile-eapi_when_unspecified": {repo.eapi}}
 		}
-		knownRepos = append(knownRepos, SMSSS{S:x+"/", MSSS:layoutData})
+		knownRepos = append(knownRepos, SMSSS{S: x + "/", MSSS: layoutData})
 	}
-	if l.configProfilePath==""{
+	if l.configProfilePath == "" {
 		deprecatedProfilePath := path.Join(l.configRoot, "etc", "make.profile")
 		l.configProfilePath = path.Join(l.configRoot, ProfilePath)
-		if isdirRaiseEaccess(l.configProfilePath){
+		if isdirRaiseEaccess(l.configProfilePath) {
 			l.profilePath = l.configProfilePath
-			if isdirRaiseEaccess(deprecatedProfilePath) && path.Clean(l.profilePath)!= deprecatedProfilePath{
-				writeMsg(fmt.Sprintf("!!! %s\nFound 2 make.profile dirs: using '%s', ignoring '%s'",l.profilePath, deprecatedProfilePath), -1,nil)
+			if isdirRaiseEaccess(deprecatedProfilePath) && path.Clean(l.profilePath) != deprecatedProfilePath {
+				writeMsg(fmt.Sprintf("!!! %s\nFound 2 make.profile dirs: using '%s', ignoring '%s'", l.profilePath, deprecatedProfilePath), -1, nil)
 			}
-		}else{
+		} else {
 			l.configProfilePath = deprecatedProfilePath
-			if isdirRaiseEaccess(l.configProfilePath){
+			if isdirRaiseEaccess(l.configProfilePath) {
 				l.profilePath = l.configProfilePath
 			} else {
 				l.profilePath = ""
 			}
 		}
-	}else {
+	} else {
 		l.profilePath = l.configProfilePath
 	}
 	l.profiles = [] string{}
 	l.profilesComplex = []*profileNode{}
 	if len(l.profilePath) > 0 {
-		rp , _ := filepath.EvalSymlinks(l.profilePath)
+		rp, _ := filepath.EvalSymlinks(l.profilePath)
 		l.addProfile(rp, repositories, knownRepos)
 	}
 }
@@ -779,8 +803,8 @@ func (l *locationsManager) checkVarDirectory(varname, varr string) error {
 	return nil
 }
 
-func (l *locationsManager) addProfile(currentPath string, repositories *repoConfigLoader, known_repos []SMSSS){
-	currentAbsPath,_ := filepath.Abs(currentPath)
+func (l *locationsManager) addProfile(currentPath string, repositories *repoConfigLoader, known_repos []SMSSS) {
+	currentAbsPath, _ := filepath.Abs(currentPath)
 	allowDirectories := true
 	allowParentColon := true
 	repoLoc := ""
@@ -788,15 +812,15 @@ func (l *locationsManager) addProfile(currentPath string, repositories *repoConf
 	currentFormats := []string{}
 	eapi := ""
 	intersectingRepos := []SMSSS{}
-	for _,x:= range known_repos{
-		if strings.HasPrefix(currentAbsPath,x.S){
+	for _, x := range known_repos {
+		if strings.HasPrefix(currentAbsPath, x.S) {
 			intersectingRepos = append(intersectingRepos, x)
 		}
 	}
 	var layoutData map[string][]string = nil
 	if len(intersectingRepos) > 0 {
 		for _, x := range intersectingRepos {
-			if len(x.S) > len(repoLoc){
+			if len(x.S) > len(repoLoc) {
 				repoLoc = x.S
 				layoutData = x.MSSS
 			}
@@ -806,15 +830,15 @@ func (l *locationsManager) addProfile(currentPath string, repositories *repoConf
 		}
 	}
 	eapiFile := path.Join(currentPath, "eapi")
-	if eapi == ""{
+	if eapi == "" {
 		eapi = "0"
 	}
-	if f, err := os.Open(eapiFile);err == nil{
+	if f, err := os.Open(eapiFile); err == nil {
 		bd := bufio.NewReader(f)
 		l, _, err := bd.ReadLine()
 		if err == nil {
 			eapi = strings.TrimSpace(string(l))
-			if !eapiIsSupported(eapi){
+			if !eapiIsSupported(eapi) {
 				//raise ParseError(_(
 				//	"Profile contains unsupported "
 				//"EAPI '%s': '%s'") % \
@@ -824,18 +848,18 @@ func (l *locationsManager) addProfile(currentPath string, repositories *repoConf
 		f.Close()
 	}
 	if len(intersectingRepos) > 0 {
-		for _, x := range layoutData["profile-formats"]{
-			if portage1ProfilesAllowDirectories[x]{
+		for _, x := range layoutData["profile-formats"] {
+			if portage1ProfilesAllowDirectories[x] {
 				allowDirectories = true
 				break
 			}
 		}
-		if !allowDirectories{
+		if !allowDirectories {
 			allowDirectories = eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi)
 		}
-		compatMode = !eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi)&&len(layoutData["profile-formats"])==1&&layoutData["profile-formats"][0]=="portage-1-compat"
-		for _, x := range layoutData["profile-formats"]{
-			if "portage-2"==x{
+		compatMode = !eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi) && len(layoutData["profile-formats"]) == 1 && layoutData["profile-formats"][0] == "portage-1-compat"
+		for _, x := range layoutData["profile-formats"] {
+			if "portage-2" == x {
 				allowParentColon = true
 				break
 			}
@@ -844,15 +868,15 @@ func (l *locationsManager) addProfile(currentPath string, repositories *repoConf
 	}
 	if compatMode {
 		offenders := CopyMapSB(portage1ProfilesAllowDirectories)
-		fs, _ := filepath.Glob(currentPath+"/*")
+		fs, _ := filepath.Glob(currentPath + "/*")
 		for _, x := range fs {
 			offenders[x] = true
 		}
 		o := []string{}
 		for x := range offenders {
-			s, _ := os.Stat(path.Join(currentPath,x))
+			s, _ := os.Stat(path.Join(currentPath, x))
 			if s.IsDir() {
-				o = append(o,x)
+				o = append(o, x)
 			}
 		}
 		sort.Strings(o)
@@ -872,22 +896,22 @@ func (l *locationsManager) addProfile(currentPath string, repositories *repoConf
 	}
 	parentsFile := path.Join(currentPath, "parent")
 	if existsRaiseEaccess(parentsFile) {
-		parents := grabFile(parentsFile,0,false,false)
+		parents := grabFile(parentsFile, 0, false, false)
 		if len(parents) == 0 {
 			//raise ParseError(
 			//	_("Empty parent file: '%s'") % parentsFile)
 		}
-		for _, p := range parents{
+		for _, p := range parents {
 			parentPath := p[0]
-			absParent := parentPath[:1]==string(os.PathSeparator)
+			absParent := parentPath[:1] == string(os.PathSeparator)
 			if !absParent && allowParentColon {
 				parentPath = l.expandParentColon(parentsFile, parentPath, repoLoc, repositories)
 			}
-			parentPath = NormalizePath(path.Join(currentPath,parentPath))
-			if absParent || repoLoc == "" || strings.HasPrefix(parentPath,repoLoc){
+			parentPath = NormalizePath(path.Join(currentPath, parentPath))
+			if absParent || repoLoc == "" || strings.HasPrefix(parentPath, repoLoc) {
 				parentPath, _ = filepath.EvalSymlinks(parentPath)
 			}
-			if existsRaiseEaccess(parentPath){
+			if existsRaiseEaccess(parentPath) {
 				l.addProfile(parentPath, repositories, known_repos)
 			} else {
 				//raise ParseError(
@@ -898,16 +922,16 @@ func (l *locationsManager) addProfile(currentPath string, repositories *repoConf
 	}
 	l.profiles = append(l.profiles, currentPath)
 	in := false
-	for _, x:=range currentFormats {
-		if x == "build-id"{
+	for _, x := range currentFormats {
+		if x == "build-id" {
 			in = true
 			break
 		}
 	}
-	l.profilesComplex = append(l.profilesComplex, &profileNode{location:currentPath, portage1Directories:allowDirectories, userConfig:false, profileFormats:currentFormats, eapi:eapi, allowBuildId:in})
+	l.profilesComplex = append(l.profilesComplex, &profileNode{location: currentPath, portage1Directories: allowDirectories, userConfig: false, profileFormats: currentFormats, eapi: eapi, allowBuildId: in})
 }
 
-func (l *locationsManager) expandParentColon(parentsFile, parentPath, repoLoc string, repositories *repoConfigLoader) string{
+func (l *locationsManager) expandParentColon(parentsFile, parentPath, repoLoc string, repositories *repoConfigLoader) string {
 	colon := strings.Index(parentPath, ":")
 	if colon == -1 {
 		return parentPath
@@ -917,19 +941,19 @@ func (l *locationsManager) expandParentColon(parentsFile, parentPath, repoLoc st
 			//raise ParseError(
 			//	_("Parent '%s' not found: '%s'") %  \
 			//(parentPath, parentsFile))
-		}else {
-			parentPath = NormalizePath(path.Join(repoLoc, "profiles",parentPath[colon+1:]))
+		} else {
+			parentPath = NormalizePath(path.Join(repoLoc, "profiles", parentPath[colon+1:]))
 		}
-	}else {
+	} else {
 		pRepoName := parentPath[:colon]
 		pRepoLoc := repositories.getLocationForName(pRepoName)
-		parentPath = NormalizePath(path.Join(pRepoLoc, "profiles",parentPath[colon+1:]))
+		parentPath = NormalizePath(path.Join(pRepoLoc, "profiles", parentPath[colon+1:]))
 	}
 	return parentPath
 }
 
 func (l *locationsManager) setRootOverride(rootOverwrite string) error {
-	if l.targetRoot != "" && rootOverwrite != ""{
+	if l.targetRoot != "" && rootOverwrite != "" {
 		l.targetRoot = rootOverwrite
 		if len(strings.TrimSpace(l.targetRoot)) == 0 {
 			l.targetRoot = ""
@@ -942,12 +966,12 @@ func (l *locationsManager) setRootOverride(rootOverwrite string) error {
 	l.targetRoot = NormalizePath(strings.TrimSuffix(fap, string(os.PathSeparator))) + string(os.PathSeparator)
 	if l.sysroot != "/" && l.sysroot != l.targetRoot {
 		writeMsg(fmt.Sprintf("!!! Error: SYSROOT (currently %s) must "+
-		"equal / or ROOT (currently %s).\n", l.sysroot, l.targetRoot), 1, nil)
-		return errors.New("InvalidLocation")// raise InvalidLocation(self.sysroot)
+			"equal / or ROOT (currently %s).\n", l.sysroot, l.targetRoot), 1, nil)
+		return errors.New("InvalidLocation") // raise InvalidLocation(self.sysroot)
 	}
-	ensureDirs(l.targetRoot, -1 ,-1 ,-1 ,-1 ,nil, false)
+	ensureDirs(l.targetRoot, -1, -1, -1, -1, nil, false)
 	l.checkVarDirectory("ROOT", l.targetRoot)
-	l.eroot  = strings.TrimSuffix(l.targetRoot, string(os.PathSeparator)) + l.eprefix + string(os.PathSeparator)
+	l.eroot = strings.TrimSuffix(l.targetRoot, string(os.PathSeparator)) + l.eprefix + string(os.PathSeparator)
 	l.globalConfigPath = GlobalConfigPath
 	if EPREFIX != "" {
 		l.globalConfigPath = path.Join(EPREFIX, strings.TrimPrefix(GlobalConfigPath, string(os.PathSeparator)))
@@ -968,7 +992,7 @@ func (l *locationsManager) setPortDirs(portdir, portdirOverlay string) {
 		}
 	}
 	l.profileLocations = append([]string{path.Join(portdir, "profiles")}, l.overlayProfiles...)
-	l.profileAndUserLocations = append(l.profileLocations[:0:0],l.profileLocations...)
+	l.profileAndUserLocations = append(l.profileLocations[:0:0], l.profileLocations...)
 	if l.userConfig {
 		l.profileAndUserLocations = append(l.profileAndUserLocations, l.absUserConfig)
 	}
@@ -1005,4 +1029,56 @@ func NewLocaitonsManager(configRoot, eprefix, configProfilePath string, localCon
 	l.esysroot = strings.TrimSuffix(l.sysroot, string(os.PathSeparator)) + l.eprefix + string(os.PathSeparator)
 	l.broot = EPREFIX
 	return l
+}
+
+func loadUnpackDependenciesConfiguration(repositories *repoConfigLoader) map[string]map[string]map[string]string {
+	repoDict := map[string]map[string]map[string]string{}
+	for _, repo := range repositories.reposWithProfiles() {
+		for eapi := range supportedEapis {
+			if eapiHasAutomaticUnpackDependencies(eapi) {
+				fileName := path.Join(repo.location, "profiles", "unpack_dependencies", eapi)
+				lines := grabFile(fileName, 0, true, false)
+				for _, line := range lines {
+					elements := strings.Fields(line[0])
+					suffix := strings.ToLower(elements[0])
+					if len(elements) == 1 {
+						writeMsg(fmt.Sprintf("--- Missing unpack dependencies for '%s' suffix in '%s'\n", suffix, fileName), 0, nil)
+					}
+					depend := strings.Join(elements[1:], " ")
+					useReduce(depend, map[string]bool{}, []string{}, false, []string{}, false, eapi, false, false, nil, nil, false)
+					if repoDict[repo.name] == nil {
+						repoDict[repo.name] = map[string]map[string]string{eapi: {suffix: depend}}
+					} else if repoDict[repo.name][eapi] == nil {
+						repoDict[repo.name][eapi] = map[string]string{suffix: depend}
+					} else {
+						repoDict[repo.name][eapi][suffix] = depend
+					}
+				}
+			}
+		}
+	}
+	ret := map[string]map[string]map[string]string{}
+	for _, repo := range repositories.reposWithProfiles() {
+		names := []string{}
+		for _, v := range repo.mastersRepo {
+			names = append(names, v.name)
+		}
+		names = append(names, repo.name)
+		for _, repoName := range names {
+			for eapi := range repoDict[repoName] {
+				if repoDict[repoName] != nil {
+					for suffix, depend := range repoDict[repoName][eapi] {
+						if ret[repo.name] == nil {
+							ret[repo.name] = map[string]map[string]string{eapi: {suffix: depend}}
+						} else if repoDict[repo.name][eapi] == nil {
+							ret[repo.name][eapi] = map[string]string{suffix: depend}
+						} else {
+							ret[repo.name][eapi][suffix] = depend
+						}
+					}
+				}
+			}
+		}
+	}
+	return ret
 }

@@ -198,21 +198,102 @@ type AS struct {
 	S string
 }
 
-func appendRepo(atomList []AS, repoName string, rememberSourceFile bool) []SB{
+func appendRepo(atomList []AS, repoName string, rememberSourceFile bool) []SB {
 	sb := []SB{}
 	if rememberSourceFile {
-		for _ , v := range atomList {
+		for _, v := range atomList {
 			atom := v.A
 			source := v.S
-			sb = append(sb, SB{B:atom.repo!= "" && atom != nil || atom.withRepo(repoName)!=nil, S:source})
+			sb = append(sb, SB{B: atom.repo != "" && atom != nil || atom.withRepo(repoName) != nil, S: source})
 		}
 	} else {
-		for _ , v := range atomList {
+		for _, v := range atomList {
 			atom := v.A
-			sb = append(sb, SB{B:atom.repo!= "" && atom != nil || atom.withRepo(repoName)!=nil, S:""})
+			sb = append(sb, SB{B: atom.repo != "" && atom != nil || atom.withRepo(repoName) != nil, S: ""})
 		}
 	}
 	return sb
+}
+
+func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[*atom]string {
+	matchedRemovals := map[[2]string]bool{}
+	unmatchedRemovals := map[string][]string{}
+	newList := map[*atom]string{}
+	for _, subList := range lists {
+		for _, t := range subList {
+			tokenKey := t
+			token := t[0]
+			sourceFile := ""
+			if rememberSourceFile {
+				sourceFile = t[1]
+			} else {
+				sourceFile = ""
+			}
+			if token == "" {
+				continue
+			}
+			if incremental != 0 {
+				if token == "-*" {
+					newList = map[*atom]string{}
+				} else if token[:1] == "-" {
+					matched := false
+					if ignoreRepo && !strings.Contains(token, "::") {
+						toBeRemoved := []*atom{}
+						tokenSlice := token[1:]
+						for atom := range newList {
+							atomWithoutRepo := atom.value
+							if atom.repo != "" {
+								atomWithoutRepo = strings.Replace(atom.value, "::"+atom.repo, "", 1)
+							}
+							if atomWithoutRepo == tokenSlice {
+								toBeRemoved = append(toBeRemoved, atom)
+							}
+						}
+						if len(toBeRemoved) != 0 {
+							for _, atom := range toBeRemoved {
+								delete(newList, atom)
+							}
+							matched = true
+						}
+					} else {
+						for v := range newList {
+							if v.value == token[1:] {
+								delete(newList, v)
+								matched = true
+							}
+						}
+					}
+					if !matched {
+						if sourceFile != "" && (strictWarnForUnmatchedRemoval || !matchedRemovals[tokenKey]) {
+							if unmatchedRemovals[sourceFile] == nil {
+								unmatchedRemovals[sourceFile] = []string{token}
+							} else {
+								unmatchedRemovals[sourceFile] = append(unmatchedRemovals[sourceFile], token)
+							}
+						}
+					} else {
+						matchedRemovals[tokenKey] = true
+					}
+				} else {
+					newList[&atom{value: token}] = sourceFile
+				}
+			} else {
+				newList[&atom{value: token}] = sourceFile
+			}
+		}
+	}
+	if warnForUnmatchedRemoval {
+		for sourceFile, tokens := range unmatchedRemovals {
+			if len(tokens) > 3 {
+				selected := []string{tokens[len(tokens)-1], tokens[len(tokens)-2], tokens[len(tokens)-3]}
+				tokens = tokens[:len(tokens)-3]
+				writeMsg(fmt.Sprintf("--- Unmatched removal atoms in %s: %s and %s more\n", sourceFile, strings.Join(selected, ", "), len(tokens)), -1, nil)
+			} else {
+				writeMsg(fmt.Sprintf("--- Unmatched removal atom(s) in %s: %s\n", sourceFile, strings.Join(tokens, ", ")), -1, nil)
+			}
+		}
+	}
+	return newList
 }
 
 func grabDict(myFileName string, justStrings, empty, recursive, incremental, newLines bool) map[string][]string { // 00010
@@ -250,9 +331,9 @@ func grabDict(myFileName string, justStrings, empty, recursive, incremental, new
 			newDict[myLine[0]] = myLine[1:]
 		}
 	}
-	if justStrings{
-		for k, v :=range newDict{
-			newDict[k] = []string{strings.Join(v," ")}
+	if justStrings {
+		for k, v := range newDict {
+			newDict[k] = []string{strings.Join(v, " ")}
 		}
 	}
 	return newDict
@@ -295,21 +376,21 @@ func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, a
 	}
 	atoms := map[*atom][]string{}
 	var d map[string][]string
-	for _, filename := range fileList{
+	for _, filename := range fileList {
 		d = grabDict(filename, false, true, false, true, newlines)
 		if len(d) == 0 {
 			continue
 		}
-		if verify_eapi && eapi == ""{
+		if verify_eapi && eapi == "" {
 			eapi = readCorrespondingEapiFile(myfilename, eapi_default)
 		}
 		for k, v := range d {
-			a, err := NewAtom(k, nil,allow_wildcard,&allow_repo,nil,eapi, nil, &allow_build_id)
+			a, err := NewAtom(k, nil, allow_wildcard, &allow_repo, nil, eapi, nil, &allow_build_id)
 			if err != nil {
-				writeMsg(fmt.Sprintf("--- Invalid atom in %s: %s\n",filename, err),-1,nil)
+				writeMsg(fmt.Sprintf("--- Invalid atom in %s: %s\n", filename, err), -1, nil)
 			} else {
-				if !allow_use && a.use!= nil{
-					writeMsg(fmt.Sprintf("--- Atom is not allowed to have USE flag(s) in %s: %s\n",filename, k), -1, nil)
+				if !allow_use && a.use != nil {
+					writeMsg(fmt.Sprintf("--- Atom is not allowed to have USE flag(s) in %s: %s\n", filename, k), -1, nil)
 					continue
 				}
 				if atoms[a] == nil {
@@ -321,8 +402,57 @@ func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, a
 		}
 	}
 	if juststrings {
-		for k,v := range atoms {
+		for k, v := range atoms {
 			atoms[k] = []string{strings.Join(v, " ")}
+		}
+	}
+	return atoms
+}
+
+func grabFilePackage(myfilename string, compatLevel, recursive int, allowWildcard, allowRepo, allowBuildId, rememberSourceFile, verifyEapi bool, eapi, eapiDefault string) [][2]string { // 00fffffn0
+	pkgs := grabFile(myfilename, compatLevel, recursive != 0, true)
+	if len(pkgs) == 0 {
+		return pkgs
+	}
+	if verifyEapi && eapi == "" {
+		eapi = readCorrespondingEapiFile(myfilename, eapiDefault)
+	}
+	myBaseName := path.Base(myfilename)
+	isPackagesFile := myBaseName == "packages"
+	atoms := [][2]string{}
+	for _, v := range pkgs {
+		pkg := v[0]
+		sourceFile := v[1]
+		pkgOrig := pkg
+		if pkg[:1] == "-" {
+			if isPackagesFile && pkg == "-*" {
+				if rememberSourceFile {
+					atoms = append(atoms, [2]string{pkg, sourceFile})
+				} else {
+					atoms = append(atoms, [2]string{pkg, ""})
+				}
+			}
+		}
+		if isPackagesFile && pkg[:1] == "*" {
+			pkg = pkg[1:]
+		}
+
+		if _, err := NewAtom(pkg, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId); err != nil {
+			writeMsg(fmt.Sprintf("--- Invalid atom in %s: %s\n", sourceFile, err), -1, nil)
+		} else {
+			if pkgOrig == pkg {
+				if rememberSourceFile {
+					atoms = append(atoms, [2]string{pkg, sourceFile})
+				} else {
+					atoms = append(atoms, [2]string{pkg, ""})
+				}
+			} else {
+				if rememberSourceFile {
+					atoms = append(atoms, [2]string{pkgOrig, sourceFile})
+				} else {
+					atoms = append(atoms, [2]string{pkgOrig, ""})
+				}
+			}
 		}
 	}
 	return atoms
@@ -365,14 +495,6 @@ func recursiveFileList(p string) []string {
 	return ret
 }
 
-func doStat(fname string, followLinks bool) (os.FileInfo, error) {
-	if followLinks {
-		return os.Stat(fname)
-	} else {
-		return os.Lstat(fname)
-	}
-}
-
 func grabLines(fname string, recursive, rememberSourceFile bool) [][2]string {
 	mylines := make([][2]string, 0)
 	if recursive {
@@ -394,85 +516,12 @@ func grabLines(fname string, recursive, rememberSourceFile bool) [][2]string {
 	return mylines
 }
 
-func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[*atom]string{
-	matchedRemovals := map[[2]string]bool{}
-	unmatchedRemovals := map[string][]string{}
-	newList := map[*atom]string{}
-	for _, subList := range lists {
-		for _, t := range subList {
-			tokenKey := t
-			token := t[0]
-			sourceFile := ""
-			if rememberSourceFile {
-				sourceFile = t[1]
-			} else {
-				sourceFile = ""
-			}
-			if token == "" {
-				continue
-			}
-			if incremental != 0 {
-				if token == "-*" {
-					newList = map[*atom]string{}
-				} else if token[:1] == "-" {
-					matched := false
-					if ignoreRepo && !strings.Contains(token, "::") {
-						toBeRemoved := []*atom{}
-						tokenSlice := token[1:]
-						for atom := range newList {
-							atomWithoutRepo := atom.value
-							if atom.repo != "" {
-								atomWithoutRepo = strings.Replace(atom.value, "::" + atom.repo,"",1)
-							}
-							if atomWithoutRepo == tokenSlice {
-								toBeRemoved = append(toBeRemoved, atom)
-							}
-						}
-						if len(toBeRemoved)!= 0 {
-							for _, atom := range toBeRemoved{
-								delete(newList,atom)
-							}
-							matched =true
-						}
-					} else {
-						for v := range newList{
-							if v.value == token[1:]{
-								delete(newList, v)
-								matched = true
-							}
-						}
-					}
-					if !matched {
-						if sourceFile!="" &&(strictWarnForUnmatchedRemoval||!matchedRemovals[tokenKey]) {
-							if unmatchedRemovals[sourceFile] == nil {
-								unmatchedRemovals[sourceFile] = []string{token}
-							} else {
-								unmatchedRemovals[sourceFile] = append(unmatchedRemovals[sourceFile], token)
-							}
-						}
-					} else {
-						matchedRemovals[tokenKey] = true
-					}
-				}else {
-					newList[&atom{value:token}] = sourceFile
-				}
-			} else {
-				newList[&atom{value:token}] = sourceFile
-			}
-		}
+func doStat(fname string, followLinks bool) (os.FileInfo, error) {
+	if followLinks {
+		return os.Stat(fname)
+	} else {
+		return os.Lstat(fname)
 	}
-	if warnForUnmatchedRemoval {
-		for sourceFile, tokens := range unmatchedRemovals {
-			if len(tokens) > 3 {
-				selected := []string{tokens[len(tokens)-1],tokens[len(tokens)-2],tokens[len(tokens)-3] }
-				tokens = tokens[:len(tokens)-3]
-				writeMsg(fmt.Sprintf("--- Unmatched removal atoms in %s: %s and %s more\n",sourceFile, strings.Join(selected,", "), len(tokens)),-1,nil)
-			} else {
-				writeMsg(fmt.Sprintf("--- Unmatched removal atom(s) in %s: %s\n", sourceFile, strings.Join(tokens, ", ")), -1, nil)
-			}
-		}
-	}
-	return newList
 }
 
 type sss struct {
@@ -979,7 +1028,7 @@ func NewProjectFilename(mydest, newmd5 string, force bool) string {
 	return newPfile
 }
 
-func readConfigs(parser *configparser.Configuration, paths []string){
+func readConfigs(parser *configparser.Configuration, paths []string) {
 	for _, p := range paths {
 		parser.ReadFile(p)
 	}
