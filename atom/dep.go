@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 const (
@@ -131,9 +132,9 @@ func getUseflagRe(eapi string) *regexp.Regexp {
 
 func cpvequal(cpv1, cpv2 string) bool {
 	c1 := NewPkgStr(cpv1, nil, nil, "", "", "", "", "", "", 0, "")
-	split1 := c1.cpv_split
+	split1 := c1.cpvSplit
 	c2 := NewPkgStr(cpv2, nil, nil, "", "", "", "", "", "", 0, "")
-	split2 := c2.cpv_split
+	split2 := c2.cpvSplit
 	if split1[0] != split2[0] || split1[1] != split2[1] {
 		return false
 	}
@@ -172,7 +173,7 @@ func parenEncloses(myList []string, unevaluatedAtom, opconvert bool) string {
 	return strings.Join(myStrParts, " ")
 }
 
-func matchSlot(atom, pkg *atom) bool {
+func matchSlot(atom *atom, pkg *pkgStr) bool {
 	if pkg.slot == atom.slot {
 		if atom.subSlot == "" {
 			return true
@@ -183,7 +184,7 @@ func matchSlot(atom, pkg *atom) bool {
 	return false
 }
 
-func useReduce(depstr string, uselist map[string]bool, masklist []string, matchall bool, excludeall []string, isSrcUri bool, eapi string, opconvert, flat bool, isValidFlag func(string) bool, tokenClass func(string) *atom, matchnone bool) []string {
+func useReduce(depstr string, uselist map[string]bool, masklist []string, matchall bool, excludeall []string, isSrcUri bool, eapi string, opconvert, flat bool, isValidFlag func(string) bool, tokenClass func(string) *atom, matchnone bool) []string { // [][]f[]fnffnnf
 	if opconvert && flat {
 		// ValueError("portage.dep.use_reduce: 'opconvert' and 'flat' are mutually exclusive")
 	}
@@ -927,7 +928,7 @@ func newBlocker(forbidOverlap bool) *blocker {
 }
 
 type atom struct {
-	value string
+	value                                                          string
 	ispackage, soname, extendedSyntax                              bool
 	buildId                                                        int
 	blocker                                                        *blocker
@@ -990,19 +991,19 @@ func (a *atom) withSlot(slot string) *atom {
 }
 
 func (a *atom) evaluateConditionals(use map[string]bool) *atom {
-	if !(a.use!= nil && a.use.conditional!= nil) {
+	if !(a.use != nil && a.use.conditional != nil) {
 		return a
 	}
 	atom := removeSlot(a.value)
-	if a.slot!= "" ||a.slotOperator!=""{
+	if a.slot != "" || a.slotOperator != "" {
 		atom += slotSeparator
-		if a.slot != ""{
+		if a.slot != "" {
 			atom += a.slot
 		}
 		if a.subSlot != "" {
 			atom += fmt.Sprintf("/%s", a.subSlot)
 		}
-		if a.slotOperator!= "" {
+		if a.slotOperator != "" {
 			atom += a.slotOperator
 		}
 	}
@@ -1013,24 +1014,48 @@ func (a *atom) evaluateConditionals(use map[string]bool) *atom {
 	return b
 }
 
-func (a *atom) violatedConditionals(otherUse map[string]bool, isValidFlag func(string)bool, parentUse map[string]bool) *atom{ // none
+func (a *atom) violatedConditionals(otherUse map[string]bool, isValidFlag func(string) bool, parentUse map[string]bool) *atom { // none
 	if a.use == nil {
 		return a
 	}
 	atom := removeSlot(a.value)
-	if a.slot!="" || a.slotOperator!= ""{
+	if a.slot != "" || a.slotOperator != "" {
 		atom += slotSeparator
-		if a.slot!= "" {
+		if a.slot != "" {
 			atom += a.slot
 		}
 		if a.subSlot != "" {
 			atom += fmt.Sprintf("/%s", a.subSlot)
 		}
-		if a.slotOperator!= "" {
+		if a.slotOperator != "" {
 			atom += a.slotOperator
 		}
 	}
 	useDep := a.use.violatedConditionals(otherUse, isValidFlag, parentUse)
+	atom += useDep.str()
+	m := true
+	b, _ := NewAtom(atom, nil, true, &m, nil, "", nil, nil)
+	return b
+}
+
+func (a *atom) evalQaConditionals(useMask, useForce map[string]bool) *atom {
+	if a.use == nil || a.use.conditional == nil {
+		return a
+	}
+	atom := removeSlot(a.value)
+	if a.slot != "" || a.slotOperator != "" {
+		atom += slotSeparator
+		if a.slot != "" {
+			atom += a.slot
+		}
+		if a.subSlot != "" {
+			atom += fmt.Sprintf("/%s", a.subSlot)
+		}
+		if a.slotOperator != "" {
+			atom += a.slotOperator
+		}
+	}
+	useDep := a.use.evalQaConditionals(useMask, useForce)
 	atom += useDep.str()
 	m := true
 	b, _ := NewAtom(atom, nil, true, &m, nil, "", nil, nil)
@@ -1053,13 +1078,25 @@ func (a *atom) intersects(other *atom) bool {
 	if a == other {
 		return true
 	}
-	if a.cp != other.cp || a.use != other.use ||	a.operator != other.operator ||	a.cpv != other.cpv{
+	if a.cp != other.cp || a.use != other.use || a.operator != other.operator || a.cpv != other.cpv {
 		return false
 	}
-	if a.slot =="" ||	other.slot =="" ||	a.slot == other.slot{
+	if a.slot == "" || other.slot == "" || a.slot == other.slot {
 		return true
 	}
 	return false
+}
+
+func (a *atom) copy() *atom {
+	return a
+}
+
+func (a *atom) deepcopy() *atom { // memo=None, memo[id(self)] = self
+	return a
+}
+
+func (a *atom) match(pkg *pkgStr) bool {
+	return len(matchFromList(a, []*pkgStr{pkg})) > 0
 }
 
 func NewAtom(s string, unevaluatedAtom *atom, allowWildcard bool, allowRepo *bool, _use *useDep, eapi string, isValidFlag func(string) bool, allowBuildId *bool) (*atom, error) { //s, None, False, None, None, None, None, None
@@ -1485,7 +1522,7 @@ func isValidAtom(atom string, allowBlockers, allowWildcard, allowRepo bool, eapi
 
 var extendedCpReCache = map[string]*regexp.Regexp{}
 
-func extended_cp_match(extendedCp, otherCp string) bool {
+func extendedCpMatch(extendedCp, otherCp string) bool {
 	extendedCpRe := extendedCpReCache[extendedCp]
 	if extendedCpRe == nil {
 		extendedCpRe = regexp.MustCompile("^" + strings.Replace(regexp.QuoteMeta(extendedCp), "\\*", "[^/]*", -1) + "$")
@@ -1505,4 +1542,562 @@ func removeSlot(mydep string) string {
 		}
 	}
 	return mydep
+}
+
+func getOperator(mydep string) string {
+	a, _ := NewAtom(mydep, nil, false, nil, nil, "", nil, nil)
+	return a.operator
+}
+
+func depGetcpv(mydep string) *pkgStr {
+	a, _ := NewAtom(mydep, nil, false, nil, nil, "", nil, nil)
+	return a.cpv
+}
+
+func depGetslot(mydep string) string {
+	mydep = strings.Split(mydep, repoSeparator)[0]
+	colon := strings.Index(mydep, slotSeparator)
+	if colon != -1 {
+		bracket := strings.Index(mydep[colon:], "[")
+		if bracket == -1 {
+			return mydep[colon+1:]
+		} else {
+			return mydep[colon+1 : colon+bracket]
+		}
+	}
+	return ""
+}
+
+func depGetrepo(mydep string) string {
+	colon := strings.Index(mydep, repoSeparator)
+	if colon != -1 {
+		bracket := strings.Index(mydep[colon:], "[")
+		if bracket == -1 {
+			return mydep[colon+2:]
+		} else {
+			return mydep[colon+2 : colon+bracket]
+		}
+	}
+	return ""
+}
+
+func depGetUseDeps(depend string) []string {
+	useList := []string{}
+	openBracket := strings.Index(depend, "[")
+	commaSeparated := false
+	bracketCount := 0
+	for openBracket != -1 {
+		bracketCount += 1
+		if bracketCount > 1 {
+			//raise InvalidAtom(_("USE Dependency with more "
+			//"than one set of brackets: %s") % (depend,))
+		}
+		closeBracket := strings.Index(depend[openBracket:], "]")
+		if closeBracket == -1 {
+			//raise InvalidAtom(_("USE Dependency with no closing bracket: %s") % depend )
+		}
+		use := depend[openBracket+1 : closeBracket+openBracket]
+		if len(use) == 0 {
+			//raise InvalidAtom(_("USE Dependency with "
+			//"no use flag ([]): %s") % depend )
+		}
+		if !commaSeparated {
+			commaSeparated = strings.Contains(use, ",")
+		}
+		if commaSeparated && bracketCount > 1 {
+			//raise InvalidAtom(_("USE Dependency contains a mixture of "
+			//"comma and bracket separators: %s") % depend )
+		}
+
+		if commaSeparated {
+			for _, x := range strings.Split(use, ",") {
+				if x != "" {
+					useList = append(useList, x)
+				} else {
+					//raise InvalidAtom(_("USE Dependency with no use "
+					//"flag next to comma: %s") % depend )
+				}
+			}
+		} else {
+			useList = append(useList, use)
+		}
+		openBracket = strings.Index(depend[openBracket+1:], "[")
+	}
+	return useList
+}
+
+func isJustName(mypkg string) bool {
+	a, err := NewAtom(mypkg, nil, false, nil, nil, "", nil, nil)
+	if err == nil {
+		return mypkg == a.cp
+	}
+	p := strings.Split(mypkg, "-")
+	for _, x := range p[len(p)-2:] {
+		if verVerify(x) {
+			return false
+		}
+	}
+	return true
+}
+
+func isSpecific(mypkg string) bool {
+	a, err := NewAtom(mypkg, nil, false, nil, nil, "", nil, nil)
+	if err == nil {
+		return mypkg != a.cp
+	}
+	return !isJustName(mypkg)
+}
+
+func depGetKey(mydep string) string {
+	a, _ := NewAtom(mydep, nil, false, nil, nil, "", nil, nil)
+	return a.cp
+}
+
+func matchToList(mypkg *pkgStr, mylist map[*atom][]string) []*atom {
+	matches := map[*atom]bool{}
+	result := []*atom{}
+	pkgs := []*pkgStr{mypkg}
+	for x := range mylist {
+		if !matches[x] && len(matchFromList(x, pkgs)) > 0 {
+			matches[x] = true
+			result = append(result, x)
+		}
+	}
+	return result
+}
+
+func bestMatchToList(mypkg *pkgStr, mylist map[*atom][]string) *atom {
+	operatorValues := map[string]int{"=": 6, "~": 5, "=*": 4, ">": 2, "<": 2, ">=": 2, "<=": 2, "": 1}
+	maxvalue := -99
+	var bestm *atom = nil
+	var mypkgCpv *pkgStr = nil
+	for _, x := range matchToList(mypkg, mylist) {
+		if x.extendedSyntax {
+			if x.operator == "=*" {
+				if maxvalue < 0 {
+					maxvalue = 0
+					bestm = x
+				}
+			} else if x.slot != "" {
+				if maxvalue < -1 {
+					maxvalue = -1
+					bestm = x
+				}
+			} else {
+				if maxvalue < -2 {
+					maxvalue = -2
+					bestm = x
+				}
+			}
+			continue
+		}
+		if depGetslot(x.value) != "" {
+			if maxvalue < 3 {
+				maxvalue = 3
+				bestm = x
+			}
+		}
+		opVal := operatorValues[x.operator]
+		if opVal > maxvalue {
+			maxvalue = opVal
+			bestm = x
+		} else if opVal == maxvalue && opVal == 2 {
+			if mypkgCpv == nil {
+				mypkgCpv = mypkg.cpv
+			}
+			if mypkgCpv == nil {
+				mypkgCpv = NewPkgStr(removeSlot(mypkg.string), nil, nil, "", "", "", "", "", "", 0, "")
+			}
+			if bestm.cpv == mypkgCpv || bestm.cpv == x.cpv {
+			} else if x.cpv == mypkgCpv {
+				bestm = x
+			} else {
+				cpvList := []*pkgStr{bestm.cpv, mypkgCpv, x.cpv}
+				sort.Slice(cpvList, func(i, j int) bool {
+					b, _ := verCmp(cpvList[i].version, cpvList[j].version)
+					return b < 0
+				})
+				if cpvList[0] == mypkgCpv || cpvList[len(cpvList)-1] == mypkgCpv {
+					if cpvList[1] == x.cpv {
+						bestm = x
+					}
+				} else {
+				}
+			}
+		}
+	}
+	return bestm
+
+}
+
+func matchFromList(mydep *atom, candidateList []*pkgStr) []*pkgStr {
+	if len(candidateList) == 0 {
+		return []*pkgStr{}
+	}
+	mydepA := mydep
+	if "!" == mydep.value[:1] {
+		mydepS := ""
+		if "!" == mydep.value[1:2] {
+			mydepS = mydep.value[2:]
+		} else {
+			mydepS = mydep.value[1:]
+		}
+		ar := true
+		mydepA, _ = NewAtom(mydepS, nil, true, &ar, nil, "", nil, nil)
+	}
+
+	mycpv := mydepA.cpv
+	mycpvCps := catPkgSplit(mycpv.string, 0, "")
+	//slot      := mydepA.slot
+	buildId := mydepA.buildId
+
+	_, _, ver, rev := "", "", "", ""
+	if mycpvCps == [4]string{} {
+		cp := catsplit(mycpv.string)
+		_ = cp[0]
+		_ = cp[1]
+		ver = ""
+		rev = ""
+	} else {
+		_, _, ver, rev = mycpvCps[0], mycpvCps[1], mycpvCps[2], mycpvCps[3]
+	}
+	if mydepA.value == mycpv.string {
+		//raise KeyError(_("Specific key requires an operator"
+		//" (%s) (try adding an '=')") % (mydep))
+	}
+
+	operator := ""
+	if ver != "" && rev != "" {
+		operator = mydepA.operator
+		if operator == "" {
+			writeMsg(fmt.Sprintf("!!! Invalid atom: %s\n", mydep.value), -1, nil)
+		}
+		return []*pkgStr{}
+	} else {
+		operator = ""
+	}
+	mylist := []*pkgStr{}
+	if mydepA.extendedSyntax {
+		for _, x := range candidateList {
+			cp := x.cp
+			if cp == "" {
+				mysplit := catPkgSplit(removeSlot(x.string), 1, "")
+				if mysplit != [4]string{} {
+					cp = mysplit[0] + "/" + mysplit[1]
+				}
+			}
+			if cp == "" {
+				continue
+			}
+			if cp == mycpv.string || extendedCpMatch(mydepA.cp, cp) {
+				mylist = append(mylist, x)
+			}
+		}
+		if len(mylist) > 0 && mydepA.operator == "=*" {
+			candidateList = mylist
+			mylist = []*pkgStr{}
+			ver = mydepA.version[1 : len(mydepA.version)-1]
+			for _, x := range candidateList {
+				xVer := x.version
+				if xVer == "" {
+					xs := catPkgSplit(removeSlot(x.string), 1, "")
+					if xs == [4]string{} {
+						continue
+					}
+					xVer = strings.Join(xs[len(xs)-2:], "-")
+				}
+				if strings.Contains(xVer, ver) {
+					mylist = append(mylist, x)
+				}
+			}
+		}
+	} else if operator == "" {
+		for _, x := range candidateList {
+			cp := x.cp
+			if cp == "" {
+				mysplit := catPkgSplit(removeSlot(x.string), 1, "")
+				if mysplit != [4]string{} {
+					cp = mysplit[0] + "/" + mysplit[1]
+				}
+				if cp == "" {
+					continue
+				}
+			}
+			if cp == mydepA.cp {
+				mylist = append(mylist, x)
+			}
+		}
+	} else if operator == "=" {
+		for _, x := range candidateList {
+			xcpv := x.cpv
+			if xcpv == nil {
+				xcpv = &pkgStr{string: removeSlot(x.string)}
+			}
+			if !cpvequal(xcpv.string, mycpv.string) {
+				continue
+			}
+			if buildId != 0 {
+				continue
+			}
+			mylist = append(mylist, x)
+		}
+	} else if operator == "=*" {
+		myver := strings.TrimPrefix(mycpvCps[2], "0")
+		if myver == "" || !unicode.IsDigit(rune(myver[0])) {
+			myver = "0" + myver
+		}
+		mycpvCmp := ""
+		if myver == mycpvCps[2] {
+			mycpvCmp = mycpv.string
+		} else {
+			mycpvCmp = strings.Replace(mycpv.string, mydepA.cp+"-"+mycpvCps[2], mydepA.cp+"-"+myver, 1)
+		}
+		for _, x := range candidateList {
+			pkg := x
+			if pkg.cp == "" {
+				pkg = NewPkgStr(removeSlot(x.string), nil, nil, "", "", "", "", "", "", 0, "")
+			}
+			xs := pkg.cpvSplit
+			myver := strings.TrimPrefix(xs[2], "0")
+			if len(myver) == 0 || !unicode.IsDigit(rune(myver[0])) {
+				myver = "0" + myver
+			}
+			xcpv := ""
+			if myver == xs[2] {
+				xcpv = pkg.cpv.string
+			} else {
+				xcpv = strings.Replace(pkg.cpv.string, pkg.cp+"-"+xs[2], pkg.cp+"-"+myver, 1)
+			}
+			if strings.HasPrefix(xcpv, mycpvCmp) {
+				nextChar := xcpv[len(mycpvCmp) : len(mycpvCmp)+1]
+				if nextChar == "" || nextChar == "." || nextChar == "_" || nextChar == "-" || unicode.IsDigit(rune(mycpvCmp[len(mycpvCmp)-1])) != unicode.IsDigit(rune(nextChar[0])) {
+					mylist = append(mylist, x)
+				}
+			}
+		}
+	} else if operator == "~" {
+		for _, x := range candidateList {
+			xs := x.cpvSplit
+			if xs == [4]string{} {
+				xs = catPkgSplit(removeSlot(x.string), 1, "")
+			}
+			if xs == [4]string{} {
+				//raise InvalidData(x)
+			}
+			if !cpvequal(xs[0]+"/"+xs[1]+"-"+xs[2], mycpvCps[0]+"/"+mycpvCps[1]+"-"+mycpvCps[2]) {
+				continue
+			}
+			if xs[2] != ver {
+				continue
+			}
+			mylist = append(mylist, x)
+		}
+	} else if operator == ">" || operator == ">=" || operator == "<" || operator == "<=" {
+		for _, x := range candidateList {
+			pkg := x
+			if x.cp == "" {
+				pkg = NewPkgStr(removeSlot(x.string), nil, nil, "", "", "", "", "", "", 0, "")
+			}
+
+			if pkg.cp != mydepA.cp {
+				continue
+			}
+			result, err := verCmp(pkg.version, mydepA.version)
+			if err != nil {
+				writeMsg(fmt.Sprintf("\nInvalid package name: %s\n", x), -1, nil)
+				//raise
+			}
+			if operator == ">" {
+				if result > 0 {
+					mylist = append(mylist, x)
+				}
+			} else if operator == ">=" {
+				if result >= 0 {
+					mylist = append(mylist, x)
+				}
+			} else if operator == "<" {
+				if result < 0 {
+					mylist = append(mylist, x)
+				}
+			} else if operator == "<=" {
+				if result <= 0 {
+					mylist = append(mylist, x)
+				}
+			} else {
+				//raise KeyError(_("Unknown operator: %s") % mydep)
+			}
+		}
+	} else {
+		//raise KeyError(_("Unknown operator: %s") % mydep)
+	}
+
+	if mydepA.slot != "" {
+		candidateList = mylist
+		mylist = []*pkgStr{}
+		for _, x := range candidateList {
+			xPkg := x
+			if xPkg.cpv == nil {
+				xslot := depGetslot(x.string)
+				if xslot != "" {
+					xPkg = NewPkgStr(removeSlot(x.string), nil, nil, "", "", xslot, "", "", "", 0, "")
+				} else {
+					continue
+				}
+			}
+
+			if xPkg == nil {
+				mylist = append(mylist, x)
+			} else {
+				if xPkg.slot == "" {
+					mylist = append(mylist, x)
+				} else {
+					if matchSlot(mydepA, xPkg) {
+						mylist = append(mylist, x)
+					}
+				}
+			}
+		}
+	}
+
+	if mydepA.unevaluatedAtom.use != nil {
+		candidateList = mylist
+		mylist = []*pkgStr{}
+		for _, x := range candidateList {
+			//use = getattr(x, "use", None)
+			//if use is not None:
+			//if mydep.unevaluated_atom.use and \
+			//not x.iuse.is_valid_flag(
+			//	mydep.unevaluated_atom.use.required):
+			//continue
+			//
+			//if mydep.use:
+			//is_valid_flag = x.iuse.is_valid_flag
+			//missing_enabled = frozenset(flag for flag in
+			//mydep.use.missing_enabled if not is_valid_flag(flag))
+			//missing_disabled = frozenset(flag for flag in
+			//mydep.use.missing_disabled if not is_valid_flag(flag))
+			//
+			//if mydep.use.enabled:
+			//if any(f in mydep.use.enabled for f in missing_disabled):
+			//continue
+			//need_enabled = mydep.use.enabled.difference(use.enabled)
+			//if need_enabled:
+			//if any(f not in missing_enabled for f in need_enabled):
+			//continue
+			//
+			//if mydep.use.disabled:
+			//if any(f in mydep.use.disabled for f in missing_enabled):
+			//continue
+			//need_disabled = mydep.use.disabled.intersection(use.enabled)
+			//if need_disabled:
+			//if any(f not in missing_disabled for f in need_disabled):
+			//continue
+
+			mylist = append(mylist, x)
+		}
+	}
+
+	if mydepA.repo != "" {
+		candidateList = mylist
+		mylist = []*pkgStr{}
+		for _, x := range candidateList {
+			repo := x.repo
+			if repo == "" {
+				repo = depGetrepo(x.string)
+			}
+			if repo != "" && repo != unknownRepo && repo != mydepA.repo {
+				continue
+			}
+			mylist = append(mylist, x)
+		}
+	}
+
+	return mylist
+}
+
+func humanReadableRequiredUse(requiredUse string) string {
+	return strings.Replace(strings.Replace(strings.Replace(requiredUse, "^^", "exactly-one-of", -1), "||", "any-of", -1), "??", "at-most-one-of", -1)
+}
+
+func get_required_use_flags(requiredUse, eapi string) map[string]bool { //n
+	eapiAttrs := getEapiAttrs(eapi)
+	validOperators := map[string]bool{}
+	if eapiAttrs.requiredUseAtMostOneOf {
+		validOperators = map[string]bool{"||": true, "^^": true, "??": true}
+	} else {
+		validOperators = map[string]bool{"||": true, "^^": true}
+	}
+
+	mysplit := strings.Fields(requiredUse)
+	level := 0
+	stack := [][]string{{}}
+	needBracket := false
+	usedFlags := map[string]bool{}
+	registerToken := func(token string) {
+		if strings.HasSuffix(token, "?") {
+			token = token[:len(token)-1]
+		}
+		if strings.HasPrefix(token, "!") {
+			token = token[1:]
+		}
+		usedFlags[token] = true
+	}
+	for _, token := range mysplit {
+		if token == "(" {
+			needBracket = false
+			stack = append(stack, []string{})
+			level += 1
+		} else if token == ")" {
+			if needBracket {
+				//raise InvalidDependString(
+				//	_("malformed syntax: '%s'") % required_use)
+			}
+			if level > 0 {
+				level -= 1
+				l := stack[len(stack)-1]
+				stack = stack[:len(stack)-1]
+				ignore := false
+				if len(stack[level]) > 0 {
+					if validOperators[stack[level][len(stack[level])-1]] || stack[level][len(stack[level])-1] == "" && strings.HasSuffix(stack[level][len(stack[level])-1], "?") {
+						ignore = true
+						stack[level] = stack[level][:len(stack[level])-1]
+						stack[level] = append(stack[level], "")
+					}
+				}
+				if len(l) > 0 && !ignore {
+					for _, x := range l {
+						stack[level] = append(stack[level], x)
+					}
+				}
+			} else {
+				//raise InvalidDependString(
+				//	_("malformed syntax: '%s'") % required_use)
+			}
+		} else if validOperators[token] {
+			if needBracket {
+				//raise InvalidDependString(
+				//	_("malformed syntax: '%s'") % required_use)
+			}
+			needBracket = true
+			stack[level] = append(stack[level], token)
+		} else {
+			if needBracket {
+				//raise InvalidDependString(
+				//	_("malformed syntax: '%s'") % required_use)
+			}
+			if strings.HasSuffix(token, "?") {
+				needBracket = true
+				stack[level] = append(stack[level], token)
+			} else {
+				stack[level] = append(stack[level], "")
+			}
+			registerToken(token)
+		}
+	}
+	if level != 0 || needBracket {
+		//raise InvalidDependString(
+		//	_("malformed syntax: '%s'") % required_use)
+
+	}
+	return usedFlags
 }

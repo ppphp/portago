@@ -1,42 +1,37 @@
 package atom
 
 type cvsSync struct {
-
 }
 
-func NewCvsSync() *cvsSync{
+func NewCvsSync() *cvsSync {
 	return &cvsSync{}
 }
 
 type gitSync struct {
-
 }
 
-func NewGitSync() *gitSync{
+func NewGitSync() *gitSync {
 	return &gitSync{}
 }
 
 type rsyncSync struct {
-
 }
 
-func NewRsyncSync() *rsyncSync{
+func NewRsyncSync() *rsyncSync {
 	return &rsyncSync{}
 }
 
 type svnSync struct {
-
 }
 
-func NewSvnSync() *svnSync{
+func NewSvnSync() *svnSync {
 	return &svnSync{}
 }
 
 type webrsyncSync struct {
-
 }
 
-func NewWebrsyncSync() *webrsyncSync{
+func NewWebrsyncSync() *webrsyncSync {
 	return &webrsyncSync{}
 }
 
@@ -46,11 +41,11 @@ type modules struct {
 
 var moduleController modules
 
-func moduleSpecificOptions(repo *repoConfig) map[string]bool{
+func moduleSpecificOptions(repo *repoConfig) map[string]bool {
 	r := map[string]bool{}
-	if repo.syncType != ""{
-		for _, v := range moduleController.modules[repo.syncType]["module_specific_options"]{
-			r[v]=true
+	if repo.syncType != "" {
+		for _, v := range moduleController.modules[repo.syncType]["module_specific_options"] {
+			r[v] = true
 		}
 	}
 	return r

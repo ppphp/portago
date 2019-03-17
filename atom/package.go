@@ -54,11 +54,11 @@ func (p *Package) eapi() string {
 }
 
 func (p *Package) buildId() string {
-	return p.cpv.build_id
+	return p.cpv.buildId
 }
 
 func (p *Package) buildTime() string {
-	return p.cpv.build_time
+	return p.cpv.buildTime
 }
 
 //func (p *Package)definedPhases()string{
@@ -92,14 +92,14 @@ var useConditionalKeys = map[string]bool{
 }
 
 type packageMetadataWrapper struct {
-	valueDict                                 map[string]string
-	pkg                                       *Package
+	valueDict                                        map[string]string
+	pkg                                              *Package
 	allMetadataKeys, wrappedKeys, useConditionalKeys map[string]bool
 }
 
 func (p *packageMetadataWrapper) setItem(k, v string) {
 	if p.allMetadataKeys[k] {
-		p.valueDict[k]=v
+		p.valueDict[k] = v
 	}
 	switch k {
 	case "COUNTER":

@@ -243,7 +243,7 @@ var (
 	missingCat = "null"
 )
 
-func catPkgSplit(mydata string, silent int, eapi string) [4]string {
+func catPkgSplit(mydata string, silent int, eapi string) [4]string { // 1n
 	// return mydata.cpv_split // if can
 	mySplit := strings.SplitN(mydata, "/", 1)
 	var cat string
@@ -257,35 +257,37 @@ func catPkgSplit(mydata string, silent int, eapi string) [4]string {
 			p = pkgSplit(mySplit[1], eapi)
 		}
 	}
-	if p==[3]string{} {
+	if p == [3]string{} {
 		return [4]string{}
 	}
-	return [4]string{cat, p[0],p[1],p[2]}
+	return [4]string{cat, p[0], p[1], p[2]}
 }
 
 type pkgStr struct {
 	string
-	metadata, settings                                                                              map[string]string
-	eapi, repo, slot, build_time, build_id, file_size, db, cp, version, subSlot, slotInvalid, _stable string
-	mtime int
-	cpv_split                                                                                       [4]string
-	cpv                                                                                             *pkgStr
+	metadata                                                                              map[string]string
+	settings                                                                              *Config
+	eapi, repo, slot, buildTime, buildId, fileSize, db, cp, version, subSlot, slotInvalid string
+	mtime                                                                                 int
+	_stable                                                                               *bool
+	cpvSplit                                                                              [4]string
+	cpv                                                                                   *pkgStr
 }
 
-func (p *pkgStr) stable() string {
-	if p._stable != "" {
-		return p._stable
+func (p *pkgStr) stable() bool {
+	if p._stable != nil {
+		return *p._stable
 	}
-	// TODO
-	//if !settings.localConfig{}
-	//settings := p.settings
-	//stable := settings.isStable(p)
-	//p._stable = stable
-	//return stable
-	return ""
+	settings := p.settings
+	if settings == nil {
+		return false
+	}
+	p._stable = new(bool)
+	*p._stable = settings.isStable(p)
+	return *p._stable
 }
 
-func NewPkgStr(cpv string, metadata, settings map[string]string, eapi, repo, slot, build_time, build_id, file_size string, mtime int, db string) *pkgStr {
+func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, repo, slot, build_time, build_id, file_size string, mtime int, db string) *pkgStr {
 	p := &pkgStr{string: cpv}
 	if len(metadata) != 0 {
 		p.metadata = metadata
@@ -320,16 +322,16 @@ func NewPkgStr(cpv string, metadata, settings map[string]string, eapi, repo, slo
 	if eapi != "" {
 		p.eapi = eapi
 	}
-	p.build_time = build_time // int
-	p.file_size = file_size   // int
-	p.build_id = build_id     // int
-	p.mtime = mtime           // int
-	p.cpv_split = catPkgSplit(cpv, 1, eapi)
-	p.cp = p.cpv_split[0] + "/" + p.cpv_split[1]
-	if p.cpv_split[len(p.cpv_split)-1] == "r0" && cpv[len(cpv)-3:] != "-r0" {
-		p.version = strings.Join(p.cpv_split[2:4], "-")
+	p.buildTime = build_time // int
+	p.fileSize = file_size   // int
+	p.buildId = build_id     // int
+	p.mtime = mtime          // int
+	p.cpvSplit = catPkgSplit(cpv, 1, eapi)
+	p.cp = p.cpvSplit[0] + "/" + p.cpvSplit[1]
+	if p.cpvSplit[len(p.cpvSplit)-1] == "r0" && cpv[len(cpv)-3:] != "-r0" {
+		p.version = strings.Join(p.cpvSplit[2:4], "-")
 	} else {
-		p.version = strings.Join(p.cpv_split[2:], "-")
+		p.version = strings.Join(p.cpvSplit[2:], "-")
 	}
 	p.cpv = p
 	if slot != "" {
@@ -355,7 +357,7 @@ func NewPkgStr(cpv string, metadata, settings map[string]string, eapi, repo, slo
 		}
 		if repo != "" {
 			repo = genValidRepo(repo)
-			if repo == ""{
+			if repo == "" {
 				repo = unknownRepo
 			}
 			p.repo = repo
@@ -369,30 +371,30 @@ func PkgSplit(mypkg string, silent int, eapi string) [3]string {
 	if catPSplit == [4]string{} {
 		return [3]string{}
 	}
-	cat, pn, ver, rev := catPSplit[0],catPSplit[1],catPSplit[2],catPSplit[3]
+	cat, pn, ver, rev := catPSplit[0], catPSplit[1], catPSplit[2], catPSplit[3]
 	if cat == missingCat && !strings.Contains(mypkg, "/") {
 		return [3]string{pn, ver, rev}
 	}
 	return [3]string{cat + "/" + pn, ver, rev}
 }
 
-func cpvGetKey(mycpv , eapi string) string {
+func cpvGetKey(mycpv, eapi string) string {
 	//return mycpv.cp //TODO
 	mySplit := catPkgSplit(mycpv, 1, eapi)
 	if mySplit != [4]string{} {
-		return mySplit[0]+"/"+mySplit[1]
+		return mySplit[0] + "/" + mySplit[1]
 	}
 	// warnings.warn("portage.versions.cpv_getkey() " + \
 	// "called with invalid cpv: '%s'" % (mycpv,),
 	// DeprecationWarning, stacklevel=2) //TODO
 	mySlash := strings.SplitN(mycpv, "/", 2)
 	myNSplit := pkgSplit(mySlash[0], eapi)
-	if myNSplit ==[3]string{}{
+	if myNSplit == [3]string{} {
 		return ""
 	}
 	myLen := len(mySlash)
 	if myLen == 2 {
-		return mySlash[0] +"/"+mySplit[0]
+		return mySlash[0] + "/" + mySplit[0]
 	} else {
 		return mySplit[0]
 	}
@@ -401,15 +403,16 @@ func cpvGetKey(mycpv , eapi string) string {
 func cpvGetVersion(mycpv, eapi string) string {
 	//return mycpv.version //TODO
 	cp := cpvGetKey(mycpv, eapi)
-	if cp == ""{
+	if cp == "" {
 		return ""
 	}
 	return mycpv[len(cp+"-"):]
 }
 
 var splitCache = map[string]*pkgStr{}
+
 func cmpCpv(cpv1, cpv2, eapi string) (int, error) {
-	split1, ok:=splitCache[cpv1]
+	split1, ok := splitCache[cpv1]
 	if !ok {
 		//split1 = cpv1.pv //TODO
 		split1 = NewPkgStr(cpv1, nil, nil, eapi, "", "", "", "", "", 0, "")
@@ -421,7 +424,7 @@ func cmpCpv(cpv1, cpv2, eapi string) (int, error) {
 	return verCmp(cpv1, cpv2)
 }
 
-func cpvSortKey(eapi string) func (string,string,string,)(int, error){
+func cpvSortKey(eapi string) func(string, string, string) (int, error) {
 	return cmpCpv // a sort key
 }
 
@@ -452,4 +455,3 @@ func best(myMatches []string, eapi string) string {
 	}
 	return bestMatch
 }
-

@@ -20,7 +20,7 @@ func Build() {
 }
 
 // function to drive ebuild.sh
-func EbuildDriver(env []string, action string){
+func EbuildDriver(env []string, action string) {
 	c := exec.Command("./bin/ebuild.sh", action)
 	var out, err bytes.Buffer
 	c.Stdout = &out

@@ -20,7 +20,7 @@ func IndexCategories() []string {
 }
 
 func IndexPackages(category string) []string {
-	fs, err := ioutil.ReadDir(EbuildDir+"/"+category)
+	fs, err := ioutil.ReadDir(EbuildDir + "/" + category)
 	if err != nil {
 		println(err.Error())
 		return nil

@@ -5,8 +5,8 @@ package atom
 import (
 	"bytes"
 	"fmt"
-	"github.com/ppphp/configparser"
 	"github.com/google/shlex"
+	"github.com/ppphp/configparser"
 	"golang.org/x/sys/unix"
 	"io/ioutil"
 	"os"
@@ -22,7 +22,7 @@ import (
 
 var noiseLimit = 0
 
-func writeMsg(mystr string, noiseLevel int, fd *os.File) {
+func writeMsg(mystr string, noiseLevel int, fd *os.File) { //0n
 	if fd == nil {
 		fd = os.Stderr
 	}
@@ -31,11 +31,11 @@ func writeMsg(mystr string, noiseLevel int, fd *os.File) {
 	}
 }
 
-func writeMsgStdout(mystr string, noiseLevel int) {
+func writeMsgStdout(mystr string, noiseLevel int) { //0
 	writeMsg(mystr, noiseLevel, os.Stdout)
 }
 
-func writeMsgLevel(msg string, level, noiselevel int) {
+func writeMsgLevel(msg string, level, noiselevel int) { //00
 	var fd *os.File
 	if level >= 30 {
 		fd = os.Stderr
@@ -49,7 +49,7 @@ func NormalizePath(mypath string) string {
 	return path.Clean(mypath)
 }
 
-func grabFile(myFileName string, compatLevel int, recursive, rememberSourceFile bool) [][2]string {
+func grabFile(myFileName string, compatLevel int, recursive, rememberSourceFile bool) [][2]string { // 00f
 	myLines := grabLines(myFileName, recursive, true)
 	var newLines [][2]string
 
@@ -164,7 +164,7 @@ func stackDictlist(originalDicts []map[string][]string, incremental int, increme
 	return finalDict
 }
 
-func stackDicts(dicts []map[string]string, incremental int, incrementals []string, ignoreNone int) map[string]string {
+func stackDicts(dicts []map[string]string, incremental int, incrementals map[string]bool, ignoreNone int) map[string]string { // 0[]0
 	finalDict := map[string]string{}
 	for _, mydict := range dicts {
 		if mydict == nil {
@@ -172,7 +172,7 @@ func stackDicts(dicts []map[string]string, incremental int, incrementals []strin
 		}
 		for k, v := range mydict {
 			c := false
-			for _, r := range incrementals {
+			for r := range incrementals {
 				if r == k {
 					c = true
 					break
@@ -215,7 +215,7 @@ func appendRepo(atomList []AS, repoName string, rememberSourceFile bool) []SB {
 	return sb
 }
 
-func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[*atom]string {
+func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[*atom]string { //1ffff
 	matchedRemovals := map[[2]string]bool{}
 	unmatchedRemovals := map[string][]string{}
 	newList := map[*atom]string{}
@@ -367,7 +367,7 @@ func readCorrespondingEapiFile(filename, defaults string) string { // "0"
 	return eapi
 }
 
-func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, allow_wildcard, allow_repo, allow_build_id, allow_use, verify_eapi bool, eapi, eapi_default string) map[*atom][]string { //000ffftf none 0
+func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, allowWildcard, allowRepo, allowBuildId, allowUse, verifyEapi bool, eapi, eapiDefault string) map[*atom][]string { //000ffftf none 0
 	fileList := []string{}
 	if recursive {
 		fileList = recursiveFileList(myfilename)
@@ -381,15 +381,15 @@ func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, a
 		if len(d) == 0 {
 			continue
 		}
-		if verify_eapi && eapi == "" {
-			eapi = readCorrespondingEapiFile(myfilename, eapi_default)
+		if verifyEapi && eapi == "" {
+			eapi = readCorrespondingEapiFile(myfilename, eapiDefault)
 		}
 		for k, v := range d {
-			a, err := NewAtom(k, nil, allow_wildcard, &allow_repo, nil, eapi, nil, &allow_build_id)
+			a, err := NewAtom(k, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId)
 			if err != nil {
 				writeMsg(fmt.Sprintf("--- Invalid atom in %s: %s\n", filename, err), -1, nil)
 			} else {
-				if !allow_use && a.use != nil {
+				if !allowUse && a.use != nil {
 					writeMsg(fmt.Sprintf("--- Atom is not allowed to have USE flag(s) in %s: %s\n", filename, k), -1, nil)
 					continue
 				}
@@ -495,7 +495,7 @@ func recursiveFileList(p string) []string {
 	return ret
 }
 
-func grabLines(fname string, recursive, rememberSourceFile bool) [][2]string {
+func grabLines(fname string, recursive, rememberSourceFile bool) [][2]string { // 0f
 	mylines := make([][2]string, 0)
 	if recursive {
 		for _, f := range recursiveFileList(fname) {
@@ -697,7 +697,7 @@ func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, ex
 }
 
 var (
-	varexpandWordChars        = map[uint8]bool{'a': true, 'b': true, 'c': true, 'd': true, 'e': true, 'f': true, 'g': true, 'h': true, 'i': true, 'j': true, 'k': true, 'l': true, 'm': true, 'n': true, 'o': true, 'p': true, 'q': true, 'r': true, 's': true, 't': true, 'u': true, 'v': true, 'w': true, 'x': true, 'y': true, 'z': true, 'A': true, 'B': true, 'C': true, 'D': true, 'E': true, 'F': true, 'G': true, 'H': true, 'I': true, 'J': true, 'K': true, 'L': true, 'M': true, 'N': true, 'O': true, 'P': true, 'Q': true, 'R': true, 'S': true, 'T': true, 'U': true, 'V': true, 'W': true, 'X': true, 'Y': true, 'Z': true, '0': true, '1': true, '2': true, '3': true, '4': true, '5': true, '6': true, '7': true, '8': true, '9': true, '_': true,}
+	varexpandWordChars        = map[uint8]bool{'a': true, 'b': true, 'c': true, 'd': true, 'e': true, 'f': true, 'g': true, 'h': true, 'i': true, 'j': true, 'k': true, 'l': true, 'm': true, 'n': true, 'o': true, 'p': true, 'q': true, 'r': true, 's': true, 't': true, 'u': true, 'v': true, 'w': true, 'x': true, 'y': true, 'z': true, 'A': true, 'B': true, 'C': true, 'D': true, 'E': true, 'F': true, 'G': true, 'H': true, 'I': true, 'J': true, 'K': true, 'L': true, 'M': true, 'N': true, 'O': true, 'P': true, 'Q': true, 'R': true, 'S': true, 'T': true, 'U': true, 'V': true, 'W': true, 'X': true, 'Y': true, 'Z': true, '0': true, '1': true, '2': true, '3': true, '4': true, '5': true, '6': true, '7': true, '8': true, '9': true, '_': true}
 	varexpandUnexpectedEofMsg = "unexpected EOF while looking for matching `}'"
 )
 
@@ -1007,7 +1007,7 @@ func NewProjectFilename(mydest, newmd5 string, force bool) string {
 			lastFile = pfile.Name()
 		}
 	}
-	protNum ++
+	protNum++
 	newPfile := NormalizePath(path.Join(realDirname, ".cfg"+fmt.Sprintf("%04s", string(protNum))+"_"+realFilename))
 	oldPfile := NormalizePath(path.Join(realDirname, lastFile))
 	if len(lastFile) != 0 && len(newmd5) != 0 {

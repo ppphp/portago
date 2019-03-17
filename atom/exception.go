@@ -5,14 +5,14 @@ type PortageException struct {
 	t string
 }
 
-func (p *PortageException) Error () string {
+func (p *PortageException) Error() string {
 	return p.s
 }
 
 func Raise(s, msg string) PortageException {
-	return PortageException{t:s, s:msg}
+	return PortageException{t: s, s: msg}
 }
 
-func ExceptionMatch(a,b PortageException) bool {
+func ExceptionMatch(a, b PortageException) bool {
 	return a.t == b.t
 }

@@ -241,7 +241,7 @@ func verifyAll(fname string, mydict map[string]string, calcPrelink int, strict i
 		verifiableHashTypes[v] = true
 	}
 	delete(verifiableHashTypes, "size")
-	if len(verifiableHashTypes) ==0 {
+	if len(verifiableHashTypes) == 0 {
 		expected := make(map[string]bool)
 		for v := range hashFuncKeys {
 			expected[v] = true
@@ -272,10 +272,10 @@ func verifyAll(fname string, mydict map[string]string, calcPrelink int, strict i
 	}
 	sort.Strings(l)
 	for _, x := range l {
-		if x =="size"{
+		if x == "size" {
 			continue
 		} else if hashFuncKeys[x] {
-			myHash , _:= performChecksum(fname, x, calcPrelink)
+			myHash, _ := performChecksum(fname, x, calcPrelink)
 			if mydict[x] != string(myHash) {
 				if strict != 0 {
 					return false, "", "", ""

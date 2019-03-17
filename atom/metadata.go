@@ -16,8 +16,8 @@ type Metadata struct {
 }
 
 type Maintainer struct {
-	Type string `xml:"type,attr"`
-	Names []Name `xml:"name"`
+	Type   string  `xml:"type,attr"`
+	Names  []Name  `xml:"name"`
 	Emails []Email `xml:"email"`
 }
 
@@ -89,7 +89,7 @@ type Cat struct {
 //	Read("app-misc/hello")
 //}
 
-func Read(cvp string){
+func Read(cvp string) {
 	a, err := ioutil.ReadFile(fmt.Sprintf("./tmp/%v/metadata.xml", cvp))
 	if err != nil {
 		panic(err.Error())
