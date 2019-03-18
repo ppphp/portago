@@ -186,30 +186,32 @@ func NewIuseImplicitMatchCache(setting map[string]string) {
 }
 
 type Config struct {
-	valueDict                                                                                                                                                                                                                  map[string]string
-	tolerent, unmatchedRemoval, localConfig                                                                                                                                                                                    bool
-	locked                                                                                                                                                                                                                     int
-	mycpv, setcpvArgsHash, penv, modifiedkeys, uvlist, acceptChostRe, parentStable, sonameProvided                                                                                                                             *int
-	puse, categories, depcachedir, profilePath, defaultFeaturesUse, iuseEffective, iuseImplicitMatch, userProfileDir, globalConfigPath                                                                                         string
-	useManager                                                                                                                                                                                                                 *useManager
-	keywordsManagerObj                                                                                                                                                                                                         *keywordsManager
-	maskManagerObj                                                                                                                                                                                                             *maskManager
-	virtualManagerObj                                                                                                                                                                                                          *virtualManager
-	licenseManager                                                                                                                                                                                                             *licenseManager
-	unpackDependencies                                                                                                                                                                                                         map[string]map[string]map[string]string
-	packages, usemask, useforce, ppropertiesdict, acceptRestrict, pacceptRestrict, penvdict                                                                                                                                    map[*atom]string
-	makeDefaultsUse, featuresOverrides, profiles                                                                                                                                                                               []string
-	profileBashrc                                                                                                                                                                                                              []bool
-	lookupList, configList, makeDefaults                                                                                                                                                                                       []map[string]string
-	repoMakeDefaults, configDict                                                                                                                                                                                               map[string]map[string]string
-	backupenv, defaultGlobals, deprecatedKeys, useExpandDict, pprovideddict, virtualsManagerObj, virtualsManager, acceptProperties, pbashrcdict, expandMap                                                                     map[string]string
-	prevmaskdict                                                                                                                                                                                                               map[string][]*atom
-	modulePriority, incrementals, envBlacklist, environFilter, environWhitelist, validateCommands, globalOnlyVars, caseInsensitiveVars, setcpvAuxKeys, constantKeys, unknownFeatures, nonUserVariables, envDBlacklist, pbashrc map[string]bool
-	features                                                                                                                                                                                                                   *featuresSet
-	repositories                                                                                                                                                                                                               *repoConfigLoader
-	modules                                                                                                                                                                                                                    map[string]map[string][]string
-	locationsManager                                                                                                                                                                                                           *locationsManager
-	environWhitelistRe                                                                                                                                                                                                         *regexp.Regexp
+	valueDict                                                                                                                                                                                                                              map[string]string
+	tolerent, unmatchedRemoval, localConfig                                                                                                                                                                                                bool
+	locked                                                                                                                                                                                                                                 int
+	mycpv, setcpvArgsHash, penv, modifiedkeys, uvlist, acceptChostRe, parentStable, sonameProvided                                                                                                                                         *int
+	puse, depcachedir, profilePath, defaultFeaturesUse, iuseEffective, iuseImplicitMatch, userProfileDir, globalConfigPath                                                                                                                 string
+	useManager                                                                                                                                                                                                                             *useManager
+	keywordsManagerObj                                                                                                                                                                                                                     *keywordsManager
+	maskManagerObj                                                                                                                                                                                                                         *maskManager
+	virtualManagerObj                                                                                                                                                                                                                      *virtualManager
+	licenseManager                                                                                                                                                                                                                         *licenseManager
+	unpackDependencies                                                                                                                                                                                                                     map[string]map[string]map[string]string
+	packages, usemask, useforce                                                                                                                                                                                                            map[*atom]string
+	ppropertiesdict, acceptRestrict, pacceptRestrict, penvdict                                                                                                                                                                             map[string]map[*atom][]string
+	makeDefaultsUse, featuresOverrides, profiles                                                                                                                                                                                           []string
+	profileBashrc                                                                                                                                                                                                                          []bool
+	lookupList, configList, makeDefaults                                                                                                                                                                                                   []map[string]string
+	repoMakeDefaults, configDict                                                                                                                                                                                                           map[string]map[string]string
+	backupenv, defaultGlobals, deprecatedKeys, useExpandDict, pprovideddict, virtualsManagerObj, virtualsManager, acceptProperties, expandMap                                                                                              map[string]string
+	pbashrcdict                                                                                                                                                                                                                            map[*profileNode]map[string]map[*atom][]string
+	prevmaskdict                                                                                                                                                                                                                           map[string][]*atom
+	modulePriority, incrementals, envBlacklist, environFilter, environWhitelist, validateCommands, globalOnlyVars, caseInsensitiveVars, setcpvAuxKeys, constantKeys, unknownFeatures, nonUserVariables, envDBlacklist, pbashrc, categories map[string]bool
+	features                                                                                                                                                                                                                               *featuresSet
+	repositories                                                                                                                                                                                                                           *repoConfigLoader
+	modules                                                                                                                                                                                                                                map[string]map[string][]string
+	locationsManager                                                                                                                                                                                                                       *locationsManager
+	environWhitelistRe                                                                                                                                                                                                                     *regexp.Regexp
 }
 
 func (c *Config) backupChanges(key string) {
@@ -252,6 +254,37 @@ func (c *Config) keywordsManager() *keywordsManager {
 		c.keywordsManagerObj = NewKeywordsManager(c.locationsManager.profilesComplex, c.locationsManager.absUserConfig, c.localConfig, c.configDict["defaults"]["ACCEPT_KEYWORDS"])
 	}
 	return c.keywordsManagerObj
+}
+
+func (c *Config) grabPkgEnv(penv []string, container map[string]string, protected_keys map[string]bool) { // n
+	if protected_keys == nil {
+		protected_keys = map[string]bool{}
+	}
+	absUserConfig := path.Join(c.valueDict["PORTAGE_CONFIGROOT"], UserConfigPath)
+	nonUserVariables := c.nonUserVariables
+	expandMap := CopyMapSS(c.expandMap)
+	incrementals := c.incrementals
+	for _, envname := range penv {
+		penvfile := path.Join(absUserConfig, "env", envname)
+		penvconfig := getConfig(penvfile, c.tolerent, true, true, false, expandMap)
+		if penvconfig == nil {
+			writeMsg(fmt.Sprintf("!!! %s references non-existent file: %s\n", path.Join(absUserConfig, "package.env"), penvfile), -1, nil)
+		} else {
+			for k, v := range penvconfig {
+				if protected_keys[k] || nonUserVariables[k] {
+					writeMsg(fmt.Sprintf("!!! Illegal variable '%s' assigned in '%s'\n", k, penvfile), -1, nil)
+				} else if incrementals[k] {
+					if _, ok := container[k]; ok {
+						container[k] = container[k] + " " + v
+					} else {
+						container[k] = v
+					}
+				} else {
+					container[k] = v
+				}
+			}
+		}
+	}
 }
 
 var eapiCache = map[string]bool{}
@@ -336,11 +369,11 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 
 		c.virtualsManagerObj = CopyMapSS(clone.virtualsManager)
 		c.acceptProperties = CopyMapSS(clone.acceptProperties)
-		c.ppropertiesdict = CopyMapAS(clone.ppropertiesdict)
-		c.acceptRestrict = CopyMapAS(clone.acceptRestrict)
-		c.pacceptRestrict = CopyMapAS(clone.pacceptRestrict)
-		c.penvdict = CopyMapAS(clone.penvdict)
-		c.pbashrcdict = CopyMapSS(clone.pbashrcdict)
+		c.ppropertiesdict = CopyMSMASS(clone.ppropertiesdict)
+		c.acceptRestrict = CopyMSMASS(clone.acceptRestrict)
+		c.pacceptRestrict = CopyMSMASS(clone.pacceptRestrict)
+		c.penvdict = CopyMSMASS(clone.penvdict)
+		c.pbashrcdict = clone.pbashrcdict //CopyMapSS(clone.pbashrcdict)
 		c.expandMap = CopyMapSS(clone.expandMap)
 	} else {
 		c.keywordsManagerObj = nil
@@ -633,10 +666,10 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		c.valueDict["PORTAGE_OVERRIDE_EPREFIX"] = EPREFIX
 		c.backupChanges("PORTAGE_OVERRIDE_EPREFIX")
 
-		c.ppropertiesdict = map[*atom]string{}
-		c.pacceptRestrict = map[*atom]string{}
-		c.penvdict = map[*atom]string{}
-		c.pbashrcdict = map[string]string{}
+		c.ppropertiesdict = map[string]map[*atom][]string{}
+		c.pacceptRestrict = map[string]map[*atom][]string{}
+		c.penvdict = map[string]map[*atom][]string{}
+		c.pbashrcdict = map[*profileNode]map[string]map[*atom][]string{}
 		c.pbashrc = map[string]bool{}
 		c.repoMakeDefaults = map[string]map[string]string{}
 
@@ -665,6 +698,126 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		for _, profile := range profilesComplex {
 			s, err := os.Stat(path.Join(profile.location, "profile.bashrc"))
 			c.profileBashrc = append(c.profileBashrc, err != nil && !s.IsDir())
+		}
+		if localConfig {
+			propDict := grabDictPackage(path.Join(absUserConfig, "package.properties"), false, true, false, true, true, true, false, false, "", "0")
+			var v []string = nil
+			for a, x := range propDict {
+				if a.value == "*/*" {
+					v = x
+				}
+				delete(propDict, a)
+			}
+			if v != nil {
+				if _, ok := c.configDict["conf"]["ACCEPT_PROPERTIES"]; ok {
+					c.configDict["conf"]["ACCEPT_PROPERTIES"] += " " + strings.Join(v, " ")
+				} else {
+					c.configDict["conf"]["ACCEPT_PROPERTIES"] = strings.Join(v, " ")
+				}
+			}
+			for k, v := range propDict {
+				if _, ok := c.ppropertiesdict[k.cp]; !ok {
+					c.ppropertiesdict[k.cp] = map[*atom][]string{k: v}
+				} else {
+					c.ppropertiesdict[k.cp][k] = v
+				}
+			}
+			d := grabDictPackage(path.Join(absUserConfig, "package.accept_restrict"), false, true, false, true, true, true, false, false, "", "0")
+			v = nil
+			for a, x := range d {
+				if a.value == "*/*" {
+					v = x
+				}
+				delete(d, a)
+			}
+			if v != nil {
+				if _, ok := c.configDict["conf"]["ACCEPT_RESTRICT"]; ok {
+					c.configDict["conf"]["ACCEPT_RESTRICT"] += " " + strings.Join(v, " ")
+				} else {
+					c.configDict["conf"]["ACCEPT_RESTRICT"] = strings.Join(v, " ")
+				}
+			}
+			for k, v := range d {
+				if _, ok := c.pacceptRestrict[k.cp]; !ok {
+					c.pacceptRestrict[k.cp] = map[*atom][]string{k: v}
+				} else {
+					c.pacceptRestrict[k.cp][k] = v
+				}
+			}
+			penvdict := grabDictPackage(path.Join(absUserConfig, "package.env"), false, true, false, true, true, true, false, false, "", "0")
+			v = nil
+			for a, x := range penvdict {
+				if a.value == "*/*" {
+					v = x
+				}
+				delete(penvdict, a)
+			}
+			if v != nil {
+				globalWildcardConf := map[string]string{}
+				c.grabPkgEnv(v, globalWildcardConf, nil)
+				incrementals := c.incrementals
+				confConfigdict := c.configDict["conf"]
+				for k, v := range globalWildcardConf {
+					if incrementals[k] {
+						if _, ok := confConfigdict[k]; ok {
+							confConfigdict[k] = confConfigdict[k] + v
+						} else {
+							confConfigdict[k] = v
+						}
+					} else {
+						confConfigdict[k] = v
+					}
+					expandMap[k] = v
+				}
+			}
+			for k, v := range penvdict {
+				if _, ok := c.penvdict[k.cp]; !ok {
+					c.penvdict[k.cp] = map[*atom][]string{k: v}
+				} else {
+					c.penvdict[k.cp][k] = v
+				}
+			}
+			for _, profile := range profilesComplex {
+				in := false
+				for _, v := range profile.profileFormats {
+					if v == "profile-bashrcs" {
+						in = true
+						break
+					}
+				}
+				if !in {
+					continue
+				}
+				c.pbashrcdict[profile] = map[string]map[*atom][]string{}
+
+				bashrc := grabDictPackage(path.Join(profile.location, "package.bashrc"), false, true, false, true, true, profile.allowBuildId, false, true, profile.eapi, "")
+				if len(bashrc) == 0 {
+					continue
+				}
+				for k, v := range bashrc {
+					envfiles := []string{}
+					for _, envname := range v {
+						envfiles = append(envfiles, path.Join(profile.location, "bashrc", envname))
+					}
+					if _, ok := c.pbashrcdict[profile][k.cp]; !ok {
+						c.pbashrcdict[profile][k.cp] = map[*atom][]string{k: v}
+					} else if _, ok := c.pbashrcdict[profile][k.cp][k]; !ok {
+						c.pbashrcdict[profile][k.cp][k] = v
+					} else {
+						c.pbashrcdict[profile][k.cp][k] = append(c.pbashrcdict[profile][k.cp][k], v...)
+					}
+				}
+			}
+		}
+		categories := [][][2]string{}
+		for _, x := range locationsManager.profileAndUserLocations {
+			categories = append(categories, grabFile(path.Join(x, "categories"), 0, false, false))
+		}
+		c.categories = map[string]bool{}
+		for x := range stackLists(categories, 1, false, false, false, false) {
+			if categoryRe.MatchString(x.value) {
+				c.categories[x.value] = true
+			}
 		}
 	}
 	if mycpv != "" {
@@ -706,8 +859,8 @@ func CopySliceS(m []string) []string {
 	return r
 }
 
-func CopyMapAS(m map[*atom]string) map[*atom]string {
-	r := map[*atom]string{}
+func CopyMSMASS(m map[string]map[*atom][]string) map[string]map[*atom][]string {
+	r := map[string]map[*atom][]string{}
 	for k, v := range m {
 		r[k] = v
 	}
