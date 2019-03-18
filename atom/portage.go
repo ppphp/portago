@@ -203,3 +203,11 @@ func NewCache(portTreeRoot, overlays string) *cache {
 	}
 	return c
 }
+
+func unprivilegedMode(eroot string, erootSt os.FileInfo)bool{
+	st, err:= os.Stat(eroot)
+	if err != nil {
+		return false
+	}
+	return os.Getuid() != 0 && st.Mode()&2!= 0 && erootSt.Mode() & 00002 == 0
+}

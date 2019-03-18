@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"github.com/google/shlex"
 	"os"
+	"os/user"
 	"path"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 )
 
 var (
@@ -203,7 +207,8 @@ type Config struct {
 	profileBashrc                                                                                                                                                                                                                          []bool
 	lookupList, configList, makeDefaults                                                                                                                                                                                                   []map[string]string
 	repoMakeDefaults, configDict                                                                                                                                                                                                           map[string]map[string]string
-	backupenv, defaultGlobals, deprecatedKeys, useExpandDict, pprovideddict, virtualsManagerObj, virtualsManager, acceptProperties, expandMap                                                                                              map[string]string
+	backupenv, defaultGlobals, deprecatedKeys, useExpandDict, virtualsManagerObj, virtualsManager, acceptProperties, expandMap                                                                                              map[string]string
+	pprovideddict map[string][]string
 	pbashrcdict                                                                                                                                                                                                                            map[*profileNode]map[string]map[*atom][]string
 	prevmaskdict                                                                                                                                                                                                                           map[string][]*atom
 	modulePriority, incrementals, envBlacklist, environFilter, environWhitelist, validateCommands, globalOnlyVars, caseInsensitiveVars, setcpvAuxKeys, constantKeys, unknownFeatures, nonUserVariables, envDBlacklist, pbashrc, categories map[string]bool
@@ -361,7 +366,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		c.useExpandDict = CopyMapSS(clone.useExpandDict)
 		c.backupenv = c.configDict["backupenv"]
 		c.prevmaskdict = clone.prevmaskdict // CopyMapSS(clone.prevmaskdict)
-		c.pprovideddict = CopyMapSS(clone.pprovideddict)
+		c.pprovideddict = clone.pprovideddict//CopyMapSS()
 		c.features = NewFeaturesSet(c)
 		c.features.features = CopyMapSB(clone.features.features)
 		c.featuresOverrides = CopySliceS(clone.featuresOverrides)
@@ -819,6 +824,189 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 				c.categories[x.value] = true
 			}
 		}
+		al := [][][2]string{}
+		for _,x :=range locationsManager.profileAndUserLocations {
+			al = append(al, grabFile(path.Join(x, "arch.list"), 0, false, false))
+		}
+		archList := stackLists(al, 1, false, false, false, false)
+		als := []string{}
+		for a :=range  archList{
+			als = append(als, a.value)
+		}
+		sort.Strings(als)
+		c.configDict["conf"]["PORTAGE_ARCHLIST"]=strings.Join(als, " ")
+
+		ppl := [][][2]string{}
+		for _, x := range profilesComplex{
+			provPath := path.Join(x.location, "package.provided")
+			if _,err:=os.Stat(provPath);err==nil{
+				if getEapiAttrs(x.eapi).allowsPackageProvided{
+					ppl = append(ppl, grabFile(provPath, 1, x.portage1Directories, false))
+				}
+			}
+		}
+		ppls :=stackLists(ppl, 1,false, false, false, false)
+		pkgProvidedLines := []string{}
+		for a := range ppls{
+			pkgProvidedLines = append(pkgProvidedLines, a.value)
+		}
+		hasInvalidData :=false
+		for x :=len(pkgProvidedLines)-1;x> -1;x--{
+			myline := pkgProvidedLines[x]
+			if !isValidAtom("=" + myline, false, false, false, "", false){
+				writeMsg(fmt.Sprintf("Invalid package name in package.provided: %s\n",myline), -1, nil)
+				hasInvalidData = true
+				p := []string{}
+				for k,v := range pkgProvidedLines{
+					if x!= k {
+						p = append(p, v)
+					}
+				}
+				pkgProvidedLines = p
+				continue
+			}
+			cpvr := catPkgSplit(pkgProvidedLines[x], 1, "")
+			if cpvr==[4]string{} || cpvr[0] == "null"{
+				writeMsg("Invalid package name in package.provided: "+pkgProvidedLines[x]+"\n",-1,nil)
+				hasInvalidData = true
+				p := []string{}
+				for k,v := range pkgProvidedLines{
+					if x!= k {
+						p = append(p, v)
+					}
+				}
+				pkgProvidedLines = p
+				continue
+			}
+		}
+		if hasInvalidData{
+			writeMsg("See portage(5) for correct package.provided usage.\n", -1,nil)
+		}
+		c.pprovideddict = map[string][]string{}
+		for _, x:=range pkgProvidedLines{
+			x_split := catPkgSplit(x, 1, "")
+			if x_split ==[4]string{}{
+				continue
+			}
+			mycatpkg := cpvGetKey(x, "")
+			if _, ok := c.pprovideddict[mycatpkg]; ok {
+				c.pprovideddict[mycatpkg]=append(c.pprovideddict[mycatpkg],x)
+			} else{
+				c.pprovideddict[mycatpkg]=[]string{x}
+			}
+		}
+
+		if _, ok := c.valueDict["USE_ORDER"]; !ok{
+			c.valueDict["USE_ORDER"] = "env:pkg:conf:defaults:pkginternal:features:repo:env.d"
+			c.backupChanges("USE_ORDER")
+		}
+		_, ok1 := c.valueDict["CBUILD"]
+		_, ok2 := c.valueDict["CHOST"]
+		if !ok1 && ok2{
+			c.valueDict["CBUILD"] = c.valueDict["CHOST"]
+			c.backupChanges("CBUILD")
+		}
+
+		if _, ok := c.valueDict["USERLAND"]; !ok{
+			system := runtime.GOOS
+			if system != "" &&(strings.HasSuffix(system, "BSD")||system=="DragonFly"){
+				c.valueDict["USERLAND"] = "BSD"
+			} else{
+				c.valueDict["USERLAND"] = "GNU"
+			}
+			c.backupChanges("USERLAND")
+		}
+
+		defaultInstIds := map[string]string{"PORTAGE_INST_GID": "0", "PORTAGE_INST_UID": "0",}
+
+		erootOrParent := firstExisting(eroot)
+		unprivileged := false
+
+		if eroot_st, err := os.Stat(erootOrParent);err == nil{
+			if unprivilegedMode(erootOrParent, eroot_st){
+				unprivileged = true
+			}
+
+			defaultInstIds["PORTAGE_INST_GID"] = fmt.Sprintf("%v",eroot_st.Sys().(*syscall.Stat_t).Gid)
+			defaultInstIds["PORTAGE_INST_UID"] = fmt.Sprintf("%v",eroot_st.Sys().(*syscall.Stat_t).Uid)
+
+			if _, ok := c.valueDict["PORTAGE_USERNAME"];!ok {
+				if pwdStruct, err := user.LookupId(fmt.Sprintf("%v",eroot_st.Sys().(*syscall.Stat_t).Uid)); err != nil{
+				} else {
+					c.valueDict["PORTAGE_USERNAME"] = pwdStruct.Name
+					c.backupChanges("PORTAGE_USERNAME")
+				}
+			}
+
+			if _, ok := c.valueDict["PORTAGE_GRPNAME"];!ok {
+				if grpStruct, err := user.LookupGroupId(fmt.Sprintf("%v",eroot_st.Sys().(*syscall.Stat_t).Gid)); err != nil{
+				} else {
+					c.valueDict["PORTAGE_GRPNAME"] = grpStruct.Name
+					c.backupChanges("PORTAGE_GRPNAME")
+				}
+			}
+		}
+
+		for varr, defaultVal := range defaultInstIds {
+			v, ok := c.valueDict[varr]
+			if !ok {
+				v = defaultVal
+			}
+			if _, err := strconv.Atoi(v); err != nil{
+				writeMsg(fmt.Sprintf("!!! %s='%s' is not a valid integer. Falling back to %s.\n",varr, c.valueDict[varr], defaultVal), -1, nil)
+			} else {
+				c.valueDict[varr] = v
+			}
+			c.backupChanges(varr)
+		}
+
+		c.depcachedir = c.valueDict["PORTAGE_DEPCACHEDIR"]
+		if c.depcachedir ==""{
+			c.depcachedir = path.Join(string(os.PathSeparator), EPREFIX, strings.TrimPrefix(DepcachePath,string(os.PathSeparator)))
+			if unprivileged && targetRoot != string(os.PathSeparator){
+				if s, err := os.Stat(firstExisting(c.depcachedir)); err!= nil &&s.Mode()&2!=0{
+					c.depcachedir = path.Join(eroot, strings.TrimPrefix(DepcachePath,string(os.PathSeparator))
+				}
+			}
+		}
+
+		c.valueDict["PORTAGE_DEPCACHEDIR"] = c.depcachedir
+		c.backupChanges("PORTAGE_DEPCACHEDIR")
+
+		if internalCaller{
+			c.valueDict["PORTAGE_INTERNAL_CALLER"] = "1"
+			c.backupChanges("PORTAGE_INTERNAL_CALLER")
+		}
+
+		c.regenerate()
+		feature_use := []string{}
+		if !c.features.features["test"]{
+			feature_use = append(feature_use, "test")
+		}
+		c.defaultFeaturesUse = strings.Join(feature_use," ")
+		c.configDict["features"]["USE"] = c.defaultFeaturesUse
+		if len(feature_use)>0{
+			c.regenerate()
+		}
+		if unprivileged{
+			c.features.features["unprivileged"]=true
+		}
+
+		if runtime.GOOS=="FreeBSD"{
+			c.features.features["chflags"]=true
+		}
+		c._init_iuse()
+
+		c._validate_commands()
+
+		for k :=range c.caseInsensitiveVars{
+			if _, ok := c.valueDict[k];ok{
+				c.valueDict[k] = strings.ToLower(c.valueDict[k])
+				c.backupChanges(k)
+			}
+		}
+		portage.output._init(config_root=self['PORTAGE_CONFIGROOT'])
+		portage.data._init(self)
 	}
 	if mycpv != "" {
 		c.SetCpv(mycpv, nil, "")
