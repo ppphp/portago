@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strings"
 )
 
 var (
@@ -110,6 +111,41 @@ func noTitles() {
 
 func resetColor() string {
 	return codes["reset"]
+}
+
+func styleToAnsiCode(style string)string{
+	ret := ""
+	for _, attrName := range styles[style]{
+		r, ok := codes[attrName]
+		if ! ok {
+			ret = attrName
+		} else {
+			ret = r
+		}
+	}
+	return ret
+}
+
+func colorMap()string{
+	mycolors := []string{}
+	for _,c :=range []string{"GOOD", "WARN", "BAD", "HILITE", "BRACKET", "NORMAL"}{
+		mycolors = append(mycolors, fmt.Sprintf("%s=$'%s'",c, styleToAnsiCode(c)))
+	}
+	return strings.Join(mycolors,"\n")
+}
+
+func colorize(color_key, text string) string{
+	if haveColor!=0{
+		if _, ok := codes[color_key];ok{
+			return codes[color_key] + text + codes["reset"]
+		} else if _, ok := styles[color_key];ok{
+			return styleToAnsiCode(color_key) + text + codes["reset"]
+		} else{
+			return text
+		}
+	} else{
+		return text
+	}
 }
 
 type AbstractFormatter struct {

@@ -193,7 +193,7 @@ type Config struct {
 	valueDict                                                                                                                                                                                                                              map[string]string
 	tolerent, unmatchedRemoval, localConfig                                                                                                                                                                                                bool
 	locked                                                                                                                                                                                                                                 int
-	mycpv, setcpvArgsHash, penv, modifiedkeys, uvlist, acceptChostRe, parentStable, sonameProvided                                                                                                                                         *int
+	mycpv, setcpvArgsHash, penv, modifiedkeys, acceptChostRe, parentStable, sonameProvided                                                                                                                                         *int
 	puse, depcachedir, profilePath, defaultFeaturesUse, iuseEffective, iuseImplicitMatch, userProfileDir, globalConfigPath                                                                                                                 string
 	useManager                                                                                                                                                                                                                             *useManager
 	keywordsManagerObj                                                                                                                                                                                                                     *keywordsManager
@@ -202,10 +202,10 @@ type Config struct {
 	licenseManager                                                                                                                                                                                                                         *licenseManager
 	unpackDependencies                                                                                                                                                                                                                     map[string]map[string]map[string]string
 	packages, usemask, useforce                                                                                                                                                                                                            map[*atom]string
-	ppropertiesdict, acceptRestrict, pacceptRestrict, penvdict                                                                                                                                                                             map[string]map[*atom][]string
-	makeDefaultsUse, featuresOverrides, profiles                                                                                                                                                                                           []string
+	ppropertiesdict,  pacceptRestrict, penvdict                                                                                                                                                                             map[string]map[*atom][]string
+	makeDefaultsUse, featuresOverrides, acceptRestrict,profiles                                                                                                                                                                                           []string
 	profileBashrc                                                                                                                                                                                                                          []bool
-	lookupList, configList, makeDefaults                                                                                                                                                                                                   []map[string]string
+	lookupList, configList, makeDefaults,uvlist                                                                                                                                                                                                   []map[string]string
 	repoMakeDefaults, configDict                                                                                                                                                                                                           map[string]map[string]string
 	backupenv, defaultGlobals, deprecatedKeys, useExpandDict, virtualsManagerObj, virtualsManager, acceptProperties, expandMap                                                                                              map[string]string
 	pprovideddict map[string][]string
@@ -225,6 +225,150 @@ func (c *Config) backupChanges(key string) {
 		c.backupenv[key] = c.configDict["env"][key]
 	} else {
 		//raise KeyError(_("No such key defined in environment: %s") % key)
+	}
+}
+
+func (c *Config) regenerate(useonly int) { // 0 n
+	c.modifying()
+	myincrementals := map[string]bool{}
+	if useonly!=0{
+		myincrementals["USE"]= true
+	} else {
+		myincrementals = c.incrementals
+	}
+	delete(myincrementals, "USE")
+	mydbs := append(c.configList[:0:0], c.configList...)
+	mydbs = append(mydbs, c.backupenv)
+	if c.localConfig{
+		mySplit := []string{}
+		for _, curdb :=range mydbs{
+			mySplit = append(mySplit, strings.Fields(curdb["ACCEPT_LICENSE"])...)
+		}
+		mySplit = pruneIncremental(mySplit)
+		acceptLicenseStr := strings.Join(mySplit, " ")
+		if acceptLicenseStr ==""{
+			acceptLicenseStr = "* -@EULA"
+		}
+		c.configList[len(c.configList)-1]["ACCEPT_LICENSE"] = acceptLicenseStr
+		c.licenseManager.setAcceptLicenseStr(acceptLicenseStr)
+	} else {
+		c.licenseManager.setAcceptLicenseStr("*")
+	}
+	if c.localConfig{
+		mySplit := []string{}
+		for _, curdb :=range mydbs{
+			mySplit = append(mySplit, strings.Fields(curdb["ACCEPT_RESTRICT"])...)
+		}
+		mySplit = pruneIncremental(mySplit)
+		acceptLicenseStr := strings.Join(mySplit, " ")
+		c.configList[len(c.configList)-1]["ACCEPT_RESTRICT"] = acceptLicenseStr
+		c.acceptRestrict = mySplit
+	} else {
+		c.acceptRestrict = []string{"*"}
+	}
+	incrementLists := map[string][][]string{}
+	for k := range myincrementals {
+		incrementList := [][]string{}
+		incrementLists[k]=incrementList
+		for _,curdb := range mydbs{
+			v, ok := curdb[k]
+			if ok {
+				incrementList = append(incrementList, strings.Fields(v))
+			}
+		}
+	}
+	if _, ok := incrementLists["FEATURES"]; ok {
+		incrementLists["FEATURES"] = append(incrementLists["FEATURES"], c.featuresOverrides)
+	}
+	myFlags := map[string]bool{}
+	for myKey, incrementList := range incrementLists {
+		myFlags = map[string]bool{}
+		for _, mySplit := range incrementList{
+			for _,x := range mySplit{
+				if x=="-*"{
+					myFlags = map[string]bool{}
+					continue
+				}
+				if x[0]=='+'{
+					writeMsg(colorize("BAD", fmt.Sprintf("%s values should not start with a '+': %s",myKey,x)) +"\n", -1, nil)
+					x=x[1:]
+					if x==""{
+						continue
+					}
+				}
+				if x[0] == '-'{
+					delete(myFlags, x[1:])
+					continue
+				}
+				myFlags[x]=true
+			}
+		}
+		if _, ok := c.valueDict[myKey];len(myFlags)>0 ||ok{
+			m := []string{}
+			for k := range myFlags {
+				m = append(m ,k)
+			}
+			sort.Strings(m)
+			c.configList[len(c.configList)-1][myKey] = strings.Join(m , " ")
+		}
+	}
+	useExpand := strings.Fields(c.valueDict["USE_EXPAND"])
+	useExpandDict :=  c.useExpandDict
+	useExpandDict = map[string]string{}
+	for _,k := range useExpand{
+		if v,ok := c.valueDict[k]; ok{
+			useExpandDict[k]=v
+		}
+	}
+	useExpandUnprefixed := strings.Fields(c.valueDict["USE_EXPAND_UNPREFIXED"])
+	configDictDefaults := c.configDict["defaults"]
+	if c.makeDefaults != nil {
+		for i, cfg := range c.makeDefaults{
+			if len(cfg) ==0{
+				c.makeDefaultsUse = append(c.makeDefaultsUse, "")
+				continue
+			}
+			use := cfg["USE"]
+			expandUse := []string{}
+			for _, k := range useExpandUnprefixed{
+				if v, ok:= cfg[k];ok {
+					expandUse = append(expandUse, strings.Fields(v)...)
+				}
+			}
+			for k := range useExpandDict{
+				v, ok:= cfg[k]
+				if !ok {
+					continue
+				}
+				prefix := strings.ToLower(k)+"_"
+				for _,x := range strings.Fields(v){
+					if x[:1]=="-"{
+						expandUse = append(expandUse,"-"+prefix+x[:1])
+					} else {
+						expandUse = append(expandUse, prefix+x)
+					}
+				}
+			}
+			if len(expandUse)>0 {
+				expandUse = append(expandUse, use)
+				use = strings.Join(expandUse, " ")
+			}
+			c.makeDefaultsUse = append(c.makeDefaultsUse, use)
+		}
+		configDictDefaults["USE"] = strings.Join(c.makeDefaultsUse, " ")
+		c.makeDefaults = nil
+	}
+	if len(c.uvlist) == 0 {
+		for _, x := range strings.Split(c.valueDict["USER_ORDER"], ":"){
+			if _, ok := c.configDict[x]; ok {
+				c.uvlist = append(c.uvlist, c.configDict[x])
+			}
+		}
+		ReverseSlice(c.uvlist)
+	}
+	iuse := c.configDict["pkg"]["IUSE"]
+	if iuse != nil {
+
 	}
 }
 
@@ -361,7 +505,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 			c.configDict["env"],
 		}
 
-		c.lookupList = c.configList[:]
+		c.lookupList = append(c.configList[:0:0], c.configList...)
 		ReverseSlice(c.lookupList)
 		c.useExpandDict = CopyMapSS(clone.useExpandDict)
 		c.backupenv = c.configDict["backupenv"]
@@ -369,13 +513,13 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		c.pprovideddict = clone.pprovideddict//CopyMapSS()
 		c.features = NewFeaturesSet(c)
 		c.features.features = CopyMapSB(clone.features.features)
-		c.featuresOverrides = CopySliceS(clone.featuresOverrides)
+		c.featuresOverrides = append(clone.featuresOverrides[:0:0], clone.featuresOverrides...)
 		c.licenseManager = clone.licenseManager
 
 		c.virtualsManagerObj = CopyMapSS(clone.virtualsManager)
 		c.acceptProperties = CopyMapSS(clone.acceptProperties)
 		c.ppropertiesdict = CopyMSMASS(clone.ppropertiesdict)
-		c.acceptRestrict = CopyMSMASS(clone.acceptRestrict)
+		c.acceptRestrict = append(clone.acceptRestrict[:0:0], clone.acceptRestrict...)
 		c.pacceptRestrict = CopyMSMASS(clone.pacceptRestrict)
 		c.penvdict = CopyMSMASS(clone.penvdict)
 		c.pbashrcdict = clone.pbashrcdict //CopyMapSS(clone.pbashrcdict)
@@ -698,7 +842,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		c.useforce = c.useManager.getUseForce(nil, nil)
 		c.configDict["conf"]["USE"] = c.useManager.extract_global_USE_changes(c.configDict["conf"]["USE"])
 		c.licenseManager = NewLicenseManager(locationsManager.profileLocations, absUserConfig, localConfig)
-		c.configDict["conf"]["ACCEPT_LICENSE"] = c.licenseManager.extract_global_changes(c.configDict["conf"]["ACCEPT_LICENSE"])
+		c.configDict["conf"]["ACCEPT_LICENSE"] = c.licenseManager.extractGlobalChanges(c.configDict["conf"]["ACCEPT_LICENSE"])
 
 		for _, profile := range profilesComplex {
 			s, err := os.Stat(path.Join(profile.location, "profile.bashrc"))
@@ -922,16 +1066,16 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		erootOrParent := firstExisting(eroot)
 		unprivileged := false
 
-		if eroot_st, err := os.Stat(erootOrParent);err == nil{
-			if unprivilegedMode(erootOrParent, eroot_st){
+		if erootSt, err := os.Stat(erootOrParent);err == nil{
+			if unprivilegedMode(erootOrParent, erootSt){
 				unprivileged = true
 			}
 
-			defaultInstIds["PORTAGE_INST_GID"] = fmt.Sprintf("%v",eroot_st.Sys().(*syscall.Stat_t).Gid)
-			defaultInstIds["PORTAGE_INST_UID"] = fmt.Sprintf("%v",eroot_st.Sys().(*syscall.Stat_t).Uid)
+			defaultInstIds["PORTAGE_INST_GID"] = fmt.Sprintf("%v", erootSt.Sys().(*syscall.Stat_t).Gid)
+			defaultInstIds["PORTAGE_INST_UID"] = fmt.Sprintf("%v", erootSt.Sys().(*syscall.Stat_t).Uid)
 
 			if _, ok := c.valueDict["PORTAGE_USERNAME"];!ok {
-				if pwdStruct, err := user.LookupId(fmt.Sprintf("%v",eroot_st.Sys().(*syscall.Stat_t).Uid)); err != nil{
+				if pwdStruct, err := user.LookupId(fmt.Sprintf("%v", erootSt.Sys().(*syscall.Stat_t).Uid)); err != nil{
 				} else {
 					c.valueDict["PORTAGE_USERNAME"] = pwdStruct.Name
 					c.backupChanges("PORTAGE_USERNAME")
@@ -939,7 +1083,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 			}
 
 			if _, ok := c.valueDict["PORTAGE_GRPNAME"];!ok {
-				if grpStruct, err := user.LookupGroupId(fmt.Sprintf("%v",eroot_st.Sys().(*syscall.Stat_t).Gid)); err != nil{
+				if grpStruct, err := user.LookupGroupId(fmt.Sprintf("%v", erootSt.Sys().(*syscall.Stat_t).Gid)); err != nil{
 				} else {
 					c.valueDict["PORTAGE_GRPNAME"] = grpStruct.Name
 					c.backupChanges("PORTAGE_GRPNAME")
@@ -978,15 +1122,15 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 			c.backupChanges("PORTAGE_INTERNAL_CALLER")
 		}
 
-		c.regenerate()
-		feature_use := []string{}
+		c.regenerate(0)
+		featureUse := []string{}
 		if !c.features.features["test"]{
-			feature_use = append(feature_use, "test")
+			featureUse = append(featureUse, "test")
 		}
-		c.defaultFeaturesUse = strings.Join(feature_use," ")
+		c.defaultFeaturesUse = strings.Join(featureUse," ")
 		c.configDict["features"]["USE"] = c.defaultFeaturesUse
-		if len(feature_use)>0{
-			c.regenerate()
+		if len(featureUse)>0{
+			c.regenerate(0)
 		}
 		if unprivileged{
 			c.features.features["unprivileged"]=true
@@ -1035,14 +1179,6 @@ func CopyMapSB(m map[string]bool) map[string]bool {
 	r := map[string]bool{}
 	for k, v := range m {
 		r[k] = v
-	}
-	return r
-}
-
-func CopySliceS(m []string) []string {
-	r := []string{}
-	for _, v := range m {
-		r = append(r, v)
 	}
 	return r
 }
@@ -2140,7 +2276,7 @@ func (k *keywordsManager) getRawMissingKeywords(cpv *pkgStr, slot, keywords, rep
 }
 
 func (k *keywordsManager) getEgroups(egroups, mygroups []string) map[string]bool {
-	mygroups = CopySliceS(mygroups)
+	mygroups = append(mygroups[:0:0], mygroups...)
 	mygroups = append(mygroups, egroups...)
 	incPGroups := map[string]bool{}
 	for _, x := range mygroups {
@@ -2306,15 +2442,15 @@ func NewKeywordsManager(profiles []*profileNode, absUserConfig string, userConfi
 }
 
 type licenseManager struct {
-	_accept_license_str string
-	_accept_license     []string
-	_plicensedict       map[string]map[*atom][]string
-	_undef_lic_groups   map[string]bool
-	_license_groups     map[string]map[string]bool
+	acceptLicenseStr string
+	acceptLicense    []string
+	_plicensedict    map[string]map[*atom][]string
+	undefLicGroups   map[string]bool
+	licenseGroups    map[string]map[string]bool
 }
 
-func (l *licenseManager) _read_user_config(abs_user_config string) {
-	licDictt := grabDictPackage(path.Join(abs_user_config, "package.license"), false, true, false, true, true, false, false, false, "", "")
+func (l *licenseManager) readUserConfig(absUserConfig string) {
+	licDictt := grabDictPackage(path.Join(absUserConfig, "package.license"), false, true, false, true, true, false, false, false, "", "")
 	for k, v := range licDictt {
 		if _, ok := l._plicensedict[k.cp]; !ok {
 			l._plicensedict[k.cp] = map[*atom][]string{k: v}
@@ -2324,20 +2460,20 @@ func (l *licenseManager) _read_user_config(abs_user_config string) {
 	}
 }
 
-func (l *licenseManager) _read_license_groups(locations []string) {
+func (l *licenseManager) readLicenseGroups(locations []string) {
 	for _, loc := range locations {
 		for k, v := range grabDict(path.Join(loc, "license_groups"), false, false, false, true, false) {
-			if _, ok := l._license_groups[k]; !ok {
-				l._license_groups[k] = map[string]bool{}
+			if _, ok := l.licenseGroups[k]; !ok {
+				l.licenseGroups[k] = map[string]bool{}
 			}
 			for _, w := range v {
-				l._license_groups[k][w] = true
+				l.licenseGroups[k][w] = true
 			}
 		}
 	}
 }
 
-func (l *licenseManager) extract_global_changes(old string) string { // ""
+func (l *licenseManager) extractGlobalChanges(old string) string { // ""
 	ret := old
 	atomLicenseMap := l._plicensedict["*/*"]
 	if len(atomLicenseMap) > 0 {
@@ -2389,7 +2525,7 @@ func (l *licenseManager) _expandLicenseToken(token string, traversedGroups map[s
 	if traversedGroups == nil {
 		traversedGroups = map[string]bool{}
 	}
-	licenseGroup := l._license_groups[groupName]
+	licenseGroup := l.licenseGroups[groupName]
 	if traversedGroups[groupName] {
 		writeMsg(fmt.Sprintf("Circular license group reference detected in '%s'\n", groupName), -1, nil)
 		rValue = append(rValue, "@"+groupName)
@@ -2403,8 +2539,8 @@ func (l *licenseManager) _expandLicenseToken(token string, traversedGroups map[s
 			}
 		}
 	} else {
-		if len(l._license_groups) > 0 && !l._undef_lic_groups[groupName] {
-			l._undef_lic_groups[groupName] = true
+		if len(l.licenseGroups) > 0 && !l.undefLicGroups[groupName] {
+			l.undefLicGroups[groupName] = true
 			writeMsg(fmt.Sprintf("Undefined license group '%s'\n", groupName), -1, nil)
 			rValue = append(rValue, "@"+groupName)
 		}
@@ -2418,7 +2554,7 @@ func (l *licenseManager) _expandLicenseToken(token string, traversedGroups map[s
 }
 
 func (l *licenseManager) _getPkgAcceptLicense(cpv *pkgStr, slot, repo string) []string {
-	acceptLicense := l._accept_license
+	acceptLicense := l.acceptLicense
 	cp := cpvGetKey(cpv.string, "")
 	cpdict := l._plicensedict[cp]
 	if len(cpdict) > 0 {
@@ -2427,7 +2563,7 @@ func (l *licenseManager) _getPkgAcceptLicense(cpv *pkgStr, slot, repo string) []
 		}
 		plicenceList := orderedByAtomSpecificity(cpdict, cpv, "")
 		if len(plicenceList) > 0 {
-			acceptLicense = CopySliceS(l._accept_license)
+			acceptLicense = append(l.acceptLicense[:0:0], l.acceptLicense...)
 		}
 		for _, x := range plicenceList {
 			acceptLicense = append(acceptLicense, x...)
@@ -2436,7 +2572,7 @@ func (l *licenseManager) _getPkgAcceptLicense(cpv *pkgStr, slot, repo string) []
 	return acceptLicense
 }
 
-func (l *licenseManager) get_prunned_accept_license(cpv *pkgStr, use map[string]bool, lic, slot, repo string) string {
+func (l *licenseManager) getPrunnedAcceptLicense(cpv *pkgStr, use map[string]bool, lic, slot, repo string) string {
 	licenses := map[string]bool{}
 	for _, u := range useReduce(lic, use, nil, false, nil, false, "", false, true, nil, nil, false) {
 		licenses[u] = true
@@ -2523,26 +2659,26 @@ func (l *licenseManager) _getMaskedLicenses(licenseStruct []string, acceptableLi
 	return ret
 }
 
-func (l *licenseManager) set_accept_license_str(acceptLicenseStr string) {
-	if acceptLicenseStr != l._accept_license_str {
-		l._accept_license_str = acceptLicenseStr
-		l._accept_license = l.expandLicenseTokens(strings.Fields(acceptLicenseStr))
+func (l *licenseManager) setAcceptLicenseStr(acceptLicenseStr string) {
+	if acceptLicenseStr != l.acceptLicenseStr {
+		l.acceptLicenseStr = acceptLicenseStr
+		l.acceptLicense = l.expandLicenseTokens(strings.Fields(acceptLicenseStr))
 	}
 }
 
 func NewLicenseManager(licenseGroupLocations []string, absUserConfig string, userConfig bool) *licenseManager { // t
 	l := &licenseManager{}
-	l._accept_license_str = ""
-	l._accept_license = nil
-	l._license_groups = map[string]map[string]bool{}
+	l.acceptLicenseStr = ""
+	l.acceptLicense = nil
+	l.licenseGroups = map[string]map[string]bool{}
 	l._plicensedict = map[string]map[*atom][]string{}
-	l._undef_lic_groups = map[string]bool{}
+	l.undefLicGroups = map[string]bool{}
 	if userConfig {
 		licenseGroupLocations = append(licenseGroupLocations, absUserConfig)
 	}
-	l._read_license_groups(licenseGroupLocations)
+	l.readLicenseGroups(licenseGroupLocations)
 	if userConfig {
-		l._read_user_config(absUserConfig)
+		l.readUserConfig(absUserConfig)
 	}
 	return l
 }
@@ -2647,4 +2783,22 @@ func orderedByAtomSpecificity(cpdict map[*atom][]string, pkg *pkgStr, repo strin
 		return r
 	}
 	return results
+}
+
+func pruneIncremental(split []string)[]string{
+	ReverseSlice(split)
+	for i ,x := range split {
+		if x == "*"{
+			split = split[-i-1:]
+			break
+		} else if x == "-*"{
+			if i==0{
+				split = []string{}
+			} else {
+				split = split[-i:]
+			}
+			break
+		}
+	}
+	return split
 }
