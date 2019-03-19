@@ -366,8 +366,186 @@ func (c *Config) regenerate(useonly int) { // 0 n
 		}
 		ReverseSlice(c.uvlist)
 	}
-	iuse := c.configDict["pkg"]["IUSE"]
-	if iuse != nil {
+	iu := c.configDict["pkg"]["IUSE"]
+	iuse := []string{}
+	if iu != "" {
+		for _, x := range strings.Fields(iu){
+			iuse = append(iuse, strings.TrimPrefix(x, "+-"))
+		}
+	}
+	myFlags = map[string]bool{}
+	for _,curdb:= range c.uvlist{
+		for _, k:= range useExpandUnprefixed{
+			v := curdb[k]
+			if v == "" {
+				continue
+			}
+			for _, x:=range strings.Fields(v){
+				if x[:1]=="-"{
+					delete(myFlags,x[1:])
+				} else {
+					myFlags[x]=true
+				}
+			}
+		}
+		curUseExpand := []string{}
+		for _,x := range useExpand{
+			if _,ok:=curdb[x];ok{
+				curUseExpand = append(curUseExpand, x)
+			}
+		}
+		mySplit := strings.Fields(curdb["USE"])
+		if len(mySplit) == 0 && len(curUseExpand)==0{
+			continue
+		}
+		for _,x :=range mySplit{
+			if x=="-*"{
+				myFlags = map[string]bool{}
+				continue
+			}
+			if x[0]=='+'{
+				writeMsg(colorize("BAD", fmt.Sprintf("USE flags should not start with a '+': %s\n",x)), -1, nil)
+				x=x[1:]
+				if x==""{
+					continue
+				}
+			}
+			if x[0]=='-'{
+				if x[len(x)-2:]=="_*"{
+					prefix := x[1:len(x)-1]
+					prefixLen := len(prefix)
+					for y := range myFlags {
+						if y[:prefixLen]== prefix{
+							delete(myFlags, y)
+						}
+					}
+				}
+				delete(myFlags,x[1:])
+				continue
+			}
+			if iuse != nil && x[len(x)-2:] == "_*"{
+				prefix := x[:len(x)-1]
+				prefixLen := len(prefix)
+				hasIuse := false
+				for _,y := range iuse {
+					if y[:prefixLen]==prefix{
+						hasIuse=true
+						myFlags[y]=true
+					}
+				}
+				if !hasIuse{
+					myFlags[x]=true
+				}
+			} else {
+				myFlags[x]=true
+			}
+		}
+		if reflect.ValueOf(curdb).Pointer() == reflect.ValueOf(configDictDefaults).Pointer(){
+			continue
+		}
+		for _,varr := range curUseExpand{
+			varLower:= strings.ToLower(varr)
+			isNotIncremental := !myincrementals[varr]
+			if isNotIncremental{
+				prefix := varLower + "_"
+				prefixLen := len(prefix)
+				for x := range myFlags{
+					if x[:prefixLen]==prefix{
+						delete(myFlags,x)
+					}
+				}
+			}
+			for _, x:=range strings.Fields(curdb[varr]){
+				if x[0]=='+'{
+					if isNotIncremental{
+						writeMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n",varr, x)), -1, nil)
+						continue
+					} else {
+						writeMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n",varr, x)), -1, nil)
+					}
+					x = x[1:]
+				}
+				if x[0]=='-'{
+					if isNotIncremental{
+						writeMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n",varr, x)), -1, nil)
+						continue
+					}
+					delete(myFlags, varLower + "_" + x)
+					continue
+				}
+				myFlags[varLower + "_" + x]=true
+			}
+		}
+	}
+	if c.features!= nil {
+		c.features.features = map[string]bool{}
+	}else {
+		c.features = NewFeaturesSet(c)
+	}
+	for _,x:=range strings.Fields(c.valueDict["FEATURES"]){
+		c.features.features[x]=true
+	}
+	c.features.syncEnvVar()
+	c.features.validate()
+	for x := range c.useforce{
+		myFlags[x.value]=true
+	}
+	for x:=range c.usemask{
+		delete(myFlags,x.value)
+	}
+	m := []string{}
+	for x :=range myFlags {
+		m = append(m ,x)
+	}
+	sort.Strings(m)
+	c.configList[len(c.configList)-1]["USE"] = strings.Join(m, " ")
+	if c.mycpv == nil {
+		for _, k := range useExpand {
+			prefix := strings.ToLower(k) + "_"
+			prefixLen := len(prefix)
+			expandFlags := map[string]bool{}
+			for x :=range myFlags{
+				if x[:prefixLen]==prefix{
+					expandFlags[x[prefixLen:]] = true
+				}
+			}
+			varSplit := strings.Fields(useExpandDict[k])
+			v:=[]string{}
+			for _,x:=range varSplit {
+				if expandFlags[x]{
+					v=append(v,x)
+				}
+			}
+			varSplit=v
+			for _,v:=range varSplit{
+				delete(expandFlags,v)
+			}
+			e:=[]string{}
+			for x:= range expandFlags{
+				e =append(e,x)
+			}
+			sort.Strings(e)
+			varSplit = append(varSplit, e...)
+			if len(varSplit)>0{
+				c.configList[len(c.configList)-1][k]=strings.Join(varSplit, " ")
+			} else if _, ok := c.valueDict[k];ok {
+				c.configList[len(c.configList)-1][k]=""
+			}
+		}
+		for _, k := range useExpandUnprefixed{
+			varSplit := strings.Fields(c.valueDict[k])
+			v := []string{}
+			for _,x:=range varSplit{
+				if myFlags[x]{
+					v = append(v,x)
+				}
+			}
+			if len(varSplit)>0{
+				c.configList[len(c.configList)-1][k]=strings.Join(varSplit, " ")
+			} else if _, ok := c.valueDict[k];ok {
+				c.configList[len(c.configList)-1][k]=""
+			}
+		}
 
 	}
 }
@@ -1109,7 +1287,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 			c.depcachedir = path.Join(string(os.PathSeparator), EPREFIX, strings.TrimPrefix(DepcachePath,string(os.PathSeparator)))
 			if unprivileged && targetRoot != string(os.PathSeparator){
 				if s, err := os.Stat(firstExisting(c.depcachedir)); err!= nil &&s.Mode()&2!=0{
-					c.depcachedir = path.Join(eroot, strings.TrimPrefix(DepcachePath,string(os.PathSeparator))
+					c.depcachedir = path.Join(eroot, strings.TrimPrefix(DepcachePath,string(os.PathSeparator)))
 				}
 			}
 		}
