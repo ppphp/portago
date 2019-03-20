@@ -565,10 +565,7 @@ func (c *Config) modifying() error {
 	return nil
 }
 
-func (c *Config) SetCpv(cpv string, useCache map[string]string, myDb string) {
-	if useCache != nil {
-		// warn here
-	}
+func (c *Config) SetCpv(cpv string, myDb string) {
 	c.modifying()
 }
 
@@ -1331,7 +1328,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		portage.data._init(self)
 	}
 	if mycpv != "" {
-		c.SetCpv(mycpv, nil, "")
+		c.SetCpv(mycpv, "")
 	}
 
 	return c
@@ -2862,6 +2859,107 @@ func NewLicenseManager(licenseGroupLocations []string, absUserConfig string, use
 }
 
 type virtualManager struct {
+	_dirVirtuals, _virtuals, _treeVirtuals, _depgraphVirtuals map[string][]string
+}
+
+func (v *virtualManager) read_dirVirtuals( profiles []string){
+	virtualsList := []map[string][]string{}
+	for _, x :=range profiles{
+		virtualsFile := path.Join(x, "virtuals")
+		virtualsDict := grabDict(virtualsFile,false, false, false,false, false)
+		atomsDict := map[string][]string{}
+		for k, v := range virtualsDict {
+			virtAtom, err := NewAtom(k, nil, false, nil, nil, "", nil, nil)
+			if err!=nil{
+				virtAtom = nil
+			} else{
+				if virtAtom.blocker!=nil || virtAtom.value != virtAtom.cp{
+					virtAtom = nil
+				}
+			}
+			if virtAtom ==nil{
+				writeMsg(fmt.Sprintf("--- Invalid virtuals atom in %s: %s\n", virtualsFile, k), -1, nil)
+				continue
+			}
+			providers := []string{}
+			for _, atom := range v{
+				atomOrig := atom
+				if atom[:1] == "-"{
+					atom = atom[1:]
+				}
+				atomA, err := NewAtom(atom, nil, false, nil, nil, "", nil, nil)
+				if err!=nil{
+					atomA=nil
+				} else{
+					if atomA.blocker!=nil{
+						atomA=nil
+					}
+				}
+				if atomA==nil{
+					writeMsg(fmt.Sprintf("--- Invalid atom in %s: %s\n", virtualsFile, atomOrig),-1,nil)
+				} else{
+					if atomOrig == atomA.value{
+						providers=append(providers, atom)
+					} else{
+						providers=append(providers, atomOrig)
+					}
+				}
+			}
+			if len(providers)>0{
+				atomsDict[virtAtom.value] = providers
+			}
+		}
+		if len(atomsDict)>0{
+			virtualsList =append(virtualsList, atomsDict)
+		}
+	}
+
+	v._dirVirtuals = stackDictlist(virtualsList, 1, nil, 0)
+
+	for virt :=range v._dirVirtuals{
+		ReverseSlice(v._dirVirtuals[virt])
+	}
+}
+
+func (v *virtualManager) _compile_virtuals(){
+		ptVirtuals   := map[string][]string{}
+
+	for virt, installedList := range v._treeVirtuals{
+		profileList := v._dirVirtuals[virt]
+		if len(profileList)==0{
+			continue
+		}
+		for _,cp :=range installedList {
+			in :=false
+			for _, x:=range profileList {
+				if x==cp {
+					in=true
+					break
+				}
+			}
+			if in{
+				if _, ok:= ptVirtuals[virt];!ok{
+					ptVirtuals[virt] = []string{cp}
+				} else{
+					ptVirtuals[virt] = append(ptVirtuals[virt], cp)
+				}
+			}
+		}
+	}
+
+	virtuals := stackDictlist([]map[string][]string{ptVirtuals, v._treeVirtuals, v._dirVirtuals, v._depgraphVirtuals}, 0, nil, 0)
+	v._virtuals = virtuals
+	v._virts_p = None
+}
+
+func (v *virtualManager)getvirtuals()map[string][]string{
+	if v._treeVirtuals!=nil{
+		panic("_populate_treeVirtuals() must be called before any query about virtuals")
+	}
+	if v._virtuals==nil{
+		v._compile_virtuals()
+	}
+	return v._virtuals
 }
 
 func NewVirtualManager() *virtualManager {
