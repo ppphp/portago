@@ -183,126 +183,126 @@ func bestFromDict(key string, topDict map[string]map[string]string, keyOrders []
 
 type iuseImplicitMatchCache struct {
 	iuseImplicitRe *regexp.Regexp
-	cache map[string]bool
+	cache          map[string]bool
 }
 
-func (i *iuseImplicitMatchCache)call(flag string)bool{
-	if v, ok := i.cache[flag];ok{
+func (i *iuseImplicitMatchCache) call(flag string) bool {
+	if v, ok := i.cache[flag]; ok {
 		return v
 	}
 	m := i.iuseImplicitRe.MatchString(flag)
-	i.cache[flag]=m
+	i.cache[flag] = m
 	return m
 }
 
-func NewIuseImplicitMatchCache(settings *Config) *iuseImplicitMatchCache{
+func NewIuseImplicitMatchCache(settings *Config) *iuseImplicitMatchCache {
 	i := &iuseImplicitMatchCache{}
 	g := []string{}
-	for x:= range settings.getImplicitIuse(){
-		g=append(g,x)
+	for x := range settings.getImplicitIuse() {
+		g = append(g, x)
 	}
 	i.iuseImplicitRe = regexp.MustCompile(fmt.Sprintf("^(%s)$", strings.Join(g, "|")))
-	i.cache =map[string]bool{}
+	i.cache = map[string]bool{}
 	return i
 }
 
 type Config struct {
-	valueDict                                                                                                                                                                                                                              map[string]string
-	constantKeys,setcpvAuxKeys,envBlacklist, environFilter, environWhitelist, globalOnlyVars, caseInsensitiveVars map[string]bool
-	tolerent, unmatchedRemoval, localConfig                                                                                                                                                                                                bool
-	locked                                                                                                                                                                                                                                 int
-	mycpv, setcpvArgsHash, penv, modifiedkeys, acceptChostRe, parentStable, sonameProvided                                                                                                                                         *int
-	puse, depcachedir, profilePath, defaultFeaturesUse, userProfileDir, globalConfigPath                                                                                                                 string
-	useManager                                                                                                                                                                                                                             *useManager
-	keywordsManagerObj                                                                                                                                                                                                                     *keywordsManager
-	maskManagerObj              *maskManager
-	virtualManagerObj           *virtualManager
-	licenseManager              *licenseManager
-	iuseImplicitMatch           *iuseImplicitMatchCache
-	unpackDependencies          map[string]map[string]map[string]string
-	packages, usemask, useforce map[*atom]string
-	ppropertiesdict,  pacceptRestrict, penvdict                                                                                                                                                                             map[string]map[*atom][]string
-	makeDefaultsUse, featuresOverrides, acceptRestrict,profiles                                                                                                                                                                                           []string
-	profileBashrc                                                                                                                                                                                                                          []bool
-	lookupList, configList, makeDefaults,uvlist                                                                                                                                                                                                   []map[string]string
-	repoMakeDefaults, configDict                                                                                                                                                                                                           map[string]map[string]string
-	backupenv, defaultGlobals, deprecatedKeys, useExpandDict, virtualsManagerObj, virtualsManager, acceptProperties, expandMap                                                                                              map[string]string
-	pprovideddict map[string][]string
-	pbashrcdict                                                                                                                             map[*profileNode]map[string]map[*atom][]string
-	prevmaskdict                                                                                                                            map[string][]*atom
-	modulePriority, incrementals,  validateCommands,   unknownFeatures, nonUserVariables, envDBlacklist, pbashrc, categories, iuseEffective map[string]bool
-	features                                                                                                                                *featuresSet
-	repositories                                                                                                                            *repoConfigLoader
-	modules                                                                                                                                 map[string]map[string][]string
-	locationsManager                                                                                                                        *locationsManager
-	environWhitelistRe                                                                                                                      *regexp.Regexp
+	valueDict                                                                                                                            map[string]string
+	constantKeys, setcpvAuxKeys, envBlacklist, environFilter, environWhitelist, globalOnlyVars, caseInsensitiveVars                      map[string]bool
+	tolerent, unmatchedRemoval, localConfig, setCpvActive                                                                                bool
+	locked                                                                                                                               int
+	mycpv, setcpvArgsHash, penv, modifiedkeys, acceptChostRe, parentStable, sonameProvided                                               *int
+	puse, depcachedir, profilePath, defaultFeaturesUse, userProfileDir, globalConfigPath                                                 string
+	useManager                                                                                                                           *useManager
+	keywordsManagerObj                                                                                                                   *keywordsManager
+	maskManagerObj                                                                                                                       *maskManager
+	virtualManagerObj                                                                                                                    *virtualManager
+	licenseManager                                                                                                                       *licenseManager
+	iuseImplicitMatch                                                                                                                    *iuseImplicitMatchCache
+	unpackDependencies                                                                                                                   map[string]map[string]map[string]string
+	packages, usemask, useforce                                                                                                          map[*atom]string
+	ppropertiesdict, pacceptRestrict, penvdict                                                                                           map[string]map[*atom][]string
+	makeDefaultsUse, featuresOverrides, acceptRestrict, profiles                                                                         []string
+	profileBashrc                                                                                                                        []bool
+	lookupList, configList, makeDefaults, uvlist                                                                                         []map[string]string
+	repoMakeDefaults, configDict                                                                                                         map[string]map[string]string
+	backupenv, defaultGlobals, deprecatedKeys, useExpandDict, virtualsManagerObj, virtualsManager, acceptProperties, expandMap           map[string]string
+	pprovideddict                                                                                                                        map[string][]string
+	pbashrcdict                                                                                                                          map[*profileNode]map[string]map[*atom][]string
+	prevmaskdict                                                                                                                         map[string][]*atom
+	modulePriority, incrementals, validateCommands, unknownFeatures, nonUserVariables, envDBlacklist, pbashrc, categories, iuseEffective map[string]bool
+	features                                                                                                                             *featuresSet
+	repositories                                                                                                                         *repoConfigLoader
+	modules                                                                                                                              map[string]map[string][]string
+	locationsManager                                                                                                                     *locationsManager
+	environWhitelistRe                                                                                                                   *regexp.Regexp
 }
 
-func (c *Config) _init_iuse(){
-	c.iuseEffective = c._calc_iuse_effective()
+func (c *Config) initIuse() {
+	c.iuseEffective = c.calcIuseEffective()
 	c.iuseImplicitMatch = NewIuseImplicitMatchCache(c)
 }
 
-func (c *Config)_calc_iuse_effective()map[string]bool{
+func (c *Config) calcIuseEffective() map[string]bool {
 	iuseEffective := map[string]bool{}
-	for _ ,x:= range strings.Fields(c.valueDict["IUSE_IMPLICIT"]){
-		iuseEffective[x]=true
+	for _, x := range strings.Fields(c.valueDict["IUSE_IMPLICIT"]) {
+		iuseEffective[x] = true
 	}
 	useExpandImplicit := map[string]bool{}
-	for _ ,x:= range strings.Fields(c.valueDict["USE_EXPAND_IMPLICIT"]){
-		useExpandImplicit[x]=true
+	for _, x := range strings.Fields(c.valueDict["USE_EXPAND_IMPLICIT"]) {
+		useExpandImplicit[x] = true
 	}
-	for _, v := range strings.Fields(c.valueDict["USE_EXPAND_UNPREFIXED"]){
-		if !useExpandImplicit[v]{
+	for _, v := range strings.Fields(c.valueDict["USE_EXPAND_UNPREFIXED"]) {
+		if !useExpandImplicit[v] {
 			continue
 		}
-		for _ ,x:= range strings.Fields(c.valueDict["USE_EXPAND_IMPLICIT"]){
-			useExpandImplicit[x]=true
+		for _, x := range strings.Fields(c.valueDict["USE_EXPAND_IMPLICIT"]) {
+			useExpandImplicit[x] = true
 		}
-		for _ ,x:= range strings.Fields(c.valueDict["USE_EXPAND_VALUES_"+v]){
-			iuseEffective[x]=true
+		for _, x := range strings.Fields(c.valueDict["USE_EXPAND_VALUES_"+v]) {
+			iuseEffective[x] = true
 		}
 	}
 	useExpand := map[string]bool{}
-	for _ ,x:= range strings.Fields(c.valueDict["USE_EXPAND"]){
-		useExpand[x]=true
+	for _, x := range strings.Fields(c.valueDict["USE_EXPAND"]) {
+		useExpand[x] = true
 	}
 	for v := range useExpandImplicit {
-		if ! useExpand[v]{
+		if ! useExpand[v] {
 			continue
 		}
-		lowerV :=strings.ToLower( v)
-		for _, x := range strings.Fields(c.valueDict["USE_EXPAND_VALUES_" + v]){
-			iuseEffective[lowerV+ "_" + x] =true
+		lowerV := strings.ToLower(v)
+		for _, x := range strings.Fields(c.valueDict["USE_EXPAND_VALUES_"+v]) {
+			iuseEffective[lowerV+"_"+x] = true
 		}
 	}
 	return iuseEffective
 }
 
-func (c *Config) _validateCommands(){
-	for k :=range validateCommands{
-		v:= c.valueDict[k]
-		if v !=""{
+func (c *Config) _validateCommands() {
+	for k := range validateCommands {
+		v := c.valueDict[k]
+		if v != "" {
 			valid, vSplit := validateCmdVar(v)
-			if ! valid{
-				if len(vSplit)>0{
+			if ! valid {
+				if len(vSplit) > 0 {
 					writeMsgLevel(fmt.Sprintf("%s setting is invalid: '%s'\n", k, v), 40, -1)
 				}
 
 				v = c.configDict["globals"][k]
-				if v !=""{
+				if v != "" {
 					defaultValid, vSplit := validateCmdVar(v)
 					if ! defaultValid {
-						if len(vSplit)>0 {
+						if len(vSplit) > 0 {
 							writeMsgLevel(fmt.Sprintf("%s setting from make.globals is invalid: '%s'\n", k, v), 40, -1)
 						}
 						v = c.defaultGlobals[k]
 					}
 				}
 
-				delete(c.valueDict,k)
+				delete(c.valueDict, k)
 				delete(c.backupenv, k)
-				if v!=""{
+				if v != "" {
 					c.configDict["globals"][k] = v
 				}
 			}
@@ -310,28 +310,28 @@ func (c *Config) _validateCommands(){
 	}
 }
 
-func (c *Config) getImplicitIuse() map[string]bool{
+func (c *Config) getImplicitIuse() map[string]bool {
 
 	iuseImplicit := map[string]bool{}
 	arch := c.configDict["defaults"]["ARCH"]
-	if arch!=""{
-		iuseImplicit[arch]=true
+	if arch != "" {
+		iuseImplicit[arch] = true
 	}
-	for _,x := range strings.Fields(c.valueDict["PORTAGE_ARCHLIST"]){
-		iuseImplicit[x]=true
+	for _, x := range strings.Fields(c.valueDict["PORTAGE_ARCHLIST"]) {
+		iuseImplicit[x] = true
 	}
-		useExpandHidden := strings.Fields(c.valueDict["USE_EXPAND_HIDDEN"])
-	for _, x :=range useExpandHidden {
-		iuseImplicit[strings.ToLower(x)+"_.*"]=true
+	useExpandHidden := strings.Fields(c.valueDict["USE_EXPAND_HIDDEN"])
+	for _, x := range useExpandHidden {
+		iuseImplicit[strings.ToLower(x)+"_.*"] = true
 	}
-	for x :=range c.usemask{
-		iuseImplicit[x.value ]=true
+	for x := range c.usemask {
+		iuseImplicit[x.value ] = true
 	}
-	for x :=range c.useforce{
-		iuseImplicit[x.value ]=true
+	for x := range c.useforce {
+		iuseImplicit[x.value ] = true
 	}
-	iuseImplicit["build"]=true
-	iuseImplicit["bootstrap"]=true
+	iuseImplicit["build"] = true
+	iuseImplicit["bootstrap"] = true
 
 	return iuseImplicit
 }
@@ -348,22 +348,22 @@ func (c *Config) backupChanges(key string) {
 func (c *Config) regenerate(useonly int) { // 0 n
 	c.modifying()
 	myincrementals := map[string]bool{}
-	if useonly!=0{
-		myincrementals["USE"]= true
+	if useonly != 0 {
+		myincrementals["USE"] = true
 	} else {
 		myincrementals = c.incrementals
 	}
 	delete(myincrementals, "USE")
 	mydbs := append(c.configList[:0:0], c.configList...)
 	mydbs = append(mydbs, c.backupenv)
-	if c.localConfig{
+	if c.localConfig {
 		mySplit := []string{}
-		for _, curdb :=range mydbs{
+		for _, curdb := range mydbs {
 			mySplit = append(mySplit, strings.Fields(curdb["ACCEPT_LICENSE"])...)
 		}
 		mySplit = pruneIncremental(mySplit)
 		acceptLicenseStr := strings.Join(mySplit, " ")
-		if acceptLicenseStr ==""{
+		if acceptLicenseStr == "" {
 			acceptLicenseStr = "* -@EULA"
 		}
 		c.configList[len(c.configList)-1]["ACCEPT_LICENSE"] = acceptLicenseStr
@@ -371,9 +371,9 @@ func (c *Config) regenerate(useonly int) { // 0 n
 	} else {
 		c.licenseManager.setAcceptLicenseStr("*")
 	}
-	if c.localConfig{
+	if c.localConfig {
 		mySplit := []string{}
-		for _, curdb :=range mydbs{
+		for _, curdb := range mydbs {
 			mySplit = append(mySplit, strings.Fields(curdb["ACCEPT_RESTRICT"])...)
 		}
 		mySplit = pruneIncremental(mySplit)
@@ -386,8 +386,8 @@ func (c *Config) regenerate(useonly int) { // 0 n
 	incrementLists := map[string][][]string{}
 	for k := range myincrementals {
 		incrementList := [][]string{}
-		incrementLists[k]=incrementList
-		for _,curdb := range mydbs{
+		incrementLists[k] = incrementList
+		for _, curdb := range mydbs {
 			v, ok := curdb[k]
 			if ok {
 				incrementList = append(incrementList, strings.Fields(v))
@@ -400,73 +400,73 @@ func (c *Config) regenerate(useonly int) { // 0 n
 	myFlags := map[string]bool{}
 	for myKey, incrementList := range incrementLists {
 		myFlags = map[string]bool{}
-		for _, mySplit := range incrementList{
-			for _,x := range mySplit{
-				if x=="-*"{
+		for _, mySplit := range incrementList {
+			for _, x := range mySplit {
+				if x == "-*" {
 					myFlags = map[string]bool{}
 					continue
 				}
-				if x[0]=='+'{
-					writeMsg(colorize("BAD", fmt.Sprintf("%s values should not start with a '+': %s",myKey,x)) +"\n", -1, nil)
-					x=x[1:]
-					if x==""{
+				if x[0] == '+' {
+					writeMsg(colorize("BAD", fmt.Sprintf("%s values should not start with a '+': %s", myKey, x))+"\n", -1, nil)
+					x = x[1:]
+					if x == "" {
 						continue
 					}
 				}
-				if x[0] == '-'{
+				if x[0] == '-' {
 					delete(myFlags, x[1:])
 					continue
 				}
-				myFlags[x]=true
+				myFlags[x] = true
 			}
 		}
-		if _, ok := c.valueDict[myKey];len(myFlags)>0 ||ok{
+		if _, ok := c.valueDict[myKey]; len(myFlags) > 0 || ok {
 			m := []string{}
 			for k := range myFlags {
-				m = append(m ,k)
+				m = append(m, k)
 			}
 			sort.Strings(m)
-			c.configList[len(c.configList)-1][myKey] = strings.Join(m , " ")
+			c.configList[len(c.configList)-1][myKey] = strings.Join(m, " ")
 		}
 	}
 	useExpand := strings.Fields(c.valueDict["USE_EXPAND"])
-	useExpandDict :=  c.useExpandDict
+	useExpandDict := c.useExpandDict
 	useExpandDict = map[string]string{}
-	for _,k := range useExpand{
-		if v,ok := c.valueDict[k]; ok{
-			useExpandDict[k]=v
+	for _, k := range useExpand {
+		if v, ok := c.valueDict[k]; ok {
+			useExpandDict[k] = v
 		}
 	}
 	useExpandUnprefixed := strings.Fields(c.valueDict["USE_EXPAND_UNPREFIXED"])
 	configDictDefaults := c.configDict["defaults"]
 	if c.makeDefaults != nil {
-		for _, cfg := range c.makeDefaults{
-			if len(cfg) ==0{
+		for _, cfg := range c.makeDefaults {
+			if len(cfg) == 0 {
 				c.makeDefaultsUse = append(c.makeDefaultsUse, "")
 				continue
 			}
 			use := cfg["USE"]
 			expandUse := []string{}
-			for _, k := range useExpandUnprefixed{
-				if v, ok:= cfg[k];ok {
+			for _, k := range useExpandUnprefixed {
+				if v, ok := cfg[k]; ok {
 					expandUse = append(expandUse, strings.Fields(v)...)
 				}
 			}
-			for k := range useExpandDict{
-				v, ok:= cfg[k]
+			for k := range useExpandDict {
+				v, ok := cfg[k]
 				if !ok {
 					continue
 				}
-				prefix := strings.ToLower(k)+"_"
-				for _,x := range strings.Fields(v){
-					if x[:1]=="-"{
-						expandUse = append(expandUse,"-"+prefix+x[:1])
+				prefix := strings.ToLower(k) + "_"
+				for _, x := range strings.Fields(v) {
+					if x[:1] == "-" {
+						expandUse = append(expandUse, "-"+prefix+x[:1])
 					} else {
 						expandUse = append(expandUse, prefix+x)
 					}
 				}
 			}
-			if len(expandUse)>0 {
+			if len(expandUse) > 0 {
 				expandUse = append(expandUse, use)
 				use = strings.Join(expandUse, " ")
 			}
@@ -476,7 +476,7 @@ func (c *Config) regenerate(useonly int) { // 0 n
 		c.makeDefaults = nil
 	}
 	if len(c.uvlist) == 0 {
-		for _, x := range strings.Split(c.valueDict["USER_ORDER"], ":"){
+		for _, x := range strings.Split(c.valueDict["USER_ORDER"], ":") {
 			if _, ok := c.configDict[x]; ok {
 				c.uvlist = append(c.uvlist, c.configDict[x])
 			}
@@ -486,133 +486,133 @@ func (c *Config) regenerate(useonly int) { // 0 n
 	iu := c.configDict["pkg"]["IUSE"]
 	iuse := []string{}
 	if iu != "" {
-		for _, x := range strings.Fields(iu){
+		for _, x := range strings.Fields(iu) {
 			iuse = append(iuse, strings.TrimPrefix(x, "+-"))
 		}
 	}
 	myFlags = map[string]bool{}
-	for _,curdb:= range c.uvlist{
-		for _, k:= range useExpandUnprefixed{
+	for _, curdb := range c.uvlist {
+		for _, k := range useExpandUnprefixed {
 			v := curdb[k]
 			if v == "" {
 				continue
 			}
-			for _, x:=range strings.Fields(v){
-				if x[:1]=="-"{
-					delete(myFlags,x[1:])
+			for _, x := range strings.Fields(v) {
+				if x[:1] == "-" {
+					delete(myFlags, x[1:])
 				} else {
-					myFlags[x]=true
+					myFlags[x] = true
 				}
 			}
 		}
 		curUseExpand := []string{}
-		for _,x := range useExpand{
-			if _,ok:=curdb[x];ok{
+		for _, x := range useExpand {
+			if _, ok := curdb[x]; ok {
 				curUseExpand = append(curUseExpand, x)
 			}
 		}
 		mySplit := strings.Fields(curdb["USE"])
-		if len(mySplit) == 0 && len(curUseExpand)==0{
+		if len(mySplit) == 0 && len(curUseExpand) == 0 {
 			continue
 		}
-		for _,x :=range mySplit{
-			if x=="-*"{
+		for _, x := range mySplit {
+			if x == "-*" {
 				myFlags = map[string]bool{}
 				continue
 			}
-			if x[0]=='+'{
-				writeMsg(colorize("BAD", fmt.Sprintf("USE flags should not start with a '+': %s\n",x)), -1, nil)
-				x=x[1:]
-				if x==""{
+			if x[0] == '+' {
+				writeMsg(colorize("BAD", fmt.Sprintf("USE flags should not start with a '+': %s\n", x)), -1, nil)
+				x = x[1:]
+				if x == "" {
 					continue
 				}
 			}
-			if x[0]=='-'{
-				if x[len(x)-2:]=="_*"{
-					prefix := x[1:len(x)-1]
+			if x[0] == '-' {
+				if x[len(x)-2:] == "_*" {
+					prefix := x[1 : len(x)-1]
 					prefixLen := len(prefix)
 					for y := range myFlags {
-						if y[:prefixLen]== prefix{
+						if y[:prefixLen] == prefix {
 							delete(myFlags, y)
 						}
 					}
 				}
-				delete(myFlags,x[1:])
+				delete(myFlags, x[1:])
 				continue
 			}
-			if iuse != nil && x[len(x)-2:] == "_*"{
+			if iuse != nil && x[len(x)-2:] == "_*" {
 				prefix := x[:len(x)-1]
 				prefixLen := len(prefix)
 				hasIuse := false
-				for _,y := range iuse {
-					if y[:prefixLen]==prefix{
-						hasIuse=true
-						myFlags[y]=true
+				for _, y := range iuse {
+					if y[:prefixLen] == prefix {
+						hasIuse = true
+						myFlags[y] = true
 					}
 				}
-				if !hasIuse{
-					myFlags[x]=true
+				if !hasIuse {
+					myFlags[x] = true
 				}
 			} else {
-				myFlags[x]=true
+				myFlags[x] = true
 			}
 		}
-		if reflect.ValueOf(curdb).Pointer() == reflect.ValueOf(configDictDefaults).Pointer(){
+		if reflect.ValueOf(curdb).Pointer() == reflect.ValueOf(configDictDefaults).Pointer() {
 			continue
 		}
-		for _,varr := range curUseExpand{
-			varLower:= strings.ToLower(varr)
+		for _, varr := range curUseExpand {
+			varLower := strings.ToLower(varr)
 			isNotIncremental := !myincrementals[varr]
-			if isNotIncremental{
+			if isNotIncremental {
 				prefix := varLower + "_"
 				prefixLen := len(prefix)
-				for x := range myFlags{
-					if x[:prefixLen]==prefix{
-						delete(myFlags,x)
+				for x := range myFlags {
+					if x[:prefixLen] == prefix {
+						delete(myFlags, x)
 					}
 				}
 			}
-			for _, x:=range strings.Fields(curdb[varr]){
-				if x[0]=='+'{
-					if isNotIncremental{
-						writeMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n",varr, x)), -1, nil)
+			for _, x := range strings.Fields(curdb[varr]) {
+				if x[0] == '+' {
+					if isNotIncremental {
+						writeMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n", varr, x)), -1, nil)
 						continue
 					} else {
-						writeMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n",varr, x)), -1, nil)
+						writeMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n", varr, x)), -1, nil)
 					}
 					x = x[1:]
 				}
-				if x[0]=='-'{
-					if isNotIncremental{
-						writeMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n",varr, x)), -1, nil)
+				if x[0] == '-' {
+					if isNotIncremental {
+						writeMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n", varr, x)), -1, nil)
 						continue
 					}
-					delete(myFlags, varLower + "_" + x)
+					delete(myFlags, varLower+"_"+x)
 					continue
 				}
-				myFlags[varLower + "_" + x]=true
+				myFlags[varLower+"_"+x] = true
 			}
 		}
 	}
-	if c.features!= nil {
+	if c.features != nil {
 		c.features.features = map[string]bool{}
-	}else {
+	} else {
 		c.features = NewFeaturesSet(c)
 	}
-	for _,x:=range strings.Fields(c.valueDict["FEATURES"]){
-		c.features.features[x]=true
+	for _, x := range strings.Fields(c.valueDict["FEATURES"]) {
+		c.features.features[x] = true
 	}
 	c.features.syncEnvVar()
 	c.features.validate()
-	for x := range c.useforce{
-		myFlags[x.value]=true
+	for x := range c.useforce {
+		myFlags[x.value] = true
 	}
-	for x:=range c.usemask{
-		delete(myFlags,x.value)
+	for x := range c.usemask {
+		delete(myFlags, x.value)
 	}
 	m := []string{}
-	for x :=range myFlags {
-		m = append(m ,x)
+	for x := range myFlags {
+		m = append(m, x)
 	}
 	sort.Strings(m)
 	c.configList[len(c.configList)-1]["USE"] = strings.Join(m, " ")
@@ -621,46 +621,46 @@ func (c *Config) regenerate(useonly int) { // 0 n
 			prefix := strings.ToLower(k) + "_"
 			prefixLen := len(prefix)
 			expandFlags := map[string]bool{}
-			for x :=range myFlags{
-				if x[:prefixLen]==prefix{
+			for x := range myFlags {
+				if x[:prefixLen] == prefix {
 					expandFlags[x[prefixLen:]] = true
 				}
 			}
 			varSplit := strings.Fields(useExpandDict[k])
-			v:=[]string{}
-			for _,x:=range varSplit {
-				if expandFlags[x]{
-					v=append(v,x)
+			v := []string{}
+			for _, x := range varSplit {
+				if expandFlags[x] {
+					v = append(v, x)
 				}
 			}
-			varSplit=v
-			for _,v:=range varSplit{
-				delete(expandFlags,v)
+			varSplit = v
+			for _, v := range varSplit {
+				delete(expandFlags, v)
 			}
-			e:=[]string{}
-			for x:= range expandFlags{
-				e =append(e,x)
+			e := []string{}
+			for x := range expandFlags {
+				e = append(e, x)
 			}
 			sort.Strings(e)
 			varSplit = append(varSplit, e...)
-			if len(varSplit)>0{
-				c.configList[len(c.configList)-1][k]=strings.Join(varSplit, " ")
-			} else if _, ok := c.valueDict[k];ok {
-				c.configList[len(c.configList)-1][k]=""
+			if len(varSplit) > 0 {
+				c.configList[len(c.configList)-1][k] = strings.Join(varSplit, " ")
+			} else if _, ok := c.valueDict[k]; ok {
+				c.configList[len(c.configList)-1][k] = ""
 			}
 		}
-		for _, k := range useExpandUnprefixed{
+		for _, k := range useExpandUnprefixed {
 			varSplit := strings.Fields(c.valueDict[k])
 			v := []string{}
-			for _,x:=range varSplit{
-				if myFlags[x]{
-					v = append(v,x)
+			for _, x := range varSplit {
+				if myFlags[x] {
+					v = append(v, x)
 				}
 			}
-			if len(varSplit)>0{
-				c.configList[len(c.configList)-1][k]=strings.Join(varSplit, " ")
-			} else if _, ok := c.valueDict[k];ok {
-				c.configList[len(c.configList)-1][k]=""
+			if len(varSplit) > 0 {
+				c.configList[len(c.configList)-1][k] = strings.Join(varSplit, " ")
+			} else if _, ok := c.valueDict[k]; ok {
+				c.configList[len(c.configList)-1][k] = ""
 			}
 		}
 
@@ -683,7 +683,13 @@ func (c *Config) modifying() error {
 }
 
 func (c *Config) SetCpv(cpv string, myDb string) {
+	if c.setCpvActive {
+		//AssertionError('setcpv recursion detected')
+	}
+	c.setCpvActive = true
+	defer func() { c.setCpvActive = false }()
 	c.modifying()
+
 }
 
 func (c *Config) isStable(pkg *pkgStr) bool {
@@ -801,8 +807,8 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		ReverseSlice(c.lookupList)
 		c.useExpandDict = CopyMapSS(clone.useExpandDict)
 		c.backupenv = c.configDict["backupenv"]
-		c.prevmaskdict = clone.prevmaskdict // CopyMapSS(clone.prevmaskdict)
-		c.pprovideddict = clone.pprovideddict//CopyMapSS()
+		c.prevmaskdict = clone.prevmaskdict   // CopyMapSS(clone.prevmaskdict)
+		c.pprovideddict = clone.pprovideddict //CopyMapSS()
 		c.features = NewFeaturesSet(c)
 		c.features.features = CopyMapSB(clone.features.features)
 		c.featuresOverrides = append(clone.featuresOverrides[:0:0], clone.featuresOverrides...)
@@ -1261,40 +1267,40 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 			}
 		}
 		al := [][][2]string{}
-		for _,x :=range locationsManager.profileAndUserLocations {
+		for _, x := range locationsManager.profileAndUserLocations {
 			al = append(al, grabFile(path.Join(x, "arch.list"), 0, false, false))
 		}
 		archList := stackLists(al, 1, false, false, false, false)
 		als := []string{}
-		for a :=range  archList{
+		for a := range archList {
 			als = append(als, a.value)
 		}
 		sort.Strings(als)
-		c.configDict["conf"]["PORTAGE_ARCHLIST"]=strings.Join(als, " ")
+		c.configDict["conf"]["PORTAGE_ARCHLIST"] = strings.Join(als, " ")
 
 		ppl := [][][2]string{}
-		for _, x := range profilesComplex{
+		for _, x := range profilesComplex {
 			provPath := path.Join(x.location, "package.provided")
-			if _,err:=os.Stat(provPath);err==nil{
-				if getEapiAttrs(x.eapi).allowsPackageProvided{
+			if _, err := os.Stat(provPath); err == nil {
+				if getEapiAttrs(x.eapi).allowsPackageProvided {
 					ppl = append(ppl, grabFile(provPath, 1, x.portage1Directories, false))
 				}
 			}
 		}
-		ppls :=stackLists(ppl, 1,false, false, false, false)
+		ppls := stackLists(ppl, 1, false, false, false, false)
 		pkgProvidedLines := []string{}
-		for a := range ppls{
+		for a := range ppls {
 			pkgProvidedLines = append(pkgProvidedLines, a.value)
 		}
-		hasInvalidData :=false
-		for x :=len(pkgProvidedLines)-1;x> -1;x--{
+		hasInvalidData := false
+		for x := len(pkgProvidedLines) - 1; x > -1; x-- {
 			myline := pkgProvidedLines[x]
-			if !isValidAtom("=" + myline, false, false, false, "", false){
-				writeMsg(fmt.Sprintf("Invalid package name in package.provided: %s\n",myline), -1, nil)
+			if !isValidAtom("="+myline, false, false, false, "", false) {
+				writeMsg(fmt.Sprintf("Invalid package name in package.provided: %s\n", myline), -1, nil)
 				hasInvalidData = true
 				p := []string{}
-				for k,v := range pkgProvidedLines{
-					if x!= k {
+				for k, v := range pkgProvidedLines {
+					if x != k {
 						p = append(p, v)
 					}
 				}
@@ -1302,12 +1308,12 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 				continue
 			}
 			cpvr := catPkgSplit(pkgProvidedLines[x], 1, "")
-			if cpvr==[4]string{} || cpvr[0] == "null"{
-				writeMsg("Invalid package name in package.provided: "+pkgProvidedLines[x]+"\n",-1,nil)
+			if cpvr == [4]string{} || cpvr[0] == "null" {
+				writeMsg("Invalid package name in package.provided: "+pkgProvidedLines[x]+"\n", -1, nil)
 				hasInvalidData = true
 				p := []string{}
-				for k,v := range pkgProvidedLines{
-					if x!= k {
+				for k, v := range pkgProvidedLines {
+					if x != k {
 						p = append(p, v)
 					}
 				}
@@ -1315,39 +1321,39 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 				continue
 			}
 		}
-		if hasInvalidData{
-			writeMsg("See portage(5) for correct package.provided usage.\n", -1,nil)
+		if hasInvalidData {
+			writeMsg("See portage(5) for correct package.provided usage.\n", -1, nil)
 		}
 		c.pprovideddict = map[string][]string{}
-		for _, x:=range pkgProvidedLines{
+		for _, x := range pkgProvidedLines {
 			x_split := catPkgSplit(x, 1, "")
-			if x_split ==[4]string{}{
+			if x_split == [4]string{} {
 				continue
 			}
 			mycatpkg := cpvGetKey(x, "")
 			if _, ok := c.pprovideddict[mycatpkg]; ok {
-				c.pprovideddict[mycatpkg]=append(c.pprovideddict[mycatpkg],x)
-			} else{
-				c.pprovideddict[mycatpkg]=[]string{x}
+				c.pprovideddict[mycatpkg] = append(c.pprovideddict[mycatpkg], x)
+			} else {
+				c.pprovideddict[mycatpkg] = []string{x}
 			}
 		}
 
-		if _, ok := c.valueDict["USE_ORDER"]; !ok{
+		if _, ok := c.valueDict["USE_ORDER"]; !ok {
 			c.valueDict["USE_ORDER"] = "env:pkg:conf:defaults:pkginternal:features:repo:env.d"
 			c.backupChanges("USE_ORDER")
 		}
 		_, ok1 := c.valueDict["CBUILD"]
 		_, ok2 := c.valueDict["CHOST"]
-		if !ok1 && ok2{
+		if !ok1 && ok2 {
 			c.valueDict["CBUILD"] = c.valueDict["CHOST"]
 			c.backupChanges("CBUILD")
 		}
 
-		if _, ok := c.valueDict["USERLAND"]; !ok{
+		if _, ok := c.valueDict["USERLAND"]; !ok {
 			system := runtime.GOOS
-			if system != "" &&(strings.HasSuffix(system, "BSD")||system=="DragonFly"){
+			if system != "" && (strings.HasSuffix(system, "BSD") || system == "DragonFly") {
 				c.valueDict["USERLAND"] = "BSD"
-			} else{
+			} else {
 				c.valueDict["USERLAND"] = "GNU"
 			}
 			c.backupChanges("USERLAND")
@@ -1358,24 +1364,24 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		erootOrParent := firstExisting(eroot)
 		unprivileged := false
 
-		if erootSt, err := os.Stat(erootOrParent);err == nil{
-			if unprivilegedMode(erootOrParent, erootSt){
+		if erootSt, err := os.Stat(erootOrParent); err == nil {
+			if unprivilegedMode(erootOrParent, erootSt) {
 				unprivileged = true
 			}
 
 			defaultInstIds["PORTAGE_INST_GID"] = fmt.Sprintf("%v", erootSt.Sys().(*syscall.Stat_t).Gid)
 			defaultInstIds["PORTAGE_INST_UID"] = fmt.Sprintf("%v", erootSt.Sys().(*syscall.Stat_t).Uid)
 
-			if _, ok := c.valueDict["PORTAGE_USERNAME"];!ok {
-				if pwdStruct, err := user.LookupId(fmt.Sprintf("%v", erootSt.Sys().(*syscall.Stat_t).Uid)); err != nil{
+			if _, ok := c.valueDict["PORTAGE_USERNAME"]; !ok {
+				if pwdStruct, err := user.LookupId(fmt.Sprintf("%v", erootSt.Sys().(*syscall.Stat_t).Uid)); err != nil {
 				} else {
 					c.valueDict["PORTAGE_USERNAME"] = pwdStruct.Name
 					c.backupChanges("PORTAGE_USERNAME")
 				}
 			}
 
-			if _, ok := c.valueDict["PORTAGE_GRPNAME"];!ok {
-				if grpStruct, err := user.LookupGroupId(fmt.Sprintf("%v", erootSt.Sys().(*syscall.Stat_t).Gid)); err != nil{
+			if _, ok := c.valueDict["PORTAGE_GRPNAME"]; !ok {
+				if grpStruct, err := user.LookupGroupId(fmt.Sprintf("%v", erootSt.Sys().(*syscall.Stat_t).Gid)); err != nil {
 				} else {
 					c.valueDict["PORTAGE_GRPNAME"] = grpStruct.Name
 					c.backupChanges("PORTAGE_GRPNAME")
@@ -1388,8 +1394,8 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 			if !ok {
 				v = defaultVal
 			}
-			if _, err := strconv.Atoi(v); err != nil{
-				writeMsg(fmt.Sprintf("!!! %s='%s' is not a valid integer. Falling back to %s.\n",varr, c.valueDict[varr], defaultVal), -1, nil)
+			if _, err := strconv.Atoi(v); err != nil {
+				writeMsg(fmt.Sprintf("!!! %s='%s' is not a valid integer. Falling back to %s.\n", varr, c.valueDict[varr], defaultVal), -1, nil)
 			} else {
 				c.valueDict[varr] = v
 			}
@@ -1397,11 +1403,11 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		}
 
 		c.depcachedir = c.valueDict["PORTAGE_DEPCACHEDIR"]
-		if c.depcachedir ==""{
-			c.depcachedir = path.Join(string(os.PathSeparator), EPREFIX, strings.TrimPrefix(DepcachePath,string(os.PathSeparator)))
-			if unprivileged && targetRoot != string(os.PathSeparator){
-				if s, err := os.Stat(firstExisting(c.depcachedir)); err!= nil &&s.Mode()&2!=0{
-					c.depcachedir = path.Join(eroot, strings.TrimPrefix(DepcachePath,string(os.PathSeparator)))
+		if c.depcachedir == "" {
+			c.depcachedir = path.Join(string(os.PathSeparator), EPREFIX, strings.TrimPrefix(DepcachePath, string(os.PathSeparator)))
+			if unprivileged && targetRoot != string(os.PathSeparator) {
+				if s, err := os.Stat(firstExisting(c.depcachedir)); err != nil && s.Mode()&2 != 0 {
+					c.depcachedir = path.Join(eroot, strings.TrimPrefix(DepcachePath, string(os.PathSeparator)))
 				}
 			}
 		}
@@ -1409,34 +1415,34 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		c.valueDict["PORTAGE_DEPCACHEDIR"] = c.depcachedir
 		c.backupChanges("PORTAGE_DEPCACHEDIR")
 
-		if internalCaller{
+		if internalCaller {
 			c.valueDict["PORTAGE_INTERNAL_CALLER"] = "1"
 			c.backupChanges("PORTAGE_INTERNAL_CALLER")
 		}
 
 		c.regenerate(0)
 		featureUse := []string{}
-		if !c.features.features["test"]{
+		if !c.features.features["test"] {
 			featureUse = append(featureUse, "test")
 		}
-		c.defaultFeaturesUse = strings.Join(featureUse," ")
+		c.defaultFeaturesUse = strings.Join(featureUse, " ")
 		c.configDict["features"]["USE"] = c.defaultFeaturesUse
-		if len(featureUse)>0{
+		if len(featureUse) > 0 {
 			c.regenerate(0)
 		}
-		if unprivileged{
-			c.features.features["unprivileged"]=true
+		if unprivileged {
+			c.features.features["unprivileged"] = true
 		}
 
-		if runtime.GOOS=="FreeBSD"{
-			c.features.features["chflags"]=true
+		if runtime.GOOS == "FreeBSD" {
+			c.features.features["chflags"] = true
 		}
-		c._init_iuse()
+		c.initIuse()
 
 		c._validateCommands()
 
-		for k :=range c.caseInsensitiveVars{
-			if _, ok := c.valueDict[k];ok{
+		for k := range c.caseInsensitiveVars {
+			if _, ok := c.valueDict[k]; ok {
 				c.valueDict[k] = strings.ToLower(c.valueDict[k])
 				c.backupChanges(k)
 			}
@@ -2979,85 +2985,85 @@ type virtualManager struct {
 	_dirVirtuals, _virtuals, _treeVirtuals, _depgraphVirtuals, _virts_p map[string][]string
 }
 
-func (v *virtualManager) read_dirVirtuals( profiles []string){
+func (v *virtualManager) read_dirVirtuals(profiles []string) {
 	virtualsList := []map[string][]string{}
-	for _, x :=range profiles{
+	for _, x := range profiles {
 		virtualsFile := path.Join(x, "virtuals")
-		virtualsDict := grabDict(virtualsFile,false, false, false,false, false)
+		virtualsDict := grabDict(virtualsFile, false, false, false, false, false)
 		atomsDict := map[string][]string{}
 		for k, v := range virtualsDict {
 			virtAtom, err := NewAtom(k, nil, false, nil, nil, "", nil, nil)
-			if err!=nil{
+			if err != nil {
 				virtAtom = nil
-			} else{
-				if virtAtom.blocker!=nil || virtAtom.value != virtAtom.cp{
+			} else {
+				if virtAtom.blocker != nil || virtAtom.value != virtAtom.cp {
 					virtAtom = nil
 				}
 			}
-			if virtAtom ==nil{
+			if virtAtom == nil {
 				writeMsg(fmt.Sprintf("--- Invalid virtuals atom in %s: %s\n", virtualsFile, k), -1, nil)
 				continue
 			}
 			providers := []string{}
-			for _, atom := range v{
+			for _, atom := range v {
 				atomOrig := atom
-				if atom[:1] == "-"{
+				if atom[:1] == "-" {
 					atom = atom[1:]
 				}
 				atomA, err := NewAtom(atom, nil, false, nil, nil, "", nil, nil)
-				if err!=nil{
-					atomA=nil
-				} else{
-					if atomA.blocker!=nil{
-						atomA=nil
+				if err != nil {
+					atomA = nil
+				} else {
+					if atomA.blocker != nil {
+						atomA = nil
 					}
 				}
-				if atomA==nil{
-					writeMsg(fmt.Sprintf("--- Invalid atom in %s: %s\n", virtualsFile, atomOrig),-1,nil)
-				} else{
-					if atomOrig == atomA.value{
-						providers=append(providers, atom)
-					} else{
-						providers=append(providers, atomOrig)
+				if atomA == nil {
+					writeMsg(fmt.Sprintf("--- Invalid atom in %s: %s\n", virtualsFile, atomOrig), -1, nil)
+				} else {
+					if atomOrig == atomA.value {
+						providers = append(providers, atom)
+					} else {
+						providers = append(providers, atomOrig)
 					}
 				}
 			}
-			if len(providers)>0{
+			if len(providers) > 0 {
 				atomsDict[virtAtom.value] = providers
 			}
 		}
-		if len(atomsDict)>0{
-			virtualsList =append(virtualsList, atomsDict)
+		if len(atomsDict) > 0 {
+			virtualsList = append(virtualsList, atomsDict)
 		}
 	}
 
 	v._dirVirtuals = stackDictlist(virtualsList, 1, nil, 0)
 
-	for virt :=range v._dirVirtuals{
+	for virt := range v._dirVirtuals {
 		ReverseSlice(v._dirVirtuals[virt])
 	}
 }
 
-func (v *virtualManager) _compile_virtuals(){
-		ptVirtuals   := map[string][]string{}
+func (v *virtualManager) _compile_virtuals() {
+	ptVirtuals := map[string][]string{}
 
-	for virt, installedList := range v._treeVirtuals{
+	for virt, installedList := range v._treeVirtuals {
 		profileList := v._dirVirtuals[virt]
-		if len(profileList)==0{
+		if len(profileList) == 0 {
 			continue
 		}
-		for _,cp :=range installedList {
-			in :=false
-			for _, x:=range profileList {
-				if x==cp {
-					in=true
+		for _, cp := range installedList {
+			in := false
+			for _, x := range profileList {
+				if x == cp {
+					in = true
 					break
 				}
 			}
-			if in{
-				if _, ok:= ptVirtuals[virt];!ok{
+			if in {
+				if _, ok := ptVirtuals[virt]; !ok {
 					ptVirtuals[virt] = []string{cp}
-				} else{
+				} else {
 					ptVirtuals[virt] = append(ptVirtuals[virt], cp)
 				}
 			}
@@ -3069,29 +3075,29 @@ func (v *virtualManager) _compile_virtuals(){
 	v._virts_p = nil
 }
 
-func (v *virtualManager)getvirtuals()map[string][]string{
-	if v._treeVirtuals!=nil{
+func (v *virtualManager) getvirtuals() map[string][]string {
+	if v._treeVirtuals != nil {
 		panic("_populate_treeVirtuals() must be called before any query about virtuals")
 	}
-	if v._virtuals==nil{
+	if v._virtuals == nil {
 		v._compile_virtuals()
 	}
 	return v._virtuals
 }
 
-func (v *virtualManager)deepcopy()*virtualManager{
+func (v *virtualManager) deepcopy() *virtualManager {
 	return v
 }
 
-func (v *virtualManager) getVirtsP()map[string][]string{
-	if v._virts_p!=nil {
+func (v *virtualManager) getVirtsP() map[string][]string {
+	if v._virts_p != nil {
 		return v._virts_p
 	}
 	virts := v.getvirtuals()
-	virtsP :=map[string][]string {}
-	for x :=range virts{
-		vkeysplit := strings.Split(x,"/")
-		if _, ok := virtsP[vkeysplit[1]]; !ok{
+	virtsP := map[string][]string{}
+	for x := range virts {
+		vkeysplit := strings.Split(x, "/")
+		if _, ok := virtsP[vkeysplit[1]]; !ok {
 			virtsP[vkeysplit[1]] = virts[x]
 		}
 	}
@@ -3198,14 +3204,14 @@ func orderedByAtomSpecificity(cpdict map[*atom][]string, pkg *pkgStr, repo strin
 	return results
 }
 
-func pruneIncremental(split []string)[]string{
+func pruneIncremental(split []string) []string {
 	ReverseSlice(split)
-	for i ,x := range split {
-		if x == "*"{
+	for i, x := range split {
+		if x == "*" {
 			split = split[-i-1:]
 			break
-		} else if x == "-*"{
-			if i==0{
+		} else if x == "-*" {
+			if i == 0 {
 				split = []string{}
 			} else {
 				split = split[-i:]
