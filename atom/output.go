@@ -3,7 +3,10 @@ package atom
 import (
 	"bufio"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path"
+	"regexp"
 	"strings"
 )
 
@@ -105,6 +108,12 @@ func init() {
 	codes["darkyellow"] = codes["0xAAAA00"]
 }
 
+var havecolor = 1
+
+func NoColor() {
+	havecolor = 0
+}
+
 func noTitles() {
 	doTitles = 0
 }
@@ -113,9 +122,103 @@ func resetColor() string {
 	return codes["reset"]
 }
 
-func styleToAnsiCode(style string)string{
+func parseColorMap(configRoot string, onerror func(error) error) error { // /n
+	myfile := path.Join(configRoot, ColorMapFile)
+	ansiCodePattern := regexp.MustCompile("^[0-9;]*m$")
+	quotes := "'\""
+	stripQuotes := func(token string) string {
+		if strings.Contains(quotes, token[:1]) && token[0] == token[len(token)-1] {
+			token = token[1 : len(token)-1]
+
+		}
+		return token
+	}
+
+	f, err := os.Open(myfile)
+	if err != nil {
+		return err
+	}
+	fl, err := ioutil.ReadAll(f)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(fl), "\n")
+
+	for lineno, line := range lines {
+		commenterPos := strings.Index(line, "#")
+		line = strings.TrimSpace(line[:commenterPos])
+		if len(line) == 0 {
+			continue
+		}
+
+		splitLine := strings.Split(line, "=")
+		var e error
+		if len(splitLine) != 2 {
+			e = fmt.Errorf("'%s', line %s: expected exactly one occurrence of '=' operator", myfile, lineno)
+			if onerror != nil {
+				if err := onerror(e); err != nil {
+					return err
+				}
+			} else {
+				return e
+			}
+			continue
+		}
+
+		k := stripQuotes(strings.TrimSpace(splitLine[0]))
+		v := stripQuotes(strings.TrimSpace(splitLine[1]))
+		_, ok1 := styles[k]
+		_, ok2 := codes[k]
+		if !ok1 && !ok2 {
+			e = fmt.Errorf("'%s', line %s: Unknown variable: '%s'", myfile, lineno, k)
+			if onerror != nil {
+				if err := onerror(e); err != nil {
+					return err
+				}
+			} else {
+				return e
+			}
+			continue
+		}
+		if ansiCodePattern.MatchString(v) {
+			if _, ok := styles[k]; ok {
+				styles[k] = []string{escSeq + v}
+			} else if _, ok := codes[k]; ok {
+				codes[k] = escSeq + v
+			}
+		} else {
+			codeList := []string{}
+			for _, x := range strings.Fields(v) {
+				if _, ok := codes[x]; ok {
+					if _, ok := styles[k]; ok {
+						codeList = append(codeList, x)
+					} else if _, ok := codes[k]; ok {
+						codeList = append(codeList, codes[x])
+					}
+				} else {
+					e = fmt.Errorf("'%s', line %s: Undefined: '%s'", myfile, lineno, x)
+					if onerror != nil {
+						if err := onerror(e); err != nil {
+							return err
+						}
+					} else {
+						return e
+					}
+				}
+			}
+			if _, ok := styles[k]; ok {
+				styles[k] = codeList
+			} else if _, ok := codes[k]; ok {
+				codes[k] = strings.Join(codeList, "")
+			}
+		}
+	}
+	return nil
+}
+
+func styleToAnsiCode(style string) string {
 	ret := ""
-	for _, attrName := range styles[style]{
+	for _, attrName := range styles[style] {
 		r, ok := codes[attrName]
 		if ! ok {
 			ret = attrName
@@ -126,24 +229,24 @@ func styleToAnsiCode(style string)string{
 	return ret
 }
 
-func colorMap()string{
+func colorMap() string {
 	mycolors := []string{}
-	for _,c :=range []string{"GOOD", "WARN", "BAD", "HILITE", "BRACKET", "NORMAL"}{
-		mycolors = append(mycolors, fmt.Sprintf("%s=$'%s'",c, styleToAnsiCode(c)))
+	for _, c := range []string{"GOOD", "WARN", "BAD", "HILITE", "BRACKET", "NORMAL"} {
+		mycolors = append(mycolors, fmt.Sprintf("%s=$'%s'", c, styleToAnsiCode(c)))
 	}
-	return strings.Join(mycolors,"\n")
+	return strings.Join(mycolors, "\n")
 }
 
-func colorize(color_key, text string) string{
-	if haveColor!=0{
-		if _, ok := codes[color_key];ok{
+func colorize(color_key, text string) string {
+	if haveColor != 0 {
+		if _, ok := codes[color_key]; ok {
 			return codes[color_key] + text + codes["reset"]
-		} else if _, ok := styles[color_key];ok{
+		} else if _, ok := styles[color_key]; ok {
 			return styleToAnsiCode(color_key) + text + codes["reset"]
-		} else{
+		} else {
 			return text
 		}
-	} else{
+	} else {
 		return text
 	}
 }
@@ -182,4 +285,19 @@ func (d *StyleWriter) SendLiteralData(s string) {
 }
 func (d *StyleWriter) NewStyles(s string) {
 	d.File.Write([]byte(s))
+}
+
+var _color_map_loaded = false
+
+func output_init(config_root string) { // /
+	if _color_map_loaded {
+		return
+	}
+	_color_map_loaded = true
+	if err := parseColorMap(config_root, func(e error) error {
+		writeMsg(fmt.Sprintf("%s\n", e.Error()), -1, nil)
+		return nil
+	}); err != nil {
+		return
+	}
 }

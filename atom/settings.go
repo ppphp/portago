@@ -201,17 +201,18 @@ func NewIuseImplicitMatchCache(settings *Config) *iuseImplicitMatchCache{
 	for x:= range settings.getImplicitIuse(){
 		g=append(g,x)
 	}
-	i.iuseImplicitRe = regexp.MustCompile(fmt.Sprintf("^(%s)$", strings.Join(g)))
+	i.iuseImplicitRe = regexp.MustCompile(fmt.Sprintf("^(%s)$", strings.Join(g, "|")))
 	i.cache =map[string]bool{}
 	return i
 }
 
 type Config struct {
 	valueDict                                                                                                                                                                                                                              map[string]string
+	constantKeys,setcpvAuxKeys,envBlacklist, environFilter, environWhitelist, globalOnlyVars, caseInsensitiveVars map[string]bool
 	tolerent, unmatchedRemoval, localConfig                                                                                                                                                                                                bool
 	locked                                                                                                                                                                                                                                 int
 	mycpv, setcpvArgsHash, penv, modifiedkeys, acceptChostRe, parentStable, sonameProvided                                                                                                                                         *int
-	puse, depcachedir, profilePath, defaultFeaturesUse, _iuse_effective, userProfileDir, globalConfigPath                                                                                                                 string
+	puse, depcachedir, profilePath, defaultFeaturesUse, userProfileDir, globalConfigPath                                                                                                                 string
 	useManager                                                                                                                                                                                                                             *useManager
 	keywordsManagerObj                                                                                                                                                                                                                     *keywordsManager
 	maskManagerObj              *maskManager
@@ -227,23 +228,55 @@ type Config struct {
 	repoMakeDefaults, configDict                                                                                                                                                                                                           map[string]map[string]string
 	backupenv, defaultGlobals, deprecatedKeys, useExpandDict, virtualsManagerObj, virtualsManager, acceptProperties, expandMap                                                                                              map[string]string
 	pprovideddict map[string][]string
-	pbashrcdict                                                                                                                                                                                                                            map[*profileNode]map[string]map[*atom][]string
-	prevmaskdict                                                                                                                                                                                                                           map[string][]*atom
-	modulePriority, incrementals, envBlacklist, environFilter, environWhitelist, validateCommands, globalOnlyVars, caseInsensitiveVars, setcpvAuxKeys, constantKeys, unknownFeatures, nonUserVariables, envDBlacklist, pbashrc, categories map[string]bool
-	features                                                                                                                                                                                                                               *featuresSet
-	repositories                                                                                                                                                                                                                           *repoConfigLoader
-	modules                                                                                                                                                                                                                                map[string]map[string][]string
-	locationsManager            *locationsManager
-	environWhitelistRe          *regexp.Regexp
+	pbashrcdict                                                                                                                             map[*profileNode]map[string]map[*atom][]string
+	prevmaskdict                                                                                                                            map[string][]*atom
+	modulePriority, incrementals,  validateCommands,   unknownFeatures, nonUserVariables, envDBlacklist, pbashrc, categories, iuseEffective map[string]bool
+	features                                                                                                                                *featuresSet
+	repositories                                                                                                                            *repoConfigLoader
+	modules                                                                                                                                 map[string]map[string][]string
+	locationsManager                                                                                                                        *locationsManager
+	environWhitelistRe                                                                                                                      *regexp.Regexp
 }
 
 func (c *Config) _init_iuse(){
-	c._iuse_effective = c._calc_iuse_effective()
+	c.iuseEffective = c._calc_iuse_effective()
 	c.iuseImplicitMatch = NewIuseImplicitMatchCache(c)
 }
 
-func (c *Config)_calc_iuse_effective(){
-
+func (c *Config)_calc_iuse_effective()map[string]bool{
+	iuseEffective := map[string]bool{}
+	for _ ,x:= range strings.Fields(c.valueDict["IUSE_IMPLICIT"]){
+		iuseEffective[x]=true
+	}
+	useExpandImplicit := map[string]bool{}
+	for _ ,x:= range strings.Fields(c.valueDict["USE_EXPAND_IMPLICIT"]){
+		useExpandImplicit[x]=true
+	}
+	for _, v := range strings.Fields(c.valueDict["USE_EXPAND_UNPREFIXED"]){
+		if !useExpandImplicit[v]{
+			continue
+		}
+		for _ ,x:= range strings.Fields(c.valueDict["USE_EXPAND_IMPLICIT"]){
+			useExpandImplicit[x]=true
+		}
+		for _ ,x:= range strings.Fields(c.valueDict["USE_EXPAND_VALUES_"+v]){
+			iuseEffective[x]=true
+		}
+	}
+	useExpand := map[string]bool{}
+	for _ ,x:= range strings.Fields(c.valueDict["USE_EXPAND"]){
+		useExpand[x]=true
+	}
+	for v := range useExpandImplicit {
+		if ! useExpand[v]{
+			continue
+		}
+		lowerV :=strings.ToLower( v)
+		for _, x := range strings.Fields(c.valueDict["USE_EXPAND_VALUES_" + v]){
+			iuseEffective[lowerV+ "_" + x] =true
+		}
+	}
+	return iuseEffective
 }
 
 func (c *Config) _validateCommands(){
@@ -407,7 +440,7 @@ func (c *Config) regenerate(useonly int) { // 0 n
 	useExpandUnprefixed := strings.Fields(c.valueDict["USE_EXPAND_UNPREFIXED"])
 	configDictDefaults := c.configDict["defaults"]
 	if c.makeDefaults != nil {
-		for i, cfg := range c.makeDefaults{
+		for _, cfg := range c.makeDefaults{
 			if len(cfg) ==0{
 				c.makeDefaultsUse = append(c.makeDefaultsUse, "")
 				continue
@@ -1408,8 +1441,8 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 				c.backupChanges(k)
 			}
 		}
-		portage.output._init(config_root=self['PORTAGE_CONFIGROOT'])
-		portage.data._init(self)
+		output_init(c.valueDict["PORTAGE_CONFIGROOT"])
+		data_init(c)
 	}
 	if mycpv != "" {
 		c.SetCpv(mycpv, "")
@@ -2943,7 +2976,7 @@ func NewLicenseManager(licenseGroupLocations []string, absUserConfig string, use
 }
 
 type virtualManager struct {
-	_dirVirtuals, _virtuals, _treeVirtuals, _depgraphVirtuals map[string][]string
+	_dirVirtuals, _virtuals, _treeVirtuals, _depgraphVirtuals, _virts_p map[string][]string
 }
 
 func (v *virtualManager) read_dirVirtuals( profiles []string){
@@ -3033,7 +3066,7 @@ func (v *virtualManager) _compile_virtuals(){
 
 	virtuals := stackDictlist([]map[string][]string{ptVirtuals, v._treeVirtuals, v._dirVirtuals, v._depgraphVirtuals}, 0, nil, 0)
 	v._virtuals = virtuals
-	v._virts_p = None
+	v._virts_p = nil
 }
 
 func (v *virtualManager)getvirtuals()map[string][]string{
@@ -3044,6 +3077,26 @@ func (v *virtualManager)getvirtuals()map[string][]string{
 		v._compile_virtuals()
 	}
 	return v._virtuals
+}
+
+func (v *virtualManager)deepcopy()*virtualManager{
+	return v
+}
+
+func (v *virtualManager) getVirtsP()map[string][]string{
+	if v._virts_p!=nil {
+		return v._virts_p
+	}
+	virts := v.getvirtuals()
+	virtsP :=map[string][]string {}
+	for x :=range virts{
+		vkeysplit := strings.Split(x,"/")
+		if _, ok := virtsP[vkeysplit[1]]; !ok{
+			virtsP[vkeysplit[1]] = virts[x]
+		}
+	}
+	v._virts_p = virtsP
+	return virtsP
 }
 
 func NewVirtualManager() *virtualManager {

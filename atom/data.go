@@ -21,3 +21,7 @@ func targetRoot() string {
 func portageGroupWarining() {
 
 }
+
+func data_init(settings *Config){
+
+}
