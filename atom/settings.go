@@ -183,10 +183,27 @@ func bestFromDict(key string, topDict map[string]map[string]string, keyOrders []
 
 type iuseImplicitMatchCache struct {
 	iuseImplicitRe *regexp.Regexp
+	cache map[string]bool
 }
 
-func NewIuseImplicitMatchCache(setting map[string]string) {
+func (i *iuseImplicitMatchCache)call(flag string)bool{
+	if v, ok := i.cache[flag];ok{
+		return v
+	}
+	m := i.iuseImplicitRe.MatchString(flag)
+	i.cache[flag]=m
+	return m
+}
 
+func NewIuseImplicitMatchCache(settings *Config) *iuseImplicitMatchCache{
+	i := &iuseImplicitMatchCache{}
+	g := []string{}
+	for x:= range settings.getImplicitIuse(){
+		g=append(g,x)
+	}
+	i.iuseImplicitRe = regexp.MustCompile(fmt.Sprintf("^(%s)$", strings.Join(g)))
+	i.cache =map[string]bool{}
+	return i
 }
 
 type Config struct {
@@ -194,14 +211,15 @@ type Config struct {
 	tolerent, unmatchedRemoval, localConfig                                                                                                                                                                                                bool
 	locked                                                                                                                                                                                                                                 int
 	mycpv, setcpvArgsHash, penv, modifiedkeys, acceptChostRe, parentStable, sonameProvided                                                                                                                                         *int
-	puse, depcachedir, profilePath, defaultFeaturesUse, iuseEffective, iuseImplicitMatch, userProfileDir, globalConfigPath                                                                                                                 string
+	puse, depcachedir, profilePath, defaultFeaturesUse, _iuse_effective, userProfileDir, globalConfigPath                                                                                                                 string
 	useManager                                                                                                                                                                                                                             *useManager
 	keywordsManagerObj                                                                                                                                                                                                                     *keywordsManager
-	maskManagerObj                                                                                                                                                                                                                         *maskManager
-	virtualManagerObj                                                                                                                                                                                                                      *virtualManager
-	licenseManager                                                                                                                                                                                                                         *licenseManager
-	unpackDependencies                                                                                                                                                                                                                     map[string]map[string]map[string]string
-	packages, usemask, useforce                                                                                                                                                                                                            map[*atom]string
+	maskManagerObj              *maskManager
+	virtualManagerObj           *virtualManager
+	licenseManager              *licenseManager
+	iuseImplicitMatch           *iuseImplicitMatchCache
+	unpackDependencies          map[string]map[string]map[string]string
+	packages, usemask, useforce map[*atom]string
 	ppropertiesdict,  pacceptRestrict, penvdict                                                                                                                                                                             map[string]map[*atom][]string
 	makeDefaultsUse, featuresOverrides, acceptRestrict,profiles                                                                                                                                                                                           []string
 	profileBashrc                                                                                                                                                                                                                          []bool
@@ -215,8 +233,74 @@ type Config struct {
 	features                                                                                                                                                                                                                               *featuresSet
 	repositories                                                                                                                                                                                                                           *repoConfigLoader
 	modules                                                                                                                                                                                                                                map[string]map[string][]string
-	locationsManager                                                                                                                                                                                                                       *locationsManager
-	environWhitelistRe                                                                                                                                                                                                                     *regexp.Regexp
+	locationsManager            *locationsManager
+	environWhitelistRe          *regexp.Regexp
+}
+
+func (c *Config) _init_iuse(){
+	c._iuse_effective = c._calc_iuse_effective()
+	c.iuseImplicitMatch = NewIuseImplicitMatchCache(c)
+}
+
+func (c *Config)_calc_iuse_effective(){
+
+}
+
+func (c *Config) _validateCommands(){
+	for k :=range validateCommands{
+		v:= c.valueDict[k]
+		if v !=""{
+			valid, vSplit := validateCmdVar(v)
+			if ! valid{
+				if len(vSplit)>0{
+					writeMsgLevel(fmt.Sprintf("%s setting is invalid: '%s'\n", k, v), 40, -1)
+				}
+
+				v = c.configDict["globals"][k]
+				if v !=""{
+					defaultValid, vSplit := validateCmdVar(v)
+					if ! defaultValid {
+						if len(vSplit)>0 {
+							writeMsgLevel(fmt.Sprintf("%s setting from make.globals is invalid: '%s'\n", k, v), 40, -1)
+						}
+						v = c.defaultGlobals[k]
+					}
+				}
+
+				delete(c.valueDict,k)
+				delete(c.backupenv, k)
+				if v!=""{
+					c.configDict["globals"][k] = v
+				}
+			}
+		}
+	}
+}
+
+func (c *Config) getImplicitIuse() map[string]bool{
+
+	iuseImplicit := map[string]bool{}
+	arch := c.configDict["defaults"]["ARCH"]
+	if arch!=""{
+		iuseImplicit[arch]=true
+	}
+	for _,x := range strings.Fields(c.valueDict["PORTAGE_ARCHLIST"]){
+		iuseImplicit[x]=true
+	}
+		useExpandHidden := strings.Fields(c.valueDict["USE_EXPAND_HIDDEN"])
+	for _, x :=range useExpandHidden {
+		iuseImplicit[strings.ToLower(x)+"_.*"]=true
+	}
+	for x :=range c.usemask{
+		iuseImplicit[x.value ]=true
+	}
+	for x :=range c.useforce{
+		iuseImplicit[x.value ]=true
+	}
+	iuseImplicit["build"]=true
+	iuseImplicit["bootstrap"]=true
+
+	return iuseImplicit
 }
 
 func (c *Config) backupChanges(key string) {
@@ -1141,7 +1225,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		}
 		c._init_iuse()
 
-		c._validate_commands()
+		c._validateCommands()
 
 		for k :=range c.caseInsensitiveVars{
 			if _, ok := c.valueDict[k];ok{
