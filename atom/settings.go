@@ -450,8 +450,186 @@ func (c *Config) regenerate(useonly int) { // 0 n
 		}
 		ReverseSlice(c.uvlist)
 	}
-	iuse := c.configDict["pkg"]["IUSE"]
-	if iuse != nil {
+	iu := c.configDict["pkg"]["IUSE"]
+	iuse := []string{}
+	if iu != "" {
+		for _, x := range strings.Fields(iu){
+			iuse = append(iuse, strings.TrimPrefix(x, "+-"))
+		}
+	}
+	myFlags = map[string]bool{}
+	for _,curdb:= range c.uvlist{
+		for _, k:= range useExpandUnprefixed{
+			v := curdb[k]
+			if v == "" {
+				continue
+			}
+			for _, x:=range strings.Fields(v){
+				if x[:1]=="-"{
+					delete(myFlags,x[1:])
+				} else {
+					myFlags[x]=true
+				}
+			}
+		}
+		curUseExpand := []string{}
+		for _,x := range useExpand{
+			if _,ok:=curdb[x];ok{
+				curUseExpand = append(curUseExpand, x)
+			}
+		}
+		mySplit := strings.Fields(curdb["USE"])
+		if len(mySplit) == 0 && len(curUseExpand)==0{
+			continue
+		}
+		for _,x :=range mySplit{
+			if x=="-*"{
+				myFlags = map[string]bool{}
+				continue
+			}
+			if x[0]=='+'{
+				writeMsg(colorize("BAD", fmt.Sprintf("USE flags should not start with a '+': %s\n",x)), -1, nil)
+				x=x[1:]
+				if x==""{
+					continue
+				}
+			}
+			if x[0]=='-'{
+				if x[len(x)-2:]=="_*"{
+					prefix := x[1:len(x)-1]
+					prefixLen := len(prefix)
+					for y := range myFlags {
+						if y[:prefixLen]== prefix{
+							delete(myFlags, y)
+						}
+					}
+				}
+				delete(myFlags,x[1:])
+				continue
+			}
+			if iuse != nil && x[len(x)-2:] == "_*"{
+				prefix := x[:len(x)-1]
+				prefixLen := len(prefix)
+				hasIuse := false
+				for _,y := range iuse {
+					if y[:prefixLen]==prefix{
+						hasIuse=true
+						myFlags[y]=true
+					}
+				}
+				if !hasIuse{
+					myFlags[x]=true
+				}
+			} else {
+				myFlags[x]=true
+			}
+		}
+		if reflect.ValueOf(curdb).Pointer() == reflect.ValueOf(configDictDefaults).Pointer(){
+			continue
+		}
+		for _,varr := range curUseExpand{
+			varLower:= strings.ToLower(varr)
+			isNotIncremental := !myincrementals[varr]
+			if isNotIncremental{
+				prefix := varLower + "_"
+				prefixLen := len(prefix)
+				for x := range myFlags{
+					if x[:prefixLen]==prefix{
+						delete(myFlags,x)
+					}
+				}
+			}
+			for _, x:=range strings.Fields(curdb[varr]){
+				if x[0]=='+'{
+					if isNotIncremental{
+						writeMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n",varr, x)), -1, nil)
+						continue
+					} else {
+						writeMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n",varr, x)), -1, nil)
+					}
+					x = x[1:]
+				}
+				if x[0]=='-'{
+					if isNotIncremental{
+						writeMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n",varr, x)), -1, nil)
+						continue
+					}
+					delete(myFlags, varLower + "_" + x)
+					continue
+				}
+				myFlags[varLower + "_" + x]=true
+			}
+		}
+	}
+	if c.features!= nil {
+		c.features.features = map[string]bool{}
+	}else {
+		c.features = NewFeaturesSet(c)
+	}
+	for _,x:=range strings.Fields(c.valueDict["FEATURES"]){
+		c.features.features[x]=true
+	}
+	c.features.syncEnvVar()
+	c.features.validate()
+	for x := range c.useforce{
+		myFlags[x.value]=true
+	}
+	for x:=range c.usemask{
+		delete(myFlags,x.value)
+	}
+	m := []string{}
+	for x :=range myFlags {
+		m = append(m ,x)
+	}
+	sort.Strings(m)
+	c.configList[len(c.configList)-1]["USE"] = strings.Join(m, " ")
+	if c.mycpv == nil {
+		for _, k := range useExpand {
+			prefix := strings.ToLower(k) + "_"
+			prefixLen := len(prefix)
+			expandFlags := map[string]bool{}
+			for x :=range myFlags{
+				if x[:prefixLen]==prefix{
+					expandFlags[x[prefixLen:]] = true
+				}
+			}
+			varSplit := strings.Fields(useExpandDict[k])
+			v:=[]string{}
+			for _,x:=range varSplit {
+				if expandFlags[x]{
+					v=append(v,x)
+				}
+			}
+			varSplit=v
+			for _,v:=range varSplit{
+				delete(expandFlags,v)
+			}
+			e:=[]string{}
+			for x:= range expandFlags{
+				e =append(e,x)
+			}
+			sort.Strings(e)
+			varSplit = append(varSplit, e...)
+			if len(varSplit)>0{
+				c.configList[len(c.configList)-1][k]=strings.Join(varSplit, " ")
+			} else if _, ok := c.valueDict[k];ok {
+				c.configList[len(c.configList)-1][k]=""
+			}
+		}
+		for _, k := range useExpandUnprefixed{
+			varSplit := strings.Fields(c.valueDict[k])
+			v := []string{}
+			for _,x:=range varSplit{
+				if myFlags[x]{
+					v = append(v,x)
+				}
+			}
+			if len(varSplit)>0{
+				c.configList[len(c.configList)-1][k]=strings.Join(varSplit, " ")
+			} else if _, ok := c.valueDict[k];ok {
+				c.configList[len(c.configList)-1][k]=""
+			}
+		}
 
 	}
 }
@@ -471,10 +649,7 @@ func (c *Config) modifying() error {
 	return nil
 }
 
-func (c *Config) SetCpv(cpv string, useCache map[string]string, myDb string) {
-	if useCache != nil {
-		// warn here
-	}
+func (c *Config) SetCpv(cpv string, myDb string) {
 	c.modifying()
 }
 
@@ -1193,7 +1368,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 			c.depcachedir = path.Join(string(os.PathSeparator), EPREFIX, strings.TrimPrefix(DepcachePath,string(os.PathSeparator)))
 			if unprivileged && targetRoot != string(os.PathSeparator){
 				if s, err := os.Stat(firstExisting(c.depcachedir)); err!= nil &&s.Mode()&2!=0{
-					c.depcachedir = path.Join(eroot, strings.TrimPrefix(DepcachePath,string(os.PathSeparator))
+					c.depcachedir = path.Join(eroot, strings.TrimPrefix(DepcachePath,string(os.PathSeparator)))
 				}
 			}
 		}
@@ -1237,7 +1412,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		portage.data._init(self)
 	}
 	if mycpv != "" {
-		c.SetCpv(mycpv, nil, "")
+		c.SetCpv(mycpv, "")
 	}
 
 	return c
@@ -2768,6 +2943,107 @@ func NewLicenseManager(licenseGroupLocations []string, absUserConfig string, use
 }
 
 type virtualManager struct {
+	_dirVirtuals, _virtuals, _treeVirtuals, _depgraphVirtuals map[string][]string
+}
+
+func (v *virtualManager) read_dirVirtuals( profiles []string){
+	virtualsList := []map[string][]string{}
+	for _, x :=range profiles{
+		virtualsFile := path.Join(x, "virtuals")
+		virtualsDict := grabDict(virtualsFile,false, false, false,false, false)
+		atomsDict := map[string][]string{}
+		for k, v := range virtualsDict {
+			virtAtom, err := NewAtom(k, nil, false, nil, nil, "", nil, nil)
+			if err!=nil{
+				virtAtom = nil
+			} else{
+				if virtAtom.blocker!=nil || virtAtom.value != virtAtom.cp{
+					virtAtom = nil
+				}
+			}
+			if virtAtom ==nil{
+				writeMsg(fmt.Sprintf("--- Invalid virtuals atom in %s: %s\n", virtualsFile, k), -1, nil)
+				continue
+			}
+			providers := []string{}
+			for _, atom := range v{
+				atomOrig := atom
+				if atom[:1] == "-"{
+					atom = atom[1:]
+				}
+				atomA, err := NewAtom(atom, nil, false, nil, nil, "", nil, nil)
+				if err!=nil{
+					atomA=nil
+				} else{
+					if atomA.blocker!=nil{
+						atomA=nil
+					}
+				}
+				if atomA==nil{
+					writeMsg(fmt.Sprintf("--- Invalid atom in %s: %s\n", virtualsFile, atomOrig),-1,nil)
+				} else{
+					if atomOrig == atomA.value{
+						providers=append(providers, atom)
+					} else{
+						providers=append(providers, atomOrig)
+					}
+				}
+			}
+			if len(providers)>0{
+				atomsDict[virtAtom.value] = providers
+			}
+		}
+		if len(atomsDict)>0{
+			virtualsList =append(virtualsList, atomsDict)
+		}
+	}
+
+	v._dirVirtuals = stackDictlist(virtualsList, 1, nil, 0)
+
+	for virt :=range v._dirVirtuals{
+		ReverseSlice(v._dirVirtuals[virt])
+	}
+}
+
+func (v *virtualManager) _compile_virtuals(){
+		ptVirtuals   := map[string][]string{}
+
+	for virt, installedList := range v._treeVirtuals{
+		profileList := v._dirVirtuals[virt]
+		if len(profileList)==0{
+			continue
+		}
+		for _,cp :=range installedList {
+			in :=false
+			for _, x:=range profileList {
+				if x==cp {
+					in=true
+					break
+				}
+			}
+			if in{
+				if _, ok:= ptVirtuals[virt];!ok{
+					ptVirtuals[virt] = []string{cp}
+				} else{
+					ptVirtuals[virt] = append(ptVirtuals[virt], cp)
+				}
+			}
+		}
+	}
+
+	virtuals := stackDictlist([]map[string][]string{ptVirtuals, v._treeVirtuals, v._dirVirtuals, v._depgraphVirtuals}, 0, nil, 0)
+	v._virtuals = virtuals
+	v._virts_p = None
+}
+
+func (v *virtualManager)getvirtuals()map[string][]string{
+	if v._treeVirtuals!=nil{
+		panic("_populate_treeVirtuals() must be called before any query about virtuals")
+	}
+	if v._virtuals==nil{
+		v._compile_virtuals()
+	}
+	return v._virtuals
 }
 
 func NewVirtualManager() *virtualManager {
