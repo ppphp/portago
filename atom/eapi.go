@@ -98,7 +98,7 @@ func eapiRequiresPosixishLocale(eapi string) bool {
 	return !map[string]bool{"0": true, "1": true, "2": true, "3": true, "4": true, "4-python": true, "4-slot-abi": true, "5": true, "5-progress": true, "5-hdepend": true}[eapi]
 }
 
-func eapiHasRepoDeps(eapi string) bool {
+func EapiHasRepoDeps(eapi string) bool {
 	return map[string]bool{"4-python": true, "5-progress": true}[eapi]
 }
 
@@ -211,7 +211,7 @@ func getEapiAttrs(eapi string) eapiAttrs {
 		eapiHasIuseEffective(eapi),
 		eapiPathVariablesEndWithTrailingSlash(eapi),
 		eapiRequiresPosixishLocale(eapi),
-		eapiHasRepoDeps(eapi),
+		EapiHasRepoDeps(eapi),
 		eapiHasRequiredUse(eapi),
 		eapiHasRequiredUse(eapi),
 		eapiHasSlotDeps(eapi),

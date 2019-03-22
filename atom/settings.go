@@ -682,7 +682,7 @@ func (c *Config) modifying() error {
 	return nil
 }
 
-func (c *Config) SetCpv(cpv string, myDb string) {
+func (c *Config) SetCpv(cpv string, mydb string) {
 	if c.setCpvActive {
 		//AssertionError('setcpv recursion detected')
 	}

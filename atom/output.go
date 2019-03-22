@@ -229,7 +229,7 @@ func styleToAnsiCode(style string) string {
 	return ret
 }
 
-func colorMap() string {
+func ColorMap() string {
 	mycolors := []string{}
 	for _, c := range []string{"GOOD", "WARN", "BAD", "HILITE", "BRACKET", "NORMAL"} {
 		mycolors = append(mycolors, fmt.Sprintf("%s=$'%s'", c, styleToAnsiCode(c)))

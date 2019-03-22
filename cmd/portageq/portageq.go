@@ -119,12 +119,15 @@ func configProtect(args []string)     {}
 func configProtectMask(args []string) {}
 func portdirOverlay(args []string)    {}
 func pkgdir(args []string)            {}
+func colormap([]string){
+	print(atom.ColorMap())
+}
 func distdir(args []string)           {}
 func envvar(args []string) int {
 	var newArgs []string
 	verbose := false
 	for _, v := range args {
-		if v != "-v"{
+		if v != "-v" {
 			verbose = true
 			newArgs = append(newArgs, v)
 		}
@@ -136,16 +139,16 @@ func envvar(args []string) int {
 	for _, a := range newArgs {
 		for _, v := range []string{"PORTDIR", "PORTDIR_OVERLAY", "SYNC"} {
 			if v == a {
-				println("WARNING: 'portageq envvar "+a+"' is deprecated. Use any of 'get_repos, get_repo_path, repos_config' instead.")
+				println("WARNING: 'portageq envvar " + a + "' is deprecated. Use any of 'get_repos, get_repo_path, repos_config' instead.")
 			}
 		}
-		value := ""//atom.Settings.get(a)
+		value := "" //atom.Settings.get(a)
 		if value == "" {
 			return 1
 		}
 
 		if verbose {
-			println(a+"="+atom.ShellQuote(value))
+			println(a + "=" + atom.ShellQuote(value))
 		} else {
 			println(value)
 		}
