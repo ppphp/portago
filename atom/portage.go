@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 )
+var VERSION="HEAD"
 
 var shellQuoteRe = regexp.MustCompile("[\\s><=*\\\\\\\"'$`]")
 var initializingGlobals *bool
@@ -32,7 +33,7 @@ func init() {
 	notInstalled = !ni.IsDir()
 }
 
-var internalCaller = false
+var InternalCaller = false
 var syncMode = false
 
 func getStdin() *os.File {
@@ -204,10 +205,27 @@ func NewCache(portTreeRoot, overlays string) *cache {
 	return c
 }
 
-func unprivilegedMode(eroot string, erootSt os.FileInfo)bool{
-	st, err:= os.Stat(eroot)
+func unprivilegedMode(eroot string, erootSt os.FileInfo) bool {
+	st, err := os.Stat(eroot)
 	if err != nil {
 		return false
 	}
-	return os.Getuid() != 0 && st.Mode()&2!= 0 && erootSt.Mode() & 00002 == 0
+	return os.Getuid() != 0 && st.Mode()&2 != 0 && erootSt.Mode()&00002 == 0
+}
+
+var _legacy_global_var_names = []string{"archlist", "db", "features",
+	"groups", "mtimedb", "mtimedbfile", "pkglines",
+	"portdb", "profiledir", "root", "selinux_enabled",
+	"settings", "thirdpartymirrors"}
+var archlist, db, features,groups, mtimedb, mtimedbfile, pkglines, portdb, profiledir, root, selinux_enabled, settings, thirdpartymirrors int
+
+var _legacy_globals_constructed map[string]bool
+
+func _reset_legacy_globals() {
+	_legacy_globals_constructed=map[string]bool{}
+	archlist, db, features,groups, mtimedb, mtimedbfile, pkglines, portdb, profiledir, root, selinux_enabled, settings, thirdpartymirrors = 0,0,0,0,0,0,0,0,0,0,0,0,0
+}
+
+func _disable_legacy_globals(){
+	archlist, db, features,groups, mtimedb, mtimedbfile, pkglines, portdb, profiledir, root, selinux_enabled, settings, thirdpartymirrors = 0,0,0,0,0,0,0,0,0,0,0,0,0
 }

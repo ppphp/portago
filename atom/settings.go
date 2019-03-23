@@ -220,16 +220,16 @@ type Config struct {
 	licenseManager                                                                                                                       *licenseManager
 	iuseImplicitMatch                                                                                                                    *iuseImplicitMatchCache
 	unpackDependencies                                                                                                                   map[string]map[string]map[string]string
-	packages, usemask, useforce                                                                                                          map[*atom]string
-	ppropertiesdict, pacceptRestrict, penvdict                                                                                           map[string]map[*atom][]string
+	packages, usemask, useforce                                                                                                          map[*Atom]string
+	ppropertiesdict, pacceptRestrict, penvdict                                                                                           map[string]map[*Atom][]string
 	makeDefaultsUse, featuresOverrides, acceptRestrict, profiles                                                                         []string
 	profileBashrc                                                                                                                        []bool
 	lookupList, configList, makeDefaults, uvlist                                                                                         []map[string]string
 	repoMakeDefaults, configDict                                                                                                         map[string]map[string]string
 	backupenv, defaultGlobals, deprecatedKeys, useExpandDict, virtualsManagerObj, virtualsManager, acceptProperties, expandMap           map[string]string
 	pprovideddict                                                                                                                        map[string][]string
-	pbashrcdict                                                                                                                          map[*profileNode]map[string]map[*atom][]string
-	prevmaskdict                                                                                                                         map[string][]*atom
+	pbashrcdict                                                                                                                          map[*profileNode]map[string]map[*Atom][]string
+	prevmaskdict                                                                                                                         map[string][]*Atom
 	modulePriority, incrementals, validateCommands, unknownFeatures, nonUserVariables, envDBlacklist, pbashrc, categories, iuseEffective map[string]bool
 	features                                                                                                                             *featuresSet
 	repositories                                                                                                                         *repoConfigLoader
@@ -407,7 +407,7 @@ func (c *Config) regenerate(useonly int) { // 0 n
 					continue
 				}
 				if x[0] == '+' {
-					writeMsg(colorize("BAD", fmt.Sprintf("%s values should not start with a '+': %s", myKey, x))+"\n", -1, nil)
+					WriteMsg(colorize("BAD", fmt.Sprintf("%s values should not start with a '+': %s", myKey, x))+"\n", -1, nil)
 					x = x[1:]
 					if x == "" {
 						continue
@@ -521,7 +521,7 @@ func (c *Config) regenerate(useonly int) { // 0 n
 				continue
 			}
 			if x[0] == '+' {
-				writeMsg(colorize("BAD", fmt.Sprintf("USE flags should not start with a '+': %s\n", x)), -1, nil)
+				WriteMsg(colorize("BAD", fmt.Sprintf("USE flags should not start with a '+': %s\n", x)), -1, nil)
 				x = x[1:]
 				if x == "" {
 					continue
@@ -575,16 +575,16 @@ func (c *Config) regenerate(useonly int) { // 0 n
 			for _, x := range strings.Fields(curdb[varr]) {
 				if x[0] == '+' {
 					if isNotIncremental {
-						writeMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n", varr, x)), -1, nil)
+						WriteMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n", varr, x)), -1, nil)
 						continue
 					} else {
-						writeMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n", varr, x)), -1, nil)
+						WriteMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n", varr, x)), -1, nil)
 					}
 					x = x[1:]
 				}
 				if x[0] == '-' {
 					if isNotIncremental {
-						writeMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n", varr, x)), -1, nil)
+						WriteMsg(colorize("BAD", fmt.Sprintf("Invalid '+' operator in non-incremental variable '%s': '%s'\n", varr, x)), -1, nil)
 						continue
 					}
 					delete(myFlags, varLower+"_"+x)
@@ -715,11 +715,11 @@ func (c *Config) grabPkgEnv(penv []string, container map[string]string, protecte
 		penvfile := path.Join(absUserConfig, "env", envname)
 		penvconfig := getConfig(penvfile, c.tolerent, true, true, false, expandMap)
 		if penvconfig == nil {
-			writeMsg(fmt.Sprintf("!!! %s references non-existent file: %s\n", path.Join(absUserConfig, "package.env"), penvfile), -1, nil)
+			WriteMsg(fmt.Sprintf("!!! %s references non-existent file: %s\n", path.Join(absUserConfig, "package.env"), penvfile), -1, nil)
 		} else {
 			for k, v := range penvconfig {
 				if protected_keys[k] || nonUserVariables[k] {
-					writeMsg(fmt.Sprintf("!!! Illegal variable '%s' assigned in '%s'\n", k, penvfile), -1, nil)
+					WriteMsg(fmt.Sprintf("!!! Illegal variable '%s' assigned in '%s'\n", k, penvfile), -1, nil)
 				} else if incrementals[k] {
 					if _, ok := container[k]; ok {
 						container[k] = container[k] + " " + v
@@ -852,7 +852,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 			}
 		}
 		if makeConfCount == 2 {
-			writeMsg(fmt.Sprintf("!!! %s\nFound 2 make.conf files, using both '%s' and '%s'", makeConfPaths), -1, nil)
+			WriteMsg(fmt.Sprintf("!!! %s\nFound 2 make.conf files, using both '%s' and '%s'", makeConfPaths), -1, nil)
 		}
 		locationsManager.setRootOverride(makeConf["ROOT"])
 		targetRoot = locationsManager.targetRoot
@@ -873,7 +873,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		f1, _ := filepath.EvalSymlinks(makeGlobalsPath)
 		f2, _ := filepath.EvalSymlinks(oldMakeGlobals)
 		if s, _ := os.Stat(oldMakeGlobals); !s.IsDir() && f1 != f2 {
-			writeMsg(fmt.Sprintf("!!!Found obsolete make.globals file: '%s', (using '%s' instead)\n", oldMakeGlobals, makeGlobalsPath), -1, nil)
+			WriteMsg(fmt.Sprintf("!!!Found obsolete make.globals file: '%s', (using '%s' instead)\n", oldMakeGlobals, makeGlobalsPath), -1, nil)
 		}
 		makeGlobals := getConfig(makeGlobalsPath, tolerant, false, true, false, expandMap)
 		if makeGlobals == nil {
@@ -999,7 +999,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 				if isdirRaiseEaccess(ov) || syncMode {
 					newOv = append(newOv, ShellQuote(ov))
 				} else {
-					writeMsg(fmt.Sprintf("!!! Invalid PORTDIR_OVERLAY(not a dir): '%s'\n", ov), -1, nil)
+					WriteMsg(fmt.Sprintf("!!! Invalid PORTDIR_OVERLAY(not a dir): '%s'\n", ov), -1, nil)
 				}
 			}
 		}
@@ -1017,10 +1017,10 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 			packageList = append(packageList, grabFilePackage(path.Join(x.location, "packages"), 0, 0, false, false, x.allowBuildId, false, true, x.eapi, ""))
 		}
 		c.packages = stackLists(packageList, 1, false, false, false, false)
-		c.prevmaskdict = map[string][]*atom{}
+		c.prevmaskdict = map[string][]*Atom{}
 		for x := range c.packages {
 			if c.prevmaskdict[x.cp] == nil {
-				c.prevmaskdict[x.cp] = []*atom{x}
+				c.prevmaskdict[x.cp] = []*Atom{x}
 			} else {
 				c.prevmaskdict[x.cp] = append(c.prevmaskdict[x.cp], x)
 			}
@@ -1113,10 +1113,10 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		c.valueDict["PORTAGE_OVERRIDE_EPREFIX"] = EPREFIX
 		c.backupChanges("PORTAGE_OVERRIDE_EPREFIX")
 
-		c.ppropertiesdict = map[string]map[*atom][]string{}
-		c.pacceptRestrict = map[string]map[*atom][]string{}
-		c.penvdict = map[string]map[*atom][]string{}
-		c.pbashrcdict = map[*profileNode]map[string]map[*atom][]string{}
+		c.ppropertiesdict = map[string]map[*Atom][]string{}
+		c.pacceptRestrict = map[string]map[*Atom][]string{}
+		c.penvdict = map[string]map[*Atom][]string{}
+		c.pbashrcdict = map[*profileNode]map[string]map[*Atom][]string{}
 		c.pbashrc = map[string]bool{}
 		c.repoMakeDefaults = map[string]map[string]string{}
 
@@ -1164,7 +1164,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 			}
 			for k, v := range propDict {
 				if _, ok := c.ppropertiesdict[k.cp]; !ok {
-					c.ppropertiesdict[k.cp] = map[*atom][]string{k: v}
+					c.ppropertiesdict[k.cp] = map[*Atom][]string{k: v}
 				} else {
 					c.ppropertiesdict[k.cp][k] = v
 				}
@@ -1186,7 +1186,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 			}
 			for k, v := range d {
 				if _, ok := c.pacceptRestrict[k.cp]; !ok {
-					c.pacceptRestrict[k.cp] = map[*atom][]string{k: v}
+					c.pacceptRestrict[k.cp] = map[*Atom][]string{k: v}
 				} else {
 					c.pacceptRestrict[k.cp][k] = v
 				}
@@ -1219,7 +1219,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 			}
 			for k, v := range penvdict {
 				if _, ok := c.penvdict[k.cp]; !ok {
-					c.penvdict[k.cp] = map[*atom][]string{k: v}
+					c.penvdict[k.cp] = map[*Atom][]string{k: v}
 				} else {
 					c.penvdict[k.cp][k] = v
 				}
@@ -1235,7 +1235,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 				if !in {
 					continue
 				}
-				c.pbashrcdict[profile] = map[string]map[*atom][]string{}
+				c.pbashrcdict[profile] = map[string]map[*Atom][]string{}
 
 				bashrc := grabDictPackage(path.Join(profile.location, "package.bashrc"), false, true, false, true, true, profile.allowBuildId, false, true, profile.eapi, "")
 				if len(bashrc) == 0 {
@@ -1247,7 +1247,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 						envfiles = append(envfiles, path.Join(profile.location, "bashrc", envname))
 					}
 					if _, ok := c.pbashrcdict[profile][k.cp]; !ok {
-						c.pbashrcdict[profile][k.cp] = map[*atom][]string{k: v}
+						c.pbashrcdict[profile][k.cp] = map[*Atom][]string{k: v}
 					} else if _, ok := c.pbashrcdict[profile][k.cp][k]; !ok {
 						c.pbashrcdict[profile][k.cp][k] = v
 					} else {
@@ -1296,7 +1296,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		for x := len(pkgProvidedLines) - 1; x > -1; x-- {
 			myline := pkgProvidedLines[x]
 			if !isValidAtom("="+myline, false, false, false, "", false) {
-				writeMsg(fmt.Sprintf("Invalid package name in package.provided: %s\n", myline), -1, nil)
+				WriteMsg(fmt.Sprintf("Invalid package name in package.provided: %s\n", myline), -1, nil)
 				hasInvalidData = true
 				p := []string{}
 				for k, v := range pkgProvidedLines {
@@ -1309,7 +1309,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 			}
 			cpvr := catPkgSplit(pkgProvidedLines[x], 1, "")
 			if cpvr == [4]string{} || cpvr[0] == "null" {
-				writeMsg("Invalid package name in package.provided: "+pkgProvidedLines[x]+"\n", -1, nil)
+				WriteMsg("Invalid package name in package.provided: "+pkgProvidedLines[x]+"\n", -1, nil)
 				hasInvalidData = true
 				p := []string{}
 				for k, v := range pkgProvidedLines {
@@ -1322,7 +1322,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 			}
 		}
 		if hasInvalidData {
-			writeMsg("See portage(5) for correct package.provided usage.\n", -1, nil)
+			WriteMsg("See portage(5) for correct package.provided usage.\n", -1, nil)
 		}
 		c.pprovideddict = map[string][]string{}
 		for _, x := range pkgProvidedLines {
@@ -1395,7 +1395,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 				v = defaultVal
 			}
 			if _, err := strconv.Atoi(v); err != nil {
-				writeMsg(fmt.Sprintf("!!! %s='%s' is not a valid integer. Falling back to %s.\n", varr, c.valueDict[varr], defaultVal), -1, nil)
+				WriteMsg(fmt.Sprintf("!!! %s='%s' is not a valid integer. Falling back to %s.\n", varr, c.valueDict[varr], defaultVal), -1, nil)
 			} else {
 				c.valueDict[varr] = v
 			}
@@ -1415,7 +1415,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		c.valueDict["PORTAGE_DEPCACHEDIR"] = c.depcachedir
 		c.backupChanges("PORTAGE_DEPCACHEDIR")
 
-		if internalCaller {
+		if InternalCaller {
 			c.valueDict["PORTAGE_INTERNAL_CALLER"] = "1"
 			c.backupChanges("PORTAGE_INTERNAL_CALLER")
 		}
@@ -1481,8 +1481,8 @@ func CopyMapSB(m map[string]bool) map[string]bool {
 	return r
 }
 
-func CopyMSMASS(m map[string]map[*atom][]string) map[string]map[*atom][]string {
-	r := map[string]map[*atom][]string{}
+func CopyMSMASS(m map[string]map[*Atom][]string) map[string]map[*Atom][]string {
+	r := map[string]map[*Atom][]string{}
 	for k, v := range m {
 		r[k] = v
 	}
@@ -1687,7 +1687,7 @@ func (l *locationsManager) loadProfiles(repositories *repoConfigLoader, knownRep
 		if isdirRaiseEaccess(l.configProfilePath) {
 			l.profilePath = l.configProfilePath
 			if isdirRaiseEaccess(deprecatedProfilePath) && path.Clean(l.profilePath) != deprecatedProfilePath {
-				writeMsg(fmt.Sprintf("!!! %s\nFound 2 make.profile dirs: using '%s', ignoring '%s'", l.profilePath, deprecatedProfilePath), -1, nil)
+				WriteMsg(fmt.Sprintf("!!! %s\nFound 2 make.profile dirs: using '%s', ignoring '%s'", l.profilePath, deprecatedProfilePath), -1, nil)
 			}
 		} else {
 			l.configProfilePath = deprecatedProfilePath
@@ -1718,7 +1718,7 @@ func (l *locationsManager) loadProfiles(repositories *repoConfigLoader, knownRep
 
 func (l *locationsManager) checkVarDirectory(varname, varr string) error {
 	if !isdirRaiseEaccess(varr) {
-		writeMsg(fmt.Sprintf("!!! Error: %s='%s' is not a directory. "+
+		WriteMsg(fmt.Sprintf("!!! Error: %s='%s' is not a directory. "+
 			"Please correct this.\n", varname, varr), -1, nil)
 		return errors.New("DirectoryNotFound") // DirectoryNotFound(var)
 	}
@@ -1887,7 +1887,7 @@ func (l *locationsManager) setRootOverride(rootOverwrite string) error {
 	fap, _ := filepath.Abs(l.targetRoot)
 	l.targetRoot = NormalizePath(strings.TrimSuffix(fap, string(os.PathSeparator))) + string(os.PathSeparator)
 	if l.sysroot != "/" && l.sysroot != l.targetRoot {
-		writeMsg(fmt.Sprintf("!!! Error: SYSROOT (currently %s) must "+
+		WriteMsg(fmt.Sprintf("!!! Error: SYSROOT (currently %s) must "+
 			"equal / or ROOT (currently %s).\n", l.sysroot, l.targetRoot), 1, nil)
 		return errors.New("InvalidLocation") // raise InvalidLocation(self.sysroot)
 	}
@@ -1957,12 +1957,12 @@ type useManager struct {
 	userConfig                                                                                         bool
 	isStable                                                                                           func(*pkgStr) bool
 	repoUsemaskDict, repoUsestablemaskDict, repoUseforceDict, repoUsestableforceDict                   map[string][]string
-	repoPusemaskDict, repoPusestablemaskDict, repoPuseforceDict, repoPusestableforceDict, repoPuseDict map[string]map[string]map[*atom][]string
+	repoPusemaskDict, repoPusestablemaskDict, repoPuseforceDict, repoPusestableforceDict, repoPuseDict map[string]map[string]map[*Atom][]string
 	usemaskList, usestablemaskList, useforceList, usestableforceList                                   [][]string
-	pusemaskList, pusestablemaskList, pkgprofileuse, puseforceList, pusestableforceList                []map[string]map[*atom][]string
-	pUseDict                                                                                           map[string]map[*atom][]string // extatom
+	pusemaskList, pusestablemaskList, pkgprofileuse, puseforceList, pusestableforceList                []map[string]map[*Atom][]string
+	pUseDict                                                                                           map[string]map[*Atom][]string // extatom
 	repoUsealiasesDict                                                                                 map[string]map[string][]string
-	repoPusealiasesDict                                                                                map[string]map[string]map[*atom]map[string][]string
+	repoPusealiasesDict                                                                                map[string]map[string]map[*Atom]map[string][]string
 	repositories                                                                                       *repoConfigLoader
 }
 
@@ -1974,7 +1974,7 @@ func (u *useManager) parseFileToTuple(fileName string, recursive bool, eapiFilte
 	}
 	if eapiFilter != nil && !eapiFilter(eapi) {
 		if len(lines) > 0 {
-			writeMsg(fmt.Sprintf("--- EAPI '%s' does not support '%s': '%s'\n", eapi, path.Base(fileName), fileName), -1, nil)
+			WriteMsg(fmt.Sprintf("--- EAPI '%s' does not support '%s': '%s'\n", eapi, path.Base(fileName), fileName), -1, nil)
 		}
 		return ret
 	}
@@ -1988,7 +1988,7 @@ func (u *useManager) parseFileToTuple(fileName string, recursive bool, eapiFilte
 			useflag = prefixedUseflag
 		}
 		if !useFlagRe.MatchString(useflag) {
-			writeMsg(fmt.Sprintf("--- Invalid USE flag in '%s': '%s'\n", fileName, prefixedUseflag), -1, nil)
+			WriteMsg(fmt.Sprintf("--- Invalid USE flag in '%s': '%s'\n", fileName, prefixedUseflag), -1, nil)
 		} else {
 			ret = append(ret, prefixedUseflag)
 		}
@@ -1997,22 +1997,22 @@ func (u *useManager) parseFileToTuple(fileName string, recursive bool, eapiFilte
 	return ret
 }
 
-func (u *useManager) parseFileToDict(fileName string, justStrings, recursive bool, eapiFilter func(string) bool, userConfig bool, eapi, eapiDefault string, allowBuildId bool) map[string]map[*atom][]string { //ftnfn"0"f
-	ret := map[string]map[*atom][]string{}
-	locationDict := map[*atom][]string{}
+func (u *useManager) parseFileToDict(fileName string, justStrings, recursive bool, eapiFilter func(string) bool, userConfig bool, eapi, eapiDefault string, allowBuildId bool) map[string]map[*Atom][]string { //ftnfn"0"f
+	ret := map[string]map[*Atom][]string{}
+	locationDict := map[*Atom][]string{}
 	if eapi == "" {
 		eapi = readCorrespondingEapiFile(fileName, eapiDefault)
 	}
 	extendedSyntax := eapi == "" && userConfig
 	if extendedSyntax {
-		ret = map[string]map[*atom][]string{}
+		ret = map[string]map[*Atom][]string{}
 	} else {
-		ret = map[string]map[*atom][]string{}
+		ret = map[string]map[*Atom][]string{}
 	}
 	fileDict := grabDictPackage(fileName, false, recursive, false, extendedSyntax, extendedSyntax, !extendedSyntax, allowBuildId, false, eapi, eapiDefault)
 	if eapi != "" && eapiFilter != nil && !eapiFilter(eapi) {
 		if len(fileDict) > 0 {
-			writeMsg(fmt.Sprintf("--- EAPI '%s' does not support '%s': '%s'\n", eapi, path.Base(fileName), fileName), -1, nil)
+			WriteMsg(fmt.Sprintf("--- EAPI '%s' does not support '%s': '%s'\n", eapi, path.Base(fileName), fileName), -1, nil)
 		}
 		return ret
 	}
@@ -2038,7 +2038,7 @@ func (u *useManager) parseFileToDict(fileName string, justStrings, recursive boo
 				prefixedUseFlag = "-" + useFlag
 			}
 			if !useFlagRe.MatchString(useFlag) {
-				writeMsg(fmt.Sprintf("--- Invalid USE flag for '%v' in '%s': '%s'\n", k, fileName, prefixedUseFlag), -1, nil)
+				WriteMsg(fmt.Sprintf("--- Invalid USE flag for '%v' in '%s': '%s'\n", k, fileName, prefixedUseFlag), -1, nil)
 			} else {
 				useFlags = append(useFlags, prefixedUseFlag)
 			}
@@ -2055,7 +2055,7 @@ func (u *useManager) parseFileToDict(fileName string, justStrings, recursive boo
 			s = []string{strings.Join(v, " ")}
 		}
 		if _, ok := ret[k.cp]; !ok {
-			ret[k.cp] = map[*atom][]string{k: s}
+			ret[k.cp] = map[*Atom][]string{k: s}
 		} else {
 			ret[k.cp][k] = v
 		}
@@ -2063,8 +2063,8 @@ func (u *useManager) parseFileToDict(fileName string, justStrings, recursive boo
 	return ret
 }
 
-func (u *useManager) parseUserFilesToExtatomdict(fileName, location string, userConfig bool) map[string]map[*atom][]string {
-	ret := map[string]map[*atom][]string{}
+func (u *useManager) parseUserFilesToExtatomdict(fileName, location string, userConfig bool) map[string]map[*Atom][]string {
+	ret := map[string]map[*Atom][]string{}
 	if userConfig {
 		puseDict := grabDictPackage(path.Join(location, fileName), false, true, true, true, true, true, false, false, "", "")
 		for k, v := range puseDict {
@@ -2088,7 +2088,7 @@ func (u *useManager) parseUserFilesToExtatomdict(fileName, location string, user
 				l = append(l, nv)
 			}
 			if ret[k.cp] == nil {
-				ret[k.cp] = map[*atom][]string{k: l}
+				ret[k.cp] = map[*Atom][]string{k: l}
 			} else {
 				ret[k.cp][k] = l
 			}
@@ -2105,8 +2105,8 @@ func (u *useManager) parseRepositoryFilesToDictOfTuples(fileName string, reposit
 	return ret
 }
 
-func (u *useManager) parseRepositoryFilesToDictOfDicts(fileName string, repositories *repoConfigLoader, eapiFilter func(string) bool) map[string]map[string]map[*atom][]string {
-	ret := map[string]map[string]map[*atom][]string{}
+func (u *useManager) parseRepositoryFilesToDictOfDicts(fileName string, repositories *repoConfigLoader, eapiFilter func(string) bool) map[string]map[string]map[*Atom][]string {
+	ret := map[string]map[string]map[*Atom][]string{}
 	for _, repo := range repositories.reposWithProfiles() {
 		in := false
 		for _, v := range repo.profileFormats {
@@ -2128,8 +2128,8 @@ func (u *useManager) parseProfileFilesToTupleOfTuples(fileName string, locations
 	return ret
 }
 
-func (u *useManager) parseProfileFilesToTupleOfDicts(fileName string, locations []*profileNode, justStrings bool, eapiFilter func(string) bool) []map[string]map[*atom][]string { // fn
-	ret := []map[string]map[*atom][]string{}
+func (u *useManager) parseProfileFilesToTupleOfDicts(fileName string, locations []*profileNode, justStrings bool, eapiFilter func(string) bool) []map[string]map[*Atom][]string { // fn
+	ret := []map[string]map[*Atom][]string{}
 	for _, profile := range locations {
 		ret = append(ret, u.parseFileToDict(path.Join(profile.location, fileName), justStrings, profile.portage1Directories, eapiFilter, profile.userConfig, profile.eapi, "", profile.allowBuildId))
 	}
@@ -2146,11 +2146,11 @@ func (u *useManager) parseRepositoryUsealiases(repositorires *repoConfigLoader) 
 		fileDict := map[string][]string{}
 		for realFlag, aliases := range rawFileDict {
 			if !useFlagRe.MatchString(realFlag) {
-				writeMsg(fmt.Sprintf("--- Invalid real USE flag in '%s': '%s'\n", fileName, realFlag), -1, nil)
+				WriteMsg(fmt.Sprintf("--- Invalid real USE flag in '%s': '%s'\n", fileName, realFlag), -1, nil)
 			} else {
 				for _, alias := range aliases {
 					if !useFlagRe.MatchString(alias) {
-						writeMsg(fmt.Sprintf("--- Invalid USE flag alias for '%s' real USE flag in '%s': '%s'\n", realFlag, fileName, alias), -1, nil)
+						WriteMsg(fmt.Sprintf("--- Invalid USE flag alias for '%s' real USE flag in '%s': '%s'\n", realFlag, fileName, alias), -1, nil)
 					} else {
 						in := false
 						for k, v := range fileDict {
@@ -2163,7 +2163,7 @@ func (u *useManager) parseRepositoryUsealiases(repositorires *repoConfigLoader) 
 							}
 						}
 						if in {
-							writeMsg(fmt.Sprintf("--- Duplicated USE flag alias in '%s': '%s'\n", fileName, alias), -1, nil)
+							WriteMsg(fmt.Sprintf("--- Duplicated USE flag alias in '%s': '%s'\n", fileName, alias), -1, nil)
 						} else {
 							if _, ok := fileDict[realFlag]; ok {
 								fileDict[realFlag] = append(fileDict[realFlag], alias)
@@ -2181,32 +2181,32 @@ func (u *useManager) parseRepositoryUsealiases(repositorires *repoConfigLoader) 
 	return ret
 }
 
-func (u *useManager) parseRepositoryPackageusealiases(repositorires *repoConfigLoader) map[string]map[string]map[*atom]map[string][]string {
-	ret := map[string]map[string]map[*atom]map[string][]string{}
+func (u *useManager) parseRepositoryPackageusealiases(repositorires *repoConfigLoader) map[string]map[string]map[*Atom]map[string][]string {
+	ret := map[string]map[string]map[*Atom]map[string][]string{}
 	for _, repo := range repositorires.reposWithProfiles() {
 		fileName := path.Join(repo.location, "profiles", "package.use.aliases")
 		eapi := readCorrespondingEapiFile(fileName, repo.eapi)
 		useFlagRe := getUseflagRe(eapi)
 		lines := grabFile(fileName, 0, true, false)
-		fileDict := map[string]map[*atom]map[string][]string{}
+		fileDict := map[string]map[*Atom]map[string][]string{}
 		for _, line := range lines {
 			elements := strings.Fields(line[0])
 			atom1, err := NewAtom(elements[0], nil, false, nil, nil, eapi, nil, nil)
 			if err != nil {
-				writeMsg(fmt.Sprintf("--- Invalid atom1 in '%s': '%s'\n", fileName, atom1), 0, nil)
+				WriteMsg(fmt.Sprintf("--- Invalid atom1 in '%s': '%s'\n", fileName, atom1), 0, nil)
 				continue
 			}
 			if len(elements) == 1 {
-				writeMsg(fmt.Sprintf("--- Missing real USE flag for '%s' in '%s'\n", fileName, atom1), -1, nil)
+				WriteMsg(fmt.Sprintf("--- Missing real USE flag for '%s' in '%s'\n", fileName, atom1), -1, nil)
 				continue
 			}
 			realFlag := elements[1]
 			if !useFlagRe.MatchString(realFlag) {
-				writeMsg(fmt.Sprintf("--- Invalid real USE flag in '%s': '%s'\n", fileName, realFlag), -1, nil)
+				WriteMsg(fmt.Sprintf("--- Invalid real USE flag in '%s': '%s'\n", fileName, realFlag), -1, nil)
 			} else {
 				for _, alias := range elements[2:] {
 					if !useFlagRe.MatchString(alias) {
-						writeMsg(fmt.Sprintf("--- Invalid USE flag alias for '%s' real USE flag in '%s': '%s'\n", realFlag, fileName, alias), -1, nil)
+						WriteMsg(fmt.Sprintf("--- Invalid USE flag alias for '%s' real USE flag in '%s': '%s'\n", realFlag, fileName, alias), -1, nil)
 					} else {
 						in := false
 						if _, ok := fileDict[atom1.cp]; ok {
@@ -2223,10 +2223,10 @@ func (u *useManager) parseRepositoryPackageusealiases(repositorires *repoConfigL
 							}
 						}
 						if in {
-							writeMsg(fmt.Sprintf("--- Duplicated USE flag alias in '%s': '%s'\n", fileName, alias), -1, nil)
+							WriteMsg(fmt.Sprintf("--- Duplicated USE flag alias in '%s': '%s'\n", fileName, alias), -1, nil)
 						} else {
 							if _, ok := fileDict[atom1.cp]; !ok {
-								fileDict[atom1.cp] = map[*atom]map[string][]string{atom1: {realFlag: {alias}}}
+								fileDict[atom1.cp] = map[*Atom]map[string][]string{atom1: {realFlag: {alias}}}
 							} else if _, ok := fileDict[atom1.cp][atom1]; !ok {
 								fileDict[atom1.cp][atom1] = map[string][]string{realFlag: {alias}}
 							} else if _, ok := fileDict[atom1.cp][atom1][realFlag]; !ok {
@@ -2254,7 +2254,7 @@ func (u *useManager) _isStable(pkg *pkgStr) bool {
 	return u.isStable(pkg)
 }
 
-func (u *useManager) getUseMask(pkg *pkgStr, stable *bool) map[*atom]string { //nn
+func (u *useManager) getUseMask(pkg *pkgStr, stable *bool) map[*Atom]string { //nn
 	if pkg == nil {
 		p := [][][2]string{}
 		for _, v := range u.usemaskList {
@@ -2335,7 +2335,7 @@ func (u *useManager) getUseMask(pkg *pkgStr, stable *bool) map[*atom]string { //
 	return stackLists(p, 1, false, false, false, false)
 }
 
-func (u *useManager) getUseForce(pkg *pkgStr, stable *bool) map[*atom]string { //n
+func (u *useManager) getUseForce(pkg *pkgStr, stable *bool) map[*Atom]string { //n
 
 	if pkg == nil {
 		p := [][][2]string{}
@@ -2488,11 +2488,11 @@ func NewMaskManager() *maskManager {
 }
 
 type keywordsManager struct {
-	pkeywordsList, pAcceptKeywords []map[string]map[*atom][]string
-	pkeywordsDict                  map[string]map[*atom][]string
+	pkeywordsList, pAcceptKeywords []map[string]map[*Atom][]string
+	pkeywordsDict                  map[string]map[*Atom][]string
 }
 
-func (k *keywordsManager) getKeywords(cpv *pkgStr, slot, keywords, repo string) map[*atom]string {
+func (k *keywordsManager) getKeywords(cpv *pkgStr, slot, keywords, repo string) map[*Atom]string {
 	pkg := cpv
 	cp := pkg.cp
 	kw := [][][2]string{{}}
@@ -2536,17 +2536,17 @@ func (k *keywordsManager) isStable(pkg *pkgStr, globalAcceptKeywords, backupedAc
 	if len(k._getMissingKeywords(pkg, pgroups, myGroups)) > 0 {
 		return false
 	}
-	unstable := map[*atom]string{}
+	unstable := map[*Atom]string{}
 	for _, kw := range myGroups {
 		if kw[:1] != "~" {
 			kw = "~" + kw
 		}
-		unstable[&atom{value: kw}] = ""
+		unstable[&Atom{value: kw}] = ""
 	}
 	return len(k._getMissingKeywords(pkg, pgroups, unstable)) > 0
 }
 
-func (k *keywordsManager) GetMissingKeywords(cpv *pkgStr, slot, keywords, repo, globalAcceptKeywords, backupedAcceptKeywords string) map[*atom]string {
+func (k *keywordsManager) GetMissingKeywords(cpv *pkgStr, slot, keywords, repo, globalAcceptKeywords, backupedAcceptKeywords string) map[*Atom]string {
 	mygroups := k.getKeywords(cpv, slot, keywords, repo)
 	pGroups := strings.Fields(globalAcceptKeywords)
 	unmaskGroups := k.getPKeywords(cpv, slot, repo, globalAcceptKeywords)
@@ -2563,7 +2563,7 @@ func (k *keywordsManager) GetMissingKeywords(cpv *pkgStr, slot, keywords, repo, 
 	return k._getMissingKeywords(cpv, pgroups, mygroups)
 }
 
-func (k *keywordsManager) getRawMissingKeywords(cpv *pkgStr, slot, keywords, repo, globalAcceptKeywords string) map[*atom]string {
+func (k *keywordsManager) getRawMissingKeywords(cpv *pkgStr, slot, keywords, repo, globalAcceptKeywords string) map[*Atom]string {
 	mygroups := k.getKeywords(cpv, slot, keywords, repo)
 	pGroups := strings.Fields(globalAcceptKeywords)
 	pgroups := map[string]bool{}
@@ -2591,7 +2591,7 @@ func (k *keywordsManager) getEgroups(egroups, mygroups []string) map[string]bool
 	return incPGroups
 }
 
-func (k *keywordsManager) _getMissingKeywords(cpv *pkgStr, pgroups map[string]bool, mygroups map[*atom]string) map[*atom]string {
+func (k *keywordsManager) _getMissingKeywords(cpv *pkgStr, pgroups map[string]bool, mygroups map[*Atom]string) map[*Atom]string {
 	match := false
 	hasstable := false
 	hastesting := false
@@ -2623,10 +2623,10 @@ func (k *keywordsManager) _getMissingKeywords(cpv *pkgStr, pgroups map[string]bo
 		match = true
 	}
 	if match {
-		return map[*atom]string{}
+		return map[*Atom]string{}
 	} else {
 		if len(mygroups) == 0 {
-			mygroups = map[*atom]string{{value: "**"}: ""}
+			mygroups = map[*Atom]string{{value: "**"}: ""}
 		}
 		return mygroups
 	}
@@ -2669,8 +2669,8 @@ func (k *keywordsManager) getPKeywords(cpv *pkgStr, slot, repo, globalAcceptKeyw
 
 func NewKeywordsManager(profiles []*profileNode, absUserConfig string, userConfig bool, globalAcceptKeywords string) *keywordsManager { // t""
 	k := &keywordsManager{}
-	k.pkeywordsList = []map[string]map[*atom][]string{}
-	rawPkeywords := []map[*atom][]string{}
+	k.pkeywordsList = []map[string]map[*Atom][]string{}
+	rawPkeywords := []map[*Atom][]string{}
 	for _, x := range profiles {
 		rawPkeywords = append(rawPkeywords, grabDictPackage(path.Join(x.location, "package.keywords"), false, x.portage1Directories, false, false, false, x.allowBuildId, false, true, x.eapi, ""))
 	}
@@ -2678,18 +2678,18 @@ func NewKeywordsManager(profiles []*profileNode, absUserConfig string, userConfi
 		if len(pkeyworddict) == 0 {
 			continue
 		}
-		cpdict := map[string]map[*atom][]string{}
+		cpdict := map[string]map[*Atom][]string{}
 		for k, v := range pkeyworddict {
 			if _, ok := cpdict[k.cp]; !ok {
-				cpdict[k.cp] = map[*atom][]string{k: v}
+				cpdict[k.cp] = map[*Atom][]string{k: v}
 			} else {
 				cpdict[k.cp][k] = v
 			}
 		}
 		k.pkeywordsList = append(k.pkeywordsList, cpdict)
 	}
-	k.pAcceptKeywords = []map[string]map[*atom][]string{}
-	rawPAcceptKeywords := []map[*atom][]string{}
+	k.pAcceptKeywords = []map[string]map[*Atom][]string{}
+	rawPAcceptKeywords := []map[*Atom][]string{}
 	for _, x := range profiles {
 		rawPAcceptKeywords = append(rawPAcceptKeywords, grabDictPackage(path.Join(x.location, "package.accept_keywords"), false, x.portage1Directories, false, false, false, false, false, true, x.eapi, ""))
 	}
@@ -2697,10 +2697,10 @@ func NewKeywordsManager(profiles []*profileNode, absUserConfig string, userConfi
 		if len(d) == 0 {
 			continue
 		}
-		cpdict := map[string]map[*atom][]string{}
+		cpdict := map[string]map[*Atom][]string{}
 		for k, v := range d {
 			if _, ok := cpdict[k.cp]; !ok {
-				cpdict[k.cp] = map[*atom][]string{k: v}
+				cpdict[k.cp] = map[*Atom][]string{k: v}
 			} else {
 				cpdict[k.cp][k] = v
 			}
@@ -2708,7 +2708,7 @@ func NewKeywordsManager(profiles []*profileNode, absUserConfig string, userConfi
 		k.pAcceptKeywords = append(k.pAcceptKeywords, cpdict)
 	}
 
-	k.pkeywordsDict = map[string]map[*atom][]string{}
+	k.pkeywordsDict = map[string]map[*Atom][]string{}
 	if userConfig {
 		pkgDict := grabDictPackage(path.Join(absUserConfig, "package.keywords"), false, true, false, true, true, true, false, true, "", "")
 		for k, v := range grabDictPackage(path.Join(absUserConfig, "package.accept_keywords"), false, true, false, true, true, true, false, true, "", "") {
@@ -2730,7 +2730,7 @@ func NewKeywordsManager(profiles []*profileNode, absUserConfig string, userConfi
 				v = acceptKeywordDefaults
 			}
 			if _, ok := k.pkeywordsDict[k1.cp]; !ok {
-				k.pkeywordsDict[k1.cp] = map[*atom][]string{k1: v}
+				k.pkeywordsDict[k1.cp] = map[*Atom][]string{k1: v}
 			} else {
 				k.pkeywordsDict[k1.cp][k1] = v
 			}
@@ -2742,7 +2742,7 @@ func NewKeywordsManager(profiles []*profileNode, absUserConfig string, userConfi
 type licenseManager struct {
 	acceptLicenseStr string
 	acceptLicense    []string
-	_plicensedict    map[string]map[*atom][]string
+	_plicensedict    map[string]map[*Atom][]string
 	undefLicGroups   map[string]bool
 	licenseGroups    map[string]map[string]bool
 }
@@ -2751,7 +2751,7 @@ func (l *licenseManager) readUserConfig(absUserConfig string) {
 	licDictt := grabDictPackage(path.Join(absUserConfig, "package.license"), false, true, false, true, true, false, false, false, "", "")
 	for k, v := range licDictt {
 		if _, ok := l._plicensedict[k.cp]; !ok {
-			l._plicensedict[k.cp] = map[*atom][]string{k: v}
+			l._plicensedict[k.cp] = map[*Atom][]string{k: v}
 		} else {
 			l._plicensedict[k.cp][k] = v
 		}
@@ -2825,13 +2825,13 @@ func (l *licenseManager) _expandLicenseToken(token string, traversedGroups map[s
 	}
 	licenseGroup := l.licenseGroups[groupName]
 	if traversedGroups[groupName] {
-		writeMsg(fmt.Sprintf("Circular license group reference detected in '%s'\n", groupName), -1, nil)
+		WriteMsg(fmt.Sprintf("Circular license group reference detected in '%s'\n", groupName), -1, nil)
 		rValue = append(rValue, "@"+groupName)
 	} else if len(licenseGroup) > 0 {
 		traversedGroups[groupName] = true
 		for li := range licenseGroup {
 			if strings.HasPrefix(li, "-") {
-				writeMsg(fmt.Sprintf("Skipping invalid element %s in license group '%s'\n", li, groupName), -1, nil)
+				WriteMsg(fmt.Sprintf("Skipping invalid element %s in license group '%s'\n", li, groupName), -1, nil)
 			} else {
 				rValue = append(rValue, l._expandLicenseToken(li, traversedGroups)...)
 			}
@@ -2839,7 +2839,7 @@ func (l *licenseManager) _expandLicenseToken(token string, traversedGroups map[s
 	} else {
 		if len(l.licenseGroups) > 0 && !l.undefLicGroups[groupName] {
 			l.undefLicGroups[groupName] = true
-			writeMsg(fmt.Sprintf("Undefined license group '%s'\n", groupName), -1, nil)
+			WriteMsg(fmt.Sprintf("Undefined license group '%s'\n", groupName), -1, nil)
 			rValue = append(rValue, "@"+groupName)
 		}
 	}
@@ -2969,7 +2969,7 @@ func NewLicenseManager(licenseGroupLocations []string, absUserConfig string, use
 	l.acceptLicenseStr = ""
 	l.acceptLicense = nil
 	l.licenseGroups = map[string]map[string]bool{}
-	l._plicensedict = map[string]map[*atom][]string{}
+	l._plicensedict = map[string]map[*Atom][]string{}
 	l.undefLicGroups = map[string]bool{}
 	if userConfig {
 		licenseGroupLocations = append(licenseGroupLocations, absUserConfig)
@@ -3001,7 +3001,7 @@ func (v *virtualManager) read_dirVirtuals(profiles []string) {
 				}
 			}
 			if virtAtom == nil {
-				writeMsg(fmt.Sprintf("--- Invalid virtuals atom in %s: %s\n", virtualsFile, k), -1, nil)
+				WriteMsg(fmt.Sprintf("--- Invalid virtuals Atom in %s: %s\n", virtualsFile, k), -1, nil)
 				continue
 			}
 			providers := []string{}
@@ -3019,7 +3019,7 @@ func (v *virtualManager) read_dirVirtuals(profiles []string) {
 					}
 				}
 				if atomA == nil {
-					writeMsg(fmt.Sprintf("--- Invalid atom in %s: %s\n", virtualsFile, atomOrig), -1, nil)
+					WriteMsg(fmt.Sprintf("--- Invalid Atom in %s: %s\n", virtualsFile, atomOrig), -1, nil)
 				} else {
 					if atomOrig == atomA.value {
 						providers = append(providers, atom)
@@ -3121,7 +3121,7 @@ func loadUnpackDependenciesConfiguration(repositories *repoConfigLoader) map[str
 					elements := strings.Fields(line[0])
 					suffix := strings.ToLower(elements[0])
 					if len(elements) == 1 {
-						writeMsg(fmt.Sprintf("--- Missing unpack dependencies for '%s' suffix in '%s'\n", suffix, fileName), 0, nil)
+						WriteMsg(fmt.Sprintf("--- Missing unpack dependencies for '%s' suffix in '%s'\n", suffix, fileName), 0, nil)
 					}
 					depend := strings.Join(elements[1:], " ")
 					useReduce(depend, map[string]bool{}, []string{}, false, []string{}, false, eapi, false, false, nil, nil, false)
@@ -3176,12 +3176,12 @@ func validateCmdVar(v string) (bool, []string) {
 	return !invalid, vSplit
 }
 
-func orderedByAtomSpecificity(cpdict map[*atom][]string, pkg *pkgStr, repo string) [][]string {
+func orderedByAtomSpecificity(cpdict map[*Atom][]string, pkg *pkgStr, repo string) [][]string {
 	if pkg.repo == "" && repo != "" && repo != unknownRepo {
 		//pkg = pkg +repoSeparator+repo
 	}
 	results := [][]string{}
-	keys := map[*atom][]string{}
+	keys := map[*Atom][]string{}
 	for k, v := range cpdict {
 		keys[k] = v
 	}

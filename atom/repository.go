@@ -357,7 +357,7 @@ func (r *repoConfigLoader) addRepositories(portDir, portdirOverlay string, prepo
 	portOv := []string{}
 	sl, err := shlex.Split(portdirOverlay)
 	if err != nil {
-		writeMsg(fmt.Sprintf("!!! Invalid PORTDIR_OVERLAY:%s: %s\n", err, portdirOverlay), -1, nil)
+		WriteMsg(fmt.Sprintf("!!! Invalid PORTDIR_OVERLAY:%s: %s\n", err, portdirOverlay), -1, nil)
 	} else {
 		for _, i := range sl {
 			portOv = append(portOv, NormalizePath(i))
@@ -499,7 +499,7 @@ func (r *repoConfigLoader) addRepositories(portDir, portdirOverlay string, prepo
 				}
 			} else {
 				if !syncMode {
-					writeMsg(fmt.Sprintf("!!! Invalid PORTDIR_OVERLAY (not a dir): '%s'\n", ov), -1, nil)
+					WriteMsg(fmt.Sprintf("!!! Invalid PORTDIR_OVERLAY (not a dir): '%s'\n", ov), -1, nil)
 				}
 			}
 		}
@@ -569,7 +569,7 @@ func (r *repoConfigLoader) checkLocations() {
 	for name, re := range r.prepos {
 		if name != "DEFAULT" {
 			if re.location != "" {
-				writeMsg(fmt.Sprintf("!!! Location not set for repository %s\n", name), -1, nil)
+				WriteMsg(fmt.Sprintf("!!! Location not set for repository %s\n", name), -1, nil)
 			} else {
 				if !isdirRaiseEaccess(re.location) && !syncMode {
 					n := []string{}
@@ -579,7 +579,7 @@ func (r *repoConfigLoader) checkLocations() {
 						}
 					}
 					r.preposOrder = n
-					writeMsg(fmt.Sprintf("!!! Invalid Repository Location (not a dir): '%s'\n", re.location), -1, nil)
+					WriteMsg(fmt.Sprintf("!!! Invalid Repository Location (not a dir): '%s'\n", re.location), -1, nil)
 				}
 			}
 		}
@@ -746,7 +746,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 	}
 	defaultOpts["sync-rsync-extra-opts"] = settings.valueDict["PORTAGE_RSYNC_EXTRA_OPTS"]
 	if err := r.parse(paths, prepos, settings.localConfig, defaultOpts); err != nil {
-		writeMsg(fmt.Sprintf("!!! Error while reading repo config file: %s\n", err), -1, nil)
+		WriteMsg(fmt.Sprintf("!!! Error while reading repo config file: %s\n", err), -1, nil)
 		prepos = map[string]*repoConfig{}
 		prepos["DEFAULT"] = NewRepoConfig("DEFAULT", nil, settings.localConfig)
 		locationMap = map[string]string{}
@@ -838,7 +838,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 		} else {
 			prepos["DEFAULT"].mainRepo = ""
 			if portDir != "" && !syncMode {
-				writeMsg(fmt.Sprintf("!!! main-repo not set in DEFAULT and PORTDIR is empty.\n"), -1, nil)
+				WriteMsg(fmt.Sprintf("!!! main-repo not set in DEFAULT and PORTDIR is empty.\n"), -1, nil)
 			}
 		}
 	}

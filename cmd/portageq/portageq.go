@@ -5,8 +5,40 @@ import (
 	flag "github.com/spf13/pflag"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 )
+
+func init() {
+	signalHandler := func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		for {
+			select {
+			case sig := <-sigChan:
+				switch sig {
+				case syscall.SIGINT:
+					os.Exit(128 + 2)
+				case syscall.SIGTERM:
+					os.Exit(128 + 9)
+				}
+			}
+		}
+	}
+	go signalHandler()
+	atom.InternalCaller = true
+}
+
+func eval_atom_use(atom *atom.Atom)*atom.Atom{
+	if use, ok :=os.LookupEnv("USE");ok{
+		u := map[string]bool{}
+		for _,v := range strings.Fields(use){
+			u[v]=true
+		}
+		atom = atom.EvaluateConditionals(u)
+	}
+	return atom
+}
 
 var atomValidateStrict bool
 
@@ -17,7 +49,6 @@ func init() {
 }
 
 func main() {
-	go signalHandler()
 
 	noColor := os.Getenv("NOCOLOR")
 	if noColor == "yes" || noColor == "true" {
@@ -83,22 +114,6 @@ func main() {
 	}
 }
 
-func signalHandler() {
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	for {
-		select {
-		case sig := <-sigChan:
-			switch sig {
-			case syscall.SIGINT:
-				os.Exit(128 + 2)
-			case syscall.SIGTERM:
-				os.Exit(128 + 9)
-			}
-		}
-	}
-}
-
 func hasVersion(args []string) int {
 	if len(args) < 2 {
 		println("ERROR: insufficient parameters!")
@@ -119,10 +134,10 @@ func configProtect(args []string)     {}
 func configProtectMask(args []string) {}
 func portdirOverlay(args []string)    {}
 func pkgdir(args []string)            {}
-func colormap([]string){
+func colormap([]string) {
 	print(atom.ColorMap())
 }
-func distdir(args []string)           {}
+func distdir(args []string) {}
 func envvar(args []string) int {
 	var newArgs []string
 	verbose := false

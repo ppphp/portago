@@ -295,7 +295,7 @@ func output_init(config_root string) { // /
 	}
 	_color_map_loaded = true
 	if err := parseColorMap(config_root, func(e error) error {
-		writeMsg(fmt.Sprintf("%s\n", e.Error()), -1, nil)
+		WriteMsg(fmt.Sprintf("%s\n", e.Error()), -1, nil)
 		return nil
 	}); err != nil {
 		return

@@ -22,7 +22,7 @@ import (
 
 var noiseLimit = 0
 
-func writeMsg(mystr string, noiseLevel int, fd *os.File) { //0n
+func WriteMsg(mystr string, noiseLevel int, fd *os.File) { //0n
 	if fd == nil {
 		fd = os.Stderr
 	}
@@ -32,7 +32,7 @@ func writeMsg(mystr string, noiseLevel int, fd *os.File) { //0n
 }
 
 func writeMsgStdout(mystr string, noiseLevel int) { //0
-	writeMsg(mystr, noiseLevel, os.Stdout)
+	WriteMsg(mystr, noiseLevel, os.Stdout)
 }
 
 func writeMsgLevel(msg string, level, noiselevel int) { //00
@@ -42,7 +42,7 @@ func writeMsgLevel(msg string, level, noiselevel int) { //00
 	} else {
 		fd = os.Stdout
 	}
-	writeMsg(msg, noiselevel, fd)
+	WriteMsg(msg, noiselevel, fd)
 }
 
 func NormalizePath(mypath string) string {
@@ -194,7 +194,7 @@ type SB struct {
 }
 
 type AS struct {
-	A *atom
+	A *Atom
 	S string
 }
 
@@ -215,10 +215,10 @@ func appendRepo(atomList []AS, repoName string, rememberSourceFile bool) []SB {
 	return sb
 }
 
-func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[*atom]string { //1ffff
+func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[*Atom]string { //1ffff
 	matchedRemovals := map[[2]string]bool{}
 	unmatchedRemovals := map[string][]string{}
-	newList := map[*atom]string{}
+	newList := map[*Atom]string{}
 	for _, subList := range lists {
 		for _, t := range subList {
 			tokenKey := t
@@ -234,11 +234,11 @@ func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 			}
 			if incremental != 0 {
 				if token == "-*" {
-					newList = map[*atom]string{}
+					newList = map[*Atom]string{}
 				} else if token[:1] == "-" {
 					matched := false
 					if ignoreRepo && !strings.Contains(token, "::") {
-						toBeRemoved := []*atom{}
+						toBeRemoved := []*Atom{}
 						tokenSlice := token[1:]
 						for atom := range newList {
 							atomWithoutRepo := atom.value
@@ -275,10 +275,10 @@ func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 						matchedRemovals[tokenKey] = true
 					}
 				} else {
-					newList[&atom{value: token}] = sourceFile
+					newList[&Atom{value: token}] = sourceFile
 				}
 			} else {
-				newList[&atom{value: token}] = sourceFile
+				newList[&Atom{value: token}] = sourceFile
 			}
 		}
 	}
@@ -287,9 +287,9 @@ func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 			if len(tokens) > 3 {
 				selected := []string{tokens[len(tokens)-1], tokens[len(tokens)-2], tokens[len(tokens)-3]}
 				tokens = tokens[:len(tokens)-3]
-				writeMsg(fmt.Sprintf("--- Unmatched removal atoms in %s: %s and %s more\n", sourceFile, strings.Join(selected, ", "), len(tokens)), -1, nil)
+				WriteMsg(fmt.Sprintf("--- Unmatched removal atoms in %s: %s and %s more\n", sourceFile, strings.Join(selected, ", "), len(tokens)), -1, nil)
 			} else {
-				writeMsg(fmt.Sprintf("--- Unmatched removal atom(s) in %s: %s\n", sourceFile, strings.Join(tokens, ", ")), -1, nil)
+				WriteMsg(fmt.Sprintf("--- Unmatched removal Atom(s) in %s: %s\n", sourceFile, strings.Join(tokens, ", ")), -1, nil)
 			}
 		}
 	}
@@ -358,7 +358,7 @@ func readCorrespondingEapiFile(filename, defaults string) string { // "0"
 	if len(lines) == 1 {
 		eapi = strings.TrimSuffix(lines[0], "\n")
 	} else {
-		writeMsg(fmt.Sprintf("--- Invalid 'eapi' file (doesn't contain exactly one line): %s\n", eapiFile), -1, nil)
+		WriteMsg(fmt.Sprintf("--- Invalid 'eapi' file (doesn't contain exactly one line): %s\n", eapiFile), -1, nil)
 	}
 	eapiFileCache[eapiFile] = eapi
 	if eapi == "" {
@@ -367,14 +367,14 @@ func readCorrespondingEapiFile(filename, defaults string) string { // "0"
 	return eapi
 }
 
-func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, allowWildcard, allowRepo, allowBuildId, allowUse, verifyEapi bool, eapi, eapiDefault string) map[*atom][]string { //000ffftf none 0
+func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, allowWildcard, allowRepo, allowBuildId, allowUse, verifyEapi bool, eapi, eapiDefault string) map[*Atom][]string { //000ffftf none 0
 	fileList := []string{}
 	if recursive {
 		fileList = recursiveFileList(myfilename)
 	} else {
 		fileList = []string{myfilename}
 	}
-	atoms := map[*atom][]string{}
+	atoms := map[*Atom][]string{}
 	var d map[string][]string
 	for _, filename := range fileList {
 		d = grabDict(filename, false, true, false, true, newlines)
@@ -387,10 +387,10 @@ func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, a
 		for k, v := range d {
 			a, err := NewAtom(k, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId)
 			if err != nil {
-				writeMsg(fmt.Sprintf("--- Invalid atom in %s: %s\n", filename, err), -1, nil)
+				WriteMsg(fmt.Sprintf("--- Invalid Atom in %s: %s\n", filename, err), -1, nil)
 			} else {
 				if !allowUse && a.use != nil {
-					writeMsg(fmt.Sprintf("--- Atom is not allowed to have USE flag(s) in %s: %s\n", filename, k), -1, nil)
+					WriteMsg(fmt.Sprintf("--- Atom is not allowed to have USE flag(s) in %s: %s\n", filename, k), -1, nil)
 					continue
 				}
 				if atoms[a] == nil {
@@ -438,7 +438,7 @@ func grabFilePackage(myfilename string, compatLevel, recursive int, allowWildcar
 		}
 
 		if _, err := NewAtom(pkg, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId); err != nil {
-			writeMsg(fmt.Sprintf("--- Invalid atom in %s: %s\n", sourceFile, err), -1, nil)
+			WriteMsg(fmt.Sprintf("--- Invalid Atom in %s: %s\n", sourceFile, err), -1, nil)
 		} else {
 			if pkgOrig == pkg {
 				if rememberSourceFile {
@@ -633,7 +633,7 @@ func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, ex
 		content += "\n"
 	}
 	if strings.Contains(content, "\r") {
-		writeMsg(fmt.Sprintf("!!! Please use dos2unix to convert line endings in config file: '%s'\n", mycfg), -1, nil)
+		WriteMsg(fmt.Sprintf("!!! Please use dos2unix to convert line endings in config file: '%s'\n", mycfg), -1, nil)
 	}
 	//lex := NewGetConfgShlex(tolerant)
 	lex := shlex.NewLexer(f)
@@ -656,7 +656,7 @@ func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, ex
 			if !tolerant {
 				//raise ParseError(msg)
 			} else {
-				writeMsg(fmt.Sprintf("%s\n", msg), -1, nil)
+				WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
 				return myKeys
 			}
 		} else if equ != "=" {
@@ -664,7 +664,7 @@ func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, ex
 			if !tolerant {
 				//raise ParseError(msg)
 			} else {
-				writeMsg(fmt.Sprintf("%s\n", msg), -1, nil)
+				WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
 				return myKeys
 			}
 		}
@@ -674,7 +674,7 @@ func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, ex
 			if !tolerant {
 				//raise ParseError(msg)
 			} else {
-				writeMsg(fmt.Sprintf("%s\n", msg), -1, nil)
+				WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
 				return myKeys
 			}
 		}
@@ -683,7 +683,7 @@ func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, ex
 			if !tolerant {
 				//raise ParseError(msg)
 			} else {
-				writeMsg(fmt.Sprintf("%s\n", msg), -1, nil)
+				WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
 				continue
 			}
 		}
@@ -767,7 +767,7 @@ func varExpand(myString string, mydict map[string]string, errorLeader string) st
 						if errorLeader != "" {
 							msg = errorLeader + msg
 						}
-						writeMsg(msg+"\n", -1, nil)
+						WriteMsg(msg+"\n", -1, nil)
 						return ""
 					}
 					braced = true
@@ -782,7 +782,7 @@ func varExpand(myString string, mydict map[string]string, errorLeader string) st
 							if errorLeader != "" {
 								msg = errorLeader + msg
 							}
-							writeMsg(msg+"\n", -1, nil)
+							WriteMsg(msg+"\n", -1, nil)
 							return ""
 						} else {
 							pos += 1
@@ -798,7 +798,7 @@ func varExpand(myString string, mydict map[string]string, errorLeader string) st
 						if errorLeader != "" {
 							msg = errorLeader + msg
 						}
-						writeMsg(msg+"\n", -1, nil)
+						WriteMsg(msg+"\n", -1, nil)
 						return ""
 					} else {
 						pos += 1
@@ -813,7 +813,7 @@ func varExpand(myString string, mydict map[string]string, errorLeader string) st
 					if errorLeader != "" {
 						msg = errorLeader + msg
 					}
-					writeMsg(msg+"\n", -1, nil)
+					WriteMsg(msg+"\n", -1, nil)
 					return ""
 				}
 				numVars += 1
@@ -1032,4 +1032,15 @@ func readConfigs(parser *configparser.Configuration, paths []string) {
 	for _, p := range paths {
 		parser.ReadFile(p)
 	}
+}
+
+func expandEnv()map[string]string{
+	m := map[string]string{}
+	for _, v := range os.Environ(){
+		s := strings.SplitN(v,"=",2)
+		if len(s)==2{
+			m[s[0]]=s[1]
+		}
+	}
+	return m
 }

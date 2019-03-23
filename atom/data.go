@@ -27,11 +27,11 @@ func portageGroupWarining() {
 		"local privilege escalation.",
 	}
 	for _, x := range mylines {
-		writeMsg(warnPrefix, -1, nil)
-		writeMsg(x, -1, nil)
-		writeMsg("\n", -1, nil)
+		WriteMsg(warnPrefix, -1, nil)
+		WriteMsg(x, -1, nil)
+		WriteMsg("\n", -1, nil)
 	}
-	writeMsg("\n", -1, nil)
+	WriteMsg("\n", -1, nil)
 }
 
 var userpriv_groups, _portage_grpname, _portage_username *string

@@ -173,7 +173,7 @@ func parenEncloses(myList []string, unevaluatedAtom, opconvert bool) string {
 	return strings.Join(myStrParts, " ")
 }
 
-func matchSlot(atom *atom, pkg *pkgStr) bool {
+func matchSlot(atom *Atom, pkg *pkgStr) bool {
 	if pkg.slot == atom.slot {
 		if atom.subSlot == "" {
 			return true
@@ -184,7 +184,7 @@ func matchSlot(atom *atom, pkg *pkgStr) bool {
 	return false
 }
 
-func useReduce(depstr string, uselist map[string]bool, masklist []string, matchall bool, excludeall []string, isSrcUri bool, eapi string, opconvert, flat bool, isValidFlag func(string) bool, tokenClass func(string) *atom, matchnone bool) []string { // [][]f[]fnffnnf
+func useReduce(depstr string, uselist map[string]bool, masklist []string, matchall bool, excludeall []string, isSrcUri bool, eapi string, opconvert, flat bool, isValidFlag func(string) bool, tokenClass func(string) *Atom, matchnone bool) []string { // [][]f[]fnffnnf
 	if opconvert && flat {
 		// ValueError("portage.dep.use_reduce: 'opconvert' and 'flat' are mutually exclusive")
 	}
@@ -396,7 +396,7 @@ func useReduce(depstr string, uselist map[string]bool, masklist []string, matcha
 					//token = tokenClass()// TODO
 					t := tokenClass(token)
 					if !matchall {
-						token = t.evaluateConditionals(uselist).value
+						token = t.EvaluateConditionals(uselist).value
 					}
 				}
 			}
@@ -927,7 +927,7 @@ func newBlocker(forbidOverlap bool) *blocker {
 	return &blocker{overlap: newOverlap(forbidOverlap)}
 }
 
-type atom struct {
+type Atom struct {
 	value                                                          string
 	ispackage, soname, extendedSyntax                              bool
 	buildId                                                        int
@@ -935,10 +935,10 @@ type atom struct {
 	slotOperator, subSlot, repo, slot, eapi, cp, version, operator string
 	cpv                                                            *pkgStr
 	use                                                            *useDep
-	withoutUse, unevaluatedAtom                                    *atom
+	withoutUse, unevaluatedAtom                                    *Atom
 }
 
-func (a *atom) withoutSlot() *atom {
+func (a *Atom) withoutSlot() *Atom {
 	if a.slot == "" && a.slotOperator == "" {
 		return a
 	}
@@ -954,7 +954,7 @@ func (a *atom) withoutSlot() *atom {
 	return b
 }
 
-func (a *atom) withRepo(repo string) *atom {
+func (a *Atom) withRepo(repo string) *Atom {
 	atom := removeSlot(a.value)
 	if a.slot != "" || a.slotOperator != "" {
 		atom += slotSeparator
@@ -977,7 +977,7 @@ func (a *atom) withRepo(repo string) *atom {
 	return b
 }
 
-func (a *atom) withSlot(slot string) *atom {
+func (a *Atom) withSlot(slot string) *Atom {
 	atom := removeSlot(a.value) + slotSeparator + slot
 	if a.repo != "" {
 		atom += repoSeparator + a.repo
@@ -990,7 +990,7 @@ func (a *atom) withSlot(slot string) *atom {
 	return b
 }
 
-func (a *atom) evaluateConditionals(use map[string]bool) *atom {
+func (a *Atom) EvaluateConditionals(use map[string]bool) *Atom {
 	if !(a.use != nil && a.use.conditional != nil) {
 		return a
 	}
@@ -1014,7 +1014,7 @@ func (a *atom) evaluateConditionals(use map[string]bool) *atom {
 	return b
 }
 
-func (a *atom) violatedConditionals(otherUse map[string]bool, isValidFlag func(string) bool, parentUse map[string]bool) *atom { // none
+func (a *Atom) violatedConditionals(otherUse map[string]bool, isValidFlag func(string) bool, parentUse map[string]bool) *Atom { // none
 	if a.use == nil {
 		return a
 	}
@@ -1038,7 +1038,7 @@ func (a *atom) violatedConditionals(otherUse map[string]bool, isValidFlag func(s
 	return b
 }
 
-func (a *atom) evalQaConditionals(useMask, useForce map[string]bool) *atom {
+func (a *Atom) evalQaConditionals(useMask, useForce map[string]bool) *Atom {
 	if a.use == nil || a.use.conditional == nil {
 		return a
 	}
@@ -1062,11 +1062,11 @@ func (a *atom) evalQaConditionals(useMask, useForce map[string]bool) *atom {
 	return b
 }
 
-func (a *atom) slotOperatorBuilt() bool {
+func (a *Atom) slotOperatorBuilt() bool {
 	return a.slotOperator == "=" && a.subSlot != ""
 }
 
-func (a *atom) withoutRepo() *atom {
+func (a *Atom) withoutRepo() *Atom {
 	if a.repo == "" {
 		return a
 	}
@@ -1074,7 +1074,7 @@ func (a *atom) withoutRepo() *atom {
 	return b
 }
 
-func (a *atom) intersects(other *atom) bool {
+func (a *Atom) intersects(other *Atom) bool {
 	if a == other {
 		return true
 	}
@@ -1087,20 +1087,20 @@ func (a *atom) intersects(other *atom) bool {
 	return false
 }
 
-func (a *atom) copy() *atom {
+func (a *Atom) copy() *Atom {
 	return a
 }
 
-func (a *atom) deepcopy() *atom { // memo=None, memo[id(self)] = self
+func (a *Atom) deepcopy() *Atom { // memo=None, memo[id(self)] = self
 	return a
 }
 
-func (a *atom) match(pkg *pkgStr) bool {
+func (a *Atom) match(pkg *pkgStr) bool {
 	return len(matchFromList(a, []*pkgStr{pkg})) > 0
 }
 
-func NewAtom(s string, unevaluatedAtom *atom, allowWildcard bool, allowRepo *bool, _use *useDep, eapi string, isValidFlag func(string) bool, allowBuildId *bool) (*atom, error) { //s, None, False, None, None, None, None, None
-	a := &atom{value: s, ispackage: true, soname: false}
+func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *bool, _use *useDep, eapi string, isValidFlag func(string) bool, allowBuildId *bool) (*Atom, error) { //s, None, False, None, None, None, None, None
+	a := &Atom{value: s, ispackage: true, soname: false}
 	eapiAttrs := getEapiAttrs(eapi)
 	atomRe := getAtomRe(eapiAttrs)
 	a.eapi = eapi
@@ -1237,7 +1237,7 @@ func NewAtom(s string, unevaluatedAtom *atom, allowWildcard bool, allowRepo *boo
 		}
 
 	} else {
-		return nil, fmt.Errorf("required group not found in atom: '%v'", a)
+		return nil, fmt.Errorf("required group not found in Atom: '%v'", a)
 	}
 	a.cp = cp
 	a.cpv = NewPkgStr(cpv, nil, nil, "", "", "", "", "", "", 0, "")
@@ -1288,7 +1288,7 @@ func NewAtom(s string, unevaluatedAtom *atom, allowWildcard bool, allowRepo *boo
 		//raise InvalidAtom(self)
 	}
 	use := &useDep{}
-	withoutUse := &atom{}
+	withoutUse := &Atom{}
 	if useStr != "" {
 		if _use != nil {
 			use = _use
@@ -1347,7 +1347,7 @@ func NewAtom(s string, unevaluatedAtom *atom, allowWildcard bool, allowRepo *boo
 					//flag := invalidFlag.MSB
 					//conditionalStr := useDep{}.conditionalStrings[conditionalType]
 					//msg = _("USE flag '%s' referenced in " + \
-					//"conditional '%s' in atom '%s' is not in IUSE") \
+					//"conditional '%s' in Atom '%s' is not in IUSE") \
 					//% (flag, conditional_str % flag, self)
 					//raise InvalidAtom(msg, category='IUSE.missing')
 				}
@@ -1363,7 +1363,7 @@ func NewAtom(s string, unevaluatedAtom *atom, allowWildcard bool, allowRepo *boo
 	return a, nil
 }
 
-func extractAffectingUse(mystr string, atom *atom, eapi string) map[string]bool {
+func extractAffectingUse(mystr string, atom *Atom, eapi string) map[string]bool {
 	useflagRe := getUseflagRe(eapi)
 	mySplit := strings.Fields(mystr)
 	level := 0
@@ -1449,7 +1449,7 @@ func extractAffectingUse(mystr string, atom *atom, eapi string) map[string]bool 
 				needBracket = true
 				stack[level] = append(stack[level], token)
 			}
-			//else if token == atom
+			//else if token == Atom
 			//	stack[level].append(token)
 		}
 	}
@@ -1653,9 +1653,9 @@ func depGetKey(mydep string) string {
 	return a.cp
 }
 
-func matchToList(mypkg *pkgStr, mylist map[*atom][]string) []*atom {
-	matches := map[*atom]bool{}
-	result := []*atom{}
+func matchToList(mypkg *pkgStr, mylist map[*Atom][]string) []*Atom {
+	matches := map[*Atom]bool{}
+	result := []*Atom{}
 	pkgs := []*pkgStr{mypkg}
 	for x := range mylist {
 		if !matches[x] && len(matchFromList(x, pkgs)) > 0 {
@@ -1666,10 +1666,10 @@ func matchToList(mypkg *pkgStr, mylist map[*atom][]string) []*atom {
 	return result
 }
 
-func bestMatchToList(mypkg *pkgStr, mylist map[*atom][]string) *atom {
+func bestMatchToList(mypkg *pkgStr, mylist map[*Atom][]string) *Atom {
 	operatorValues := map[string]int{"=": 6, "~": 5, "=*": 4, ">": 2, "<": 2, ">=": 2, "<=": 2, "": 1}
 	maxvalue := -99
-	var bestm *atom = nil
+	var bestm *Atom = nil
 	var mypkgCpv *pkgStr = nil
 	for _, x := range matchToList(mypkg, mylist) {
 		if x.extendedSyntax {
@@ -1730,7 +1730,7 @@ func bestMatchToList(mypkg *pkgStr, mylist map[*atom][]string) *atom {
 
 }
 
-func matchFromList(mydep *atom, candidateList []*pkgStr) []*pkgStr {
+func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 	if len(candidateList) == 0 {
 		return []*pkgStr{}
 	}
@@ -1770,7 +1770,7 @@ func matchFromList(mydep *atom, candidateList []*pkgStr) []*pkgStr {
 	if ver != "" && rev != "" {
 		operator = mydepA.operator
 		if operator == "" {
-			writeMsg(fmt.Sprintf("!!! Invalid atom: %s\n", mydep.value), -1, nil)
+			WriteMsg(fmt.Sprintf("!!! Invalid Atom: %s\n", mydep.value), -1, nil)
 		}
 		return []*pkgStr{}
 	} else {
@@ -1904,7 +1904,7 @@ func matchFromList(mydep *atom, candidateList []*pkgStr) []*pkgStr {
 			}
 			result, err := verCmp(pkg.version, mydepA.version)
 			if err != nil {
-				writeMsg(fmt.Sprintf("\nInvalid package name: %s\n", x), -1, nil)
+				WriteMsg(fmt.Sprintf("\nInvalid package name: %s\n", x), -1, nil)
 				//raise
 			}
 			if operator == ">" {
