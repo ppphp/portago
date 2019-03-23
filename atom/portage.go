@@ -63,14 +63,6 @@ var auxdbkeys = map[string]bool{
 }
 var auxdbkeylen = len(auxdbkeys)
 
-type treesDict struct {
-	runningEroot, targetEroot string
-}
-
-func NewTreesDict() *treesDict {
-	return &treesDict{}
-}
-
 func absSymlink(symlink, target string) string {
 	mylink := ""
 	if target != "" {
@@ -211,6 +203,72 @@ func unprivilegedMode(eroot string, erootSt os.FileInfo) bool {
 		return false
 	}
 	return os.Getuid() != 0 && st.Mode()&2 != 0 && erootSt.Mode()&00002 == 0
+}
+
+type _trees_dict struct {
+	valueDict map[string]string
+	_running_eroot,_target_eroot string
+}
+
+func NewTreesDict(dict map[string]string)*_trees_dict{
+	return &_trees_dict{valueDict:dict}
+}
+
+func createTrees(config_root, target_root string, ts map[string]string, env map[string]string, sysroot, eprefix string) *_trees_dict {
+	var trees *_trees_dict = nil
+	if ts ==nil{
+		trees = NewTreesDict(nil)
+	} else {
+		trees = NewTreesDict(ts)
+	}
+
+	if env ==nil {
+		env = expandEnv()
+	}
+
+	settings := NewConfig(nil, "", "", nil, config_root, target_root, sysroot, eprefix,false, env, false, nil)
+	settings.lock()
+
+	depcachedir := settings.valueDict["PORTAGE_DEPCACHEDIR"]
+	trees._target_eroot = settings.valueDict["EROOT"]
+	type st struct{s string;t *Config}
+	myroots := []st{{settings.valueDict["EROOT"], settings}}
+	if settings.valueDict["ROOT"] == "/" && settings.valueDict["EPREFIX"] == EPREFIX{
+		trees._running_eroot = trees._target_eroot
+	}else{
+		clean_env := map[string]string{}
+
+		for _, k :=range  []string{"PATH", "PORTAGE_GRPNAME",
+			"PORTAGE_REPOSITORIES", "PORTAGE_USERNAME", "PYTHONPATH",
+			"SSH_AGENT_PID", "SSH_AUTH_SOCK", "TERM", "ftp_proxy",
+			"http_proxy", "no_proxy", "__PORTAGE_TEST_HARDLINK_LOCKS"}{
+			v,ok := settings.valueDict[k]
+			if ok{
+				clean_env[k] = v
+			}
+		}
+
+		if depcachedir != ""{
+			clean_env["PORTAGE_DEPCACHEDIR"] = depcachedir
+		}
+		settings = NewConfig(nil, "", "",nil,"", "/", "/", "", false, clean_env, false, nil)
+		settings.lock()
+		trees._running_eroot = settings.valueDict["EROOT"]
+		myroots = append(myroots, st{settings.valueDict["EROOT"], settings})
+	}
+
+	//for _,v:= range myroots{
+	//	myroot, mysettings := v.s, v.t
+	//	trees.valueDict[myroot] = trees.valueDict[myroot]
+	//	trees[myroot]["virtuals"] =  mysettings.getvirtuals
+	//	trees[myroot]["vartree"]= vartree, categories=mysettings.categories,
+	//		settings=mysettings)
+	//	trees[myroot].addLazySingleton("porttree",
+	//		portagetree, settings=mysettings)
+	//	trees[myroot].addLazySingleton("bintree",
+	//		binarytree, pkgdir=mysettings["PKGDIR"], settings=mysettings)
+	//}
+	return trees
 }
 
 var _legacy_global_var_names = []string{"archlist", "db", "features",
