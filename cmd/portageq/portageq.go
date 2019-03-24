@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/ppphp/portago/atom"
 	flag "github.com/spf13/pflag"
 	"os"
@@ -29,15 +30,69 @@ func init() {
 	atom.InternalCaller = true
 }
 
-func eval_atom_use(atom *atom.Atom)*atom.Atom{
-	if use, ok :=os.LookupEnv("USE");ok{
+func eval_atom_use(atom *atom.Atom) *atom.Atom {
+	if use, ok := os.LookupEnv("USE"); ok {
 		u := map[string]bool{}
-		for _,v := range strings.Fields(use){
-			u[v]=true
+		for _, v := range strings.Fields(use) {
+			u[v] = true
 		}
 		atom = atom.EvaluateConditionals(u)
 	}
 	return atom
+}
+
+var docstrings = map[string]string{}
+
+var (
+	nonCommands = []string{"elog", "eval_atom_use", "exithandler", "match_orphaned", "main", "usage", "uses_eroot"}
+	commands    = []string{}
+)
+
+func usage(argv []string) {
+	fmt.Println(">>> Portage information query tool")
+	fmt.Printf(">>> %s\n", atom.VERSION)
+	fmt.Println(">>> Usage: portageq <command> [<option> ...]")
+	fmt.Println("")
+	fmt.Println("Available commands:")
+	help_mode := false
+	for _, v := range argv {
+		if "--help" == v {
+			help_mode = true
+		}
+	}
+	for _, name := range commands {
+		doc, ok := docstrings[name]
+		if !ok {
+			fmt.Println("   " + name)
+			fmt.Println("      MISSING DOCUMENTATION!")
+			fmt.Println("")
+			continue
+		}
+
+		lines := strings.Split(strings.TrimPrefix(doc, "\n"), "\n")
+		fmt.Println("   " + name + " " + strings.TrimSpace(lines[0]))
+		if len(argv) > 1 {
+			if !help_mode {
+				lines = lines[:len(lines)-1]
+			}
+			for _, line := range lines[1:] {
+				fmt.Println("      " + strings.TrimSpace(line))
+			}
+		}
+	}
+
+	fmt.Println()
+	fmt.Println("Pkgcore pquery compatible options:")
+	fmt.Println()
+	//parser = argparse.ArgumentParser(add_help=False,
+	//	usage='portageq pquery [options] [atom ...]')
+	//add_pquery_arguments(parser)
+	//parser.print_help()
+
+	if len(argv) == 1 {
+		fmt.Println("\nRun portageq with --help for info")
+	}
+
 }
 
 var atomValidateStrict bool
@@ -45,6 +100,24 @@ var atomValidateStrict bool
 func init() {
 	if os.Getenv("EBUILD_PHASE") != "" {
 		atomValidateStrict = true
+	}
+}
+
+var eapi string
+var elog func(string, []string)
+
+func init() {
+	if atomValidateStrict {
+		eapi = os.Getenv("EAPI")
+		elog = func(elog_funcname string, lines []string) {
+			cmd := fmt.Sprintf("source '%s/isolated-functions.sh' ; ", os.Getenv("PORTAGE_BIN_PATH"))
+			for _, line := range lines {
+				cmd += fmt.Sprintf("%s %s ; ", elog_funcname, atom.ShellQuote(line))
+			}
+			//subprocess.call([portage.const.BASH_BINARY, "-c", cmd])
+		}
+	} else {
+		elog = func(string, []string) {}
 	}
 }
 

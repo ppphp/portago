@@ -330,7 +330,7 @@ func useReduce(depstr string, uselist map[string]bool, masklist []string, matcha
 					}
 				}
 				if len(l) != 0 && !ignore {
-					if !endsInAnyOfDep(level - 1) && !endsInAnyOfDep(level) {
+					if !endsInAnyOfDep(level-1) && !endsInAnyOfDep(level) {
 						stack[level] = append(stack[level], l...)
 					} else if len(stack[level]) == 0 {
 						specialAppend()
@@ -1408,7 +1408,7 @@ func extractAffectingUse(mystr string, atom *Atom, eapi string) map[string]bool 
 					stack[level] = append(stack[level], l[0])
 				}
 				if len(l) != 0 {
-					if !endsInAnyOfDep(level - 1) && !endsInOperator(level) {
+					if !endsInAnyOfDep(level-1) && !endsInOperator(level) {
 						stack[level] = append(stack[level], l...)
 					} else if len(stack[level]) == 0 {
 						specialAppend()

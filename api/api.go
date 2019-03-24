@@ -8,7 +8,7 @@ import (
 
 var App *gin.Engine
 
-func init(){
+func init() {
 	App = gin.Default()
 	App.Use(cors.Default())
 	App.Use(static.Serve("/", static.LocalFile("./webui/dist/webui", true)))

@@ -1,9 +1,9 @@
 package main
 
 import (
+	_ "github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/config"
 	_ "github.com/ppphp/portago/log"
-	_ "github.com/ppphp/portago/atom"
 )
 
 func main() {

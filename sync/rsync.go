@@ -17,7 +17,7 @@ func rsync() {
 	}
 
 	args1 := append([]string{}, args...)
-	args1 = append(args1, "--inplace", "rsync://89.238.71.6/gentoo-portage/metadata/timestamp.chk", config.EbuildDir + "/metadata")
+	args1 = append(args1, "--inplace", "rsync://89.238.71.6/gentoo-portage/metadata/timestamp.chk", config.EbuildDir+"/metadata")
 	fmt.Printf("%v %v\n", bin, strings.Join(args1, " "))
 	r := exec.Command(bin, args1...)
 	if err := r.Run(); err != nil {

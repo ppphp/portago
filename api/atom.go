@@ -10,13 +10,13 @@ import (
 func getCategory(c *gin.Context) {
 	cs := atom.IndexCategories()
 	var s string
-	if cs== nil {
-		s="{}"
-	}else {
+	if cs == nil {
+		s = "{}"
+	} else {
 		b, err := json.Marshal(cs)
 		if err != nil {
 
-			s="{}"
+			s = "{}"
 		} else {
 
 			s = string(b)
@@ -25,17 +25,16 @@ func getCategory(c *gin.Context) {
 	c.String(http.StatusOK, s)
 }
 
-
 func getPackage(c *gin.Context) {
 	cs := atom.IndexCategories()
 	var s string
-	if cs== nil {
-		s="{}"
-	}else {
+	if cs == nil {
+		s = "{}"
+	} else {
 		b, err := json.Marshal(cs)
 		if err != nil {
 
-			s="{}"
+			s = "{}"
 		} else {
 
 			s = string(b)
@@ -47,5 +46,3 @@ func getPackage(c *gin.Context) {
 func build(c *gin.Context) {
 	atom.Build()
 }
-
-

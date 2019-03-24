@@ -110,7 +110,7 @@ func mapDictListVals(f func(string) string, mydict map[string][]string) {
 	}
 }
 
-func stackDictlist(originalDicts []map[string][]string, incremental int, incrementals []string, ignoreNone int) map[string][]string {//0[]0
+func stackDictlist(originalDicts []map[string][]string, incremental int, incrementals []string, ignoreNone int) map[string][]string { //0[]0
 	finalDict := map[string][]string{}
 	for _, mydict := range originalDicts {
 		if mydict == nil {
@@ -1034,12 +1034,12 @@ func readConfigs(parser *configparser.Configuration, paths []string) {
 	}
 }
 
-func expandEnv()map[string]string{
+func expandEnv() map[string]string {
 	m := map[string]string{}
-	for _, v := range os.Environ(){
-		s := strings.SplitN(v,"=",2)
-		if len(s)==2{
-			m[s[0]]=s[1]
+	for _, v := range os.Environ() {
+		s := strings.SplitN(v, "=", 2)
+		if len(s) == 2 {
+			m[s[0]] = s[1]
 		}
 	}
 	return m
