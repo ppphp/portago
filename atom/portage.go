@@ -206,7 +206,7 @@ func unprivilegedMode(eroot string, erootSt os.FileInfo) bool {
 }
 
 type _trees_dict struct {
-	valueDict map[string]string
+	valueDict map[string]func()
 	_running_eroot,_target_eroot string
 }
 

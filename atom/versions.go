@@ -265,13 +265,13 @@ func catPkgSplit(mydata string, silent int, eapi string) [4]string { // 1n
 
 type pkgStr struct {
 	string
-	metadata                                                                              map[string]string
-	settings                                                                              *Config
-	eapi, repo, slot, buildTime, buildId, fileSize, db, cp, version, subSlot, slotInvalid string
-	mtime                                                                                 int
-	_stable                                                                               *bool
-	cpvSplit                                                                              [4]string
-	cpv                                                                                   *pkgStr
+	metadata                                                                   map[string]string
+	settings                                                                   *Config
+	eapi, repo, slot, buildId, fileSize, db, cp, version, subSlot, slotInvalid string
+	buildTime, mtime                                                           int
+	_stable                                                                    *bool
+	cpvSplit                                                                   [4]string
+	cpv                                                                        *pkgStr
 }
 
 func (p *pkgStr) stable() bool {
@@ -287,7 +287,7 @@ func (p *pkgStr) stable() bool {
 	return *p._stable
 }
 
-func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, repo, slot, build_time, build_id, file_size string, mtime int, db string) *pkgStr {
+func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, repo, slot string, build_time int, build_id, file_size string, mtime int, db string) *pkgStr {
 	p := &pkgStr{string: cpv}
 	if len(metadata) != 0 {
 		p.metadata = metadata
@@ -301,7 +301,7 @@ func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, r
 			slot = a
 		}
 		if a, ok := metadata["BUILD_TIME"]; ok {
-			build_time = a
+			build_time,_ = strconv.Atoi(a)
 		}
 		if a, ok := metadata["SIZE"]; ok {
 			file_size = a
@@ -415,10 +415,10 @@ func cmpCpv(cpv1, cpv2, eapi string) (int, error) {
 	split1, ok := splitCache[cpv1]
 	if !ok {
 		//split1 = cpv1.pv //TODO
-		split1 = NewPkgStr(cpv1, nil, nil, eapi, "", "", "", "", "", 0, "")
+		split1 = NewPkgStr(cpv1, nil, nil, eapi, "", "", 0, "", "", 0, "")
 		splitCache[cpv1] = split1
 	}
-	split2 := NewPkgStr(cpv1, nil, nil, eapi, "", "", "", "", "", 0, "")
+	split2 := NewPkgStr(cpv1, nil, nil, eapi, "", "", 0, "", "", 0, "")
 	splitCache[cpv2] = split2
 	//return verCmp(cpv1.version, cpv2.version)
 	return verCmp(cpv1, cpv2)

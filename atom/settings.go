@@ -216,7 +216,7 @@ type Config struct {
 	useManager                                                                                                                           *useManager
 	keywordsManagerObj                                                                                                                   *keywordsManager
 	maskManagerObj                                                                                                                       *maskManager
-	virtualManagerObj                                                                                                                    *virtualManager
+	virtualsManagerObj                                                                                                                   *virtualManager
 	licenseManager                                                                                                                       *licenseManager
 	iuseImplicitMatch                                                                                                                    *iuseImplicitMatchCache
 	unpackDependencies                                                                                                                   map[string]map[string]map[string]string
@@ -226,7 +226,7 @@ type Config struct {
 	profileBashrc                                                                                                                        []bool
 	lookupList, configList, makeDefaults, uvlist                                                                                         []map[string]string
 	repoMakeDefaults, configDict                                                                                                         map[string]map[string]string
-	backupenv, defaultGlobals, deprecatedKeys, useExpandDict, virtualsManagerObj, virtualsManager, acceptProperties, expandMap           map[string]string
+	backupenv, defaultGlobals, deprecatedKeys, useExpandDict, acceptProperties, expandMap                                                map[string]string
 	pprovideddict                                                                                                                        map[string][]string
 	pbashrcdict                                                                                                                          map[*profileNode]map[string]map[*Atom][]string
 	prevmaskdict                                                                                                                         map[string][]*Atom
@@ -667,6 +667,11 @@ func (c *Config) regenerate(useonly int) { // 0 n
 	}
 }
 
+func (c *Config) get_virts_p()map[string][]string{
+	c.getvirtuals()
+	return c.virtualsManager().getVirtsP()
+}
+
 func (c *Config) lock() {
 	c.locked = 1
 }
@@ -701,6 +706,13 @@ func (c *Config) keywordsManager() *keywordsManager {
 		c.keywordsManagerObj = NewKeywordsManager(c.locationsManager.profilesComplex, c.locationsManager.absUserConfig, c.localConfig, c.configDict["defaults"]["ACCEPT_KEYWORDS"])
 	}
 	return c.keywordsManagerObj
+}
+
+func (c *Config) virtualsManager() *virtualManager {
+	if c.virtualsManagerObj == nil {
+		c.virtualsManagerObj = NewVirtualManager(c.profiles)
+	}
+	return c.virtualsManagerObj
 }
 
 func (c *Config) grabPkgEnv(penv []string, container map[string]string, protected_keys map[string]bool) { // n
@@ -814,7 +826,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		c.featuresOverrides = append(clone.featuresOverrides[:0:0], clone.featuresOverrides...)
 		c.licenseManager = clone.licenseManager
 
-		c.virtualsManagerObj = CopyMapSS(clone.virtualsManager)
+		c.virtualsManagerObj = clone.virtualsManager()
 		c.acceptProperties = CopyMapSS(clone.acceptProperties)
 		c.ppropertiesdict = CopyMSMASS(clone.ppropertiesdict)
 		c.acceptRestrict = append(clone.acceptRestrict[:0:0], clone.acceptRestrict...)
@@ -3105,8 +3117,14 @@ func (v *virtualManager) getVirtsP() map[string][]string {
 	return virtsP
 }
 
-func NewVirtualManager() *virtualManager {
+func NewVirtualManager(profiles []string) *virtualManager {
 	v := &virtualManager{}
+	v._virtuals=nil
+	v._dirVirtuals=nil
+	v._virts_p=nil
+	v._treeVirtuals=nil
+	v._depgraphVirtuals=nil
+	v.read_dirVirtuals(profiles)
 	return v
 }
 
