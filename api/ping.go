@@ -8,4 +8,3 @@ import (
 func getPing(c *gin.Context) {
 	c.String(http.StatusOK, "pong")
 }
-

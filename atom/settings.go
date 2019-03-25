@@ -268,7 +268,7 @@ func (c *Config) calcIuseEffective() map[string]bool {
 		useExpand[x] = true
 	}
 	for v := range useExpandImplicit {
-		if ! useExpand[v] {
+		if !useExpand[v] {
 			continue
 		}
 		lowerV := strings.ToLower(v)
@@ -284,7 +284,7 @@ func (c *Config) _validateCommands() {
 		v := c.valueDict[k]
 		if v != "" {
 			valid, vSplit := validateCmdVar(v)
-			if ! valid {
+			if !valid {
 				if len(vSplit) > 0 {
 					writeMsgLevel(fmt.Sprintf("%s setting is invalid: '%s'\n", k, v), 40, -1)
 				}
@@ -292,7 +292,7 @@ func (c *Config) _validateCommands() {
 				v = c.configDict["globals"][k]
 				if v != "" {
 					defaultValid, vSplit := validateCmdVar(v)
-					if ! defaultValid {
+					if !defaultValid {
 						if len(vSplit) > 0 {
 							writeMsgLevel(fmt.Sprintf("%s setting from make.globals is invalid: '%s'\n", k, v), 40, -1)
 						}
@@ -325,10 +325,10 @@ func (c *Config) getImplicitIuse() map[string]bool {
 		iuseImplicit[strings.ToLower(x)+"_.*"] = true
 	}
 	for x := range c.usemask {
-		iuseImplicit[x.value ] = true
+		iuseImplicit[x.value] = true
 	}
 	for x := range c.useforce {
-		iuseImplicit[x.value ] = true
+		iuseImplicit[x.value] = true
 	}
 	iuseImplicit["build"] = true
 	iuseImplicit["bootstrap"] = true
@@ -1371,7 +1371,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 			c.backupChanges("USERLAND")
 		}
 
-		defaultInstIds := map[string]string{"PORTAGE_INST_GID": "0", "PORTAGE_INST_UID": "0",}
+		defaultInstIds := map[string]string{"PORTAGE_INST_GID": "0", "PORTAGE_INST_UID": "0"}
 
 		erootOrParent := firstExisting(eroot)
 		unprivileged := false

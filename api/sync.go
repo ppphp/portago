@@ -7,7 +7,7 @@ import (
 )
 
 func getSync(c *gin.Context) {
-	m, _:=c.GetQuery("method")
+	m, _ := c.GetQuery("method")
 	sync.Sync(m)
 	c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 	c.String(http.StatusOK, "{\"a\":1}")

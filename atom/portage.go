@@ -8,7 +8,8 @@ import (
 	"strings"
 	"time"
 )
-var VERSION="HEAD"
+
+var VERSION = "HEAD"
 
 var shellQuoteRe = regexp.MustCompile("[\\s><=*\\\\\\\"'$`]")
 var initializingGlobals *bool
@@ -29,8 +30,10 @@ func ShellQuote(s string) string {
 var notInstalled bool
 
 func init() {
-	ni, _ := os.Stat(path.Join(PORTAGE_BASE_PATH, ".portage_not_installed"))
-	notInstalled = !ni.IsDir()
+	ni, err := os.Stat(path.Join(PORTAGE_BASE_PATH, ".portage_not_installed"))
+	if err != nil || !ni.IsDir() {
+		notInstalled = true
+	}
 }
 
 var InternalCaller = false
@@ -210,48 +213,51 @@ type _trees_dict struct {
 	_running_eroot,_target_eroot string
 }
 
-func NewTreesDict(dict map[string]string)*_trees_dict{
-	return &_trees_dict{valueDict:dict}
+func NewTreesDict(dict map[string]string) *_trees_dict {
+	return &_trees_dict{valueDict: dict}
 }
 
 func createTrees(config_root, target_root string, ts map[string]string, env map[string]string, sysroot, eprefix string) *_trees_dict {
 	var trees *_trees_dict = nil
-	if ts ==nil{
+	if ts == nil {
 		trees = NewTreesDict(nil)
 	} else {
 		trees = NewTreesDict(ts)
 	}
 
-	if env ==nil {
+	if env == nil {
 		env = expandEnv()
 	}
 
-	settings := NewConfig(nil, "", "", nil, config_root, target_root, sysroot, eprefix,false, env, false, nil)
+	settings := NewConfig(nil, "", "", nil, config_root, target_root, sysroot, eprefix, false, env, false, nil)
 	settings.lock()
 
 	depcachedir := settings.valueDict["PORTAGE_DEPCACHEDIR"]
 	trees._target_eroot = settings.valueDict["EROOT"]
-	type st struct{s string;t *Config}
+	type st struct {
+		s string
+		t *Config
+	}
 	myroots := []st{{settings.valueDict["EROOT"], settings}}
-	if settings.valueDict["ROOT"] == "/" && settings.valueDict["EPREFIX"] == EPREFIX{
+	if settings.valueDict["ROOT"] == "/" && settings.valueDict["EPREFIX"] == EPREFIX {
 		trees._running_eroot = trees._target_eroot
-	}else{
+	} else {
 		clean_env := map[string]string{}
 
-		for _, k :=range  []string{"PATH", "PORTAGE_GRPNAME",
+		for _, k := range []string{"PATH", "PORTAGE_GRPNAME",
 			"PORTAGE_REPOSITORIES", "PORTAGE_USERNAME", "PYTHONPATH",
 			"SSH_AGENT_PID", "SSH_AUTH_SOCK", "TERM", "ftp_proxy",
-			"http_proxy", "no_proxy", "__PORTAGE_TEST_HARDLINK_LOCKS"}{
-			v,ok := settings.valueDict[k]
-			if ok{
+			"http_proxy", "no_proxy", "__PORTAGE_TEST_HARDLINK_LOCKS"} {
+			v, ok := settings.valueDict[k]
+			if ok {
 				clean_env[k] = v
 			}
 		}
 
-		if depcachedir != ""{
+		if depcachedir != "" {
 			clean_env["PORTAGE_DEPCACHEDIR"] = depcachedir
 		}
-		settings = NewConfig(nil, "", "",nil,"", "/", "/", "", false, clean_env, false, nil)
+		settings = NewConfig(nil, "", "", nil, "", "/", "/", "", false, clean_env, false, nil)
 		settings.lock()
 		trees._running_eroot = settings.valueDict["EROOT"]
 		myroots = append(myroots, st{settings.valueDict["EROOT"], settings})
@@ -275,15 +281,15 @@ var _legacy_global_var_names = []string{"archlist", "db", "features",
 	"groups", "mtimedb", "mtimedbfile", "pkglines",
 	"portdb", "profiledir", "root", "selinux_enabled",
 	"settings", "thirdpartymirrors"}
-var archlist, db, features,groups, mtimedb, mtimedbfile, pkglines, portdb, profiledir, root, selinux_enabled, settings, thirdpartymirrors int
+var archlist, db, features, groups, mtimedb, mtimedbfile, pkglines, portdb, profiledir, root, selinux_enabled, settings, thirdpartymirrors int
 
 var _legacy_globals_constructed map[string]bool
 
 func _reset_legacy_globals() {
-	_legacy_globals_constructed=map[string]bool{}
-	archlist, db, features,groups, mtimedb, mtimedbfile, pkglines, portdb, profiledir, root, selinux_enabled, settings, thirdpartymirrors = 0,0,0,0,0,0,0,0,0,0,0,0,0
+	_legacy_globals_constructed = map[string]bool{}
+	archlist, db, features, groups, mtimedb, mtimedbfile, pkglines, portdb, profiledir, root, selinux_enabled, settings, thirdpartymirrors = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 }
 
-func _disable_legacy_globals(){
-	archlist, db, features,groups, mtimedb, mtimedbfile, pkglines, portdb, profiledir, root, selinux_enabled, settings, thirdpartymirrors = 0,0,0,0,0,0,0,0,0,0,0,0,0
+func _disable_legacy_globals() {
+	archlist, db, features, groups, mtimedb, mtimedbfile, pkglines, portdb, profiledir, root, selinux_enabled, settings, thirdpartymirrors = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 }

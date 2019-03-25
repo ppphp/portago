@@ -4,4 +4,4 @@ build:
 	GOPROXY=https://athens.azurefd.net go build github.com/ppphp/portago/cmd/portageq
 
 fmt:
-		gofmt -s -w
+	gofmt -s -w .

@@ -39,7 +39,19 @@ const (
 	// translated into their lowercase variants
 	DepcachePath     = "/var/cache/edb/dep"
 	GlobalConfigPath = "/usr/share/portage/config"
+)
 
+var (
+	tmpPORTAGE_BASE_PATH = strings.Split(path.Join(getcwd(), strings.TrimSuffix(os.Args[0], "co")), string(os.PathSeparator))
+	PORTAGE_BASE_PATH    = path.Join(string(os.PathSeparator), strings.Join(tmpPORTAGE_BASE_PATH[:len(tmpPORTAGE_BASE_PATH)-2], string(os.PathSeparator)))
+	PORTAGE_BIN_PATH     = PORTAGE_BASE_PATH + "/bin"
+	PORTAGE_PYM_PATH     = path.Clean(path.Join(os.Args[0], "../.."))
+	LOCALE_DATA_PATH     = PORTAGE_BASE_PATH + "/locale"
+	EBUILD_SH_BINARY     = PORTAGE_BIN_PATH + "/ebuild.sh"
+	MISC_SH_BINARY       = PORTAGE_BIN_PATH + "/misc-functions.sh"
+)
+
+const (
 	// these variables are not used with target_root or config_root
 	// NOTE: Use realpath(__file__) so that python module symlinks in site-packages
 	// are followed back to the real location of the whole portage installation.
@@ -93,14 +105,6 @@ const (
 )
 
 var (
-	tmpPORTAGE_BASE_PATH = strings.Split(path.Clean(strings.TrimSuffix(os.Args[0], "co")), string(os.PathSeparator))
-	PORTAGE_BASE_PATH    = path.Join(string(os.PathSeparator), strings.Join(tmpPORTAGE_BASE_PATH[:len(tmpPORTAGE_BASE_PATH)-2], string(os.PathSeparator)))
-	PORTAGE_BIN_PATH     = PORTAGE_BASE_PATH + "/bin"
-	PORTAGE_PYM_PATH     = path.Clean(path.Join(os.Args[0], "../.."))
-	LOCALE_DATA_PATH     = PORTAGE_BASE_PATH + "/locale"
-	EBUILD_SH_BINARY     = PORTAGE_BIN_PATH + "/ebuild.sh"
-	MISC_SH_BINARY       = PORTAGE_BIN_PATH + "/misc-functions.sh"
-
 	EPREFIX = ""
 
 	VcsDirs = map[string]bool{"CVS": true, "RCS": true, "SCCS": true, ".bzr": true, ".git": true, ".hg": true, ".svn": true}

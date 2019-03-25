@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	pmsEapiRe          = regexp.MustCompile(`^[ \t]*EAPI=(['\"]?)([A-Za-z0-9+_.-]*)\1[ \t]*([ \t]#.*)?$`)
+	pmsEapiRe          = regexp.MustCompile(`^[ \t]*EAPI=(['"]?)([A-Za-z0-9+_.-]*)\\1[ \t]*([ \t]#.*)?$`)
 	commentOrBlankLine = regexp.MustCompile(`^\s*(#.*)?$`)
 )
 

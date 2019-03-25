@@ -9,7 +9,7 @@ import (
 	"os"
 )
 
-type conf = struct{
+type conf = struct {
 	Server server
 }
 type server = struct {

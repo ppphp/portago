@@ -220,7 +220,7 @@ func styleToAnsiCode(style string) string {
 	ret := ""
 	for _, attrName := range styles[style] {
 		r, ok := codes[attrName]
-		if ! ok {
+		if !ok {
 			ret = attrName
 		} else {
 			ret = r
