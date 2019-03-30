@@ -5,6 +5,7 @@ import (
 	"github.com/ppphp/portago/atom"
 	flag "github.com/spf13/pflag"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -114,7 +115,8 @@ func init() {
 			for _, line := range lines {
 				cmd += fmt.Sprintf("%s %s ; ", elog_funcname, atom.ShellQuote(line))
 			}
-			//subprocess.call([portage.const.BASH_BINARY, "-c", cmd])
+			c := exec.Command(atom.BashBinary, "-c", cmd)
+			c.Run()
 		}
 	} else {
 		elog = func(string, []string) {}
