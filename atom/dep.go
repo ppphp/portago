@@ -1653,11 +1653,11 @@ func depGetKey(mydep string) string {
 	return a.cp
 }
 
-func matchToList(mypkg *pkgStr, mylist map[*Atom][]string) []*Atom {
+func matchToList(mypkg *pkgStr, mylist []*Atom) []*Atom {
 	matches := map[*Atom]bool{}
 	result := []*Atom{}
 	pkgs := []*pkgStr{mypkg}
-	for x := range mylist {
+	for _, x := range mylist {
 		if !matches[x] && len(matchFromList(x, pkgs)) > 0 {
 			matches[x] = true
 			result = append(result, x)
@@ -1666,7 +1666,7 @@ func matchToList(mypkg *pkgStr, mylist map[*Atom][]string) []*Atom {
 	return result
 }
 
-func bestMatchToList(mypkg *pkgStr, mylist map[*Atom][]string) *Atom {
+func bestMatchToList(mypkg *pkgStr, mylist []*Atom) *Atom {
 	operatorValues := map[string]int{"=": 6, "~": 5, "=*": 4, ">": 2, "<": 2, ">=": 2, "<=": 2, "": 1}
 	maxvalue := -99
 	var bestm *Atom = nil

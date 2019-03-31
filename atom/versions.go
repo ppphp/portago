@@ -301,7 +301,7 @@ func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, r
 			slot = a
 		}
 		if a, ok := metadata["BUILD_TIME"]; ok {
-			build_time,_ = strconv.Atoi(a)
+			build_time, _ = strconv.Atoi(a)
 		}
 		if a, ok := metadata["SIZE"]; ok {
 			file_size = a

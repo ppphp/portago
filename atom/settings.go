@@ -139,6 +139,7 @@ var (
 	validateCommands   = map[string]bool{"PORTAGE_BZIP2_COMMAND": true, "PORTAGE_BUNZIP2_COMMAND": true}
 	globalOnlyVars     = map[string]bool{"CONFIG_PROTECT": true}
 	environWhitelistRe = regexp.MustCompile(`^(CCACHE_|DISTCC_).*`)
+	categoryRe = regexp.MustCompile("^\\w[-.+\\w]*$")
 )
 
 func lazyIuseRegex(s []string) string {
@@ -667,11 +668,23 @@ func (c *Config) regenerate(useonly int) { // 0 n
 	}
 }
 
-func (c *Config) get_virts_p()map[string][]string{
-	c.getvirtuals()
+func (c *Config) get_virts_p() map[string][]string {
+	c.getVirtuals()
 	return c.virtualsManager().getVirtsP()
 }
 
+func (c *Config) getVirtuals() map[string][]string {
+	if c.virtualsManager()._treeVirtuals == nil {
+		if c.localConfig{
+			temp_vartree = vartree(settings=self)
+			c.virtualsManager()._populate_treeVirtuals(temp_vartree)
+		} else{
+			c.virtualsManager()._treeVirtuals = map[string][]string{}
+		}
+	}
+
+	return c.virtualsManager().getvirtuals()
+}
 func (c *Config) lock() {
 	c.locked = 1
 }
@@ -2429,9 +2442,120 @@ func (u *useManager) getUseForce(pkg *pkgStr, stable *bool) map[*Atom]string { /
 	return stackLists(p, 1, false, false, false, false)
 }
 
-func (u *useManager) getUseAliases(pkg *pkgStr) {}
+func (u *useManager) getUseAliases(pkg *pkgStr) map[string][]string {
+	if pkg.eapi != "" && !eapiHasUseAliases(pkg.eapi) {
+		return map[string][]string{}
+	}
+	cp := pkg.cp
+	if cp == "" {
+		slot := depGetslot(pkg.string)
+		repo := depGetrepo(pkg.string)
+		pkg := NewPkgStr(removeSlot(pkg.string), nil, nil, "", repo, slot, 0, "", "", 0, "")
+		cp = pkg.cp
+	}
+	useAliases := map[string][]string{}
+	if pkg.repo != "" && pkg.repo != unknownRepo {
+		repos := []string{}
+		for _, repo := range u.repositories.prepos[pkg.repo].masters {
+			repos = append(repos, repo)
+		}
+		for _, repo := range repos {
+			usealiasesDict := u.repoUsealiasesDict[repo]
+			if usealiasesDict == nil {
+				usealiasesDict = map[string][]string{}
+			}
+			for realFlag, aliases := range usealiasesDict {
+				for _, alias := range aliases {
+					in := false
+					for k, v := range useAliases {
+						if k != realFlag {
+							for _, a := range v {
+								if alias == a {
+									in = true
+									break
+								}
+							}
+							if in {
+								break
+							}
+						}
+					}
+					if in {
+						WriteMsg(fmt.Sprintf("--- Duplicated USE flag alias for '%s%s%s': '%s'\n", pkg.cpv, repoSeparator, pkg.repo, alias), -1, nil)
+					} else {
+						if _, ok := useAliases[realFlag]; ok {
+							useAliases[realFlag] = append(useAliases[realFlag], alias)
+						} else {
+							useAliases[realFlag] = []string{alias}
+						}
+					}
+				}
+			}
 
-func (u *useManager) getPUSE(pkg *pkgStr) {}
+			var cpUsealiasesDict map[*Atom]map[string][]string = nil
+			if _, ok := u.repoPusealiasesDict[repo]; ok {
+				cpUsealiasesDict = u.repoPusealiasesDict[repo][cp]
+			}
+			if len(cpUsealiasesDict) > 0 {
+				usealiasesDictList := orderedByAtomSpecificity2(cpUsealiasesDict, pkg, "")
+				for _, usealiasesDict := range usealiasesDictList {
+					for realFlag, aliases := range usealiasesDict {
+						for _, alias := range aliases {
+							in := false
+							for k, v := range useAliases {
+								if k != realFlag {
+									for _, a := range v {
+										if alias == a {
+											in = true
+											break
+										}
+									}
+									if in {
+										break
+									}
+								}
+							}
+							if in {
+								WriteMsg(fmt.Sprintf("--- Duplicated USE flag alias for '%s%s%s': '%s'\n", pkg.cpv, repoSeparator, pkg.repo, alias), -1, nil)
+							} else {
+								if _, ok := useAliases[realFlag]; ok {
+									useAliases[realFlag] = append(useAliases[realFlag], alias)
+								} else {
+									useAliases[realFlag] = []string{alias}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return useAliases
+}
+
+func (u *useManager) getPUSE(pkg *pkgStr) string {
+	cp := pkg.cp
+	if cp == "" {
+		slot := depGetslot(pkg.string)
+		repo := depGetrepo(pkg.string)
+		pkg := NewPkgStr(removeSlot(pkg.string), nil, nil, "", repo, slot, 0, "", "", 0, "")
+		cp = pkg.cp
+	}
+	ret := ""
+	cpDict := u.pUseDict[cp]
+	if len(cpDict) > 0 {
+		puseMatches := orderedByAtomSpecificity(cpDict, pkg, "")
+		if len(puseMatches) > 0 {
+			puseList := []string{}
+			for _, x := range puseMatches {
+				puseList = append(puseList, x...)
+			}
+			ret = strings.Join(puseList, " ")
+		}
+	}
+
+	return ret
+}
 
 func (u *useManager) extract_global_USE_changes(old string) string { //""
 	ret := old
@@ -2869,7 +2993,7 @@ func (l *licenseManager) _getPkgAcceptLicense(cpv *pkgStr, slot, repo string) []
 	cpdict := l._plicensedict[cp]
 	if len(cpdict) > 0 {
 		if cpv.slot == "" {
-			cpv = NewPkgStr(cpv.string, nil, nil, "", repo, slot, "", "", "", 0, "")
+			cpv = NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, "", "", 0, "")
 		}
 		plicenceList := orderedByAtomSpecificity(cpdict, cpv, "")
 		if len(plicenceList) > 0 {
@@ -3119,11 +3243,11 @@ func (v *virtualManager) getVirtsP() map[string][]string {
 
 func NewVirtualManager(profiles []string) *virtualManager {
 	v := &virtualManager{}
-	v._virtuals=nil
-	v._dirVirtuals=nil
-	v._virts_p=nil
-	v._treeVirtuals=nil
-	v._depgraphVirtuals=nil
+	v._virtuals = nil
+	v._dirVirtuals = nil
+	v._virts_p = nil
+	v._treeVirtuals = nil
+	v._depgraphVirtuals = nil
 	v.read_dirVirtuals(profiles)
 	return v
 }
@@ -3199,14 +3323,20 @@ func orderedByAtomSpecificity(cpdict map[*Atom][]string, pkg *pkgStr, repo strin
 		//pkg = pkg +repoSeparator+repo
 	}
 	results := [][]string{}
-	keys := map[*Atom][]string{}
-	for k, v := range cpdict {
-		keys[k] = v
+	keys := []*Atom{}
+	for k := range cpdict {
+		keys = append(keys, k)
 	}
 	for len(keys) > 0 {
 		bestMatch := bestMatchToList(pkg, keys)
 		if bestMatch != nil {
-			delete(keys, bestMatch)
+			keys2 := []*Atom{}
+			for k := range cpdict {
+				if k != bestMatch {
+					keys2 = append(keys2, k)
+				}
+			}
+			keys = keys2
 			results = append(results, cpdict[bestMatch])
 		} else {
 			break
@@ -3214,6 +3344,40 @@ func orderedByAtomSpecificity(cpdict map[*Atom][]string, pkg *pkgStr, repo strin
 	}
 	if len(results) != 0 {
 		r := [][]string{}
+		for i := 0; i < len(results); i++ {
+			r = append(r, results[len(results)-1-i])
+		}
+		return r
+	}
+	return results
+}
+
+func orderedByAtomSpecificity2(cpdict map[*Atom]map[string][]string, pkg *pkgStr, repo string) []map[string][]string {
+	if pkg.repo == "" && repo != "" && repo != unknownRepo {
+		//pkg = pkg +repoSeparator+repo
+	}
+	results := []map[string][]string{}
+	keys := []*Atom{}
+	for k := range cpdict {
+		keys = append(keys, k)
+	}
+	for len(keys) > 0 {
+		bestMatch := bestMatchToList(pkg, keys)
+		if bestMatch != nil {
+			keys2 := []*Atom{}
+			for k := range cpdict {
+				if k != bestMatch {
+					keys2 = append(keys2, k)
+				}
+			}
+			keys = keys2
+			results = append(results, cpdict[bestMatch])
+		} else {
+			break
+		}
+	}
+	if len(results) != 0 {
+		r := []map[string][]string{}
 		for i := 0; i < len(results); i++ {
 			r = append(r, results[len(results)-1-i])
 		}
