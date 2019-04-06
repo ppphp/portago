@@ -216,7 +216,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 	r.moduleSpecificOptions = map[string]string{}
 	r.format = strings.TrimSpace(repoOpts["format"])
 
-	if s, _ := os.Stat(repoOpts["location"]); s.IsDir() || syncMode {
+	if s, _ := os.Stat(repoOpts["location"]); s.IsDir() || SyncMode {
 		r.userLocation = repoOpts["location"]
 		r.location, _ = filepath.EvalSymlinks(repoOpts["location"])
 	}
@@ -228,7 +228,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 			if len(name) > 0 {
 				r.name = name
 			}
-			if syncMode {
+			if SyncMode {
 				missing = false
 			}
 		}
@@ -498,7 +498,7 @@ func (r *repoConfigLoader) addRepositories(portDir, portdirOverlay string, prepo
 					}
 				}
 			} else {
-				if !syncMode {
+				if !SyncMode {
 					WriteMsg(fmt.Sprintf("!!! Invalid PORTDIR_OVERLAY (not a dir): '%s'\n", ov), -1, nil)
 				}
 			}
@@ -571,7 +571,7 @@ func (r *repoConfigLoader) checkLocations() {
 			if re.location != "" {
 				WriteMsg(fmt.Sprintf("!!! Location not set for repository %s\n", name), -1, nil)
 			} else {
-				if !isdirRaiseEaccess(re.location) && !syncMode {
+				if !isdirRaiseEaccess(re.location) && !SyncMode {
 					n := []string{}
 					for _, v := range r.preposOrder {
 						if v != name {
@@ -777,7 +777,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 				continue
 			}
 		} else {
-			if !syncMode {
+			if !SyncMode {
 				if !isdirRaiseEaccess(repo.location) {
 					writeMsgLevel(fmt.Sprintf("!!! %s\nSection '%s' in repos.conf has location attribute set to nonexistent directory: '%s'", repoName, repo.location), 40, -1)
 					if repo.name != "gentoo" {
@@ -837,7 +837,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 			prepos["DEFAULT"].mainRepo = mainRepo
 		} else {
 			prepos["DEFAULT"].mainRepo = ""
-			if portDir != "" && !syncMode {
+			if portDir != "" && !SyncMode {
 				WriteMsg(fmt.Sprintf("!!! main-repo not set in DEFAULT and PORTDIR is empty.\n"), -1, nil)
 			}
 		}
@@ -954,7 +954,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 		if repoName == "DEFAULT" {
 			continue
 		}
-		if repo.mastersOrig == "" && r.mainRepo() != nil && repo.name != r.mainRepo().name && !syncMode {
+		if repo.mastersOrig == "" && r.mainRepo() != nil && repo.name != r.mainRepo().name && !SyncMode {
 			writeMsgLevel(fmt.Sprintf("!!! %s\nRepository '%s' is missing masters attribute in '%s'", repo.name, path.Join(repo.location, "metadata", "layout.conf"))+fmt.Sprintf("!!! %s\nSet 'masters = %s' in this file for future compatibility", r.mainRepo().name), 30, -1)
 		}
 	}

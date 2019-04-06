@@ -139,7 +139,7 @@ var (
 	validateCommands   = map[string]bool{"PORTAGE_BZIP2_COMMAND": true, "PORTAGE_BUNZIP2_COMMAND": true}
 	globalOnlyVars     = map[string]bool{"CONFIG_PROTECT": true}
 	environWhitelistRe = regexp.MustCompile(`^(CCACHE_|DISTCC_).*`)
-	categoryRe = regexp.MustCompile("^\\w[-.+\\w]*$")
+	categoryRe         = regexp.MustCompile("^\\w[-.+\\w]*$")
 )
 
 func lazyIuseRegex(s []string) string {
@@ -675,10 +675,10 @@ func (c *Config) get_virts_p() map[string][]string {
 
 func (c *Config) getVirtuals() map[string][]string {
 	if c.virtualsManager()._treeVirtuals == nil {
-		if c.localConfig{
-			temp_vartree = vartree(settings=self)
-			c.virtualsManager()._populate_treeVirtuals(temp_vartree)
-		} else{
+		if c.localConfig {
+			//temp_vartree = vartree(settings=self)
+			//c.virtualsManager()._populate_treeVirtuals(temp_vartree)
+		} else {
 			c.virtualsManager()._treeVirtuals = map[string][]string{}
 		}
 	}
@@ -1021,7 +1021,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		if len(portDirOverlay1) > 0 {
 			for _, ov := range portDirOverlay1 {
 				ov = NormalizePath(ov)
-				if isdirRaiseEaccess(ov) || syncMode {
+				if isdirRaiseEaccess(ov) || SyncMode {
 					newOv = append(newOv, ShellQuote(ov))
 				} else {
 					WriteMsg(fmt.Sprintf("!!! Invalid PORTDIR_OVERLAY(not a dir): '%s'\n", ov), -1, nil)

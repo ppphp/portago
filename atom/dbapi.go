@@ -39,7 +39,7 @@ func (d *dbapi) cp_list(cp, use_cache int) { //1
 
 func (d *dbapi) _cmp_cpv(cpv1, cpv2 *pkgStr) int {
 	result, _ := verCmp(cpv1.version, cpv2.version)
-	if (result == 0 && cpv1.buildTime != 0 && cpv2.buildTime != 0) {
+	if result == 0 && cpv1.buildTime != 0 && cpv2.buildTime != 0 {
 		if (cpv1.buildTime > cpv2.buildTime) && (cpv1.buildTime < cpv2.buildTime) {
 			result = 0
 		} else if !(cpv1.buildTime > cpv2.buildTime) && (cpv1.buildTime < cpv2.buildTime) {
@@ -53,9 +53,9 @@ func (d *dbapi) _cmp_cpv(cpv1, cpv2 *pkgStr) int {
 	return result
 }
 
-func (d *dbapi) _cpv_sort_ascending(cpv_list []) {
-
-}
+//func (d *dbapi) _cpv_sort_ascending(cpv_list []) {
+//
+//}
 
 func (d *dbapi) cp_all(sort bool) []string { // f
 	panic("")
@@ -68,7 +68,7 @@ func NewDbapi() *dbapi {
 	d._categories = nil
 	d._use_mutable = false
 	for x := range auxdbkeys {
-		if ! strings.HasPrefix(x, "UNUSED_0") {
+		if !strings.HasPrefix(x, "UNUSED_0") {
 			d._known_keys[x] = true
 		}
 	}

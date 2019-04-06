@@ -37,7 +37,7 @@ func init() {
 }
 
 var InternalCaller = false
-var syncMode = false
+var SyncMode = false
 
 func getStdin() *os.File {
 	return os.Stdin
@@ -213,11 +213,11 @@ type _trees_dict struct {
 	_running_eroot, _target_eroot string
 }
 
-func NewTreesDict(dict map[string]string) *_trees_dict {
+func NewTreesDict(dict map[string]func()) *_trees_dict {
 	return &_trees_dict{valueDict: dict}
 }
 
-func createTrees(config_root, target_root string, ts map[string]string, env map[string]string, sysroot, eprefix string) *_trees_dict {
+func createTrees(config_root, target_root string, ts map[string]func(), env map[string]string, sysroot, eprefix string) *_trees_dict {
 	var trees *_trees_dict = nil
 	if ts == nil {
 		trees = NewTreesDict(nil)

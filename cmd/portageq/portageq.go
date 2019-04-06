@@ -42,7 +42,16 @@ func eval_atom_use(atom *atom.Atom) *atom.Atom {
 	return atom
 }
 
-var docstrings = map[string]string{}
+type fuu struct {
+	F              func([]string) int
+	UseEroot       bool
+	UsesConfigroot bool
+	Docstrings     string
+}
+
+var globalFunctions = map[string]fuu{
+	"colormap": {colormap, false, false, "Display the color.map as environment variables."},
+}
 
 var (
 	nonCommands = []string{"elog", "eval_atom_use", "exithandler", "match_orphaned", "main", "usage", "uses_eroot"}
@@ -61,16 +70,8 @@ func usage(argv []string) {
 			help_mode = true
 		}
 	}
-	for _, name := range commands {
-		doc, ok := docstrings[name]
-		if !ok {
-			fmt.Println("   " + name)
-			fmt.Println("      MISSING DOCUMENTATION!")
-			fmt.Println("")
-			continue
-		}
-
-		lines := strings.Split(strings.TrimPrefix(doc, "\n"), "\n")
+	for name, f := range globalFunctions {
+		lines := strings.Split(strings.TrimPrefix(f.Docstrings, "\n"), "\n")
 		fmt.Println("   " + name + " " + strings.TrimSpace(lines[0]))
 		if len(argv) > 1 {
 			if !help_mode {
@@ -150,11 +151,10 @@ func main() {
 
 	cmd := ""
 	if len(args) != 0 {
-		for _, c := range []string{"all_best_visible", "config_protect_mask", "has_version", "pkgdir", "best_version", "distdir",
-			"mass_best_version", "portdir", "best_visible", "envvar", "mass_best_visible", "portdir_overlay", "config_protect",
-			"gentoo_mirrors", "match", "vdb_path", "pquery"} {
+		for c := range globalFunctions {
 			if c == args[0] {
 				cmd = args[0]
+				break
 			}
 		}
 	}
@@ -177,13 +177,41 @@ func main() {
 		os.Exit(64)
 	}
 
-	realArg := argv[2:]
+	function := globalFunctions[cmd]
+	usesEroot := function.UseEroot && len(argv) > 2
+	if usesEroot {
+		s, err := os.Stat(argv[2])
+		if err != nil || !s.IsDir() {
+			fmt.Printf("Not a directory: '%s'\n", argv[2])
+			fmt.Printf("Run portageq with --help for info\n")
+			os.Exit(64)
+		}
+		eprefix := atom.TargetEprefix()
+		eroot := atom.NormalizePath(argv[2])
 
-	retval := 0
-	switch cmd {
-	case "has_version":
-		retval = hasVersion(realArg)
+		root := ""
+		if eprefix != "" {
+			if !strings.HasSuffix(eroot, eprefix) {
+				fmt.Printf("ERROR: This version of portageq only supports <eroot>s ending in '%s'. The provided <eroot>, '%s', doesn't.\n", eprefix, eroot)
+				os.Exit(64)
+			}
+			root = eroot[:1-len(eprefix)]
+		} else {
+			root = eroot
+		}
+		os.Setenv("ROOT", root)
+		if function.UsesConfigroot {
+			os.Setenv("PORTAGE_CONFIGROOT", eroot)
+		}
+		atom.SyncMode = true
 	}
+
+	realArg := argv[2:]
+	if usesEroot {
+		//realArg[0] = settings["EROOT"]
+	}
+
+	retval := function.F(realArg)
 	if retval != 0 {
 		os.Exit(retval)
 	}
@@ -196,23 +224,24 @@ func hasVersion(args []string) int {
 	}
 	return 0
 }
-func bestVersion(args []string)       {}
-func massBestVersion(args []string)   {}
-func bestVisible(args []string)       {}
-func massBestVisible(args []string)   {}
-func allBestVisible(args []string)    {}
-func match(args []string)             {}
-func vdbPath(args []string)           {}
-func gentooMirrors(args []string)     {}
-func portdir(args []string)           {}
-func configProtect(args []string)     {}
-func configProtectMask(args []string) {}
-func portdirOverlay(args []string)    {}
-func pkgdir(args []string)            {}
-func colormap([]string) {
-	print(atom.ColorMap())
+func bestVersion(args []string) int       { return 0 }
+func massBestVersion(args []string) int   { return 0 }
+func bestVisible(args []string) int       { return 0 }
+func massBestVisible(args []string) int   { return 0 }
+func allBestVisible(args []string) int    { return 0 }
+func match(args []string) int             { return 0 }
+func vdbPath(args []string) int           { return 0 }
+func gentooMirrors(args []string) int     { return 0 }
+func portdir(args []string) int           { return 0 }
+func configProtect(args []string) int     { return 0 }
+func configProtectMask(args []string) int { return 0 }
+func portdirOverlay(args []string) int    { return 0 }
+func pkgdir(args []string) int            { return 0 }
+func colormap([]string) int {
+	fmt.Println(atom.ColorMap())
+	return 0
 }
-func distdir(args []string) {}
+func distdir(args []string) int { return 0 }
 func envvar(args []string) int {
 	var newArgs []string
 	verbose := false
@@ -246,4 +275,4 @@ func envvar(args []string) int {
 
 	return 0
 }
-func pquery(args []string) {}
+func pquery(args []string) int { return 0 }

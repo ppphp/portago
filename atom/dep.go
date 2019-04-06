@@ -131,9 +131,9 @@ func getUseflagRe(eapi string) *regexp.Regexp {
 }
 
 func cpvequal(cpv1, cpv2 string) bool {
-	c1 := NewPkgStr(cpv1, nil, nil, "", "", "", "", "", "", 0, "")
+	c1 := NewPkgStr(cpv1, nil, nil, "", "", "", 0, "", "", 0, "")
 	split1 := c1.cpvSplit
-	c2 := NewPkgStr(cpv2, nil, nil, "", "", "", "", "", "", 0, "")
+	c2 := NewPkgStr(cpv2, nil, nil, "", "", "", 0, "", "", 0, "")
 	split2 := c2.cpvSplit
 	if split1[0] != split2[0] || split1[1] != split2[1] {
 		return false
@@ -1240,7 +1240,7 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 		return nil, fmt.Errorf("required group not found in Atom: '%v'", a)
 	}
 	a.cp = cp
-	a.cpv = NewPkgStr(cpv, nil, nil, "", "", "", "", "", "", 0, "")
+	a.cpv = NewPkgStr(cpv, nil, nil, "", "", "", 0, "", "", 0, "")
 	a.version = extendedVersion
 	a.version = a.cpv.version
 	a.repo = repo
@@ -1706,7 +1706,7 @@ func bestMatchToList(mypkg *pkgStr, mylist []*Atom) *Atom {
 				mypkgCpv = mypkg.cpv
 			}
 			if mypkgCpv == nil {
-				mypkgCpv = NewPkgStr(removeSlot(mypkg.string), nil, nil, "", "", "", "", "", "", 0, "")
+				mypkgCpv = NewPkgStr(removeSlot(mypkg.string), nil, nil, "", "", "", 0, "", "", 0, "")
 			}
 			if bestm.cpv == mypkgCpv || bestm.cpv == x.cpv {
 			} else if x.cpv == mypkgCpv {
@@ -1855,7 +1855,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 		for _, x := range candidateList {
 			pkg := x
 			if pkg.cp == "" {
-				pkg = NewPkgStr(removeSlot(x.string), nil, nil, "", "", "", "", "", "", 0, "")
+				pkg = NewPkgStr(removeSlot(x.string), nil, nil, "", "", "", 0, "", "", 0, "")
 			}
 			xs := pkg.cpvSplit
 			myver := strings.TrimPrefix(xs[2], "0")
@@ -1896,7 +1896,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 		for _, x := range candidateList {
 			pkg := x
 			if x.cp == "" {
-				pkg = NewPkgStr(removeSlot(x.string), nil, nil, "", "", "", "", "", "", 0, "")
+				pkg = NewPkgStr(removeSlot(x.string), nil, nil, "", "", "", 0, "", "", 0, "")
 			}
 
 			if pkg.cp != mydepA.cp {
@@ -1939,7 +1939,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 			if xPkg.cpv == nil {
 				xslot := depGetslot(x.string)
 				if xslot != "" {
-					xPkg = NewPkgStr(removeSlot(x.string), nil, nil, "", "", xslot, "", "", "", 0, "")
+					xPkg = NewPkgStr(removeSlot(x.string), nil, nil, "", "", xslot, 0, "", "", 0, "")
 				} else {
 					continue
 				}

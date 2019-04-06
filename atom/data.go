@@ -4,7 +4,7 @@ import (
 	"os"
 )
 
-func targetEprefix() string {
+func TargetEprefix() string {
 	if a := os.Getenv("EPREFIX"); a != "" {
 		return NormalizePath(a)
 	}

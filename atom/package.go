@@ -57,7 +57,7 @@ func (p *Package) buildId() string {
 	return p.cpv.buildId
 }
 
-func (p *Package) buildTime() string {
+func (p *Package) buildTime() int {
 	return p.cpv.buildTime
 }
 
