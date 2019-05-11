@@ -198,24 +198,33 @@ type AS struct {
 	S string
 }
 
-func appendRepo(atomList []AS, repoName string, rememberSourceFile bool) []SB {
-	sb := []SB{}
+func appendRepo(atomList map[*Atom]string, repoName string, rememberSourceFile bool) []AS {
+	sb := []AS{}
 	if rememberSourceFile {
-		for _, v := range atomList {
-			atom := v.A
-			source := v.S
-			sb = append(sb, SB{B: atom.repo != "" && atom != nil || atom.withRepo(repoName) != nil, S: source})
+		for atom, source := range atomList {
+			if atom.repo != "" && atom != nil {
+				sb = append(sb, AS{atom, source})
+			} else if a := atom.withRepo(repoName); a != nil {
+				sb = append(sb, AS{a, source})
+			} else {
+				sb = append(sb, AS{nil, source})
+			}
 		}
 	} else {
-		for _, v := range atomList {
-			atom := v.A
-			sb = append(sb, SB{B: atom.repo != "" && atom != nil || atom.withRepo(repoName) != nil, S: ""})
+		for atom := range atomList {
+			if atom.repo != "" && atom != nil {
+				sb = append(sb, AS{atom, ""})
+			} else if a := atom.withRepo(repoName); a != nil {
+				sb = append(sb, AS{a, ""})
+			} else {
+				sb = append(sb, AS{nil, ""})
+			}
 		}
 	}
 	return sb
 }
 
-func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[*Atom]string { //1ffff
+func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[*Atom]string { //1,false,false,false,false
 	matchedRemovals := map[[2]string]bool{}
 	unmatchedRemovals := map[string][]string{}
 	newList := map[*Atom]string{}
@@ -409,8 +418,8 @@ func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, a
 	return atoms
 }
 
-func grabFilePackage(myfilename string, compatLevel, recursive int, allowWildcard, allowRepo, allowBuildId, rememberSourceFile, verifyEapi bool, eapi, eapiDefault string) [][2]string { // 00fffffn0
-	pkgs := grabFile(myfilename, compatLevel, recursive != 0, true)
+func grabFilePackage(myfilename string, compatLevel int, recursive, allowWildcard, allowRepo, allowBuildId, rememberSourceFile, verifyEapi bool, eapi, eapiDefault string) [][2]string { // 0,false,false,false,false,false,false,nil,0
+	pkgs := grabFile(myfilename, compatLevel, recursive, true)
 	if len(pkgs) == 0 {
 		return pkgs
 	}

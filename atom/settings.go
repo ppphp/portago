@@ -19,127 +19,8 @@ import (
 )
 
 var (
-	constantKeys   = map[string]bool{"PORTAGE_BIN_PATH": true, "PORTAGE_GID": true, "PORTAGE_PYM_PATH": true, "PORTAGE_PYTHONPATH": true}
-	deprecatedKeys = map[string]string{"PORTAGE_LOGDIR": "PORT_LOGDIR", "PORTAGE_LOGDIR_CLEAN": "PORT_LOGDIR_CLEAN"}
-	setcpvAuxKeys  = map[string]bool{"BDEPEND": true, "DEFINED_PHASES": true, "DEPEND": true, "EAPI": true, "HDEPEND": true,
-		"INHERITED": true, "IUSE": true, "REQUIRED_USE": true, "KEYWORDS": true, "LICENSE": true, "PDEPEND": true,
-		"PROPERTIES": true, "SLOT": true, "repository": true, "RESTRICT": true}
-	caseInsensitiveVars = map[string]bool{"AUTOCLEAN": true, "NOCOLOR": true}
-	defaultGlobals      = map[string]string{"ACCEPT_PROPERTIES": "*", "PORTAGE_BZIP2_COMMAND": "bzip2"}
-	envBlacklist        = map[string]bool{
-		"A": true, "AA": true, "BDEPEND": true, "BROOT": true, "CATEGORY": true, "DEPEND": true, "DESCRIPTION": true,
-		"DOCS": true, "EAPI": true,
-		"EBUILD_FORCE_TEST": true, "EBUILD_PHASE": true,
-		"EBUILD_PHASE_FUNC": true, "EBUILD_SKIP_MANIFEST": true,
-		"ED": true, "EMERGE_FROM": true, "EPREFIX": true, "EROOT": true,
-		"GREP_OPTIONS": true, "HDEPEND": true, "HOMEPAGE": true,
-		"INHERITED": true, "IUSE": true, "IUSE_EFFECTIVE": true,
-		"KEYWORDS": true, "LICENSE": true, "MERGE_TYPE": true,
-		"PDEPEND": true, "PF": true, "PKGUSE": true, "PORTAGE_BACKGROUND": true,
-		"PORTAGE_BACKGROUND_UNMERGE": true, "PORTAGE_BUILDDIR_LOCKED": true,
-		"PORTAGE_BUILT_USE": true, "PORTAGE_CONFIGROOT": true,
-		"PORTAGE_INTERNAL_CALLER": true, "PORTAGE_IUSE": true,
-		"PORTAGE_NONFATAL": true, "PORTAGE_PIPE_FD": true, "PORTAGE_REPO_NAME": true,
-		"PORTAGE_USE": true, "PROPERTIES": true, "RDEPEND": true, "REPOSITORY": true,
-		"REQUIRED_USE": true, "RESTRICT": true, "ROOT": true, "SLOT": true, "SRC_URI": true, "_": true}
-	environFilter = map[string]bool{
-		"DEPEND": true, "RDEPEND": true, "PDEPEND": true, "SRC_URI": true,
-		"INFOPATH": true, "MANPATH": true, "USER": true,
-		"HISTFILE": true, "POSIXLY_CORRECT": true,
-		"ACCEPT_CHOSTS": true, "ACCEPT_KEYWORDS": true, "ACCEPT_PROPERTIES": true,
-		"ACCEPT_RESTRICT": true, "AUTOCLEAN": true,
-		"BINPKG_COMPRESS": true, "BINPKG_COMPRESS_FLAGS": true,
-		"CLEAN_DELAY": true, "COLLISION_IGNORE": true,
-		"CONFIG_PROTECT": true, "CONFIG_PROTECT_MASK": true,
-		"DCO_SIGNED_OFF_BY":      true,
-		"EGENCACHE_DEFAULT_OPTS": true, "EMERGE_DEFAULT_OPTS": true,
-		"EMERGE_LOG_DIR":       true,
-		"EMERGE_WARNING_DELAY": true,
-		"FETCHCOMMAND":         true, "FETCHCOMMAND_FTP": true,
-		"FETCHCOMMAND_HTTP": true, "FETCHCOMMAND_HTTPS": true,
-		"FETCHCOMMAND_RSYNC": true, "FETCHCOMMAND_SFTP": true,
-		"GENTOO_MIRRORS": true, "NOCONFMEM": true, "O": true,
-		"PORTAGE_BACKGROUND": true, "PORTAGE_BACKGROUND_UNMERGE": true,
-		"PORTAGE_BINHOST": true, "PORTAGE_BINPKG_FORMAT": true,
-		"PORTAGE_BUILDDIR_LOCKED": true,
-		"PORTAGE_CHECKSUM_FILTER": true,
-		"PORTAGE_ELOG_CLASSES":    true,
-		"PORTAGE_ELOG_MAILFROM":   true, "PORTAGE_ELOG_MAILSUBJECT": true,
-		"PORTAGE_ELOG_MAILURI": true, "PORTAGE_ELOG_SYSTEM": true,
-		"PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS": true, "PORTAGE_FETCH_RESUME_MIN_SIZE": true,
-		"PORTAGE_GPG_DIR": true,
-		"PORTAGE_GPG_KEY": true, "PORTAGE_GPG_SIGNING_COMMAND": true,
-		"PORTAGE_IONICE_COMMAND":      true,
-		"PORTAGE_PACKAGE_EMPTY_ABORT": true,
-		"PORTAGE_REPO_DUPLICATE_WARN": true,
-		"PORTAGE_RO_DISTDIRS":         true,
-		"PORTAGE_RSYNC_EXTRA_OPTS":    true, "PORTAGE_RSYNC_OPTS": true,
-		"PORTAGE_RSYNC_RETRIES": true, "PORTAGE_SSH_OPTS": true, "PORTAGE_SYNC_STALE": true,
-		"PORTAGE_USE":    true,
-		"PORTAGE_LOGDIR": true, "PORTAGE_LOGDIR_CLEAN": true,
-		"QUICKPKG_DEFAULT_OPTS": true, "REPOMAN_DEFAULT_OPTS": true,
-		"RESUMECOMMAND": true, "RESUMECOMMAND_FTP": true,
-		"RESUMECOMMAND_HTTP": true, "RESUMECOMMAND_HTTPS": true,
-		"RESUMECOMMAND_RSYNC": true, "RESUMECOMMAND_SFTP": true,
-		"UNINSTALL_IGNORE": true, "USE_EXPAND_HIDDEN": true, "USE_ORDER": true,
-		"__PORTAGE_HELPER": true,
-		"SYNC":             true}
-	environWhitelist = map[string]bool{"ACCEPT_LICENSE": true, "BASH_ENV": true, "BROOT": true, "BUILD_PREFIX": true, "COLUMNS": true, "D": true,
-		"DISTDIR": true, "DOC_SYMLINKS_DIR": true, "EAPI": true, "EBUILD": true,
-		"EBUILD_FORCE_TEST": true,
-		"EBUILD_PHASE":      true, "EBUILD_PHASE_FUNC": true, "ECLASSDIR": true, "ECLASS_DEPTH": true, "ED": true,
-		"EMERGE_FROM": true, "EPREFIX": true, "EROOT": true, "ESYSROOT": true,
-		"FEATURES": true, "FILESDIR": true, "HOME": true, "MERGE_TYPE": true, "NOCOLOR": true, "PATH": true,
-		"PKGDIR": true,
-		"PKGUSE": true, "PKG_LOGDIR": true, "PKG_TMPDIR": true,
-		"PORTAGE_ACTUAL_DISTDIR": true, "PORTAGE_ARCHLIST": true, "PORTAGE_BASHRC_FILES": true,
-		"PORTAGE_BASHRC": true, "PM_EBUILD_HOOK_DIR": true,
-		"PORTAGE_BINPKG_FILE": true, "PORTAGE_BINPKG_TAR_OPTS": true,
-		"PORTAGE_BINPKG_TMPFILE": true,
-		"PORTAGE_BIN_PATH":       true,
-		"PORTAGE_BUILDDIR":       true, "PORTAGE_BUILD_GROUP": true, "PORTAGE_BUILD_USER": true,
-		"PORTAGE_BUNZIP2_COMMAND": true, "PORTAGE_BZIP2_COMMAND": true,
-		"PORTAGE_COLORMAP": true, "PORTAGE_COMPRESS": true, "PORTAGE_COMPRESSION_COMMAND": true,
-		"PORTAGE_COMPRESS_EXCLUDE_SUFFIXES": true,
-		"PORTAGE_CONFIGROOT":                true, "PORTAGE_DEBUG": true, "PORTAGE_DEPCACHEDIR": true,
-		"PORTAGE_DOHTML_UNWARNED_SKIPPED_EXTENSIONS": true,
-		"PORTAGE_DOHTML_UNWARNED_SKIPPED_FILES":      true,
-		"PORTAGE_DOHTML_WARN_ON_SKIPPED_FILES":       true,
-		"PORTAGE_EBUILD_EXIT_FILE":                   true, "PORTAGE_FEATURES": true,
-		"PORTAGE_GID": true, "PORTAGE_GRPNAME": true,
-		"PORTAGE_INTERNAL_CALLER": true,
-		"PORTAGE_INST_GID":        true, "PORTAGE_INST_UID": true,
-		"PORTAGE_IPC_DAEMON": true, "PORTAGE_IUSE": true, "PORTAGE_ECLASS_LOCATIONS": true,
-		"PORTAGE_LOG_FILE": true, "PORTAGE_OVERRIDE_EPREFIX": true, "PORTAGE_PIPE_FD": true,
-		"PORTAGE_PYM_PATH": true, "PORTAGE_PYTHON": true,
-		"PORTAGE_PYTHONPATH": true, "PORTAGE_QUIET": true,
-		"PORTAGE_REPO_NAME": true, "PORTAGE_REPOSITORIES": true, "PORTAGE_RESTRICT": true,
-		"PORTAGE_SIGPIPE_STATUS": true, "PORTAGE_SOCKS5_PROXY": true,
-		"PORTAGE_TMPDIR": true, "PORTAGE_UPDATE_ENV": true, "PORTAGE_USERNAME": true,
-		"PORTAGE_VERBOSE": true, "PORTAGE_WORKDIR_MODE": true, "PORTAGE_XATTR_EXCLUDE": true,
-		"PORTDIR": true, "PORTDIR_OVERLAY": true, "PREROOTPATH": true, "PYTHONDONTWRITEBYTECODE": true,
-		"REPLACING_VERSIONS": true, "REPLACED_BY_VERSION": true,
-		"ROOT": true, "ROOTPATH": true, "SYSROOT": true, "T": true,
-		"USE_EXPAND": true, "USE_ORDER": true, "WORKDIR": true,
-		"XARGS": true, "__PORTAGE_TEST_HARDLINK_LOCKS": true,
-		"INSTALL_MASK": true, "PKG_INSTALL_MASK": true,
-		"A": true, "AA": true, "CATEGORY": true, "P": true, "PF": true, "PN": true, "PR": true, "PV": true, "PVR": true,
-		"COLORTERM": true, "DISPLAY": true, "EDITOR": true, "LESS": true,
-		"LESSOPEN": true, "LOGNAME": true, "LS_COLORS": true, "PAGER": true,
-		"TERM": true, "TERMCAP": true, "USER": true,
-		"ftp_proxy": true, "http_proxy": true, "no_proxy": true,
-		"TMPDIR": true, "TEMP": true, "TMP": true,
-		"LANG": true, "LC_COLLATE": true, "LC_CTYPE": true, "LC_MESSAGES": true,
-		"LC_MONETARY": true, "LC_NUMERIC": true, "LC_TIME": true, "LC_PAPER": true,
-		"LC_ALL":  true,
-		"CVS_RSH": true, "ECHANGELOG_USER": true,
-		"GPG_AGENT_INFO": true,
-		"SSH_AGENT_PID":  true, "SSH_AUTH_SOCK": true,
-		"STY": true, "WINDOW": true, "XAUTHORITY": true}
-	validateCommands   = map[string]bool{"PORTAGE_BZIP2_COMMAND": true, "PORTAGE_BUNZIP2_COMMAND": true}
-	globalOnlyVars     = map[string]bool{"CONFIG_PROTECT": true}
-	environWhitelistRe = regexp.MustCompile(`^(CCACHE_|DISTCC_).*`)
-	categoryRe         = regexp.MustCompile("^\\w[-.+\\w]*$")
+	validateCommands = map[string]bool{"PORTAGE_BZIP2_COMMAND": true, "PORTAGE_BUNZIP2_COMMAND": true}
+	categoryRe       = regexp.MustCompile("^\\w[-.+\\w]*$")
 )
 
 func lazyIuseRegex(s []string) string {
@@ -212,7 +93,8 @@ type Config struct {
 	constantKeys, setcpvAuxKeys, envBlacklist, environFilter, environWhitelist, globalOnlyVars, caseInsensitiveVars                      map[string]bool
 	tolerent, unmatchedRemoval, localConfig, setCpvActive                                                                                bool
 	locked                                                                                                                               int
-	mycpv, setcpvArgsHash, penv, modifiedkeys, acceptChostRe, parentStable, sonameProvided                                               *int
+	mycpv, setcpvArgsHash, penv, modifiedkeys, acceptChostRe, sonameProvided                                                             *int
+	parentStable                                                                                                                         *bool
 	puse, depcachedir, profilePath, defaultFeaturesUse, userProfileDir, globalConfigPath                                                 string
 	useManager                                                                                                                           *useManager
 	keywordsManagerObj                                                                                                                   *keywordsManager
@@ -344,6 +226,10 @@ func (c *Config) backupChanges(key string) {
 	} else {
 		//raise KeyError(_("No such key defined in environment: %s") % key)
 	}
+}
+
+func (c *Config) _iuse_effective_match(flag string) bool {
+	return c.iuseEffective[flag]
 }
 
 func (c *Config) regenerate(useonly int) { // 0 n
@@ -685,6 +571,64 @@ func (c *Config) getVirtuals() map[string][]string {
 
 	return c.virtualsManager().getvirtuals()
 }
+
+func (c *Config) _populate_treeVirtuals_if_needed(vartree *varTree) {
+	if c.virtualsManager()._treeVirtuals == nil {
+		if c.localConfig {
+			c.virtualsManager()._populate_treeVirtuals(vartree)
+		} else {
+			c.virtualsManager()._treeVirtuals = map[string][]string{}
+		}
+	}
+}
+
+func (c *Config) _getUseMask(pkg *pkgStr, stable *bool) map[*Atom]string {
+	return c.useManager.getUseMask(pkg, stable)
+}
+
+func (c *Config) _getUseForce(pkg *pkgStr, stable *bool) map[*Atom]string {
+	return c.useManager.getUseForce(pkg, stable)
+}
+
+func (c *Config) _getMaskAtom(cpv *pkgStr, metadata map[string]string) *Atom {
+	return c.maskManager().getMaskAtom(cpv, metadata["SLOT"], metadata["repository"])
+}
+
+func (c *Config) _getRawMaskAtom(cpv *pkgStr, metadata map[string]string) *Atom {
+	return c.maskManager().getRawMaskAtom(cpv, metadata["SLOT"], metadata["repository"])
+}
+
+func (c *Config) _getKeywords(cpv *pkgStr, metadata map[string]string) map[*Atom]string {
+	return c.keywordsManager().getKeywords(cpv, metadata["SLOT"], metadata["KEYWORDS"], metadata["repository"])
+}
+
+func (c *Config) _getMissingKeywords(cpv *pkgStr, metadata map[string]string) map[*Atom]string {
+	backupedAcceptKeywords := c.configDict["backupenv"]["ACCEPT_KEYWORDS"]
+	globalAcceptKeywords := c.valueDict["ACCEPT_KEYWORDS"]
+	return c.keywordsManager().GetMissingKeywords(cpv, metadata["SLOT"], metadata["KEYWORDS"], metadata["repository"], globalAcceptKeywords, backupedAcceptKeywords)
+}
+
+func (c *Config) _getRawMissingKeywords(cpv *pkgStr, metadata map[string]string) map[*Atom]string {
+	return c.keywordsManager().getRawMissingKeywords(cpv, metadata["SLOT"], metadata["KEYWORDS"], metadata["repository"], c.valueDict["ACCEPT_KEYWORDS"])
+}
+
+func (c *Config) _getPKeywords(cpv *pkgStr, metadata map[string]string) []string {
+	globalAcceptKeywords := c.valueDict["ACCEPT_KEYWORDS"]
+	return c.keywordsManager().getPKeywords(cpv, metadata["SLOT"], metadata["repository"], globalAcceptKeywords)
+}
+
+func (c *Config) _getMissingLicenses(cpv *pkgStr, metadata map[string]string) []string {
+	return c.licenseManager.getMissingLicenses(cpv, metadata["USE"], metadata["LICENSE"], metadata["SLOT"], metadata["repository"])
+}
+
+func (c *Config) _getMissingProperties(cpv *pkgStr, metadata map[string]string) {
+
+}
+
+func (c *Config) _getMissingRestrict(cpv *pkgStr, metadata map[string]string) {
+
+}
+
 func (c *Config) lock() {
 	c.locked = 1
 }
@@ -721,11 +665,30 @@ func (c *Config) keywordsManager() *keywordsManager {
 	return c.keywordsManagerObj
 }
 
+func (c *Config) pkeywordsdict() map[string]map[*Atom][]string {
+	return c.keywordsManager().pkeywordsDict
+}
+
 func (c *Config) virtualsManager() *virtualManager {
 	if c.virtualsManagerObj == nil {
 		c.virtualsManagerObj = NewVirtualManager(c.profiles)
 	}
 	return c.virtualsManagerObj
+}
+
+func (c *Config) maskManager() *maskManager {
+	if c.maskManagerObj == nil {
+		c.maskManagerObj = NewMaskManager(c.repositories, c.locationsManager.profilesComplex, c.locationsManager.absUserConfig, c.localConfig, c.unmatchedRemoval)
+	}
+	return c.maskManagerObj
+}
+
+func (c *Config) pmaskdict() map[string][]*Atom {
+	return c.maskManager()._pmaskdict
+}
+
+func (c *Config) _punmaskdict() map[string][]*Atom {
+	return c.maskManager()._punmaskdict
 }
 
 func (c *Config) grabPkgEnv(penv []string, container map[string]string, protected_keys map[string]bool) { // n
@@ -764,19 +727,127 @@ var eapiCache = map[string]bool{}
 func NewConfig(clone *Config, mycpv, configProfilePath string, configIncrementals []string, configRoot, targetRoot, sysroot, eprefix string, localConfig bool, env map[string]string, unmatchedRemoval bool, repositories *repoConfigLoader) *Config {
 	eapiCache = make(map[string]bool)
 	tolerant := initializingGlobals == nil
-	c := &Config{tolerent: tolerant, unmatchedRemoval: unmatchedRemoval, localConfig: localConfig}
-	c.constantKeys = constantKeys
-	c.deprecatedKeys = deprecatedKeys
-	c.setcpvAuxKeys = setcpvAuxKeys
-	c.caseInsensitiveVars = caseInsensitiveVars
-	c.defaultGlobals = defaultGlobals
-	c.envBlacklist = envBlacklist
-	c.environFilter = environFilter
-	c.environWhitelist = environWhitelist
-	c.globalOnlyVars = globalOnlyVars
-	c.environWhitelistRe = environWhitelistRe
-
-	//c.validateCommands=validateCommands
+	c := &Config{
+		constantKeys:   map[string]bool{"PORTAGE_BIN_PATH": true, "PORTAGE_GID": true, "PORTAGE_PYM_PATH": true, "PORTAGE_PYTHONPATH": true},
+		deprecatedKeys: map[string]string{"PORTAGE_LOGDIR": "PORT_LOGDIR", "PORTAGE_LOGDIR_CLEAN": "PORT_LOGDIR_CLEAN"},
+		setcpvAuxKeys: map[string]bool{"BDEPEND": true, "DEFINED_PHASES": true, "DEPEND": true, "EAPI": true, "HDEPEND": true,
+			"INHERITED": true, "IUSE": true, "REQUIRED_USE": true, "KEYWORDS": true, "LICENSE": true, "PDEPEND": true,
+			"PROPERTIES": true, "SLOT": true, "repository": true, "RESTRICT": true},
+		caseInsensitiveVars: map[string]bool{"AUTOCLEAN": true, "NOCOLOR": true},
+		defaultGlobals:      map[string]string{"ACCEPT_PROPERTIES": "*", "PORTAGE_BZIP2_COMMAND": "bzip2"},
+		envBlacklist: map[string]bool{
+			"A": true, "AA": true, "BDEPEND": true, "BROOT": true, "CATEGORY": true, "DEPEND": true, "DESCRIPTION": true,
+			"DOCS": true, "EAPI": true,
+			"EBUILD_FORCE_TEST": true, "EBUILD_PHASE": true,
+			"EBUILD_PHASE_FUNC": true, "EBUILD_SKIP_MANIFEST": true,
+			"ED": true, "EMERGE_FROM": true, "EPREFIX": true, "EROOT": true,
+			"GREP_OPTIONS": true, "HDEPEND": true, "HOMEPAGE": true,
+			"INHERITED": true, "IUSE": true, "IUSE_EFFECTIVE": true,
+			"KEYWORDS": true, "LICENSE": true, "MERGE_TYPE": true,
+			"PDEPEND": true, "PF": true, "PKGUSE": true, "PORTAGE_BACKGROUND": true,
+			"PORTAGE_BACKGROUND_UNMERGE": true, "PORTAGE_BUILDDIR_LOCKED": true,
+			"PORTAGE_BUILT_USE": true, "PORTAGE_CONFIGROOT": true,
+			"PORTAGE_INTERNAL_CALLER": true, "PORTAGE_IUSE": true,
+			"PORTAGE_NONFATAL": true, "PORTAGE_PIPE_FD": true, "PORTAGE_REPO_NAME": true,
+			"PORTAGE_USE": true, "PROPERTIES": true, "RDEPEND": true, "REPOSITORY": true,
+			"REQUIRED_USE": true, "RESTRICT": true, "ROOT": true, "SLOT": true, "SRC_URI": true, "_": true},
+		environFilter: map[string]bool{
+			"DEPEND": true, "RDEPEND": true, "PDEPEND": true, "SRC_URI": true,
+			"INFOPATH": true, "MANPATH": true, "USER": true,
+			"HISTFILE": true, "POSIXLY_CORRECT": true,
+			"ACCEPT_CHOSTS": true, "ACCEPT_KEYWORDS": true, "ACCEPT_PROPERTIES": true,
+			"ACCEPT_RESTRICT": true, "AUTOCLEAN": true,
+			"BINPKG_COMPRESS": true, "BINPKG_COMPRESS_FLAGS": true,
+			"CLEAN_DELAY": true, "COLLISION_IGNORE": true,
+			"CONFIG_PROTECT": true, "CONFIG_PROTECT_MASK": true,
+			"DCO_SIGNED_OFF_BY":      true,
+			"EGENCACHE_DEFAULT_OPTS": true, "EMERGE_DEFAULT_OPTS": true,
+			"EMERGE_LOG_DIR":       true,
+			"EMERGE_WARNING_DELAY": true,
+			"FETCHCOMMAND":         true, "FETCHCOMMAND_FTP": true,
+			"FETCHCOMMAND_HTTP": true, "FETCHCOMMAND_HTTPS": true,
+			"FETCHCOMMAND_RSYNC": true, "FETCHCOMMAND_SFTP": true,
+			"GENTOO_MIRRORS": true, "NOCONFMEM": true, "O": true,
+			"PORTAGE_BACKGROUND": true, "PORTAGE_BACKGROUND_UNMERGE": true,
+			"PORTAGE_BINHOST": true, "PORTAGE_BINPKG_FORMAT": true,
+			"PORTAGE_BUILDDIR_LOCKED": true,
+			"PORTAGE_CHECKSUM_FILTER": true,
+			"PORTAGE_ELOG_CLASSES":    true,
+			"PORTAGE_ELOG_MAILFROM":   true, "PORTAGE_ELOG_MAILSUBJECT": true,
+			"PORTAGE_ELOG_MAILURI": true, "PORTAGE_ELOG_SYSTEM": true,
+			"PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS": true, "PORTAGE_FETCH_RESUME_MIN_SIZE": true,
+			"PORTAGE_GPG_DIR": true,
+			"PORTAGE_GPG_KEY": true, "PORTAGE_GPG_SIGNING_COMMAND": true,
+			"PORTAGE_IONICE_COMMAND":      true,
+			"PORTAGE_PACKAGE_EMPTY_ABORT": true,
+			"PORTAGE_REPO_DUPLICATE_WARN": true,
+			"PORTAGE_RO_DISTDIRS":         true,
+			"PORTAGE_RSYNC_EXTRA_OPTS":    true, "PORTAGE_RSYNC_OPTS": true,
+			"PORTAGE_RSYNC_RETRIES": true, "PORTAGE_SSH_OPTS": true, "PORTAGE_SYNC_STALE": true,
+			"PORTAGE_USE":    true,
+			"PORTAGE_LOGDIR": true, "PORTAGE_LOGDIR_CLEAN": true,
+			"QUICKPKG_DEFAULT_OPTS": true, "REPOMAN_DEFAULT_OPTS": true,
+			"RESUMECOMMAND": true, "RESUMECOMMAND_FTP": true,
+			"RESUMECOMMAND_HTTP": true, "RESUMECOMMAND_HTTPS": true,
+			"RESUMECOMMAND_RSYNC": true, "RESUMECOMMAND_SFTP": true,
+			"UNINSTALL_IGNORE": true, "USE_EXPAND_HIDDEN": true, "USE_ORDER": true,
+			"__PORTAGE_HELPER": true,
+			"SYNC":             true},
+		environWhitelist: map[string]bool{"ACCEPT_LICENSE": true, "BASH_ENV": true, "BROOT": true, "BUILD_PREFIX": true, "COLUMNS": true, "D": true,
+			"DISTDIR": true, "DOC_SYMLINKS_DIR": true, "EAPI": true, "EBUILD": true,
+			"EBUILD_FORCE_TEST": true,
+			"EBUILD_PHASE":      true, "EBUILD_PHASE_FUNC": true, "ECLASSDIR": true, "ECLASS_DEPTH": true, "ED": true,
+			"EMERGE_FROM": true, "EPREFIX": true, "EROOT": true, "ESYSROOT": true,
+			"FEATURES": true, "FILESDIR": true, "HOME": true, "MERGE_TYPE": true, "NOCOLOR": true, "PATH": true,
+			"PKGDIR": true,
+			"PKGUSE": true, "PKG_LOGDIR": true, "PKG_TMPDIR": true,
+			"PORTAGE_ACTUAL_DISTDIR": true, "PORTAGE_ARCHLIST": true, "PORTAGE_BASHRC_FILES": true,
+			"PORTAGE_BASHRC": true, "PM_EBUILD_HOOK_DIR": true,
+			"PORTAGE_BINPKG_FILE": true, "PORTAGE_BINPKG_TAR_OPTS": true,
+			"PORTAGE_BINPKG_TMPFILE": true,
+			"PORTAGE_BIN_PATH":       true,
+			"PORTAGE_BUILDDIR":       true, "PORTAGE_BUILD_GROUP": true, "PORTAGE_BUILD_USER": true,
+			"PORTAGE_BUNZIP2_COMMAND": true, "PORTAGE_BZIP2_COMMAND": true,
+			"PORTAGE_COLORMAP": true, "PORTAGE_COMPRESS": true, "PORTAGE_COMPRESSION_COMMAND": true,
+			"PORTAGE_COMPRESS_EXCLUDE_SUFFIXES": true,
+			"PORTAGE_CONFIGROOT":                true, "PORTAGE_DEBUG": true, "PORTAGE_DEPCACHEDIR": true,
+			"PORTAGE_DOHTML_UNWARNED_SKIPPED_EXTENSIONS": true,
+			"PORTAGE_DOHTML_UNWARNED_SKIPPED_FILES":      true,
+			"PORTAGE_DOHTML_WARN_ON_SKIPPED_FILES":       true,
+			"PORTAGE_EBUILD_EXIT_FILE":                   true, "PORTAGE_FEATURES": true,
+			"PORTAGE_GID": true, "PORTAGE_GRPNAME": true,
+			"PORTAGE_INTERNAL_CALLER": true,
+			"PORTAGE_INST_GID":        true, "PORTAGE_INST_UID": true,
+			"PORTAGE_IPC_DAEMON": true, "PORTAGE_IUSE": true, "PORTAGE_ECLASS_LOCATIONS": true,
+			"PORTAGE_LOG_FILE": true, "PORTAGE_OVERRIDE_EPREFIX": true, "PORTAGE_PIPE_FD": true,
+			"PORTAGE_PYM_PATH": true, "PORTAGE_PYTHON": true,
+			"PORTAGE_PYTHONPATH": true, "PORTAGE_QUIET": true,
+			"PORTAGE_REPO_NAME": true, "PORTAGE_REPOSITORIES": true, "PORTAGE_RESTRICT": true,
+			"PORTAGE_SIGPIPE_STATUS": true, "PORTAGE_SOCKS5_PROXY": true,
+			"PORTAGE_TMPDIR": true, "PORTAGE_UPDATE_ENV": true, "PORTAGE_USERNAME": true,
+			"PORTAGE_VERBOSE": true, "PORTAGE_WORKDIR_MODE": true, "PORTAGE_XATTR_EXCLUDE": true,
+			"PORTDIR": true, "PORTDIR_OVERLAY": true, "PREROOTPATH": true, "PYTHONDONTWRITEBYTECODE": true,
+			"REPLACING_VERSIONS": true, "REPLACED_BY_VERSION": true,
+			"ROOT": true, "ROOTPATH": true, "SYSROOT": true, "T": true,
+			"USE_EXPAND": true, "USE_ORDER": true, "WORKDIR": true,
+			"XARGS": true, "__PORTAGE_TEST_HARDLINK_LOCKS": true,
+			"INSTALL_MASK": true, "PKG_INSTALL_MASK": true,
+			"A": true, "AA": true, "CATEGORY": true, "P": true, "PF": true, "PN": true, "PR": true, "PV": true, "PVR": true,
+			"COLORTERM": true, "DISPLAY": true, "EDITOR": true, "LESS": true,
+			"LESSOPEN": true, "LOGNAME": true, "LS_COLORS": true, "PAGER": true,
+			"TERM": true, "TERMCAP": true, "USER": true,
+			"ftp_proxy": true, "http_proxy": true, "no_proxy": true,
+			"TMPDIR": true, "TEMP": true, "TMP": true,
+			"LANG": true, "LC_COLLATE": true, "LC_CTYPE": true, "LC_MESSAGES": true,
+			"LC_MONETARY": true, "LC_NUMERIC": true, "LC_TIME": true, "LC_PAPER": true,
+			"LC_ALL":  true,
+			"CVS_RSH": true, "ECHANGELOG_USER": true,
+			"GPG_AGENT_INFO": true,
+			"SSH_AGENT_PID":  true, "SSH_AUTH_SOCK": true,
+			"STY": true, "WINDOW": true, "XAUTHORITY": true},
+		globalOnlyVars:     map[string]bool{"CONFIG_PROTECT": true},
+		environWhitelistRe: regexp.MustCompile(`^(CCACHE_|DISTCC_).*`),
+		tolerent:           tolerant, unmatchedRemoval: unmatchedRemoval, localConfig: localConfig}
 
 	if clone != nil {
 		c.tolerent = clone.tolerent
@@ -1039,7 +1110,7 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		c.userProfileDir = locationsManager.userProfileDir
 		packageList := [][][2]string{}
 		for _, x := range profilesComplex {
-			packageList = append(packageList, grabFilePackage(path.Join(x.location, "packages"), 0, 0, false, false, x.allowBuildId, false, true, x.eapi, ""))
+			packageList = append(packageList, grabFilePackage(path.Join(x.location, "packages"), 0, false, false, false, x.allowBuildId, false, true, x.eapi, ""))
 		}
 		c.packages = stackLists(packageList, 1, false, false, false, false)
 		c.prevmaskdict = map[string][]*Atom{}
@@ -2616,10 +2687,197 @@ func NewUserManager(repositories *repoConfigLoader, profiles []*profileNode, abs
 }
 
 type maskManager struct {
+	_punmaskdict, _pmaskdict, _pmaskdict_raw map[string][]*Atom
 }
 
-func NewMaskManager() *maskManager {
+func (m *maskManager) _getMaskAtom(cpv *pkgStr, slot, repo string, unmask_atoms []*Atom) *Atom { // nil
+	var pkg *pkgStr = nil
+	if cpv.slot == "" {
+		pkg = NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, "", "", 0, "")
+	} else {
+		pkg = cpv
+	}
+	maskAtoms := m._punmaskdict[pkg.cp]
+	if len(maskAtoms) > 0 {
+		pkgList := []*pkgStr{pkg}
+		for _, x := range maskAtoms {
+			if len(matchFromList(x, pkgList)) == 0 {
+				continue
+			}
+			if len(unmask_atoms) > 0 {
+				for _, y := range unmask_atoms {
+					if len(matchFromList(y, pkgList)) > 0 {
+						return nil
+					}
+				}
+			}
+			return x
+		}
+	}
+	return nil
+}
+
+func (m *maskManager) getMaskAtom(cpv *pkgStr, slot, repo string) *Atom {
+	var pkg *pkgStr = nil
+	if cpv.slot == "" {
+		pkg = NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, "", "", 0, "")
+	} else {
+		pkg = cpv
+	}
+	return m._getMaskAtom(pkg, slot, repo, m._punmaskdict[pkg.cp])
+}
+
+func (m *maskManager) getRawMaskAtom(cpv *pkgStr, slot, repo string) *Atom {
+	return m._getMaskAtom(cpv, slot, repo, nil)
+}
+
+func NewMaskManager(repositories *repoConfigLoader, profiles []*profileNode, abs_user_config string, user_config, strict_umatched_removal bool) *maskManager { // true, false
 	m := &maskManager{}
+	m._punmaskdict, m._pmaskdict, m._pmaskdict_raw = map[string][]*Atom{}, map[string][]*Atom{}, map[string][]*Atom{}
+	pmaskCache := map[string][][2]string{}
+	grabPMask := func(loc string, repoConfig *repoConfig) [][2]string {
+		if _, ok := pmaskCache[loc]; !ok {
+			path := path.Join(loc, "profiles", "package.mask")
+			in := false
+			for _, v := range repoConfig.profileFormats {
+				if v == "build-id" {
+					in = true
+					break
+				}
+			}
+			pmaskCache[loc] = grabFilePackage(path, 0, repoConfig.portage1Profiles, false, false, in, true, true, "", repoConfig.eapi)
+			//if repo_config.portage1_profiles_compat and os.path.isdir(path):
+			//warnings.warn(_("Repository '%(repo_name)s' is implicitly using "
+			//"'portage-1' profile format in its profiles/package.mask, but "
+			//"the repository profiles are not marked as that format.  This will break "
+			//"in the future.  Please either convert the following paths "
+			//"to files, or add\nprofile-formats = portage-1\nto the "
+			//"repository's layout.conf.\n")
+			//% dict(repo_name=repo_config.name))
+		}
+		return pmaskCache[loc]
+	}
+	repoPkgMaskLines := []AS{}
+	for _, repo := range repositories.reposWithProfiles() {
+		lines := []map[*Atom]string{}
+		repoLines := grabPMask(repo.location, repo)
+		removals := map[string]bool{}
+		for _, line := range repoLines {
+			if line[0][:1] == "-" {
+				removals[line[0][1:]] = true
+			}
+		}
+		matchedRemovals := map[string]bool{}
+		for _, master := range repo.mastersRepo {
+			masterLines := grabPMask(master.location, master)
+			for _, line := range masterLines {
+				if removals[line[0]] {
+					matchedRemovals[line[0]] = true
+				}
+			}
+			lines = append(lines, stackLists([][][2]string{masterLines, repoLines}, 1, true, false, false, false))
+		}
+		if len(repo.mastersRepo) > 0 {
+			unmatchedRemovals := map[string]bool{}
+			for r := range removals {
+				if !matchedRemovals[r] {
+					unmatchedRemovals[r] = true
+				}
+			}
+			if len(unmatchedRemovals) > 0 && !user_config {
+				sourceFile := path.Join(repo.location, "profiles", "package.mask")
+				ur := []string{}
+				for r := range unmatchedRemovals {
+					if len(ur) <= 3 {
+						r = "-" + r
+					}
+					ur = append(ur, r)
+				}
+				if len(ur) > 3 {
+					WriteMsg(fmt.Sprintf("--- Unmatched removal atoms in %s: %s and %s more\n", sourceFile, strings.Join(ur[:3], ","), len(ur)-3), -1, nil)
+				} else {
+					WriteMsg(fmt.Sprintf("--- Unmatched removal atom(s) in %s: %s\n", sourceFile, strings.Join(ur[:3], ",")), -1, nil)
+				}
+			}
+		} else {
+			lines = append(lines, stackLists([][][2]string{repoLines}, 1, true, !user_config, strict_umatched_removal, false))
+		}
+		ls := [][2]string{}
+		for _, l := range lines {
+			for a, s := range l {
+				ls = append(ls, [2]string{a.value, s})
+			}
+		}
+		repoPkgMaskLines = append(repoPkgMaskLines, appendRepo(stackLists([][][2]string{ls}, 1, false, false, false, false), repo.name, true)...)
+	}
+	repoPkgUnmaskLines := []AS{}
+	for _, repo := range repositories.reposWithProfiles() {
+		if !repo.portage1Profiles {
+			continue
+		}
+		in := false
+		for _, f := range repo.profileFormats {
+			if f == "build-id" {
+				in = true
+				break
+			}
+		}
+		repoLines := grabFilePackage(path.Join(repo.location, "profiles", "package.unmask"), 0, true, false, false, in, true, true, "", repo.eapi)
+		lines := stackLists([][][2]string{repoLines}, 1, true, true, strict_umatched_removal, false)
+		repoPkgUnmaskLines = append(repoPkgUnmaskLines, appendRepo(lines, repo.name, true)...)
+	}
+	profilePkgMaskLiness := [][][2]string{}
+	profilePkgUnmaskLiness := [][][2]string{}
+	for _, x := range profiles {
+		profilePkgMaskLiness = append(profilePkgMaskLiness, grabFilePackage(path.Join(x.location, "package.mask"), 0, x.portage1Directories, false, false, true, true, true, x.eapi, ""))
+		if x.portage1Directories {
+			profilePkgUnmaskLiness = append(profilePkgUnmaskLiness, grabFilePackage(path.Join(x.location, "package.unmask"), 0, x.portage1Directories, false, false, true, true, true, x.eapi, ""))
+		}
+	}
+	profilePkgmasklines := stackLists(profilePkgMaskLiness, 1, true, true, strict_umatched_removal, false)
+	profilePkgunmasklines := stackLists(profilePkgUnmaskLiness, 1, true, true, strict_umatched_removal, false)
+
+	userPkgMaskLines := [][2]string{}
+	userPkgUnmaskLines := [][2]string{}
+	if user_config {
+		userPkgMaskLines = grabFilePackage(path.Join(abs_user_config, "package.mask"), 0, true, true, true, true, true, true, "", "")
+		userPkgUnmaskLines = grabFilePackage(path.Join(abs_user_config, "package.mask"), 0, true, true, true, true, true, true, "", "")
+	}
+
+	var r1, r2, p1, p2 [][2]string
+	for _, r := range repoPkgMaskLines {
+		r1 = append(r1, [2]string{r.A.value, r.S})
+	}
+	for _, r := range repoPkgUnmaskLines {
+		r2 = append(r2, [2]string{r.A.value, r.S})
+	}
+	for a, s := range profilePkgmasklines {
+		p1 = append(p1, [2]string{a.value, s})
+	}
+	for a, s := range profilePkgunmasklines {
+		p2 = append(p2, [2]string{a.value, s})
+	}
+
+	rawPkgMaskLines := stackLists([][][2]string{r1, p1}, 1, true, false, false, false)
+	pkgMaskLines := stackLists([][][2]string{r1, p1, userPkgMaskLines}, 1, true, false, false, false)
+	pkgUnmaskLines := stackLists([][][2]string{r2, p2, userPkgUnmaskLines}, 1, true, false, false, false)
+
+	for x := range rawPkgMaskLines {
+		if _, ok := m._pmaskdict_raw[x.cp]; !ok {
+			m._pmaskdict_raw[x.cp] = []*Atom{x}
+		}
+	}
+	for x := range pkgMaskLines {
+		if _, ok := m._pmaskdict[x.cp]; !ok {
+			m._pmaskdict[x.cp] = []*Atom{x}
+		}
+	}
+	for x := range pkgUnmaskLines {
+		if _, ok := m._punmaskdict[x.cp]; !ok {
+			m._punmaskdict[x.cp] = []*Atom{x}
+		}
+	}
+
 	return m
 }
 
@@ -3241,13 +3499,73 @@ func (v *virtualManager) getVirtsP() map[string][]string {
 	return virtsP
 }
 
+func (v *virtualManager) _populate_treeVirtuals(vartree *varTree) {
+	if v._treeVirtuals != nil {
+		panic("treeVirtuals must not be reinitialized")
+	}
+	v._treeVirtuals = map[string][]string{}
+
+	for provide, cpv_list := range vartree.get_all_provides() {
+		provideA, err := NewAtom(provide, nil, false, nil, nil, "", nil, nil)
+		if err != nil {
+			continue
+		}
+		v._treeVirtuals[provideA.cp] = []string{}
+		for _, cpv := range cpv_list {
+			v._treeVirtuals[provideA.cp] = append(v._treeVirtuals[provideA.cp], cpv.cp)
+		}
+	}
+}
+
+func (v *virtualManager) populate_treeVirtuals_if_needed(vartree *varTree) {
+	if v._treeVirtuals != nil {
+		return
+	}
+	v._populate_treeVirtuals(vartree)
+}
+
+func (v *virtualManager) add_depgraph_virtuals(mycpv string, virts []string) {
+	if v._virtuals == nil {
+		v.getvirtuals()
+	}
+
+	modified := false
+	cp, _ := NewAtom(cpvGetKey(mycpv, ""), nil, false, nil, nil, "", nil, nil)
+	for _, virt := range virts {
+		a, err := NewAtom(virt, nil, false, nil, nil, "", nil, nil)
+		if err != nil {
+			continue
+		}
+		virt = a.cp
+		providers := v._depgraphVirtuals[virt]
+		if providers == nil {
+			providers = []string{}
+			v._depgraphVirtuals[virt] = providers
+		}
+		in := false
+		for _, p := range providers {
+			if cp.value == p {
+				in = true
+				break
+			}
+		}
+		if !in {
+			providers = append(providers, cp.value)
+			modified = true
+		}
+	}
+	if modified {
+		v._compile_virtuals()
+	}
+}
+
 func NewVirtualManager(profiles []string) *virtualManager {
 	v := &virtualManager{}
 	v._virtuals = nil
 	v._dirVirtuals = nil
 	v._virts_p = nil
 	v._treeVirtuals = nil
-	v._depgraphVirtuals = nil
+	v._depgraphVirtuals = map[string][]string{}
 	v.read_dirVirtuals(profiles)
 	return v
 }

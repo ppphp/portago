@@ -1099,7 +1099,7 @@ func (a *Atom) match(pkg *pkgStr) bool {
 	return len(matchFromList(a, []*pkgStr{pkg})) > 0
 }
 
-func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *bool, _use *useDep, eapi string, isValidFlag func(string) bool, allowBuildId *bool) (*Atom, error) { //s, None, False, None, None, None, None, None
+func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *bool, _use *useDep, eapi string, isValidFlag func(string) bool, allowBuildId *bool) (*Atom, error) { //s, nil, false, nil, nil, "", nil, nil
 	a := &Atom{value: s, ispackage: true, soname: false}
 	eapiAttrs := getEapiAttrs(eapi)
 	atomRe := getAtomRe(eapiAttrs)

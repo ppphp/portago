@@ -3,11 +3,14 @@ package atom
 import (
 	"bufio"
 	"fmt"
+	"golang.org/x/crypto/ssh/terminal"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path"
 	"regexp"
 	"strings"
+	"syscall"
 )
 
 var (
@@ -61,6 +64,96 @@ var (
 		"0x55FF55", "0xAA5500", "0xFFFF55", "0x0000AA", "0x5555FF", "0xAA00AA",
 		"0xFF55FF", "0x00AAAA", "0x55FFFF", "0xAAAAAA", "0xFFFFFF"}
 )
+
+func nc_len(mystr string) int {
+	re, _ := regexp.Compile(escSeq + "^m]+m")
+	tmp := re.ReplaceAllString(mystr, "")
+	return len(tmp)
+}
+
+var (
+	_legal_terms_re, _        = regexp.Compile("^(xterm|xterm-color|Eterm|aterm|rxvt|screen|kterm|rxvt-unicode|gnome|interix|tmux|st-256color)")
+	_disable_xtermTitle *bool = nil
+	_max_xtermTitle_len       = 253
+)
+
+func xtermTitle(mystr string, raw bool) { // f
+	if _disable_xtermTitle == nil {
+		_disable_xtermTitle = new(bool)
+		ts, tb := os.LookupEnv("TERM")
+		*_disable_xtermTitle = !(terminal.IsTerminal(int(os.Stderr.Fd())) && tb && _legal_terms_re.MatchString(ts))
+	}
+
+	if doTitles != 0 && !*_disable_xtermTitle {
+		if len(mystr) > _max_xtermTitle_len {
+			mystr = mystr[:_max_xtermTitle_len]
+		}
+		if !raw {
+			mystr = fmt.Sprintf("\x1b]0;%s\x07", mystr)
+		}
+		f := os.Stderr
+		f.WriteString(mystr)
+	}
+}
+
+var default_xterm_title = ""
+
+func xtermTitleReset() {
+	if default_xterm_title == "" {
+		promptCommand := os.Getenv("PROMPT_COMMAND")
+		if promptCommand == "" {
+			default_xterm_title = ""
+		} else if promptCommand != "" {
+			ts, tb := os.LookupEnv("TERM")
+			if doTitles != 0 && tb && _legal_terms_re.MatchString(ts) && terminal.IsTerminal(int(os.Stderr.Fd())) {
+				shell := os.Getenv("SHELL")
+				st, _ := os.Stat(shell)
+				if shell == "" || st.Mode()&syscall.O_EXCL != 0 {
+					shell = FindBinary("sh")
+				}
+				if shell != "" {
+					spawn([]string{shell, "-c", promptCommand}, nil, "", map[int]uintptr{
+						0: getStdin().Fd(),
+						1: os.Stderr.Fd(),
+						2: os.Stderr.Fd(),
+					}, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
+				} else {
+					c := exec.Command(promptCommand)
+					c.Run()
+				}
+			}
+			return
+		} else {
+			pwd := os.Getenv("PWD")
+			home := os.Getenv("HOME")
+			if home != "" && strings.HasPrefix(pwd, home) {
+				pwd = "~" + pwd[len(home):]
+			}
+			default_xterm_title = fmt.Sprintf("\x1b]0;%s@%s:%s\x07",
+				os.Getenv("LOGNAME"),
+				strings.SplitN(os.Getenv("HOSTNAME"), ".", 1)[0], pwd)
+		}
+	}
+	xtermTitle(default_xterm_title, true)
+}
+
+var compat_functions_colors = []string{
+	"bold", "white", "teal", "turquoise", "darkteal",
+	"fuchsia", "purple", "blue", "darkblue", "green", "darkgreen", "yellow",
+	"brown", "darkyellow", "red", "darkred",
+}
+
+type create_color_func struct {
+	colorKey string
+}
+
+func (c *create_color_func) call(text string) string {
+	return colorize(c.colorKey, text)
+}
+
+func NewCreateColorFunc(colorKey string) *create_color_func {
+	return &create_color_func{colorKey: colorKey}
+}
 
 func color(fg, bg string, attr []string) string {
 	myStr := codes[fg]
