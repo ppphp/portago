@@ -93,7 +93,8 @@ type Config struct {
 	constantKeys, setcpvAuxKeys, envBlacklist, environFilter, environWhitelist, globalOnlyVars, caseInsensitiveVars                      map[string]bool
 	tolerent, unmatchedRemoval, localConfig, setCpvActive                                                                                bool
 	locked                                                                                                                               int
-	mycpv, setcpvArgsHash, penv, modifiedkeys, acceptChostRe, sonameProvided                                                             *int
+	mycpv, setcpvArgsHash, penv, modifiedkeys, acceptChostRe                                                                             *int
+	sonameProvided                                                                                                                       map[*sonameAtom]bool
 	parentStable                                                                                                                         *bool
 	puse, depcachedir, profilePath, defaultFeaturesUse, userProfileDir, globalConfigPath                                                 string
 	useManager                                                                                                                           *useManager
@@ -226,6 +227,58 @@ func (c *Config) backupChanges(key string) {
 	} else {
 		//raise KeyError(_("No such key defined in environment: %s") % key)
 	}
+}
+
+func (c *Config) initDirs() {
+	st, _ := os.Stat(c.valueDict["EROOT"])
+	if st.Mode()|os.FileMode(os.O_WRONLY) == 0 {
+		return
+	}
+	dirModeMap := map[string]struct {
+		gid           int
+		mode          int
+		mask          int
+		preservePerms bool
+	}{
+		"tmp":       {-1, 01777, 0, true},
+		"var/tmp":   {-1, 01777, 0, true},
+		PrivatePath: {*portage_gid, 02750, 02, false},
+		CachePath:   {*portage_gid, 0755, 02, false},
+	}
+
+	for mypath, s := range dirModeMap {
+		gid, mode, modemask, preserve_perms := s.gid, s.mode, s.mask, s.preservePerms
+		mydir := path.Join(c.valueDict["EROOT"], mypath)
+		st, _ := os.Stat(mydir)
+		if preserve_perms && st.IsDir() {
+			continue
+		}
+		if !ensureDirs(mydir, 0, gid, mode, modemask, nil, false) {
+			WriteMsg(fmt.Sprintf("!!! Directory initialization failed: '%s'\n", mydir), -1, nil)
+			WriteMsg(fmt.Sprintf("!!! %v\n"), -1, nil) // error
+		}
+	}
+}
+
+func (c *Config) soname_provided() map[*sonameAtom]bool {
+	if c.sonameProvided == nil {
+		e := []map[string][]string{}
+		for _, x := range c.profiles {
+			e = append(e, grabDict(path.Join(x, "soname.provided"), false, false, true, true, false))
+		}
+		c.sonameProvided = map[*sonameAtom]bool{}
+		d := stackDictlist(e, 1, []string{}, 0)
+		for cat, sonames := range d {
+			for _, soname := range sonames {
+				c.sonameProvided[NewSonameAtom(cat, soname)] = true
+			}
+		}
+	}
+	return c.sonameProvided
+}
+
+func (c *Config) expandLicenseTokens(tokens []string) []string {
+	return c.licenseManager.expandLicenseTokens(tokens)
 }
 
 func (c *Config) _iuse_effective_match(flag string) bool {
@@ -619,14 +672,6 @@ func (c *Config) _getPKeywords(cpv *pkgStr, metadata map[string]string) []string
 
 func (c *Config) _getMissingLicenses(cpv *pkgStr, metadata map[string]string) []string {
 	return c.licenseManager.getMissingLicenses(cpv, metadata["USE"], metadata["LICENSE"], metadata["SLOT"], metadata["repository"])
-}
-
-func (c *Config) _getMissingProperties(cpv *pkgStr, metadata map[string]string) {
-
-}
-
-func (c *Config) _getMissingRestrict(cpv *pkgStr, metadata map[string]string) {
-
 }
 
 func (c *Config) lock() {

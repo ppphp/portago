@@ -177,3 +177,19 @@ func compute_multilib_category(elf_header ELFHeader) string {
 
 	return category
 }
+
+type sonameAtom struct {
+	multilib_category, soname string
+	packagee                  bool
+}
+
+func (s *sonameAtom) match(pkg *Package) bool {
+	return pkg._provides != ""
+}
+
+func NewSonameAtom(multilibCategory, soname string) *sonameAtom {
+	s := &sonameAtom{packagee: false}
+	s.multilib_category = multilibCategory
+	s.soname = soname
+	return s
+}

@@ -209,7 +209,13 @@ func unprivilegedMode(eroot string, erootSt os.FileInfo) bool {
 }
 
 type _trees_dict struct {
-	valueDict                     map[string]func()
+	valueDict map[string]struct {
+		_virtuals, _vartree, _porttree, _bintree string
+		virtuals func()
+		vartree func()
+		porttree func()
+		bintree func()
+	}
 	_running_eroot, _target_eroot string
 }
 
@@ -263,33 +269,73 @@ func createTrees(config_root, target_root string, ts map[string]func(), env map[
 		myroots = append(myroots, st{settings.valueDict["EROOT"], settings})
 	}
 
-	//for _,v:= range myroots{
-	//	myroot, mysettings := v.s, v.t
-	//	trees.valueDict[myroot] = trees.valueDict[myroot]
-	//	trees[myroot]["virtuals"] =  mysettings.getvirtuals
-	//	trees[myroot]["vartree"]= vartree, categories=mysettings.categories,
-	//		settings=mysettings)
-	//	trees[myroot].addLazySingleton("porttree",
-	//		portagetree, settings=mysettings)
-	//	trees[myroot].addLazySingleton("bintree",
-	//		binarytree, pkgdir=mysettings["PKGDIR"], settings=mysettings)
-	//}
+	for _, v := range myroots {
+		myroot, mysettings := v.s, v.t
+		trees[myroot].virtuals = mysettings.getvirtuals
+		//	trees[myroot]["vartree"]= vartree, categories=mysettings.categories,
+		//		settings=mysettings)
+		//	trees[myroot].addLazySingleton("porttree",
+		//		portagetree, settings=mysettings)
+		//	trees[myroot].addLazySingleton("bintree",
+		//		binarytree, pkgdir=mysettings["PKGDIR"], settings=mysettings)
+	}
 	return trees
 }
+
+// should be lazy version in portage but not meaningful
+// VERSION = _LazyVersion()
 
 var _legacy_global_var_names = []string{"archlist", "db", "features",
 	"groups", "mtimedb", "mtimedbfile", "pkglines",
 	"portdb", "profiledir", "root", "selinux_enabled",
-	"settings", "thirdpartymirrors"}
-var archlist, db, features, groups, mtimedb, mtimedbfile, pkglines, portdb, profiledir, root, selinux_enabled, settings, thirdpartymirrors int
+	"settings", "thirdpartymirrors"} // no use
+var mtimedb, mtimedbfile,  portdb int
+
+var _db *_trees_dict = nil
+var _settings *Config = nil
+var _root *string = nil
 
 var _legacy_globals_constructed map[string]bool
 
-func _reset_legacy_globals() {
-	_legacy_globals_constructed = map[string]bool{}
-	archlist, db, features, groups, mtimedb, mtimedbfile, pkglines, portdb, profiledir, root, selinux_enabled, settings, thirdpartymirrors = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+func db() *_trees_dict {
+	if _db != nil {
+		return _db
+	}
+	_get_legacy_global()
+	return _db
 }
 
-func _disable_legacy_globals() {
-	archlist, db, features, groups, mtimedb, mtimedbfile, pkglines, portdb, profiledir, root, selinux_enabled, settings, thirdpartymirrors = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+func settings() *Config {
+	if _settings != nil {
+		return _settings
+	}
+	_get_legacy_global()
+	return _settings
+}
+
+func root() string {
+	if _root != nil {
+		return *_root
+	}
+	_get_legacy_global()
+	return *_root
+}
+
+func _get_legacy_global() { // a fake copy, just init no return
+	initializingGlobals = new(bool)
+	*initializingGlobals = true
+	_db = createTrees(os.Getenv("PORTAGE_CONFIGROOT"), os.Getenv("ROOT"), nil, nil, os.Getenv("SYSROOT"), os.Getenv("EPREFIX"))
+	initializingGlobals = nil
+	_settings = _db.valueDict[_db._target_eroot]
+	_root = new(string)
+	*_root = _db._target_eroot
+}
+
+func _reset_legacy_globals() {
+	_legacy_globals_constructed = map[string]bool{}
+	 mtimedb, mtimedbfile, portdb, root,  settings =
+}
+
+func DisableLegacyGlobals() {
+	mtimedb, mtimedbfile, portdb, root,  settings =
 }

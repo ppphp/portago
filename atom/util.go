@@ -110,7 +110,7 @@ func mapDictListVals(f func(string) string, mydict map[string][]string) {
 	}
 }
 
-func stackDictlist(originalDicts []map[string][]string, incremental int, incrementals []string, ignoreNone int) map[string][]string { //0[]0
+func stackDictlist(originalDicts []map[string][]string, incremental int, incrementals []string, ignoreNone int) map[string][]string { // false, []string{}, false
 	finalDict := map[string][]string{}
 	for _, mydict := range originalDicts {
 		if mydict == nil {
@@ -305,7 +305,7 @@ func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 	return newList
 }
 
-func grabDict(myFileName string, justStrings, empty, recursive, incremental, newLines bool) map[string][]string { // 00010
+func grabDict(myFileName string, justStrings, empty, recursive, incremental, newLines bool) map[string][]string { // false, false, false, true, false
 	newDict := map[string][]string{}
 	for _, x := range grabLines(myFileName, recursive, false) {
 		v := x[0]

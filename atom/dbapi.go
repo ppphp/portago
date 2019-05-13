@@ -464,7 +464,7 @@ func (v *varTree) get_all_provides() map[string][]*pkgStr {
 	return map[string][]*pkgStr{}
 }
 
-func NewVarTree(settings *Config) *varTree {
+func NewVarTree(root, categories string, settings *Config) *varTree {
 	v := &varTree{}
 
 	return v

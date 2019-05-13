@@ -94,7 +94,7 @@ func init() {
 	sandbox_capable = err != nil && stf != nil && !stf.IsDir() && stf.Mode()&syscall.O_EXCL != 0
 }
 
-func sanitize_fds() { // all file descriptors in golang are not inheritable without explicit mentioned
+func SanitizeFds() { // all file descriptors in golang are not inheritable without explicit mentioned
 	return
 }
 
