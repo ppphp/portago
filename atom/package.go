@@ -156,7 +156,8 @@ func NewIUse(pkg string, tokens []string, iuseImplicitMatch func(string) bool, a
 
 type Package struct {
 	*Task
-	metadataKeys, depKeys, buildtimeKeys, runtimeKeys, useConditionalMiscKeys                                                                                                                                                map[string]bool
+	metadataKeys, buildtimeKeys, runtimeKeys, useConditionalMiscKeys                                                                                                                                                         map[string]bool
+	depKeys                                                                                                                                                                                                                  []string
 	UnknownRepo                                                                                                                                                                                                              string
 	built, installed                                                                                                                                                                                                         bool
 	cpv                                                                                                                                                                                                                      *pkgStr
@@ -195,7 +196,7 @@ func NewPackage(built bool, cpv *pkgStr, installed bool, metadata map[string]str
 		"DEPEND": true, "EAPI": true, "HDEPEND": true, "INHERITED": true, "IUSE": true, "KEYWORDS": true,
 		"LICENSE": true, "MD5": true, "PDEPEND": true, "PROVIDES": true, "RDEPEND": true, "repository": true, "REQUIRED_USE": true,
 		"PROPERTIES": true, "REQUIRES": true, "RESTRICT": true, "SIZE": true, "SLOT": true, "USE": true, "_mtime_": true,
-	}, depKeys: map[string]bool{"BDEPEND": true, "DEPEND": true, "HDEPEND": true, "PDEPEND": true, "RDEPEND": true},
+	}, depKeys: []string{"BDEPEND", "DEPEND", "HDEPEND", "PDEPEND", "RDEPEND"},
 		buildtimeKeys:          map[string]bool{"BDEPEND": true, "DEPEND": true, "HDEPEND": true},
 		runtimeKeys:            map[string]bool{"PDEPEND": true, "RDEPEND": true},
 		useConditionalMiscKeys: map[string]bool{"LICENSE": true, "PROPERTIES": true, "RESTRICT": true},

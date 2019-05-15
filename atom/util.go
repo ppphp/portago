@@ -1053,3 +1053,66 @@ func expandEnv() map[string]string {
 	}
 	return m
 }
+
+var _compressors = map[string]map[string]string{
+	"bzip2": {
+		"compress":       "${PORTAGE_BZIP2_COMMAND} ${BINPKG_COMPRESS_FLAGS}",
+		"decompress":     "${PORTAGE_BUNZIP2_COMMAND}",
+		"decompress_alt": "${PORTAGE_BZIP2_COMMAND} -d",
+		"package":        "app-arch/bzip2",
+	},
+	"gzip": {
+		"compress":   "gzip ${BINPKG_COMPRESS_FLAGS}",
+		"decompress": "gzip -d",
+		"package":    "app-arch/gzip",
+	},
+	"lz4": {
+		"compress":   "lz4 ${BINPKG_COMPRESS_FLAGS}",
+		"decompress": "lz4 -d",
+		"package":    "app-arch/lz4",
+	},
+	"lzip": {
+		"compress":   "lzip ${BINPKG_COMPRESS_FLAGS}",
+		"decompress": "lzip -d",
+		"package":    "app-arch/lzip",
+	},
+	"lzop": {
+		"compress":   "lzop ${BINPKG_COMPRESS_FLAGS}",
+		"decompress": "lzop -d",
+		"package":    "app-arch/lzop",
+	},
+	"xz": {
+		"compress":   "xz ${BINPKG_COMPRESS_FLAGS}",
+		"decompress": "xz -d",
+		"package":    "app-arch/xz-utils",
+	},
+	"zstd": {
+		"compress":   "zstd ${BINPKG_COMPRESS_FLAGS}",
+		"decompress": "zstd -d --long=31",
+		"package":    "app-arch/zstd",
+	},
+}
+
+var compressionRe = regexp.MustCompile("^((?P<bzip2>\\x42\\x5a\\x68\\x39)|(?P<gzip>\\x1f\\x8b)|(?P<lz4>(?:\\x04\\x22\\x4d\\x18|\\x02\\x21\\x4c\\x18))|(?P<lzip>LZIP)|(?P<lzop>\\x89LZO\\x00\x0d\x0a\\x1a\x0a)|(?P<xz>\\xfd\\x37\\x7a\\x58\\x5a\\x00)|(?P<zstd>([\\x22-\\x28]\\xb5\\x2f\\xfd)))")
+
+const _max_compression_re_len = 9
+
+func compression_probe(f string) string {
+	s, _ := os.Open(f)
+	return _compression_probe_file(s)
+}
+
+func _compression_probe_file(f *os.File) string {
+	b := make([]byte, _max_compression_re_len)
+	f.Read(b)
+	m := compressionRe.Match(b)
+	if m {
+		match := compressionRe.FindSubmatch(b)
+		for i, n := range compressionRe.SubexpNames() {
+			if i > 0 && i <= len(match) && len(match[i]) != 0 {
+				return n
+			}
+		}
+	}
+	return ""
+}

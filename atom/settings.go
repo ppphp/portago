@@ -281,7 +281,7 @@ func (c *Config) expandLicenseTokens(tokens []string) []string {
 	return c.licenseManager.expandLicenseTokens(tokens)
 }
 
-func (c *Config) _iuse_effective_match(flag string) bool {
+func (c *Config) iuseEffectiveMatch(flag string) bool {
 	return c.iuseEffective[flag]
 }
 
@@ -615,7 +615,7 @@ func (c *Config) get_virts_p() map[string][]string {
 func (c *Config) getVirtuals() map[string][]string {
 	if c.virtualsManager()._treeVirtuals == nil {
 		if c.localConfig {
-			tempVartree := NewVarTree(nil,c)
+			tempVartree := NewVarTree(nil, c)
 			c.virtualsManager()._populate_treeVirtuals(tempVartree)
 		} else {
 			c.virtualsManager()._treeVirtuals = map[string][]string{}
@@ -730,6 +730,93 @@ func (c *Config) maskManager() *maskManager {
 
 func (c *Config) pmaskdict() map[string][]*Atom {
 	return c.maskManager()._pmaskdict
+}
+
+func (c *Config) archlist() map[string]bool {
+	archlist := map[string]bool{}
+	for _, myarch := range strings.Fields(c.valueDict["PORTAGE_ARCHLIST"]) {
+		archlist[myarch] = true
+		archlist["~"+myarch] = true
+	}
+	return archlist
+}
+
+func (c *Config) validate() {
+	groups := strings.Fields(c.valueDict["ACCEPT_KEYWORDS"])
+	archlist := c.archlist()
+	if len(archlist) == 0 {
+		WriteMsg(fmt.Sprintf("--- 'profiles/arch.list' is empty or not available. Empty ebuild repository?\n"), 1, nil)
+	} else {
+		for _, group := range groups {
+			if !archlist[group] && !strings.HasPrefix(group, "-") && archlist[group[1:]] && group != "*" && group != "~*" && group != "**" {
+				WriteMsg(fmt.Sprintf("!!! INVALID ACCEPT_KEYWORDS: %v\n", group), -1, nil)
+			}
+		}
+	}
+	profileBroken := false
+	arch := c.valueDict["ARCH"]
+	if len(c.profilePath) == 0 || len(arch) == 0 {
+		profileBroken = true
+	} else {
+		in := true
+		for _, x := range []string{"make.defaults", "parent",
+			"packages", "use.force", "use.mask"} {
+			if existsRaiseEaccess(path.Join(c.profilePath, x)) {
+				in = false
+				break
+			}
+		}
+		if in {
+			profileBroken = true
+		}
+	}
+
+	if profileBroken && !SyncMode {
+		absProfilePath := ""
+		for _, x := range []string{ProfilePath, "etc/make.profile"} {
+			x = path.Join(c.valueDict["PORTAGE_CONFIGROOT"], x)
+			if _, err := os.Lstat(x); err != nil {
+			} else {
+				absProfilePath = x
+				break
+			}
+		}
+		if absProfilePath == "" {
+			absProfilePath = path.Join(c.valueDict["PORTAGE_CONFIGROOT"], ProfilePath)
+		}
+
+		WriteMsg(fmt.Sprintf("\n\n!!! %s is not a symlink and will probably prevent most merges.\n", absProfilePath), -1, nil)
+		WriteMsg(fmt.Sprintf("!!! It should point into a profile within %s/profiles/\n", c.valueDict["PORTDIR"]), 0, nil)
+		WriteMsg(fmt.Sprintf("!!! (You can safely ignore this message when syncing. It's harmless.)\n\n\n"), 0, nil)
+	}
+	if !sandbox_capable && (c.features.features["sandbox"] || c.features.features["usersandbox"]) {
+		cp, _ := filepath.EvalSymlinks(c.profilePath)
+		pp, _ := filepath.EvalSymlinks(path.Join(c.valueDict["PORTAGE_CONFIGROOT"], ProfilePath))
+		if c.profilePath != "" && cp == pp {
+			WriteMsg(colorize("BAD", fmt.Sprintf("!!! Problem with sandbox binary. Disabling...\n\n")), -1, nil)
+		}
+	}
+	if c.features.features["fakeroot"] && !fakeroot_capable {
+		WriteMsg(fmt.Sprintf("!!! FEATURES=fakeroot is enabled, but the fakeroot binary is not installed.\n"), -1, nil)
+	}
+
+	if binpkgCompression, ok := c.valueDict["BINPKG_COMPRESS"]; ok {
+		if compression, ok := _compressors[binpkgCompression]; !ok {
+			WriteMsg(fmt.Sprintf("!!! BINPKG_COMPRESS contains invalid or unsupported compression method: %s", binpkgCompression), -1, nil)
+		} else {
+			if cs, err := shlex.Split(varExpand(compression["compress"], c.valueDict, "")); err != nil {
+
+			} else if len(cs) == 0 {
+				WriteMsg(fmt.Sprintf("!!! BINPKG_COMPRESS contains invalid or unsupported compression method: %s", compression["compress"]), -1, nil)
+			} else {
+				compressionBinary := cs[0]
+				if FindBinary(compressionBinary) == "" {
+					missingPackage := compression["package"]
+					WriteMsg(fmt.Sprintf("!!! BINPKG_COMPRESS unsupported %s. Missing package: %s", binpkgCompression, missingPackage), -1, nil)
+				}
+			}
+		}
+	}
 }
 
 func (c *Config) _punmaskdict() map[string][]*Atom {

@@ -287,7 +287,7 @@ func (p *pkgStr) stable() bool {
 	return *p._stable
 }
 
-func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, repo, slot string, build_time int, build_id, file_size string, mtime int, db string) *pkgStr {
+func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, repo, slot string, build_time int, build_id, file_size string, mtime int, db string) *pkgStr { // nil, nil, "", "", "", 0, "", "", 0, ""
 	p := &pkgStr{string: cpv}
 	if len(metadata) != 0 {
 		p.metadata = metadata

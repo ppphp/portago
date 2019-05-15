@@ -323,11 +323,11 @@ var _legacy_global_var_names = []string{"archlist", "db", "features",
 	"groups", "mtimedb", "mtimedbfile", "pkglines",
 	"portdb", "profiledir", "root", "selinux_enabled",
 	"settings", "thirdpartymirrors"} // no use
-var mtimedb, mtimedbfile, portdb int
+var mtimedb, portdb int
 
 var _db *_trees_dict = nil
 var _settings *Config = nil
-var _root *string = nil
+var _root, _mtimedbfile *string = nil, nil
 
 var _legacy_globals_constructed map[string]bool
 
@@ -355,6 +355,15 @@ func root() string {
 	return *_root
 }
 
+func mtimedbfile() string {
+	if _mtimedbfile != nil {
+		return *_mtimedbfile
+	}
+	_mtimedbfile = new(string)
+	*_mtimedbfile = path.Join(settings().valueDict["EROOT"], CachePath, "mtimedb")
+	return *_mtimedbfile
+}
+
 func _get_legacy_global() { // a fake copy, just init no return
 	initializingGlobals = new(bool)
 	*initializingGlobals = true
@@ -372,4 +381,29 @@ func _reset_legacy_globals() {
 
 func DisableLegacyGlobals() {
 	//mtimedb, mtimedbfile, portdb, _root, _settings =
+}
+
+var ignored_dbentries = map[string]bool{"CONTENTS": true, "environment.bz2": true}
+
+func update_dbentry(update_cmd string, mycontent string, eapi string, parent *pkgStr) string { // "", nil
+	if parent != nil {
+		eapi = parent.eapi
+	}
+	return mycontent
+}
+
+func update_dbentries(updateIter []string, mydata map[string]string, eapi string, parent *pkgStr) map[string]string { // "", nil
+	updatedItems := map[string]string{}
+	for k, mycontent := range mydata {
+		if !ignored_dbentries[k] {
+			origContent := mycontent
+			for _, updateCmd := range updateIter {
+				mycontent = update_dbentry(updateCmd, mycontent, eapi, parent)
+			}
+			if mycontent != origContent {
+				updatedItems[k] = mycontent
+			}
+		}
+	}
+	return updatedItems
 }

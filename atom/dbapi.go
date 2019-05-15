@@ -2,6 +2,7 @@ package atom
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -108,7 +109,7 @@ func (d *dbapi) _iuse_implicit_cnstr(pkg *pkgStr, metadata map[string]string) fu
 	eapiAttrs := getEapiAttrs(metadata["EAPI"])
 	var iuseImplicitMatch func(string) bool
 	if eapiAttrs.iuseEffective {
-		iuseImplicitMatch = d.settings._iuse_effective_match
+		iuseImplicitMatch = d.settings.iuseEffectiveMatch
 	} else {
 		iuseImplicitMatch = d.settings.iuseImplicitMatch.call
 	}
@@ -130,6 +131,98 @@ func (d *dbapi) _iuse_implicit_cnstr(pkg *pkgStr, metadata map[string]string) fu
 	}
 
 	return iuseImplicitMatch
+}
+
+func (d *dbapi) _repoman_iuse_implicit_cnstr(pkg, metadata map[string]string) func(flag string) bool {
+	eapiAttrs := getEapiAttrs(metadata["EAPI"])
+	var iuseImplicitMatch func(flag string) bool = nil
+	if eapiAttrs.iuseEffective {
+		iuseImplicitMatch = func(flag string) bool {
+			return d.settings.iuseEffectiveMatch(flag)
+		}
+	} else {
+		iuseImplicitMatch = func(flag string) bool {
+			return d.settings.iuseImplicitMatch.call(flag)
+		}
+	}
+	return iuseImplicitMatch
+}
+
+func (d *dbapi) invalidentry(mypath string) {
+	if strings.Contains(mypath, "/"+MergingIdentifier) {
+		if _, err := os.Stat(mypath); err != nil {
+			WriteMsg(colorize("BAD", "INCOMPLETE MERGE:"+fmt.Sprintf(" %s\n", mypath)), -1, nil)
+		}
+	} else {
+		WriteMsg(fmt.Sprintf("!!! Invalid db entry: %s\n", mypath), -1, nil)
+	}
+}
+func (d *dbapi) cpv_all() []*pkgStr {
+	cpvList := []*pkgStr{}
+	for _, cp := range d.cp_all(false) {
+		cpvList = append(cpvList, d.cp_list(cp, 1)...)
+	}
+	return cpvList
+}
+
+func (d *dbapi) update_ents(updates map[string][]string, onProgress, onUpdate func(int, int)) {
+	cpv_all := d.cpv_all()
+	sort.Slice(cpv_all, func(i, j int) bool {
+		return cpv_all[i].string < cpv_all[j].string
+	})
+	maxval := len(cpv_all)
+	aux_get := d.auxGet
+	aux_update := d.auxUpdate
+	update_keys := Package{}.depKeys
+	meta_keys := append(update_keys, d._pkg_str_aux_keys...)
+	repo_dict := updates // is dict, else nil
+	if onUpdate != nil {
+		onUpdate(maxval, 0)
+	}
+	if onProgress != nil {
+		onProgress(maxval, 0)
+	}
+	for i, cpv := range cpv_all {
+
+		metadata := map[string]string{}
+		a := aux_get(cpv, meta_keys, "")
+		for i, v := range meta_keys {
+			metadata[v] = a[i]
+		}
+		//except KeyError:
+		//continue
+		pkg := NewPkgStr(cpv.string, metadata, d.settings, "", "", "", 0, "", "", 0, "")
+		//except InvalidData:
+		//continue
+		m := map[string]string{}
+		for _, k := range update_keys {
+			m[k] = metadata[k]
+		}
+		//if repo_dict ==nil{ // always false
+		//	updates_list = updates
+		//} else{
+		var updates_list []string = nil
+		var ok bool
+		if updates_list, ok = repo_dict[pkg.repo]; !ok {
+			if updates_list, ok = repo_dict["DEFAULT"]; !ok {
+				continue
+			}
+		}
+
+		if len(updates_list) == 0 {
+			continue
+		}
+		metadata_updates := update_dbentries(updates_list, metadata, "", pkg)
+		if len(metadata_updates) != 0 {
+			aux_update(cpv.string, metadata_updates)
+		}
+		if onUpdate != nil {
+			onUpdate(maxval, i+1)
+		}
+		if onProgress != nil {
+			onProgress(maxval, i+1)
+		}
+	}
 }
 
 func (d *dbapi) _match_use(atom *Atom, pkg *pkgStr, metadata map[string]string, ignore_profile bool) bool { // false
@@ -287,9 +380,17 @@ func (d *dbapi) categories() []string {
 	return d._categories
 }
 
-func (d *dbapi) auxGet(myCpv *pkgStr, myList []string, myRepo string) string {
+func (d *dbapi) _cpv_sort_ascending(cpv_list []*pkgStr) {
+	if len(cpv_list) > 1 {
+		sort.Slice(cpv_list, func(i, j int) bool {
+			return d._cmp_cpv(cpv_list[i], cpv_list[j]) < 0
+		})
+	}
+}
+
+func (d *dbapi) auxGet(myCpv *pkgStr, myList []string, myRepo string) []string {
 	panic("NotImplementedError")
-	return ""
+	return nil
 }
 
 func (d *dbapi) auxUpdate(cpv string, metadataUpdates map[string]string) {
@@ -319,11 +420,7 @@ func (d *dbapi) _cmp_cpv(cpv1, cpv2 *pkgStr) int {
 	return result
 }
 
-//func (d *dbapi) _cpv_sort_ascending(cpv_list []) {
-//
-//}
-
-func (d *dbapi) cp_all(sort bool) []string { // f
+func (d *dbapi) cp_all(sort bool) []string { // false
 	panic("")
 	return nil
 }
@@ -389,8 +486,9 @@ func (d *dbapi) _iter_match_use(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
 	r := []*pkgStr{}
 	for _, cpv := range cpvIter {
 		metadata := map[string]string{}
-		for _, k := range aux_keys {
-			metadata[k] = d.auxGet(cpv, aux_keys, atom.repo)
+		a := d.auxGet(cpv, aux_keys, atom.repo)
+		for i, k := range aux_keys {
+			metadata[k] = a[i]
 		}
 		if !d._match_use(atom, cpv, metadata, false) {
 			continue
@@ -472,17 +570,36 @@ func NewVarTree(categories map[string]bool, settings *Config) *varTree {
 
 type fakedbapi struct {
 	*dbapi
+	_exclusive_slots              bool
+	cpvdict, cpdict, _match_cache map[string]string
+}
+
+func (f *fakedbapi) _instance_key_cpv(cpv *pkgStr, support_string bool) *pkgStr { // false
+	return cpv
+}
+
+func NewFakeDbApi(settings *Config, exclusive_slots, multi_instance bool) *fakedbapi { // nil, true, false
+	f := &fakedbapi{dbapi: NewDbapi(), _exclusive_slots: exclusive_slots,
+		cpvdict: map[string]string{},
+		cpdict:  map[string]string{}}
+	f.settings = settings
+	f._match_cache = map[string]string{}
+	return f
 }
 
 type bindbapi struct {
 	*fakedbapi
 }
 
-type binarytree struct {
-
+func NewBinDbApi() *bindbapi {
+	b := &bindbapi{}
+	return b
 }
 
-func NewBinaryTree(pkgDir string, setting *Config)*binarytree{
+type binarytree struct {
+}
+
+func NewBinaryTree(pkgDir string, setting *Config) *binarytree {
 	b := &binarytree{}
 	return b
 }
@@ -491,11 +608,15 @@ type portdbapi struct {
 	*dbapi
 }
 
-type portagetree struct {
-
+func NewPortDbApi() *portdbapi {
+	p := &portdbapi{}
+	return p
 }
 
-func NewPortageTree(setting *Config)*portagetree{
+type portagetree struct {
+}
+
+func NewPortageTree(setting *Config) *portagetree {
 	p := &portagetree{}
 	return p
 }
