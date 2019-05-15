@@ -615,8 +615,8 @@ func (c *Config) get_virts_p() map[string][]string {
 func (c *Config) getVirtuals() map[string][]string {
 	if c.virtualsManager()._treeVirtuals == nil {
 		if c.localConfig {
-			//temp_vartree = vartree(settings=self)
-			//c.virtualsManager()._populate_treeVirtuals(temp_vartree)
+			tempVartree := NewVarTree(nil,c)
+			c.virtualsManager()._populate_treeVirtuals(tempVartree)
 		} else {
 			c.virtualsManager()._treeVirtuals = map[string][]string{}
 		}

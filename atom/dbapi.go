@@ -464,8 +464,38 @@ func (v *varTree) get_all_provides() map[string][]*pkgStr {
 	return map[string][]*pkgStr{}
 }
 
-func NewVarTree(root, categories string, settings *Config) *varTree {
+func NewVarTree(categories map[string]bool, settings *Config) *varTree {
 	v := &varTree{}
 
 	return v
+}
+
+type fakedbapi struct {
+	*dbapi
+}
+
+type bindbapi struct {
+	*fakedbapi
+}
+
+type binarytree struct {
+
+}
+
+func NewBinaryTree(pkgDir string, setting *Config)*binarytree{
+	b := &binarytree{}
+	return b
+}
+
+type portdbapi struct {
+	*dbapi
+}
+
+type portagetree struct {
+
+}
+
+func NewPortageTree(setting *Config)*portagetree{
+	p := &portagetree{}
+	return p
 }

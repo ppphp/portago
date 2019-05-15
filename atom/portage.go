@@ -208,22 +208,55 @@ func unprivilegedMode(eroot string, erootSt os.FileInfo) bool {
 	return os.Getuid() != 0 && st.Mode()&2 != 0 && erootSt.Mode()&00002 == 0
 }
 
-type _trees_dict struct {
-	valueDict map[string]struct {
-		_virtuals, _vartree, _porttree, _bintree string
-		virtuals func()
-		vartree func()
-		porttree func()
-		bintree func()
+// my data structure, a lazy tree
+type tree struct {
+	_virtuals           map[string][]string
+	_vartree            *varTree
+	_porttree, _bintree string
+	virtuals            func() map[string][]string
+	vartree             func() *varTree
+	porttree            func()
+	bintree             func()
+}
+
+func (t *tree) Virtuals() map[string][]string {
+	if t._virtuals != nil {
+		t._virtuals = t.virtuals()
 	}
+	return t._virtuals
+}
+
+func (t *tree) VarTree() *varTree {
+	if t._vartree != nil {
+		t._vartree = t.vartree()
+	}
+	return t._vartree
+}
+
+func (t *tree) PortTree() map[string][]string {
+	if t._virtuals != nil {
+		t._virtuals = t.virtuals()
+	}
+	return t._virtuals
+}
+
+func (t *tree) BinTree() map[string][]string {
+	if t._virtuals != nil {
+		t._virtuals = t.virtuals()
+	}
+	return t._virtuals
+}
+
+type _trees_dict struct {
+	valueDict                     map[string]*tree
 	_running_eroot, _target_eroot string
 }
 
-func NewTreesDict(dict map[string]func()) *_trees_dict {
+func NewTreesDict(dict map[string]*tree) *_trees_dict {
 	return &_trees_dict{valueDict: dict}
 }
 
-func createTrees(config_root, target_root string, ts map[string]func(), env map[string]string, sysroot, eprefix string) *_trees_dict {
+func createTrees(config_root, target_root string, ts map[string]*tree, env map[string]string, sysroot, eprefix string) *_trees_dict {
 	var trees *_trees_dict = nil
 	if ts == nil {
 		trees = NewTreesDict(nil)
@@ -271,9 +304,10 @@ func createTrees(config_root, target_root string, ts map[string]func(), env map[
 
 	for _, v := range myroots {
 		myroot, mysettings := v.s, v.t
-		trees[myroot].virtuals = mysettings.getvirtuals
-		//	trees[myroot]["vartree"]= vartree, categories=mysettings.categories,
-		//		settings=mysettings)
+		trees.valueDict[myroot].virtuals = mysettings.getVirtuals
+		trees.valueDict[myroot].vartree = func() *varTree {
+			return NewVarTree(mysettings.categories, mysettings)
+		}
 		//	trees[myroot].addLazySingleton("porttree",
 		//		portagetree, settings=mysettings)
 		//	trees[myroot].addLazySingleton("bintree",
@@ -289,7 +323,7 @@ var _legacy_global_var_names = []string{"archlist", "db", "features",
 	"groups", "mtimedb", "mtimedbfile", "pkglines",
 	"portdb", "profiledir", "root", "selinux_enabled",
 	"settings", "thirdpartymirrors"} // no use
-var mtimedb, mtimedbfile,  portdb int
+var mtimedb, mtimedbfile, portdb int
 
 var _db *_trees_dict = nil
 var _settings *Config = nil
@@ -326,16 +360,16 @@ func _get_legacy_global() { // a fake copy, just init no return
 	*initializingGlobals = true
 	_db = createTrees(os.Getenv("PORTAGE_CONFIGROOT"), os.Getenv("ROOT"), nil, nil, os.Getenv("SYSROOT"), os.Getenv("EPREFIX"))
 	initializingGlobals = nil
-	_settings = _db.valueDict[_db._target_eroot]
+	_settings = _db.valueDict[_db._target_eroot].VarTree().settings
 	_root = new(string)
 	*_root = _db._target_eroot
 }
 
 func _reset_legacy_globals() {
 	_legacy_globals_constructed = map[string]bool{}
-	 mtimedb, mtimedbfile, portdb, root,  settings =
+	//mtimedb, mtimedbfile, portdb, _root, _settings =
 }
 
 func DisableLegacyGlobals() {
-	mtimedb, mtimedbfile, portdb, root,  settings =
+	//mtimedb, mtimedbfile, portdb, _root, _settings =
 }
