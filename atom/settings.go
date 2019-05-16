@@ -89,11 +89,17 @@ func NewIuseImplicitMatchCache(settings *Config) *iuseImplicitMatchCache {
 }
 
 type Config struct {
-	valueDict                                                                                                                            map[string]string
-	constantKeys, setcpvAuxKeys, envBlacklist, environFilter, environWhitelist, globalOnlyVars, caseInsensitiveVars                      map[string]bool
-	tolerent, unmatchedRemoval, localConfig, setCpvActive                                                                                bool
-	locked                                                                                                                               int
-	mycpv, setcpvArgsHash, penv, modifiedkeys, acceptChostRe                                                                             *int
+	valueDict                                                                                                       map[string]string
+	constantKeys, setcpvAuxKeys, envBlacklist, environFilter, environWhitelist, globalOnlyVars, caseInsensitiveVars map[string]bool
+	tolerent, unmatchedRemoval, localConfig, setCpvActive                                                           bool
+	locked                                                                                                          int
+	acceptChostRe                                                                                                   *int
+	penv, modifiedkeys                                                                                              []string
+	mycpv                                                                                                           *pkgStr
+	setcpvArgsHash                                                                                                  struct {
+		cpv  *pkgStr
+		mydb *vardbapi
+	}
 	sonameProvided                                                                                                                       map[*sonameAtom]bool
 	parentStable                                                                                                                         *bool
 	puse, depcachedir, profilePath, defaultFeaturesUse, userProfileDir, globalConfigPath                                                 string
@@ -285,7 +291,7 @@ func (c *Config) iuseEffectiveMatch(flag string) bool {
 	return c.iuseEffective[flag]
 }
 
-func (c *Config) regenerate(useonly int) { // 0 n
+func (c *Config) regenerate(useonly int) { // 0
 	c.modifying()
 	myincrementals := map[string]bool{}
 	if useonly != 0 {
@@ -689,7 +695,7 @@ func (c *Config) modifying() error {
 	return nil
 }
 
-func (c *Config) SetCpv(cpv string, mydb string) {
+func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 	if c.setCpvActive {
 		//AssertionError('setcpv recursion detected')
 	}
@@ -697,6 +703,608 @@ func (c *Config) SetCpv(cpv string, mydb string) {
 	defer func() { c.setCpvActive = false }()
 	c.modifying()
 
+	var pkg *pkgStr = nil
+	var explicitIUse map[string]bool = nil
+	var builtUse []string = nil
+	if mycpv == c.setcpvArgsHash.cpv && mydb == c.setcpvArgsHash.mydb {
+		return
+	}
+	c.setcpvArgsHash.cpv = mycpv
+	c.setcpvArgsHash.mydb = mydb
+
+	hasChanged := false
+	c.mycpv = mycpv
+	s := catsplit(mycpv.string)
+	cat := s[0]
+	pf := s[1]
+	cp := cpvGetKey(mycpv.string, "")
+	cpvSlot := c.mycpv
+	pkgInternalUse := ""
+	pkgInternalUseList := []string{}
+	featureUse := []string{}
+	iUse := ""
+	pkgConfigDict := c.configDict["pkg"]
+	previousIUse := pkgConfigDict["IUSE"]
+	previousIUseEffective := pkgConfigDict["IUSE_EFFECTIVE"]
+	previousFeatures := pkgConfigDict["FEATURES"]
+	previousPEnv := c.penv
+	auxKeys := c.setcpvAuxKeys
+
+	pkgConfigDict = map[string]string{}
+
+	pkgConfigDict["CATEGORY"] = cat
+	pkgConfigDict["PF"] = pf
+
+	repository := ""
+	eapi := ""
+	if mydb != nil {
+		ak := map[string]bool{}
+		for v := range auxKeys {
+			if mydb._aux_cache_keys[v] {
+				ak[v] = true
+			}
+		}
+		auxKeys["USE"] = true
+		aks := []string{}
+		for v := range ak {
+			aks = append(aks, v)
+		}
+		ag := mydb.auxGet(c.mycpv, aks, "")
+
+		for i := range aks {
+			k := aks[i]
+			v := ag[i]
+			pkgConfigDict[k] = v
+		}
+		use := strings.Fields(pkgConfigDict["USE"])
+		delete(pkgConfigDict, "USE")
+		builtUse := map[string]bool{}
+		for _, u := range use {
+			builtUse[u] = true
+		}
+		if len(builtUse) == 0 {
+			builtUse = nil
+		}
+		eapi = pkgConfigDict["EAPI"]
+
+		repository = pkgConfigDict["repository"]
+		delete(pkgConfigDict, "repository")
+		if repository != "" {
+			pkgConfigDict["PORTAGE_REPO_NAME"] = repository
+		}
+		iUse = pkgConfigDict["IUSE"]
+		if pkg == nil {
+			c.mycpv = NewPkgStr(c.mycpv.string, pkgConfigDict, c, "", "", "", 0, "", "", 0, "")
+			cpvSlot = c.mycpv
+		} else {
+			cpvSlot = pkg
+		}
+		for _, x := range strings.Fields(iUse) {
+			if strings.HasPrefix(x, "+") {
+				pkgInternalUseList = append(pkgInternalUseList, x[1:])
+			} else if strings.HasPrefix(x, "-") {
+				pkgInternalUseList = append(pkgInternalUseList, x)
+			}
+		}
+		pkgInternalUse = strings.Join(pkgInternalUseList, " ")
+	}
+
+	eapiAttrs := getEapiAttrs(eapi)
+	if pkgInternalUse != c.configDict["pkginternal"]["USE"] {
+		c.configDict["pkginternal"]["USE"] = pkgInternalUse
+		hasChanged = true
+	}
+
+	var repoEnv []map[string]string = nil
+	if repository != "" && repository != (&Package{}).UnknownRepo {
+		repos := []string{}
+		for _, repo := range c.repositories.getitem(repository).mastersRepo {
+			repos = append(repos, repo.name)
+		}
+		repos = append(repos, repository)
+		for _, repo := range repos {
+			d := c.repoMakeDefaults[repo]
+			if d == nil {
+				d = map[string]string{}
+			} else {
+				e := map[string]string{}
+				for k, v := range d {
+					e[k] = v
+				}
+				d = e
+			}
+			var cpDict map[*Atom][]string = nil
+			if _, ok := c.useManager.repoPuseDict[repo]; !ok {
+				cpDict = map[*Atom][]string{}
+			} else {
+				cpDict = c.useManager.repoPuseDict[repo][cp]
+			}
+			var repoPUse [][]string = nil
+			if len(cpDict) > 0 {
+				repoPUse = orderedByAtomSpecificity(cpDict, cpvSlot, "")
+				if len(repoPUse) > 0 {
+					for _, x := range repoPUse {
+						d["USE"] = d["USE"] + " " + strings.Join(x, " ")
+					}
+				}
+			}
+			if len(d) > 0 {
+				repoEnv = append(repoEnv, d)
+			}
+		}
+	}
+
+	if len(repoEnv) != 0 || len(c.configDict["repo"]) != 0 {
+		c.configDict["repo"] = map[string]string{}
+		incremental := 0
+		if len(c.incrementals) > 0 {
+			incremental = 1
+		}
+		r := [][][2]string{}
+		for _, v := range repoEnv {
+			re := [][2]string{}
+			for _, w := range v {
+				re = append(re, [2]string{w, ""})
+			}
+			r = append(r, re)
+		}
+		s := stackLists(r, incremental, false, false, false, false)
+		for k, v := range s {
+			c.configDict["repo"][k.value] = v
+		}
+		hasChanged = true
+	}
+
+	defaultsV := []string{}
+	for i, pkgProfileUseDict := range c.useManager.pkgprofileuse {
+		if len(c.makeDefaultsUse[i]) > 0 {
+			defaultsV = append(defaultsV, c.makeDefaultsUse[i])
+		}
+		cpDict := pkgProfileUseDict[cp]
+		if len(cpDict) > 0 {
+			pkgDefaults := orderedByAtomSpecificity(cpDict, cpvSlot, "")
+			if len(pkgDefaults) > 0 {
+				for _, v := range pkgDefaults {
+					defaultsV = append(defaultsV, v...)
+				}
+			}
+		}
+	}
+	defaults := strings.Join(defaultsV, " ")
+	if defaults != c.configDict["defaults"]["USE"] {
+		c.configDict["defaults"]["USE"] = defaults
+		hasChanged = true
+	}
+
+	useForce := c.useManager.getUseForce(cpvSlot, nil)
+	if len(useForce) != len(c.useforce) {
+		c.useforce = useForce
+		hasChanged = true
+	}
+
+	useMask := c.useManager.getUseMask(cpvSlot, nil)
+	if len(useMask) != len(c.usemask) {
+		c.usemask = useMask
+		hasChanged = true
+	}
+
+	oldpuse := c.puse
+	c.puse = c.useManager.getPUSE(cpvSlot)
+	if oldpuse != c.puse {
+		hasChanged = true
+	}
+	c.configDict["pkg"]["PKGUSE"] = c.puse[:]
+	c.configDict["pkg"]["USE"] = c.puse[:]
+
+	if len(previousFeatures) != 0 {
+		hasChanged = true
+		c.configDict["features"]["USE"] = c.defaultFeaturesUse
+	}
+
+	c.penv = []string{}
+	cpDict := c.penvdict[cp]
+	if len(cpDict) > 0 {
+		pEnvMatches := orderedByAtomSpecificity(cpDict, cpvSlot, "")
+		if len(pEnvMatches) > 0 {
+			for _, x := range pEnvMatches {
+				c.penv = append(c.penv, x...)
+			}
+		}
+	}
+
+	bashrcFiles := []string{}
+	for i := range c.locationsManager.profilesComplex {
+		profile, profileBashrc := c.locationsManager.profilesComplex[i], c.profileBashrc[i]
+		if profileBashrc {
+			bashrcFiles = append(bashrcFiles, path.Join(profile.location, "profile.bashrc"))
+		}
+		if _, ok := c.pbashrcdict[profile]; ok {
+			cpDict = c.pbashrcdict[profile][cp]
+			if len(cpDict) > 0 {
+				bashrcMatches := orderedByAtomSpecificity(cpDict, cpvSlot, "")
+				for _, x := range bashrcMatches {
+					bashrcFiles = append(bashrcFiles, x...)
+				}
+			}
+		}
+	}
+	for _, v := range bashrcFiles {
+		c.pbashrc[v] = true
+	}
+
+	protectedPkgKeys := map[string]bool{}
+	for k := range pkgConfigDict {
+		protectedPkgKeys[k] = true
+	}
+	delete(protectedPkgKeys, "USE")
+
+	if len(c.penv) > 0 {
+
+		hasChanged = true
+		delete(pkgConfigDict, "USE")
+		c.grabPkgEnv(c.penv, pkgConfigDict, protectedPkgKeys)
+
+		if len(c.puse) > 0 {
+			if _, ok := pkgConfigDict["USE"]; ok {
+				pkgConfigDict["USE"] = pkgConfigDict["USE"] + " " + c.puse
+			} else {
+				pkgConfigDict["USE"] = c.puse
+			}
+		}
+	} else if len(previousPEnv) > 0 {
+		hasChanged = true
+	}
+	if !(previousIUse == iUse &&
+		((previousIUseEffective != "") == eapiAttrs.iuseEffective)) {
+		hasChanged = true
+	}
+
+	if hasChanged {
+		c.reset(1)
+	}
+
+	if c.features.features["test"] {
+		featureUse = append(featureUse, "test")
+	}
+
+	fu := strings.Join(featureUse, " ")
+	if fu != c.configDict["features"]["USE"] {
+		c.configDict["features"]["USE"] = fu
+		c.reset(1)
+		hasChanged = true
+	}
+
+	if explicitIUse == nil {
+		explicitIUse = map[string]bool{}
+		for _, x := range strings.Fields(iUse) {
+			explicitIUse[strings.TrimLeft(x, "+-")] = true
+		}
+	}
+	var iUseImplicitMatch func(string) bool
+	if eapiAttrs.iuseEffective {
+		iUseImplicitMatch = c.iuseEffectiveMatch
+	} else {
+		iUseImplicitMatch = c.iuseImplicitMatch.call
+	}
+
+	rawRestrict := ""
+	if pkg == nil {
+		rawRestrict = pkgConfigDict["RESTRICT"]
+	} else {
+		rawRestrict = pkg.metadata["RESTRICT"]
+	}
+
+	restrictTest := false
+	if rawRestrict != "" {
+		var restrict []string = nil
+		if builtUse != nil {
+			useList := map[string]bool{}
+			for _, x := range builtUse {
+				useList[x] = true
+			}
+			restrict = useReduce(rawRestrict, useList, []string{}, false, []string{}, false, "", false, true, nil, nil, false)
+		} else {
+			useList := map[string]bool{}
+			for _, x := range strings.Fields(c.valueDict["USE"]) {
+				if explicitIUse[x] || iUseImplicitMatch(x) {
+					useList[x] = true
+				}
+			}
+			restrict = useReduce(rawRestrict, useList, []string{}, false, []string{}, false, "", false, true, nil, nil, false)
+		}
+		restrictTest = false
+		for _, v := range restrict {
+			if v == "test" {
+				restrictTest = true
+				break
+			}
+		}
+	}
+
+	if restrictTest && c.features.features["test"] {
+		pkgInternalUseList = append(pkgInternalUseList, "-test")
+		pkgInternalUse = strings.Join(pkgInternalUseList, " ")
+		c.configDict["pkginternal"]["USE"] = pkgInternalUse
+		c.reset(1)
+		hasChanged = true
+	}
+
+	envConfigDict := c.configDict["env"]
+
+	for k := range protectedPkgKeys {
+		delete(envConfigDict, k)
+	}
+
+	b := map[string]bool{}
+	for _, x := range builtUse {
+		b[x] = true
+	}
+	envConfigDict["ACCEPT_LICENSE"] = c.licenseManager.getPrunnedAcceptLicense(c.mycpv, b, c.valueDict["LICENSE"], c.valueDict["SLOT"], c.valueDict["PORTAGE_REPO_NAME"])
+	restrict := useReduce(c.valueDict["RESTRICT"], map[string]bool{}, []string{}, false, []string{}, false, "", false, false, nil, nil, false)
+	rm := map[string]bool{}
+	for _, r := range restrict {
+		rm[r] = true
+	}
+	restrict = []string{}
+	for r := range rm {
+		restrict = append(restrict, r)
+	}
+	sort.Strings(restrict)
+	envConfigDict["PORTAGE_RESTRICT"] = strings.Join(restrict, " ")
+
+	if builtUse != nil {
+		pkgConfigDict["PORTAGE_BUILT_USE"] = strings.Join(builtUse, " ")
+	}
+
+	if !hasChanged {
+		return
+	}
+
+	use := map[string]bool{}
+	for _, x := range strings.Fields(c.valueDict["USE"]) {
+		use[x] = true
+	}
+
+	var portageIuse map[string]bool = nil
+	if eapiAttrs.iuseEffective {
+
+		portageIuse = CopyMapSB(c.iuseEffective)
+		for x := range explicitIUse {
+			portageIuse[x] = true
+		}
+		if builtUse != nil {
+			for _, x := range builtUse {
+				portageIuse[x] = true
+			}
+		}
+		pi := []string{}
+		for x := range portageIuse {
+			pi = append(pi, x)
+		}
+		sort.Strings(pi)
+		c.configDict["pkg"]["IUSE_EFFECTIVE"] = strings.Join(pi, " ")
+
+		pis := []string{}
+		for _, x := range pi {
+			pis = append(pis, fmt.Sprintf("[\"%s\"]=1", x))
+		}
+
+		c.configDict["env"]["BASH_FUNC____in_portage_iuse%%"] = fmt.Sprintf("() { if [[ ${#___PORTAGE_IUSE_HASH[@]} -lt 1 ]]; then   declare -gA ___PORTAGE_IUSE_HASH=(%s); fi; [[ -n ${___PORTAGE_IUSE_HASH[$1]} ]]; }", strings.Join(pis, " "))
+	} else {
+		portageIuse = c.getImplicitIuse()
+		for x := range explicitIUse {
+			portageIuse[x] = true
+		}
+
+		pis := []string{}
+		for k := range portageIuse {
+			pis = append(pis, k)
+		}
+		c.configDict["env"]["PORTAGE_IUSE"] = lazyIuseRegex(pis)
+		c.configDict["env"]["BASH_FUNC____in_portage_iuse%%"] = "() { [[ $1 =~ ${PORTAGE_IUSE} ]]; }"
+	}
+
+	ebuildForceTest := !restrictTest && c.valueDict["EBUILD_FORCE_TEST"] == "1"
+
+	if explicitIUse["test"] || iUseImplicitMatch("test") {
+		if c.features.features["test"] {
+			in := false
+			var at *Atom
+			for a := range c.usemask {
+				if a.value == "test" {
+					in = true
+					at = a
+					break
+				}
+			}
+			if ebuildForceTest && in {
+				delete(c.usemask, at)
+			}
+		}
+		in := false
+		for a := range c.usemask {
+			if a.value == "test" {
+				in = true
+				break
+			}
+		}
+		if restrictTest || (in && !ebuildForceTest) {
+			fs := []string{}
+			for x := range c.features.features {
+				if x != "test" {
+					fs = append(fs, x)
+				}
+			}
+			c.valueDict["FEATURES"] = strings.Join(fs, " ")
+		}
+	}
+
+	if eapiAttrs.featureFlagTargetroot && (explicitIUse["targetroot"] || iUseImplicitMatch("targetroot")) {
+		if c.valueDict["ROOT"] != "/" {
+			use["targetroot"] = true
+		} else {
+			delete(use, "targetroot")
+		}
+	}
+	for x := range use {
+		if (!explicitIUse[x] && !iUseImplicitMatch(x)) && x[len(x)-2:] != "_*" {
+			delete(use, x)
+		}
+	}
+
+	useExpandSplit := map[string]bool{}
+	for _, x := range strings.Fields(c.valueDict["USE_EXPAND"]) {
+		useExpandSplit[strings.ToLower(x)] = true
+	}
+
+	useExpandIuses := map[string]map[string]bool{}
+	for k := range useExpandSplit {
+		useExpandIuses[k] = map[string]bool{}
+	}
+	for x := range portageIuse {
+		xSplit := strings.Split(x, "_")
+		if len(xSplit) == 1 {
+			continue
+		}
+		for i := 0; i < (len(xSplit) - 1); i++ {
+			k := strings.Join(xSplit[:i+1], "_")
+			if useExpandSplit[k] {
+				useExpandIuses[k][x] = true
+				break
+			}
+		}
+	}
+
+	for k, useExpandIuse := range useExpandIuses {
+		if use[k+"_*"] {
+			for x := range useExpandIuse {
+				for u := range useMask {
+					if u.value == x {
+						use[x] = true
+					}
+				}
+			}
+		}
+		k = strings.ToUpper(k)
+		prefix := strings.ToLower(k) + "_"
+		prefixLen := len(prefix)
+		expandFlags := map[string]bool{}
+		for x := range use {
+			if x[:prefixLen] == prefix {
+				expandFlags[x[prefixLen:]] = true
+			}
+		}
+		varSplit := []string{}
+		for _, x := range strings.Fields(c.useExpandDict[k]) {
+			if expandFlags[x] {
+				varSplit = append(varSplit, x)
+			}
+		}
+		vs := []string{}
+		for x := range expandFlags {
+			in := false
+			for _, v := range varSplit {
+				if v == x {
+					in = true
+					break
+				}
+			}
+			if in {
+				vs = append(vs, x)
+			}
+		}
+		varSplit = append(varSplit, vs...)
+		hasWildcard := expandFlags["*"]
+		if hasWildcard {
+			v := []string{}
+			for _, x := range varSplit {
+				if x != "*" {
+					v = append(v, x)
+				}
+			}
+			varSplit = v
+		}
+		hasIUse := map[string]bool{}
+		for x := range portageIuse {
+
+			if x[:prefixLen] == prefix {
+
+				hasIUse[x[prefixLen:]] = true
+			}
+		}
+		if hasWildcard {
+			if len(hasIUse) > 0 {
+				for suffix := range hasIUse {
+					x := prefix + suffix
+					in := false
+					for u := range useMask {
+						if u.value == x {
+							in = true
+							break
+						}
+					}
+					if !in {
+						if expandFlags[suffix] {
+							varSplit = append(varSplit, suffix)
+						}
+					}
+				}
+			} else {
+				varSplit = []string{}
+			}
+		}
+		filteredVarSplit := []string{}
+		remaining := map[string]bool{}
+		for x := range hasIUse {
+			in := false
+			for _, v := range varSplit {
+				if v == x {
+					in = true
+					break
+				}
+			}
+			if in {
+				remaining[x] = true
+			}
+		}
+		for _, x := range varSplit {
+			if remaining[x] {
+				delete(remaining, x)
+				filteredVarSplit = append(filteredVarSplit, x)
+			}
+		}
+		varSplit = filteredVarSplit
+
+		c.configDict["env"][k] = strings.Join(varSplit, " ")
+	}
+
+	for _, k := range strings.Fields(c.valueDict["USE_EXPAND_UNPREFIXED"]) {
+		varSplit := strings.Fields(c.valueDict[k])
+		vs := []string{}
+		for _, x := range varSplit {
+			if use[x] {
+				vs = append(vs, x)
+			}
+		}
+		varSplit = vs
+		if len(varSplit) > 0 {
+			c.configList[len(c.configList)-1][k] = strings.Join(varSplit, " ")
+		} else if _, ok := c.valueDict[k]; ok {
+			c.configList[len(c.configList)-1][k] = ""
+		}
+	}
+
+	u := []string{}
+	for x := range use {
+		if x[len(x)-2:] != "_*" {
+			u = append(u, x)
+		}
+	}
+	sort.Strings(u)
+
+	c.configDict["env"]["PORTAGE_USE"] = strings.Join(u, " ")
+
+	eapiCache = map[string]bool{}
 }
 
 func (c *Config) isStable(pkg *pkgStr) bool {
@@ -712,6 +1320,33 @@ func (c *Config) keywordsManager() *keywordsManager {
 
 func (c *Config) pkeywordsdict() map[string]map[*Atom][]string {
 	return c.keywordsManager().pkeywordsDict
+}
+
+func (c *Config) reset(keeping_pkg int) { // 0
+	c.modifying()
+	c.configDict["env"] = map[string]string{}
+	for k, v := range c.backupenv {
+		c.configDict["env"][k] = v
+	}
+
+	c.modifiedkeys = []string{}
+	if keeping_pkg == 0 {
+		c.mycpv = nil
+		c.setcpvArgsHash = struct {
+			cpv  *pkgStr
+			mydb *vardbapi
+		}{}
+		c.puse = ""
+		c.penv = []string{}
+		c.configDict["pkg"] = map[string]string{}
+		c.configDict["pkginternal"] = map[string]string{}
+		c.configDict["features"]["USE"] = c.defaultFeaturesUse
+		c.configDict["repo"] = map[string]string{}
+		c.configDict["defaults"]["USE"] = strings.Join(c.makeDefaultsUse, " ")
+		c.usemask = c.useManager.getUseMask(nil, nil)
+		c.useforce = c.useManager.getUseForce(nil, nil)
+	}
+	c.regenerate(0)
 }
 
 func (c *Config) virtualsManager() *virtualManager {
@@ -856,7 +1491,7 @@ func (c *Config) grabPkgEnv(penv []string, container map[string]string, protecte
 
 var eapiCache = map[string]bool{}
 
-func NewConfig(clone *Config, mycpv, configProfilePath string, configIncrementals []string, configRoot, targetRoot, sysroot, eprefix string, localConfig bool, env map[string]string, unmatchedRemoval bool, repositories *repoConfigLoader) *Config {
+func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configIncrementals []string, configRoot, targetRoot, sysroot, eprefix string, localConfig bool, env map[string]string, unmatchedRemoval bool, repositories *repoConfigLoader) *Config {
 	eapiCache = make(map[string]bool)
 	tolerant := initializingGlobals == nil
 	c := &Config{
@@ -1678,8 +2313,8 @@ func NewConfig(clone *Config, mycpv, configProfilePath string, configIncremental
 		output_init(c.valueDict["PORTAGE_CONFIGROOT"])
 		data_init(c)
 	}
-	if mycpv != "" {
-		c.SetCpv(mycpv, "")
+	if mycpv != nil {
+		c.SetCpv(mycpv, nil)
 	}
 
 	return c

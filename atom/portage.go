@@ -268,7 +268,7 @@ func createTrees(config_root, target_root string, ts map[string]*tree, env map[s
 		env = expandEnv()
 	}
 
-	settings := NewConfig(nil, "", "", nil, config_root, target_root, sysroot, eprefix, false, env, false, nil)
+	settings := NewConfig(nil, nil, "", nil, config_root, target_root, sysroot, eprefix, false, env, false, nil)
 	settings.lock()
 
 	depcachedir := settings.valueDict["PORTAGE_DEPCACHEDIR"]
@@ -296,7 +296,7 @@ func createTrees(config_root, target_root string, ts map[string]*tree, env map[s
 		if depcachedir != "" {
 			clean_env["PORTAGE_DEPCACHEDIR"] = depcachedir
 		}
-		settings = NewConfig(nil, "", "", nil, "", "/", "/", "", false, clean_env, false, nil)
+		settings = NewConfig(nil, nil, "", nil, "", "/", "/", "", false, clean_env, false, nil)
 		settings.lock()
 		trees._running_eroot = settings.valueDict["EROOT"]
 		myroots = append(myroots, st{settings.valueDict["EROOT"], settings})
@@ -331,7 +331,7 @@ var _root, _mtimedbfile *string = nil, nil
 
 var _legacy_globals_constructed map[string]bool
 
-func db() *_trees_dict {
+func Db() *_trees_dict {
 	if _db != nil {
 		return _db
 	}
@@ -339,7 +339,7 @@ func db() *_trees_dict {
 	return _db
 }
 
-func settings() *Config {
+func Settings() *Config {
 	if _settings != nil {
 		return _settings
 	}
@@ -347,7 +347,7 @@ func settings() *Config {
 	return _settings
 }
 
-func root() string {
+func Root() string {
 	if _root != nil {
 		return *_root
 	}
@@ -355,12 +355,12 @@ func root() string {
 	return *_root
 }
 
-func mtimedbfile() string {
+func Mtimedbfile() string {
 	if _mtimedbfile != nil {
 		return *_mtimedbfile
 	}
 	_mtimedbfile = new(string)
-	*_mtimedbfile = path.Join(settings().valueDict["EROOT"], CachePath, "mtimedb")
+	*_mtimedbfile = path.Join(Settings().valueDict["EROOT"], CachePath, "mtimedb")
 	return *_mtimedbfile
 }
 

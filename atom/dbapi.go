@@ -3,6 +3,7 @@ package atom
 import (
 	"fmt"
 	"os"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -548,8 +549,189 @@ func NewContentsCaseSensitivityManager(db string) *ContentsCaseSensitivityManage
 	return nil
 }
 
+type vdbMetadataDelta struct {
+	vardb *vardbapi
+}
+
+func (v *vdbMetadataDelta) initialize() {}
+
+func (v *vdbMetadataDelta) load() {}
+
+func (v *vdbMetadataDelta) loadRace() {}
+
+func (v *vdbMetadataDelta) recordEvent() {}
+
+func (v *vdbMetadataDelta) applyDelta() {}
+
+func NewVdbMetadataDelta(vardb *vardbapi) *vdbMetadataDelta {
+	v := &vdbMetadataDelta{}
+	v.vardb = vardb
+	return v
+}
+
 type vardbapi struct {
 	*dbapi
+	_exclude_dirs, _aux_cache_keys_re, _aux_multi_line_re *regexp.Regexp
+	_aux_cache_version, _owners_cache_version             string
+	_aux_cache_threshold                                  int
+
+	_pkgs_changed, _flush_cache_enabled                                                        bool
+	mtdircache, matchcache, cpcache, blockers, _slot_locks                                     map[string]string
+	_eroot, _dbroot, _conf_mem_file, _aux_cache_filename, _cache_delta_filename, _counter_path string
+	_lock, _fs_lock_obj, _aux_cache_obj, _cached_counter                                       interface{}
+	_lock_count, _fs_lock_count                                                                int
+	vartree                                                                                    *varTree
+	_aux_cache_keys                                                                            map[string]bool
+	_cache_delta                                                                               *vdbMetadataDelta
+	_plib_registry                                                                             *preservedLibsRegistry
+	_linkmap                                                                                   *linkageMapELF
+	_owners                                                                                    *_owners_db
+}
+
+func (v *varTree) writable() {}
+
+func (v *varTree) root() {}
+
+func (v *varTree) getpath() {}
+
+func (v *varTree) lock() {}
+
+func (v *varTree) unlock() {}
+
+func (v *varTree) _fs_lock() {}
+
+func (v *varTree) _fs_unlock() {}
+
+func (v *varTree) _slot_lock() {}
+
+func (v *varTree) _slot_unlock() {}
+
+func (v *varTree) _bump_mtime() {}
+
+func (v *varTree) cpv_exists() {}
+
+func (v *varTree) cpv_counter() {}
+
+func (v *varTree) cpv_inject() {}
+
+func (v *varTree) isInjected() {}
+
+func (v *varTree) move_ent() {}
+
+func (v *varTree) cp_list() {}
+
+func (v *varTree) cpv_all() {}
+
+func (v *varTree) _iter_cpv_all() {}
+
+func (v *varTree) checkblockers() {}
+
+func (v *varTree) _clear_cache() {}
+
+func (v *varTree) _add() {}
+
+func (v *varTree) _remove() {}
+
+func (v *varTree) _clear_pkg_cache() {}
+
+func (v *varTree) match() {}
+
+func (v *varTree) findname() {}
+
+func (v *varTree) flush_cache() {}
+
+func (v *varTree) _aux_cache() {}
+
+func (v *varTree) _aux_cache_init() {}
+
+func (v *varTree) aux_get() {}
+
+func (v *varTree) _aux_get() {}
+
+func (v *varTree) _aux_env_search() {}
+
+func (v *varTree) aux_update() {}
+
+func (v *varTree) counter_tick() {}
+
+func (v *varTree) get_counter_tick_core() {}
+
+func (v *varTree) counter_tick_core() {}
+
+func (v *varTree) _dblink() {}
+
+func (v *varTree) removeFromContents() {}
+
+func (v *varTree) writeContentsToContentsFile() {}
+
+func NewVarDbApi(categories string, settings *Config, vartree *varTree) *vardbapi {
+	v := &vardbapi{}
+	e := []string{}
+	for _, v := range []string{"CVS", "lost+found"} {
+		e = append(e, regexp.QuoteMeta(v))
+	}
+	v._exclude_dirs = regexp.MustCompile("^(\\..*|" + MergingIdentifier + ".*|" + strings.Join(e, "|") + ")$")
+	v._aux_cache_version = "1"
+	v._owners_cache_version = "1"
+	v._aux_cache_threshold = 5
+	v._aux_cache_keys_re = regexp.MustCompile("^NEEDED\\..*$")
+	v._aux_multi_line_re = regexp.MustCompile("^(CONTENTS|NEEDED\\..*)$")
+
+	v._pkgs_changed = false
+	v._flush_cache_enabled = true
+	v.mtdircache = map[string]string{}
+	v.matchcache = map[string]string{}
+	v.cpcache = map[string]string{}
+	v.blockers = nil
+	if settings == nil {
+		settings = Settings()
+	}
+	v.settings = settings
+	v._eroot = settings.valueDict["EROOT"]
+	v._dbroot = v._eroot + VdbPath
+	v._lock = nil
+	v._lock_count = 0
+
+	v._conf_mem_file = v._eroot + ConfigMemoryFile
+	v._fs_lock_obj = nil
+	v._fs_lock_count = 0
+	v._slot_locks = map[string]string{}
+
+	if vartree == nil {
+		vartree = Db().valueDict[settings.valueDict["EROOT"]].VarTree()
+	}
+	v.vartree = vartree
+	v._aux_cache_keys = map[string]bool{
+		"BDEPEND": true, "BUILD_TIME": true, "CHOST": true, "COUNTER": true, "DEPEND": true,
+		"DESCRIPTION": true, "EAPI": true, "HDEPEND": true, "HOMEPAGE": true,
+		"BUILD_ID": true, "IUSE": true, "KEYWORDS": true,
+		"LICENSE": true, "PDEPEND": true, "PROPERTIES": true, "RDEPEND": true,
+		"repository": true, "RESTRICT": true, "SLOT": true, "USE": true, "DEFINED_PHASES": true,
+		"PROVIDES": true, "REQUIRES": true,
+	}
+	v._aux_cache_obj = nil
+	v._aux_cache_filename = path.Join(v._eroot, CachePath, "vdb_metadata.pickle")
+	v._cache_delta_filename = path.Join(v._eroot, CachePath, "vdb_metadata_delta.json")
+	v._cache_delta = NewVdbMetadataDelta(v)
+	v._counter_path = path.Join(v._eroot, CachePath, "counter")
+
+	v._plib_registry = NewPreservedLibsRegistry(settings.valueDict["ROOT"], path.Join(v._eroot, PrivatePath, "preserved_libs_registry"))
+	v._linkmap = NewLinkageMapELF(v)
+	v._owners = NewOwnersDb(v)
+
+	v._cached_counter = nil
+
+	return v
+}
+
+type _owners_db struct {
+	vardb *vardbapi
+}
+
+func NewOwnersDb(vardb *vardbapi) *_owners_db {
+	o := &_owners_db{}
+	o.vardb = vardb
+	return o
 }
 
 type varTree struct {
@@ -564,6 +746,10 @@ func (v *varTree) get_all_provides() map[string][]*pkgStr {
 
 func NewVarTree(categories map[string]bool, settings *Config) *varTree {
 	v := &varTree{}
+	if settings == nil {
+		settings = Settings()
+	}
+	v.settings = settings
 
 	return v
 }

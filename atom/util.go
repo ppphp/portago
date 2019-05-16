@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/google/shlex"
 	"github.com/ppphp/configparser"
-	"golang.org/x/sys/unix"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -545,7 +544,7 @@ func findUpdatedConfigFiles(targetRoot string, configProtect []string) []sss {
 			x = path.Join(targetRoot, strings.TrimPrefix(x, string(os.PathSeparator)))
 			s, _ := os.Lstat(x)
 			myMode := s.Mode()
-			if myMode&unix.W_OK == 0 {
+			if myMode&syscall.O_WRONLY == 0 {
 				continue
 			}
 			if myMode&os.ModeSymlink != 0 {
@@ -958,7 +957,7 @@ func applyPermissions(filename string, uid, gid, mode, mask int, statCached os.F
 			newMode = mode
 		}
 	}
-	if modified && int(uint32(stMode)) == -1 && (int(uint32(stMode))&unix.S_ISUID != 0 || int(uint32(stMode))&unix.S_ISGID != 0) {
+	if modified && int(uint32(stMode)) == -1 && (int(uint32(stMode))&syscall.S_ISUID != 0 || int(uint32(stMode))&syscall.S_ISGID != 0) {
 		if mode == -1 {
 			newMode = stMode
 		} else {
@@ -1115,4 +1114,45 @@ func _compression_probe_file(f *os.File) string {
 		}
 	}
 	return ""
+}
+
+type preservedLibsRegistry struct {
+	_json_write      bool
+	_json_write_opts map[string]bool
+	_root, _filename string
+	_data, _lock     interface{}
+}
+
+func NewPreservedLibsRegistry(root, filename string) *preservedLibsRegistry {
+	p := &preservedLibsRegistry{_json_write: true, _json_write_opts: map[string]bool{
+		"ensure_ascii": false,
+		"indent":       true,
+		"sort_keys":    true,
+	}}
+	p._root = root
+	p._filename = filename
+
+	return p
+}
+
+type linkageMapELF struct {
+	_needed_aux_key   string
+	_soname_map_class struct {
+		consumers, providers []string
+	}
+	_dbapi                                                            *vardbapi
+	_root                                                             string
+	_libs, _obj_properties, _obj_key_cache, _defpath, _path_key_cache map[string]string
+}
+
+func NewLinkageMapELF(vardbapi *vardbapi) *linkageMapELF {
+	l := &linkageMapELF{}
+	l._dbapi = vardbapi
+	l._root = l._dbapi.settings.valueDict["ROOT"]
+	l._libs = map[string]string{}
+	l._obj_properties = map[string]string{}
+	l._obj_key_cache = map[string]string{}
+	l._defpath = map[string]string{}
+	l._path_key_cache = map[string]string{}
+	return l
 }
