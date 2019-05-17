@@ -166,28 +166,28 @@ func (d *dbapi) cpv_all() []*pkgStr {
 	return cpvList
 }
 
-func (d *dbapi) update_ents(updates map[string][]string, onProgress, onUpdate func(int, int)) {
-	cpv_all := d.cpv_all()
-	sort.Slice(cpv_all, func(i, j int) bool {
-		return cpv_all[i].string < cpv_all[j].string
+func (d *dbapi) update_ents(updates map[string][][]*Atom, onProgress, onUpdate func(int, int)) {
+	cpvAll := d.cpv_all()
+	sort.Slice(cpvAll, func(i, j int) bool {
+		return cpvAll[i].string < cpvAll[j].string
 	})
-	maxval := len(cpv_all)
-	aux_get := d.auxGet
-	aux_update := d.auxUpdate
-	update_keys := Package{}.depKeys
-	meta_keys := append(update_keys, d._pkg_str_aux_keys...)
-	repo_dict := updates // is dict, else nil
+	maxval := len(cpvAll)
+	auxGet := d.auxGet
+	auxUpdate := d.auxUpdate
+	updateKeys := Package{}.depKeys
+	metaKeys := append(updateKeys, d._pkg_str_aux_keys...)
+	repoDict := updates // is dict, else nil
 	if onUpdate != nil {
 		onUpdate(maxval, 0)
 	}
 	if onProgress != nil {
 		onProgress(maxval, 0)
 	}
-	for i, cpv := range cpv_all {
+	for i, cpv := range cpvAll {
 
 		metadata := map[string]string{}
-		a := aux_get(cpv, meta_keys, "")
-		for i, v := range meta_keys {
+		a := auxGet(cpv, metaKeys, "")
+		for i, v := range metaKeys {
 			metadata[v] = a[i]
 		}
 		//except KeyError:
@@ -196,26 +196,26 @@ func (d *dbapi) update_ents(updates map[string][]string, onProgress, onUpdate fu
 		//except InvalidData:
 		//continue
 		m := map[string]string{}
-		for _, k := range update_keys {
+		for _, k := range updateKeys {
 			m[k] = metadata[k]
 		}
 		//if repo_dict ==nil{ // always false
 		//	updates_list = updates
 		//} else{
-		var updates_list []string = nil
+		var updatesList [][]*Atom = nil
 		var ok bool
-		if updates_list, ok = repo_dict[pkg.repo]; !ok {
-			if updates_list, ok = repo_dict["DEFAULT"]; !ok {
+		if updatesList, ok = repoDict[pkg.repo]; !ok {
+			if updatesList, ok = repoDict["DEFAULT"]; !ok {
 				continue
 			}
 		}
 
-		if len(updates_list) == 0 {
+		if len(updatesList) == 0 {
 			continue
 		}
-		metadata_updates := update_dbentries(updates_list, metadata, "", pkg)
-		if len(metadata_updates) != 0 {
-			aux_update(cpv.string, metadata_updates)
+		metadataUpdates := update_dbentries(updatesList, metadata, "", pkg)
+		if len(metadataUpdates) != 0 {
+			auxUpdate(cpv.string, metadataUpdates)
 		}
 		if onUpdate != nil {
 			onUpdate(maxval, i+1)
@@ -588,83 +588,100 @@ type vardbapi struct {
 	_owners                                                                                    *_owners_db
 }
 
-func (v *varTree) writable() {}
+func (v *vardbapi) writable() bool{
+	st, err := os.Stat(firstExisting(v._dbroot))
+	return err!= nil && st.Mode()&os.FileMode(os.O_WRONLY)!=0
+}
 
-func (v *varTree) root() {}
+func (v *vardbapi) getpath(mykey, filename string) string{ // ""
+	rValue := v._dbroot+VdbPath+string(os.PathSeparator)+mykey
+	if filename!=""{
+		rValue = path.Join(rValue, filename)
+	}
+	return rValue
+}
 
-func (v *varTree) getpath() {}
+func (v *vardbapi) lock() {
+	if v._lock_count!=0{
+		v._lock_count++
+	}else{
+			if v._lock!=nil{
+				//raise AssertionError("already locked")
+			}
+			ensureDirs(v._dbroot)
+			v._lock
+	}
+}
 
-func (v *varTree) lock() {}
+func (v *vardbapi) unlock() {}
 
-func (v *varTree) unlock() {}
+func (v *vardbapi) _fs_lock() {}
 
-func (v *varTree) _fs_lock() {}
+func (v *vardbapi) _fs_unlock() {}
 
-func (v *varTree) _fs_unlock() {}
+func (v *vardbapi) _slot_lock() {}
 
-func (v *varTree) _slot_lock() {}
+func (v *vardbapi) _slot_unlock() {}
 
-func (v *varTree) _slot_unlock() {}
+func (v *vardbapi) _bump_mtime() {}
 
-func (v *varTree) _bump_mtime() {}
+func (v *vardbapi) cpv_exists() {}
 
-func (v *varTree) cpv_exists() {}
+func (v *vardbapi) cpv_counter() {}
 
-func (v *varTree) cpv_counter() {}
+func (v *vardbapi) cpv_inject() {}
 
-func (v *varTree) cpv_inject() {}
+func (v *vardbapi) isInjected() {}
 
-func (v *varTree) isInjected() {}
+func (v *vardbapi) move_ent() {}
 
-func (v *varTree) move_ent() {}
+func (v *vardbapi) cp_list() {}
 
-func (v *varTree) cp_list() {}
+func (v *vardbapi) cpv_all() {}
 
-func (v *varTree) cpv_all() {}
+func (v *vardbapi) _iter_cpv_all() {}
 
-func (v *varTree) _iter_cpv_all() {}
+func (v *vardbapi) checkblockers() {}
 
-func (v *varTree) checkblockers() {}
+func (v *vardbapi) _clear_cache() {}
 
-func (v *varTree) _clear_cache() {}
+func (v *vardbapi) _add() {}
 
-func (v *varTree) _add() {}
+func (v *vardbapi) _remove() {}
 
-func (v *varTree) _remove() {}
+func (v *vardbapi) _clear_pkg_cache() {}
 
-func (v *varTree) _clear_pkg_cache() {}
+func (v *vardbapi) match() {}
 
-func (v *varTree) match() {}
+func (v *vardbapi) findname() {}
 
-func (v *varTree) findname() {}
+func (v *vardbapi) flush_cache() {}
 
-func (v *varTree) flush_cache() {}
+func (v *vardbapi) _aux_cache() {}
 
-func (v *varTree) _aux_cache() {}
+func (v *vardbapi) _aux_cache_init() {}
 
-func (v *varTree) _aux_cache_init() {}
+func (v *vardbapi) aux_get() {}
 
-func (v *varTree) aux_get() {}
+func (v *vardbapi) _aux_get() {}
 
-func (v *varTree) _aux_get() {}
+func (v *vardbapi) _aux_env_search() {}
 
-func (v *varTree) _aux_env_search() {}
+func (v *vardbapi) aux_update() {}
 
-func (v *varTree) aux_update() {}
+func (v *vardbapi) counter_tick() {}
 
-func (v *varTree) counter_tick() {}
+func (v *vardbapi) get_counter_tick_core() {}
 
-func (v *varTree) get_counter_tick_core() {}
+func (v *vardbapi) counter_tick_core() {}
 
-func (v *varTree) counter_tick_core() {}
+func (v *vardbapi) _dblink() {}
 
-func (v *varTree) _dblink() {}
+func (v *vardbapi) removeFromContents() {}
 
-func (v *varTree) removeFromContents() {}
+func (v *vardbapi) writeContentsToContentsFile() {}
 
-func (v *varTree) writeContentsToContentsFile() {}
-
-func NewVarDbApi(categories string, settings *Config, vartree *varTree) *vardbapi {
+func NewVarDbApi(settings *Config, vartree *varTree) *vardbapi { // nil, nil
 	v := &vardbapi{}
 	e := []string{}
 	for _, v := range []string{"CVS", "lost+found"} {

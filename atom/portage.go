@@ -385,14 +385,85 @@ func DisableLegacyGlobals() {
 
 var ignored_dbentries = map[string]bool{"CONTENTS": true, "environment.bz2": true}
 
-func update_dbentry(update_cmd string, mycontent string, eapi string, parent *pkgStr) string { // "", nil
+func update_dbentry(updateCmd []*Atom, mycontent string, eapi string, parent *pkgStr) string { // "", nil
 	if parent != nil {
 		eapi = parent.eapi
+	}
+	if updateCmd[0].value == "move" {
+		oldValue := updateCmd[1]
+		newValue := updateCmd[2]
+		if strings.Contains(mycontent, oldValue.value) && isValidAtom(newValue.value, false, false, false, "", false) {
+			splitContent := regexp.MustCompile("(\\s+)").Split(mycontent, -1)
+			modified := false
+			for i, token := range splitContent {
+				if !strings.Contains(token, oldValue.value) {
+					continue
+				}
+				atom, err := NewAtom(token, nil, false, nil, nil, eapi, nil, nil)
+				if err != nil {
+					continue
+				}
+				if atom.cp != oldValue.value {
+					continue
+				}
+				newAtom, _ := NewAtom(strings.Replace(token, oldValue.value, newValue.value, 1), nil, false, nil, nil, eapi, nil, nil)
+				if newAtom.blocker != nil && parent != nil && parent.cp == newAtom.cp && len(matchFromList(newAtom, []*pkgStr{parent})) > 0 {
+					continue
+				}
+				splitContent[i] = newAtom.value
+				modified = true
+			}
+
+			if modified {
+				mycontent = strings.Join(splitContent, "")
+			}
+		}
+	} else if updateCmd[0].value == "slotmove" && updateCmd[1].operator == "" {
+		origAtom, origslot, newslot := updateCmd[1], updateCmd[2], updateCmd[3]
+		origCp := origAtom.cp
+		if origAtom.version == "" && strings.Contains(mycontent, origCp) {
+			splitContent := regexp.MustCompile("(\\s+)").Split(mycontent, -1)
+			modified := false
+			for i, token := range splitContent {
+
+				if !strings.Contains(token, origCp) {
+					continue
+				}
+				atom, err := NewAtom(token, nil, false, nil, nil, eapi, nil, nil)
+				if err != nil {
+					continue
+				}
+				if atom.cp != origCp {
+					continue
+				}
+				if atom.slot == "" || atom.slot != origslot.value {
+					continue
+				}
+				slotPart := newslot.value
+				if atom.subSlot != "" {
+					subSlot := ""
+					if atom.subSlot == origslot.value {
+						subSlot = newslot.value
+					} else {
+						subSlot = atom.subSlot
+					}
+					slotPart += "/" + subSlot
+				}
+				if atom.slotOperator != "" {
+					slotPart += atom.slotOperator
+				}
+				splitContent[i] = atom.withSlot(slotPart).value
+				modified = true
+			}
+			if modified {
+				mycontent = strings.Join(splitContent, "")
+			}
+		}
 	}
 	return mycontent
 }
 
-func update_dbentries(updateIter []string, mydata map[string]string, eapi string, parent *pkgStr) map[string]string { // "", nil
+func update_dbentries(updateIter [][]*Atom, mydata map[string]string, eapi string, parent *pkgStr) map[string]string { // "", nil
 	updatedItems := map[string]string{}
 	for k, mycontent := range mydata {
 		if !ignored_dbentries[k] {
