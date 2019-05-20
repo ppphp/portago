@@ -781,6 +781,31 @@ func (f *fakedbapi) _instance_key_cpv(cpv *pkgStr, support_string bool) *pkgStr 
 	return cpv
 }
 
+func (f *fakedbapi) clear(){
+	f._clear_cache()
+	f.cpvdict = map[string]string{	}
+	f.cpdict = map[string]string{}
+}
+
+func (f *fakedbapi) _clear_cache(){
+	if f._categories != nil {
+		f._categories = nil
+	}
+	if len(f._match_cache)>0{
+		f._match_cache = map[string]string{}
+	}
+}
+func (f *fakedbapi) cp_all(sortt bool) []string{
+	s := []string{}
+	for x := range f.cpdict{
+		s = append(s, x)
+	}
+	if sortt{
+		sort.Strings(s)
+	}
+	return s
+}
+
 func NewFakeDbApi(settings *Config, exclusive_slots, multi_instance bool) *fakedbapi { // nil, true, false
 	f := &fakedbapi{dbapi: NewDbapi(), _exclusive_slots: exclusive_slots,
 		cpvdict: map[string]string{},
