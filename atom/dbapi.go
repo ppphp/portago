@@ -588,28 +588,28 @@ type vardbapi struct {
 	_owners                                                                                    *_owners_db
 }
 
-func (v *vardbapi) writable() bool{
+func (v *vardbapi) writable() bool {
 	st, err := os.Stat(firstExisting(v._dbroot))
-	return err!= nil && st.Mode()&os.FileMode(os.O_WRONLY)!=0
+	return err != nil && st.Mode()&os.FileMode(os.O_WRONLY) != 0
 }
 
-func (v *vardbapi) getpath(mykey, filename string) string{ // ""
-	rValue := v._dbroot+VdbPath+string(os.PathSeparator)+mykey
-	if filename!=""{
+func (v *vardbapi) getpath(mykey, filename string) string { // ""
+	rValue := v._dbroot + VdbPath + string(os.PathSeparator) + mykey
+	if filename != "" {
 		rValue = path.Join(rValue, filename)
 	}
 	return rValue
 }
 
 func (v *vardbapi) lock() {
-	if v._lock_count!=0{
+	if v._lock_count != 0 {
 		v._lock_count++
-	}else{
-			if v._lock!=nil{
-				//raise AssertionError("already locked")
-			}
-			ensureDirs(v._dbroot)
-			v._lock
+	} else {
+		if v._lock != nil {
+			//raise AssertionError("already locked")
+		}
+		ensureDirs(v._dbroot, -1, -1, -1, -1, nil, true)
+		//v._lock
 	}
 }
 
@@ -704,7 +704,7 @@ func NewVarDbApi(settings *Config, vartree *varTree) *vardbapi { // nil, nil
 		settings = Settings()
 	}
 	v.settings = settings
-	v._eroot = settings.valueDict["EROOT"]
+	v._eroot = settings.ValueDict["EROOT"]
 	v._dbroot = v._eroot + VdbPath
 	v._lock = nil
 	v._lock_count = 0
@@ -715,7 +715,7 @@ func NewVarDbApi(settings *Config, vartree *varTree) *vardbapi { // nil, nil
 	v._slot_locks = map[string]string{}
 
 	if vartree == nil {
-		vartree = Db().valueDict[settings.valueDict["EROOT"]].VarTree()
+		vartree = Db().valueDict[settings.ValueDict["EROOT"]].VarTree()
 	}
 	v.vartree = vartree
 	v._aux_cache_keys = map[string]bool{
@@ -732,7 +732,7 @@ func NewVarDbApi(settings *Config, vartree *varTree) *vardbapi { // nil, nil
 	v._cache_delta = NewVdbMetadataDelta(v)
 	v._counter_path = path.Join(v._eroot, CachePath, "counter")
 
-	v._plib_registry = NewPreservedLibsRegistry(settings.valueDict["ROOT"], path.Join(v._eroot, PrivatePath, "preserved_libs_registry"))
+	v._plib_registry = NewPreservedLibsRegistry(settings.ValueDict["ROOT"], path.Join(v._eroot, PrivatePath, "preserved_libs_registry"))
 	v._linkmap = NewLinkageMapELF(v)
 	v._owners = NewOwnersDb(v)
 

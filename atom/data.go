@@ -41,14 +41,14 @@ var uid = os.Geteuid()
 func data_init(settings *Config) {
 	if portage_gid == nil && _portage_username == nil {
 		v := ""
-		if w, ok := settings.valueDict["PORTAGE_GRPNAME"]; ok {
+		if w, ok := settings.ValueDict["PORTAGE_GRPNAME"]; ok {
 			v = w
 		} else {
 			v = "portage"
 		}
 		_portage_grpname = new(string)
 		*_portage_grpname = v
-		if w, ok := settings.valueDict["PORTAGE_USERNAME"]; ok {
+		if w, ok := settings.ValueDict["PORTAGE_USERNAME"]; ok {
 			v = w
 		} else {
 			v = "portage"

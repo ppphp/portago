@@ -216,7 +216,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 	r.moduleSpecificOptions = map[string]string{}
 	r.format = strings.TrimSpace(repoOpts["format"])
 
-	if s, _ := os.Stat(repoOpts["location"]); s.IsDir() || SyncMode {
+	if s, err := os.Stat(repoOpts["location"]); err == nil && (s.IsDir() || SyncMode) {
 		r.userLocation = repoOpts["location"]
 		r.location, _ = filepath.EvalSymlinks(repoOpts["location"])
 	}
@@ -737,14 +737,14 @@ func (r *repoConfigLoader) configString() string {
 
 func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 	r := &repoConfigLoader{}
-	prepos, locationMap, treeMap, ignoredMap, defaultOpts := map[string]*repoConfig{}, map[string]string{}, map[string]string{}, map[string][]string{}, map[string]string{"EPREFIX": settings.valueDict["EPREFIX"], "EROOT": settings.valueDict["EROOT"], "PORTAGE_CONFIGROOT": settings.valueDict["PORTAGE_CONFIGROOT"], "ROOT": settings.valueDict["ROOT"]}
+	prepos, locationMap, treeMap, ignoredMap, defaultOpts := map[string]*repoConfig{}, map[string]string{}, map[string]string{}, map[string][]string{}, map[string]string{"EPREFIX": settings.ValueDict["EPREFIX"], "EROOT": settings.ValueDict["EROOT"], "PORTAGE_CONFIGROOT": settings.ValueDict["PORTAGE_CONFIGROOT"], "ROOT": settings.ValueDict["ROOT"]}
 	portDir, portDirOverlay := "", ""
 
-	if _, ok := settings.valueDict["PORTAGE_REPOSITORIES"]; !ok {
-		portDir = settings.valueDict["PORTDIR"]
-		portDirOverlay = settings.valueDict["PORTDIR_OVERLAY"]
+	if _, ok := settings.ValueDict["PORTAGE_REPOSITORIES"]; !ok {
+		portDir = settings.ValueDict["PORTDIR"]
+		portDirOverlay = settings.ValueDict["PORTDIR_OVERLAY"]
 	}
-	defaultOpts["sync-rsync-extra-opts"] = settings.valueDict["PORTAGE_RSYNC_EXTRA_OPTS"]
+	defaultOpts["sync-rsync-extra-opts"] = settings.ValueDict["PORTAGE_RSYNC_EXTRA_OPTS"]
 	if err := r.parse(paths, prepos, settings.localConfig, defaultOpts); err != nil {
 		WriteMsg(fmt.Sprintf("!!! Error while reading repo config file: %s\n", err), -1, nil)
 		prepos = map[string]*repoConfig{}
@@ -752,7 +752,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 		locationMap = map[string]string{}
 		treeMap = map[string]string{}
 	}
-	defaultPortDir := path.Join(string(os.PathSeparator), strings.TrimPrefix(settings.valueDict["EPREFIX"], string(os.PathSeparator)), "usr", "portage")
+	defaultPortDir := path.Join(string(os.PathSeparator), strings.TrimPrefix(settings.ValueDict["EPREFIX"], string(os.PathSeparator)), "usr", "portage")
 	portDir = r.addRepositories(portDir, portDirOverlay, prepos, ignoredMap, settings.localConfig, defaultPortDir)
 	if portDir != "" && strings.TrimSpace(portDir) == "" {
 		portDir, _ = filepath.EvalSymlinks(portDir)
@@ -966,7 +966,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 
 func loadRepositoryConfig(settings *Config, extraFiles string) *repoConfigLoader {
 	repoconfigpaths := []string{}
-	if pr, ok := settings.valueDict["PORTAGE_REPOSITORIES"]; ok {
+	if pr, ok := settings.ValueDict["PORTAGE_REPOSITORIES"]; ok {
 		repoconfigpaths = append(repoconfigpaths, pr)
 	} else {
 		if notInstalled {
@@ -975,7 +975,7 @@ func loadRepositoryConfig(settings *Config, extraFiles string) *repoConfigLoader
 			repoconfigpaths = append(repoconfigpaths, path.Join(settings.globalConfigPath, "repos.conf"))
 		}
 	}
-	repoconfigpaths = append(repoconfigpaths, path.Join(settings.valueDict["PORTAGE_CONFIGROOT"], UserConfigPath, "repos.conf"))
+	repoconfigpaths = append(repoconfigpaths, path.Join(settings.ValueDict["PORTAGE_CONFIGROOT"], UserConfigPath, "repos.conf"))
 	if extraFiles != "" {
 		repoconfigpaths = append(repoconfigpaths, extraFiles)
 	}
@@ -1059,10 +1059,10 @@ func parseLayoutConf(repoLocation, repoName string) (map[string][]string, map[st
 		cacheFormats = []string{}
 	}
 	if len(cacheFormats) == 0 {
-		if s, _ := os.Stat(path.Join(repoLocation, "metadata", "md5-cache")); s.IsDir() {
+		if s, err := os.Stat(path.Join(repoLocation, "metadata", "md5-cache")); err == nil && s.IsDir() {
 			cacheFormats = append(cacheFormats, "md5-dict")
 		}
-		if s, _ := os.Stat(path.Join(repoLocation, "metadata", "ache")); s.IsDir() {
+		if s, err := os.Stat(path.Join(repoLocation, "metadata", "ache")); err == nil && s.IsDir() {
 			cacheFormats = append(cacheFormats, "pms")
 		}
 	}

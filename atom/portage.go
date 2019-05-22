@@ -271,14 +271,14 @@ func createTrees(config_root, target_root string, ts map[string]*tree, env map[s
 	settings := NewConfig(nil, nil, "", nil, config_root, target_root, sysroot, eprefix, false, env, false, nil)
 	settings.lock()
 
-	depcachedir := settings.valueDict["PORTAGE_DEPCACHEDIR"]
-	trees._target_eroot = settings.valueDict["EROOT"]
+	depcachedir := settings.ValueDict["PORTAGE_DEPCACHEDIR"]
+	trees._target_eroot = settings.ValueDict["EROOT"]
 	type st struct {
 		s string
 		t *Config
 	}
-	myroots := []st{{settings.valueDict["EROOT"], settings}}
-	if settings.valueDict["ROOT"] == "/" && settings.valueDict["EPREFIX"] == EPREFIX {
+	myroots := []st{{settings.ValueDict["EROOT"], settings}}
+	if settings.ValueDict["ROOT"] == "/" && settings.ValueDict["EPREFIX"] == EPREFIX {
 		trees._running_eroot = trees._target_eroot
 	} else {
 		clean_env := map[string]string{}
@@ -287,7 +287,7 @@ func createTrees(config_root, target_root string, ts map[string]*tree, env map[s
 			"PORTAGE_REPOSITORIES", "PORTAGE_USERNAME", "PYTHONPATH",
 			"SSH_AGENT_PID", "SSH_AUTH_SOCK", "TERM", "ftp_proxy",
 			"http_proxy", "no_proxy", "__PORTAGE_TEST_HARDLINK_LOCKS"} {
-			v, ok := settings.valueDict[k]
+			v, ok := settings.ValueDict[k]
 			if ok {
 				clean_env[k] = v
 			}
@@ -298,8 +298,8 @@ func createTrees(config_root, target_root string, ts map[string]*tree, env map[s
 		}
 		settings = NewConfig(nil, nil, "", nil, "", "/", "/", "", false, clean_env, false, nil)
 		settings.lock()
-		trees._running_eroot = settings.valueDict["EROOT"]
-		myroots = append(myroots, st{settings.valueDict["EROOT"], settings})
+		trees._running_eroot = settings.ValueDict["EROOT"]
+		myroots = append(myroots, st{settings.ValueDict["EROOT"], settings})
 	}
 
 	for _, v := range myroots {
@@ -360,7 +360,7 @@ func Mtimedbfile() string {
 		return *_mtimedbfile
 	}
 	_mtimedbfile = new(string)
-	*_mtimedbfile = path.Join(Settings().valueDict["EROOT"], CachePath, "mtimedb")
+	*_mtimedbfile = path.Join(Settings().ValueDict["EROOT"], CachePath, "mtimedb")
 	return *_mtimedbfile
 }
 

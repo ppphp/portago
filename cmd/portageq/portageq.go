@@ -51,6 +51,7 @@ type fuu struct {
 
 var globalFunctions = map[string]fuu{
 	"colormap": {colormap, false, false, "Display the color.map as environment variables."},
+	"distdir":  {distdir, false, false, "Returns the DISTDIR path."},
 }
 
 var (
@@ -241,7 +242,10 @@ func colormap([]string) int {
 	fmt.Println(atom.ColorMap())
 	return 0
 }
-func distdir(args []string) int { return 0 }
+func distdir(args []string) int {
+	println(atom.Settings().ValueDict["DISTDIR"])
+	return 0
+}
 func envvar(args []string) int {
 	var newArgs []string
 	verbose := false

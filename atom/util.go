@@ -926,7 +926,7 @@ type slotObject struct {
 	weakRef string
 }
 
-func applyPermissions(filename string, uid, gid, mode, mask int, statCached os.FileInfo, followLinks bool) bool {
+func applyPermissions(filename string, uid, gid, mode, mask int, statCached os.FileInfo, followLinks bool) bool { // -1,-1,-1,-1,nil,true
 	modified := false
 	if statCached == nil {
 		statCached, _ = doStat(filename, followLinks)
@@ -979,7 +979,7 @@ func applyPermissions(filename string, uid, gid, mode, mask int, statCached os.F
 	return modified
 }
 
-func ensureDirs(dirpath string, uid, gid, mode, mask int, statCached os.FileInfo, followLinks bool) bool {
+func ensureDirs(dirpath string, uid, gid, mode, mask int, statCached os.FileInfo, followLinks bool) bool { // -1,-1,-1,-1,nil,true
 	createdDir := false
 	if err := os.MkdirAll(dirpath, 0755); err == nil {
 		createdDir = true
@@ -1148,7 +1148,7 @@ type linkageMapELF struct {
 func NewLinkageMapELF(vardbapi *vardbapi) *linkageMapELF {
 	l := &linkageMapELF{}
 	l._dbapi = vardbapi
-	l._root = l._dbapi.settings.valueDict["ROOT"]
+	l._root = l._dbapi.settings.ValueDict["ROOT"]
 	l._libs = map[string]string{}
 	l._obj_properties = map[string]string{}
 	l._obj_key_cache = map[string]string{}
