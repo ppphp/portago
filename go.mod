@@ -15,6 +15,7 @@ require (
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/martinlindhe/gogost v0.0.0-20170914195721-31862914ae20
 	github.com/mattn/go-isatty v0.0.7 // indirect
+	github.com/noaway/dateparse v0.0.0-20171117034806-ad2b19d7b298
 	github.com/ppphp/configparser v0.0.0-20190303091157-5a4cc43be5f3
 	github.com/sirupsen/logrus v1.4.1
 	github.com/spf13/pflag v1.0.3

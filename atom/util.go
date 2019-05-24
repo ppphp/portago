@@ -6,8 +6,12 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/google/shlex"
+	"github.com/noaway/dateparse"
 	"github.com/ppphp/configparser"
+	"io"
 	"io/ioutil"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -17,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 var noiseLimit = 0
@@ -1155,4 +1160,53 @@ func NewLinkageMapELF(vardbapi *vardbapi) *linkageMapELF {
 	l._defpath = map[string]string{}
 	l._path_key_cache = map[string]string{}
 	return l
+}
+
+func urlopen(Url string, if_modified_since bool) (*http.Response) { // false
+	parse_result, _ := url.Parse(Url)
+	if parse_result.Scheme !=  "http" &&parse_result.Scheme !=  "https"{
+		resp , _ :=  http.Get(Url)
+		return resp
+	}else{
+		netloc := parse_result.Host
+		u := url.URL{
+			Scheme: parse_result.Scheme,
+			Host : netloc,
+			Path : parse_result.Path,
+			RawQuery: parse_result.RawQuery,
+			Fragment: parse_result.Fragment,
+		}
+		Url = u.String()
+		password_manager:= urllib_request.HTTPPasswordMgrWithDefaultRealm()
+		request, _ := http.NewRequest("GET", Url, nil)
+		request.Header.Add("User-Agent", "Gentoo Portage")
+		if if_modified_since{
+			request.Header.Add("If-Modified-Since", _timestamp_to_http(if_modified_since))
+		}
+		if parse_result.User!= nil {
+			password_manager.add_password(None, url, parse_result.username, parse_result.password)
+		}
+		auth_handler = CompressedResponseProcessor(password_manager)
+		opener = urllib_request.build_opener(auth_handler)
+		hdl = opener.open(request)
+		if hdl.headers.get('last-modified', ''):
+	try:
+		add_header = hdl.headers.add_header
+		except AttributeError:
+		# Python 2
+		add_header = hdl.headers.addheader
+		add_header('timestamp', _http_to_timestamp(hdl.headers.get('last-modified')))
+		return hdl
+	}
+}
+
+func _timestamp_to_http(timestamp string)string{
+	ts, _ := strconv.Atoi(timestamp)
+	dt := time.Unix(int64(ts), 0)
+	return dt.Format("Mon Jan 02 15:04:05 -0700 2006")
+}
+
+func _http_to_timestamp(http_datetime_string string)string{
+	t, _ := dateparse.ParseAny(http_datetime_string)
+	return string(t.Unix())
 }
