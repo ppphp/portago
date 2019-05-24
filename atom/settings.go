@@ -89,7 +89,7 @@ func NewIuseImplicitMatchCache(settings *Config) *iuseImplicitMatchCache {
 }
 
 type Config struct {
-	valueDict                                                                                                       map[string]string
+	ValueDict                                                                                                       map[string]string
 	constantKeys, setcpvAuxKeys, envBlacklist, environFilter, environWhitelist, globalOnlyVars, caseInsensitiveVars map[string]bool
 	tolerent, unmatchedRemoval, localConfig, setCpvActive                                                           bool
 	locked                                                                                                          int
@@ -135,7 +135,7 @@ func (c *Config) initIuse() {
 
 func (c *Config) _validateCommands() {
 	for k := range validateCommands {
-		v := c.valueDict[k]
+		v := c.ValueDict[k]
 		if v != "" {
 			valid, vSplit := validateCmdVar(v)
 			if !valid {
@@ -154,7 +154,7 @@ func (c *Config) _validateCommands() {
 					}
 				}
 
-				delete(c.valueDict, k)
+				delete(c.ValueDict, k)
 				delete(c.backupenv, k)
 				if v != "" {
 					c.configDict["globals"][k] = v
@@ -165,7 +165,7 @@ func (c *Config) _validateCommands() {
 }
 
 func (c *Config) initDirs() {
-	st, _ := os.Stat(c.valueDict["EROOT"])
+	st, _ := os.Stat(c.ValueDict["EROOT"])
 	if st.Mode()|os.FileMode(os.O_WRONLY) == 0 {
 		return
 	}
@@ -183,7 +183,7 @@ func (c *Config) initDirs() {
 
 	for mypath, s := range dirModeMap {
 		gid, mode, modemask, preserve_perms := s.gid, s.mode, s.mask, s.preservePerms
-		mydir := path.Join(c.valueDict["EROOT"], mypath)
+		mydir := path.Join(c.ValueDict["EROOT"], mypath)
 		st, _ := os.Stat(mydir)
 		if preserve_perms && st.IsDir() {
 			continue
@@ -250,7 +250,7 @@ func (c *Config) expandLicenseTokens(tokens []string) []string {
 }
 
 func (c *Config) validate() {
-	groups := strings.Fields(c.valueDict["ACCEPT_KEYWORDS"])
+	groups := strings.Fields(c.ValueDict["ACCEPT_KEYWORDS"])
 	archlist := c.archlist()
 	if len(archlist) == 0 {
 		WriteMsg(fmt.Sprintf("--- 'profiles/arch.list' is empty or not available. Empty ebuild repository?\n"), 1, nil)
@@ -262,7 +262,7 @@ func (c *Config) validate() {
 		}
 	}
 	profileBroken := false
-	arch := c.valueDict["ARCH"]
+	arch := c.ValueDict["ARCH"]
 	if len(c.profilePath) == 0 || len(arch) == 0 {
 		profileBroken = true
 	} else {
@@ -282,7 +282,7 @@ func (c *Config) validate() {
 	if profileBroken && !SyncMode {
 		absProfilePath := ""
 		for _, x := range []string{ProfilePath, "etc/make.profile"} {
-			x = path.Join(c.valueDict["PORTAGE_CONFIGROOT"], x)
+			x = path.Join(c.ValueDict["PORTAGE_CONFIGROOT"], x)
 			if _, err := os.Lstat(x); err != nil {
 			} else {
 				absProfilePath = x
@@ -290,16 +290,16 @@ func (c *Config) validate() {
 			}
 		}
 		if absProfilePath == "" {
-			absProfilePath = path.Join(c.valueDict["PORTAGE_CONFIGROOT"], ProfilePath)
+			absProfilePath = path.Join(c.ValueDict["PORTAGE_CONFIGROOT"], ProfilePath)
 		}
 
 		WriteMsg(fmt.Sprintf("\n\n!!! %s is not a symlink and will probably prevent most merges.\n", absProfilePath), -1, nil)
-		WriteMsg(fmt.Sprintf("!!! It should point into a profile within %s/profiles/\n", c.valueDict["PORTDIR"]), 0, nil)
+		WriteMsg(fmt.Sprintf("!!! It should point into a profile within %s/profiles/\n", c.ValueDict["PORTDIR"]), 0, nil)
 		WriteMsg(fmt.Sprintf("!!! (You can safely ignore this message when syncing. It's harmless.)\n\n\n"), 0, nil)
 	}
 	if !sandbox_capable && (c.features.features["sandbox"] || c.features.features["usersandbox"]) {
 		cp, _ := filepath.EvalSymlinks(c.profilePath)
-		pp, _ := filepath.EvalSymlinks(path.Join(c.valueDict["PORTAGE_CONFIGROOT"], ProfilePath))
+		pp, _ := filepath.EvalSymlinks(path.Join(c.ValueDict["PORTAGE_CONFIGROOT"], ProfilePath))
 		if c.profilePath != "" && cp == pp {
 			WriteMsg(colorize("BAD", fmt.Sprintf("!!! Problem with sandbox binary. Disabling...\n\n")), -1, nil)
 		}
@@ -308,11 +308,11 @@ func (c *Config) validate() {
 		WriteMsg(fmt.Sprintf("!!! FEATURES=fakeroot is enabled, but the fakeroot binary is not installed.\n"), -1, nil)
 	}
 
-	if binpkgCompression, ok := c.valueDict["BINPKG_COMPRESS"]; ok {
+	if binpkgCompression, ok := c.ValueDict["BINPKG_COMPRESS"]; ok {
 		if compression, ok := _compressors[binpkgCompression]; !ok {
 			WriteMsg(fmt.Sprintf("!!! BINPKG_COMPRESS contains invalid or unsupported compression method: %s", binpkgCompression), -1, nil)
 		} else {
-			if cs, err := shlex.Split(varExpand(compression["compress"], c.valueDict, "")); err != nil {
+			if cs, err := shlex.Split(varExpand(compression["compress"], c.ValueDict, "")); err != nil {
 
 			} else if len(cs) == 0 {
 				WriteMsg(fmt.Sprintf("!!! BINPKG_COMPRESS contains invalid or unsupported compression method: %s", compression["compress"]), -1, nil)
@@ -688,7 +688,7 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 			restrict = useReduce(rawRestrict, useList, []string{}, false, []string{}, false, "", false, true, nil, nil, false)
 		} else {
 			useList := map[string]bool{}
-			for _, x := range strings.Fields(c.valueDict["USE"]) {
+			for _, x := range strings.Fields(c.ValueDict["USE"]) {
 				if explicitIUse[x] || iUseImplicitMatch(x) {
 					useList[x] = true
 				}
@@ -722,8 +722,8 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 	for _, x := range builtUse {
 		b[x] = true
 	}
-	envConfigDict["ACCEPT_LICENSE"] = c.licenseManager.getPrunnedAcceptLicense(c.mycpv, b, c.valueDict["LICENSE"], c.valueDict["SLOT"], c.valueDict["PORTAGE_REPO_NAME"])
-	restrict := useReduce(c.valueDict["RESTRICT"], map[string]bool{}, []string{}, false, []string{}, false, "", false, false, nil, nil, false)
+	envConfigDict["ACCEPT_LICENSE"] = c.licenseManager.getPrunnedAcceptLicense(c.mycpv, b, c.ValueDict["LICENSE"], c.ValueDict["SLOT"], c.ValueDict["PORTAGE_REPO_NAME"])
+	restrict := useReduce(c.ValueDict["RESTRICT"], map[string]bool{}, []string{}, false, []string{}, false, "", false, false, nil, nil, false)
 	rm := map[string]bool{}
 	for _, r := range restrict {
 		rm[r] = true
@@ -744,7 +744,7 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 	}
 
 	use := map[string]bool{}
-	for _, x := range strings.Fields(c.valueDict["USE"]) {
+	for _, x := range strings.Fields(c.ValueDict["USE"]) {
 		use[x] = true
 	}
 
@@ -787,7 +787,7 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 		c.configDict["env"]["BASH_FUNC____in_portage_iuse%%"] = "() { [[ $1 =~ ${PORTAGE_IUSE} ]]; }"
 	}
 
-	ebuildForceTest := !restrictTest && c.valueDict["EBUILD_FORCE_TEST"] == "1"
+	ebuildForceTest := !restrictTest && c.ValueDict["EBUILD_FORCE_TEST"] == "1"
 
 	if explicitIUse["test"] || iUseImplicitMatch("test") {
 		if c.features.features["test"] {
@@ -818,12 +818,12 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 					fs = append(fs, x)
 				}
 			}
-			c.valueDict["FEATURES"] = strings.Join(fs, " ")
+			c.ValueDict["FEATURES"] = strings.Join(fs, " ")
 		}
 	}
 
 	if eapiAttrs.featureFlagTargetroot && (explicitIUse["targetroot"] || iUseImplicitMatch("targetroot")) {
-		if c.valueDict["ROOT"] != "/" {
+		if c.ValueDict["ROOT"] != "/" {
 			use["targetroot"] = true
 		} else {
 			delete(use, "targetroot")
@@ -836,7 +836,7 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 	}
 
 	useExpandSplit := map[string]bool{}
-	for _, x := range strings.Fields(c.valueDict["USE_EXPAND"]) {
+	for _, x := range strings.Fields(c.ValueDict["USE_EXPAND"]) {
 		useExpandSplit[strings.ToLower(x)] = true
 	}
 
@@ -961,8 +961,8 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 		c.configDict["env"][k] = strings.Join(varSplit, " ")
 	}
 
-	for _, k := range strings.Fields(c.valueDict["USE_EXPAND_UNPREFIXED"]) {
-		varSplit := strings.Fields(c.valueDict[k])
+	for _, k := range strings.Fields(c.ValueDict["USE_EXPAND_UNPREFIXED"]) {
+		varSplit := strings.Fields(c.ValueDict[k])
 		vs := []string{}
 		for _, x := range varSplit {
 			if use[x] {
@@ -972,7 +972,7 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 		varSplit = vs
 		if len(varSplit) > 0 {
 			c.configList[len(c.configList)-1][k] = strings.Join(varSplit, " ")
-		} else if _, ok := c.valueDict[k]; ok {
+		} else if _, ok := c.ValueDict[k]; ok {
 			c.configList[len(c.configList)-1][k] = ""
 		}
 	}
@@ -994,7 +994,7 @@ func (c *Config) grabPkgEnv(penv []string, container map[string]string, protecte
 	if protected_keys == nil {
 		protected_keys = map[string]bool{}
 	}
-	absUserConfig := path.Join(c.valueDict["PORTAGE_CONFIGROOT"], UserConfigPath)
+	absUserConfig := path.Join(c.ValueDict["PORTAGE_CONFIGROOT"], UserConfigPath)
 	nonUserVariables := c.nonUserVariables
 	expandMap := CopyMapSS(c.expandMap)
 	incrementals := c.incrementals
@@ -1027,26 +1027,26 @@ func (c *Config) iuseEffectiveMatch(flag string) bool {
 
 func (c *Config) calcIuseEffective() map[string]bool {
 	iuseEffective := map[string]bool{}
-	for _, x := range strings.Fields(c.valueDict["IUSE_IMPLICIT"]) {
+	for _, x := range strings.Fields(c.ValueDict["IUSE_IMPLICIT"]) {
 		iuseEffective[x] = true
 	}
 	useExpandImplicit := map[string]bool{}
-	for _, x := range strings.Fields(c.valueDict["USE_EXPAND_IMPLICIT"]) {
+	for _, x := range strings.Fields(c.ValueDict["USE_EXPAND_IMPLICIT"]) {
 		useExpandImplicit[x] = true
 	}
-	for _, v := range strings.Fields(c.valueDict["USE_EXPAND_UNPREFIXED"]) {
+	for _, v := range strings.Fields(c.ValueDict["USE_EXPAND_UNPREFIXED"]) {
 		if !useExpandImplicit[v] {
 			continue
 		}
-		for _, x := range strings.Fields(c.valueDict["USE_EXPAND_IMPLICIT"]) {
+		for _, x := range strings.Fields(c.ValueDict["USE_EXPAND_IMPLICIT"]) {
 			useExpandImplicit[x] = true
 		}
-		for _, x := range strings.Fields(c.valueDict["USE_EXPAND_VALUES_"+v]) {
+		for _, x := range strings.Fields(c.ValueDict["USE_EXPAND_VALUES_"+v]) {
 			iuseEffective[x] = true
 		}
 	}
 	useExpand := map[string]bool{}
-	for _, x := range strings.Fields(c.valueDict["USE_EXPAND"]) {
+	for _, x := range strings.Fields(c.ValueDict["USE_EXPAND"]) {
 		useExpand[x] = true
 	}
 	for v := range useExpandImplicit {
@@ -1054,7 +1054,7 @@ func (c *Config) calcIuseEffective() map[string]bool {
 			continue
 		}
 		lowerV := strings.ToLower(v)
-		for _, x := range strings.Fields(c.valueDict["USE_EXPAND_VALUES_"+v]) {
+		for _, x := range strings.Fields(c.ValueDict["USE_EXPAND_VALUES_"+v]) {
 			iuseEffective[lowerV+"_"+x] = true
 		}
 	}
@@ -1068,10 +1068,10 @@ func (c *Config) getImplicitIuse() map[string]bool {
 	if arch != "" {
 		iuseImplicit[arch] = true
 	}
-	for _, x := range strings.Fields(c.valueDict["PORTAGE_ARCHLIST"]) {
+	for _, x := range strings.Fields(c.ValueDict["PORTAGE_ARCHLIST"]) {
 		iuseImplicit[x] = true
 	}
-	useExpandHidden := strings.Fields(c.valueDict["USE_EXPAND_HIDDEN"])
+	useExpandHidden := strings.Fields(c.ValueDict["USE_EXPAND_HIDDEN"])
 	for _, x := range useExpandHidden {
 		iuseImplicit[strings.ToLower(x)+"_.*"] = true
 	}
@@ -1104,7 +1104,7 @@ func (c *Config) _getRawMaskAtom(cpv *pkgStr, metadata map[string]string) *Atom 
 }
 
 func (c *Config) isStable(pkg *pkgStr) bool {
-	return c.keywordsManager().isStable(pkg, c.valueDict["ACCEPT_KEYWORDS"], c.configDict["backupenv"]["ACCEPT_KEYWORDS"])
+	return c.keywordsManager().isStable(pkg, c.ValueDict["ACCEPT_KEYWORDS"], c.configDict["backupenv"]["ACCEPT_KEYWORDS"])
 }
 
 func (c *Config) _getKeywords(cpv *pkgStr, metadata map[string]string) map[*Atom]string {
@@ -1113,16 +1113,16 @@ func (c *Config) _getKeywords(cpv *pkgStr, metadata map[string]string) map[*Atom
 
 func (c *Config) _getMissingKeywords(cpv *pkgStr, metadata map[string]string) map[*Atom]string {
 	backupedAcceptKeywords := c.configDict["backupenv"]["ACCEPT_KEYWORDS"]
-	globalAcceptKeywords := c.valueDict["ACCEPT_KEYWORDS"]
+	globalAcceptKeywords := c.ValueDict["ACCEPT_KEYWORDS"]
 	return c.keywordsManager().GetMissingKeywords(cpv, metadata["SLOT"], metadata["KEYWORDS"], metadata["repository"], globalAcceptKeywords, backupedAcceptKeywords)
 }
 
 func (c *Config) _getRawMissingKeywords(cpv *pkgStr, metadata map[string]string) map[*Atom]string {
-	return c.keywordsManager().getRawMissingKeywords(cpv, metadata["SLOT"], metadata["KEYWORDS"], metadata["repository"], c.valueDict["ACCEPT_KEYWORDS"])
+	return c.keywordsManager().getRawMissingKeywords(cpv, metadata["SLOT"], metadata["KEYWORDS"], metadata["repository"], c.ValueDict["ACCEPT_KEYWORDS"])
 }
 
 func (c *Config) _getPKeywords(cpv *pkgStr, metadata map[string]string) []string {
-	globalAcceptKeywords := c.valueDict["ACCEPT_KEYWORDS"]
+	globalAcceptKeywords := c.ValueDict["ACCEPT_KEYWORDS"]
 	return c.keywordsManager().getPKeywords(cpv, metadata["SLOT"], metadata["repository"], globalAcceptKeywords)
 }
 
@@ -1205,7 +1205,7 @@ func (c *Config) regenerate(useonly int) { // 0
 				myFlags[x] = true
 			}
 		}
-		if _, ok := c.valueDict[myKey]; len(myFlags) > 0 || ok {
+		if _, ok := c.ValueDict[myKey]; len(myFlags) > 0 || ok {
 			m := []string{}
 			for k := range myFlags {
 				m = append(m, k)
@@ -1214,15 +1214,15 @@ func (c *Config) regenerate(useonly int) { // 0
 			c.configList[len(c.configList)-1][myKey] = strings.Join(m, " ")
 		}
 	}
-	useExpand := strings.Fields(c.valueDict["USE_EXPAND"])
+	useExpand := strings.Fields(c.ValueDict["USE_EXPAND"])
 	useExpandDict := c.useExpandDict
 	useExpandDict = map[string]string{}
 	for _, k := range useExpand {
-		if v, ok := c.valueDict[k]; ok {
+		if v, ok := c.ValueDict[k]; ok {
 			useExpandDict[k] = v
 		}
 	}
-	useExpandUnprefixed := strings.Fields(c.valueDict["USE_EXPAND_UNPREFIXED"])
+	useExpandUnprefixed := strings.Fields(c.ValueDict["USE_EXPAND_UNPREFIXED"])
 	configDictDefaults := c.configDict["defaults"]
 	if c.makeDefaults != nil {
 		for _, cfg := range c.makeDefaults {
@@ -1261,7 +1261,7 @@ func (c *Config) regenerate(useonly int) { // 0
 		c.makeDefaults = nil
 	}
 	if len(c.uvlist) == 0 {
-		for _, x := range strings.Split(c.valueDict["USER_ORDER"], ":") {
+		for _, x := range strings.Split(c.ValueDict["USER_ORDER"], ":") {
 			if _, ok := c.configDict[x]; ok {
 				c.uvlist = append(c.uvlist, c.configDict[x])
 			}
@@ -1384,7 +1384,7 @@ func (c *Config) regenerate(useonly int) { // 0
 	} else {
 		c.features = NewFeaturesSet(c)
 	}
-	for _, x := range strings.Fields(c.valueDict["FEATURES"]) {
+	for _, x := range strings.Fields(c.ValueDict["FEATURES"]) {
 		c.features.features[x] = true
 	}
 	c.features.syncEnvVar()
@@ -1430,12 +1430,12 @@ func (c *Config) regenerate(useonly int) { // 0
 			varSplit = append(varSplit, e...)
 			if len(varSplit) > 0 {
 				c.configList[len(c.configList)-1][k] = strings.Join(varSplit, " ")
-			} else if _, ok := c.valueDict[k]; ok {
+			} else if _, ok := c.ValueDict[k]; ok {
 				c.configList[len(c.configList)-1][k] = ""
 			}
 		}
 		for _, k := range useExpandUnprefixed {
-			varSplit := strings.Fields(c.valueDict[k])
+			varSplit := strings.Fields(c.ValueDict[k])
 			v := []string{}
 			for _, x := range varSplit {
 				if myFlags[x] {
@@ -1444,7 +1444,7 @@ func (c *Config) regenerate(useonly int) { // 0
 			}
 			if len(varSplit) > 0 {
 				c.configList[len(c.configList)-1][k] = strings.Join(varSplit, " ")
-			} else if _, ok := c.valueDict[k]; ok {
+			} else if _, ok := c.ValueDict[k]; ok {
 				c.configList[len(c.configList)-1][k] = ""
 			}
 		}
@@ -1482,7 +1482,7 @@ func (c *Config) _populate_treeVirtuals_if_needed(vartree *varTree) {
 
 func (c *Config) archlist() map[string]bool {
 	archlist := map[string]bool{}
-	for _, myarch := range strings.Fields(c.valueDict["PORTAGE_ARCHLIST"]) {
+	for _, myarch := range strings.Fields(c.ValueDict["PORTAGE_ARCHLIST"]) {
 		archlist[myarch] = true
 		archlist["~"+myarch] = true
 	}
@@ -1735,7 +1735,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		oldMakeGlobals := path.Join(configRoot, "etc", "make.globals")
 		f1, _ := filepath.EvalSymlinks(makeGlobalsPath)
 		f2, _ := filepath.EvalSymlinks(oldMakeGlobals)
-		if s, _ := os.Stat(oldMakeGlobals); !s.IsDir() && f1 != f2 {
+		if s, err := os.Stat(oldMakeGlobals); err != nil || (!s.IsDir() && f1 != f2) {
 			WriteMsg(fmt.Sprintf("!!!Found obsolete make.globals file: '%s', (using '%s' instead)\n", oldMakeGlobals, makeGlobalsPath), -1, nil)
 		}
 		makeGlobals := getConfig(makeGlobalsPath, tolerant, false, true, false, expandMap)
@@ -1799,13 +1799,14 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		c.configList = append(c.configList, makeGlobals)
 		c.configDict["globals"] = c.configList[len(c.configList)-1]
 		c.makeDefaultsUse = []string{}
-		c.valueDict["PORTAGE_CONFIGROOT"] = configRoot
-		c.valueDict["ROOT"] = targetRoot
-		c.valueDict["SYSROOT"] = sysroot
-		c.valueDict["EPREFIX"] = eprefix
-		c.valueDict["EROOT"] = eroot
-		c.valueDict["ESYSROOT"] = esysroot
-		c.valueDict["BROOT"] = broot
+		c.ValueDict = map[string]string{}
+		c.ValueDict["PORTAGE_CONFIGROOT"] = configRoot
+		c.ValueDict["ROOT"] = targetRoot
+		c.ValueDict["SYSROOT"] = sysroot
+		c.ValueDict["EPREFIX"] = eprefix
+		c.ValueDict["EROOT"] = eroot
+		c.ValueDict["ESYSROOT"] = esysroot
+		c.ValueDict["BROOT"] = broot
 		knownRepos := []string{}
 		portDir := ""
 		portDirOverlay := ""
@@ -1824,13 +1825,13 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 				portDirSync = v
 			}
 			if _, ok := confs["PORTAGE_RSYNC_EXTRA_OPTS"]; ok {
-				c.valueDict["PORTAGE_RSYNC_EXTRA_OPTS"] = confs["PORTAGE_RSYNC_EXTRA_OPTS"]
+				c.ValueDict["PORTAGE_RSYNC_EXTRA_OPTS"] = confs["PORTAGE_RSYNC_EXTRA_OPTS"]
 			}
 		}
-		c.valueDict["PORTDIR"] = portDir
-		c.valueDict["PORTDIR_OVERLAY"] = portDirOverlay
+		c.ValueDict["PORTDIR"] = portDir
+		c.ValueDict["PORTDIR_OVERLAY"] = portDirOverlay
 		if portDirSync != "" {
-			c.valueDict["SYNC"] = portDirSync
+			c.ValueDict["SYNC"] = portDirSync
 		}
 		c.lookupList = []map[string]string{c.configDict["env"]}
 		if repositories == nil {
@@ -1843,16 +1844,16 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		for _, v := range knownRepos {
 			kr[v] = true
 		}
-		c.valueDict["PORTAGE_REPOSITORIES"] = c.repositories.configString()
+		c.ValueDict["PORTAGE_REPOSITORIES"] = c.repositories.configString()
 		c.backupChanges("PORTAGE_REPOSITORIES")
 		mainRepo := c.repositories.mainRepo()
 		if mainRepo != nil {
-			c.valueDict["PORTDIR"] = mainRepo.location
+			c.ValueDict["PORTDIR"] = mainRepo.location
 			c.backupChanges("PORTDIR")
-			expandMap["PORTDIR"] = c.valueDict["PORTDIR"]
+			expandMap["PORTDIR"] = c.ValueDict["PORTDIR"]
 		}
 		portDirOverlay1 := c.repositories.repoLocationList
-		if len(portDirOverlay1) > 0 && portDirOverlay1[0] == c.valueDict["PORTDIR"] {
+		if len(portDirOverlay1) > 0 && portDirOverlay1[0] == c.ValueDict["PORTDIR"] {
 			portDirOverlay1 = portDirOverlay1[1:]
 		}
 		newOv := []string{}
@@ -1866,10 +1867,10 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 				}
 			}
 		}
-		c.valueDict["PORTDIR_OVERLAY"] = strings.Join(newOv, " ")
+		c.ValueDict["PORTDIR_OVERLAY"] = strings.Join(newOv, " ")
 		c.backupChanges("PORTDIR_OVERLAY")
-		expandMap["PORTDIR_OVERLAY"] = c.valueDict["PORTDIR_OVERLAY"]
-		locationsManager.setPortDirs(c.valueDict["PORTDIR"], c.valueDict["PORTDIR_OVERLAY"])
+		expandMap["PORTDIR_OVERLAY"] = c.ValueDict["PORTDIR_OVERLAY"]
+		locationsManager.setPortDirs(c.ValueDict["PORTDIR"], c.ValueDict["PORTDIR_OVERLAY"])
 		locationsManager.loadProfiles(c.repositories, knownRepos)
 		profilesComplex := locationsManager.profilesComplex
 		c.profiles = locationsManager.profiles
@@ -1959,21 +1960,21 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 			}
 			delete(c.backupenv, blackListed)
 		}
-		c.valueDict["PORTAGE_CONFIGROOT"] = configRoot
+		c.ValueDict["PORTAGE_CONFIGROOT"] = configRoot
 		c.backupChanges("PORTAGE_CONFIGROOT")
-		c.valueDict["ROOT"] = targetRoot
+		c.ValueDict["ROOT"] = targetRoot
 		c.backupChanges("ROOT")
-		c.valueDict["SYSROOT"] = sysroot
+		c.ValueDict["SYSROOT"] = sysroot
 		c.backupChanges("SYSROOT")
-		c.valueDict["EPREFIX"] = eprefix
+		c.ValueDict["EPREFIX"] = eprefix
 		c.backupChanges("EPREFIX")
-		c.valueDict["EROOT"] = eroot
+		c.ValueDict["EROOT"] = eroot
 		c.backupChanges("EROOT")
-		c.valueDict["ESYSROOT"] = esysroot
+		c.ValueDict["ESYSROOT"] = esysroot
 		c.backupChanges("ESYSROOT")
-		c.valueDict["BROOT"] = broot
+		c.ValueDict["BROOT"] = broot
 		c.backupChanges("BROOT")
-		c.valueDict["PORTAGE_OVERRIDE_EPREFIX"] = EPREFIX
+		c.ValueDict["PORTAGE_OVERRIDE_EPREFIX"] = EPREFIX
 		c.backupChanges("PORTAGE_OVERRIDE_EPREFIX")
 
 		c.ppropertiesdict = map[string]map[*Atom][]string{}
@@ -2201,23 +2202,23 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 			}
 		}
 
-		if _, ok := c.valueDict["USE_ORDER"]; !ok {
-			c.valueDict["USE_ORDER"] = "env:pkg:conf:defaults:pkginternal:features:repo:env.d"
+		if _, ok := c.ValueDict["USE_ORDER"]; !ok {
+			c.ValueDict["USE_ORDER"] = "env:pkg:conf:defaults:pkginternal:features:repo:env.d"
 			c.backupChanges("USE_ORDER")
 		}
-		_, ok1 := c.valueDict["CBUILD"]
-		_, ok2 := c.valueDict["CHOST"]
+		_, ok1 := c.ValueDict["CBUILD"]
+		_, ok2 := c.ValueDict["CHOST"]
 		if !ok1 && ok2 {
-			c.valueDict["CBUILD"] = c.valueDict["CHOST"]
+			c.ValueDict["CBUILD"] = c.ValueDict["CHOST"]
 			c.backupChanges("CBUILD")
 		}
 
-		if _, ok := c.valueDict["USERLAND"]; !ok {
+		if _, ok := c.ValueDict["USERLAND"]; !ok {
 			system := runtime.GOOS
 			if system != "" && (strings.HasSuffix(system, "BSD") || system == "DragonFly") {
-				c.valueDict["USERLAND"] = "BSD"
+				c.ValueDict["USERLAND"] = "BSD"
 			} else {
-				c.valueDict["USERLAND"] = "GNU"
+				c.ValueDict["USERLAND"] = "GNU"
 			}
 			c.backupChanges("USERLAND")
 		}
@@ -2235,37 +2236,37 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 			defaultInstIds["PORTAGE_INST_GID"] = fmt.Sprintf("%v", erootSt.Sys().(*syscall.Stat_t).Gid)
 			defaultInstIds["PORTAGE_INST_UID"] = fmt.Sprintf("%v", erootSt.Sys().(*syscall.Stat_t).Uid)
 
-			if _, ok := c.valueDict["PORTAGE_USERNAME"]; !ok {
+			if _, ok := c.ValueDict["PORTAGE_USERNAME"]; !ok {
 				if pwdStruct, err := user.LookupId(fmt.Sprintf("%v", erootSt.Sys().(*syscall.Stat_t).Uid)); err != nil {
 				} else {
-					c.valueDict["PORTAGE_USERNAME"] = pwdStruct.Name
+					c.ValueDict["PORTAGE_USERNAME"] = pwdStruct.Name
 					c.backupChanges("PORTAGE_USERNAME")
 				}
 			}
 
-			if _, ok := c.valueDict["PORTAGE_GRPNAME"]; !ok {
+			if _, ok := c.ValueDict["PORTAGE_GRPNAME"]; !ok {
 				if grpStruct, err := user.LookupGroupId(fmt.Sprintf("%v", erootSt.Sys().(*syscall.Stat_t).Gid)); err != nil {
 				} else {
-					c.valueDict["PORTAGE_GRPNAME"] = grpStruct.Name
+					c.ValueDict["PORTAGE_GRPNAME"] = grpStruct.Name
 					c.backupChanges("PORTAGE_GRPNAME")
 				}
 			}
 		}
 
 		for varr, defaultVal := range defaultInstIds {
-			v, ok := c.valueDict[varr]
+			v, ok := c.ValueDict[varr]
 			if !ok {
 				v = defaultVal
 			}
 			if _, err := strconv.Atoi(v); err != nil {
-				WriteMsg(fmt.Sprintf("!!! %s='%s' is not a valid integer. Falling back to %s.\n", varr, c.valueDict[varr], defaultVal), -1, nil)
+				WriteMsg(fmt.Sprintf("!!! %s='%s' is not a valid integer. Falling back to %s.\n", varr, c.ValueDict[varr], defaultVal), -1, nil)
 			} else {
-				c.valueDict[varr] = v
+				c.ValueDict[varr] = v
 			}
 			c.backupChanges(varr)
 		}
 
-		c.depcachedir = c.valueDict["PORTAGE_DEPCACHEDIR"]
+		c.depcachedir = c.ValueDict["PORTAGE_DEPCACHEDIR"]
 		if c.depcachedir == "" {
 			c.depcachedir = path.Join(string(os.PathSeparator), EPREFIX, strings.TrimPrefix(DepcachePath, string(os.PathSeparator)))
 			if unprivileged && targetRoot != string(os.PathSeparator) {
@@ -2275,11 +2276,11 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 			}
 		}
 
-		c.valueDict["PORTAGE_DEPCACHEDIR"] = c.depcachedir
+		c.ValueDict["PORTAGE_DEPCACHEDIR"] = c.depcachedir
 		c.backupChanges("PORTAGE_DEPCACHEDIR")
 
 		if InternalCaller {
-			c.valueDict["PORTAGE_INTERNAL_CALLER"] = "1"
+			c.ValueDict["PORTAGE_INTERNAL_CALLER"] = "1"
 			c.backupChanges("PORTAGE_INTERNAL_CALLER")
 		}
 
@@ -2305,12 +2306,12 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		c._validateCommands()
 
 		for k := range c.caseInsensitiveVars {
-			if _, ok := c.valueDict[k]; ok {
-				c.valueDict[k] = strings.ToLower(c.valueDict[k])
+			if _, ok := c.ValueDict[k]; ok {
+				c.ValueDict[k] = strings.ToLower(c.ValueDict[k])
 				c.backupChanges(k)
 			}
 		}
-		output_init(c.valueDict["PORTAGE_CONFIGROOT"])
+		output_init(c.ValueDict["PORTAGE_CONFIGROOT"])
 		data_init(c)
 	}
 	if mycpv != nil {
@@ -2372,7 +2373,7 @@ func (f *featuresSet) iter() []string {
 func (f *featuresSet) syncEnvVar() {
 	p := f.iter()
 	sort.Strings(p)
-	f.settings.valueDict["FEATURES"] = strings.Join(p, " ")
+	f.settings.ValueDict["FEATURES"] = strings.Join(p, " ")
 }
 
 func (f *featuresSet) add(k string) {

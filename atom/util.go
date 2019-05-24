@@ -8,7 +8,6 @@ import (
 	"github.com/google/shlex"
 	"github.com/noaway/dateparse"
 	"github.com/ppphp/configparser"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -1021,24 +1020,24 @@ func NewProjectFilename(mydest, newmd5 string, force bool) string {
 		}
 	}
 	protNum++
-	newPfile := NormalizePath(path.Join(realDirname, ".cfg"+fmt.Sprintf("%04s", string(protNum))+"_"+realFilename))
-	oldPfile := NormalizePath(path.Join(realDirname, lastFile))
+	newPFile := NormalizePath(path.Join(realDirname, ".cfg"+fmt.Sprintf("%04s", string(protNum))+"_"+realFilename))
+	oldPFile := NormalizePath(path.Join(realDirname, lastFile))
 	if len(lastFile) != 0 && len(newmd5) != 0 {
-		oldPfileSt, err := os.Lstat(oldPfile)
+		oldPfileSt, err := os.Lstat(oldPFile)
 		if err != nil {
 			if oldPfileSt.Mode()&os.ModeSymlink != 0 {
-				pfileLink, err := os.Readlink(oldPfile)
+				pfileLink, err := os.Readlink(oldPFile)
 				if err != nil {
 					if pfileLink == newmd5 {
-						return oldPfile
+						return oldPFile
 					}
 				}
 			} else {
-				//lastPfileMd5 := string(performMd5Merge(oldPfile, 0))
+				//lastPfileMd5 := string(performMd5Merge(oldPFile, 0))
 			}
 		}
 	}
-	return newPfile
+	return newPFile
 }
 
 func readConfigs(parser *configparser.Configuration, paths []string) {
@@ -1162,51 +1161,43 @@ func NewLinkageMapELF(vardbapi *vardbapi) *linkageMapELF {
 	return l
 }
 
-func urlopen(Url string, if_modified_since bool) (*http.Response) { // false
-	parse_result, _ := url.Parse(Url)
-	if parse_result.Scheme !=  "http" &&parse_result.Scheme !=  "https"{
-		resp , _ :=  http.Get(Url)
+func urlopen(Url string, ifModifiedSince string) *http.Response { // false
+	parseResult, _ := url.Parse(Url)
+	if parseResult.Scheme != "http" && parseResult.Scheme != "https" {
+		resp, _ := http.Get(Url)
 		return resp
-	}else{
-		netloc := parse_result.Host
+	} else {
+		netloc := parseResult.Host
 		u := url.URL{
-			Scheme: parse_result.Scheme,
-			Host : netloc,
-			Path : parse_result.Path,
-			RawQuery: parse_result.RawQuery,
-			Fragment: parse_result.Fragment,
+			Scheme:   parseResult.Scheme,
+			Host:     netloc,
+			Path:     parseResult.Path,
+			RawQuery: parseResult.RawQuery,
+			Fragment: parseResult.Fragment,
 		}
 		Url = u.String()
-		password_manager:= urllib_request.HTTPPasswordMgrWithDefaultRealm()
 		request, _ := http.NewRequest("GET", Url, nil)
 		request.Header.Add("User-Agent", "Gentoo Portage")
-		if if_modified_since{
-			request.Header.Add("If-Modified-Since", _timestamp_to_http(if_modified_since))
+		if ifModifiedSince != "" {
+			request.Header.Add("If-Modified-Since", timestampToHttp(ifModifiedSince))
 		}
-		if parse_result.User!= nil {
-			password_manager.add_password(None, url, parse_result.username, parse_result.password)
+		if parseResult.User != nil {
+			pswd, _ := parseResult.User.Password()
+			request.SetBasicAuth(parseResult.User.Username(), pswd)
 		}
-		auth_handler = CompressedResponseProcessor(password_manager)
-		opener = urllib_request.build_opener(auth_handler)
-		hdl = opener.open(request)
-		if hdl.headers.get('last-modified', ''):
-	try:
-		add_header = hdl.headers.add_header
-		except AttributeError:
-		# Python 2
-		add_header = hdl.headers.addheader
-		add_header('timestamp', _http_to_timestamp(hdl.headers.get('last-modified')))
+		hdl, _ := http.DefaultClient.Do(request)
+		hdl.Header.Add("timestamp", httpToTimestamp(hdl.Header.Get("last-modified")))
 		return hdl
 	}
 }
 
-func _timestamp_to_http(timestamp string)string{
+func timestampToHttp(timestamp string) string {
 	ts, _ := strconv.Atoi(timestamp)
 	dt := time.Unix(int64(ts), 0)
 	return dt.Format("Mon Jan 02 15:04:05 -0700 2006")
 }
 
-func _http_to_timestamp(http_datetime_string string)string{
-	t, _ := dateparse.ParseAny(http_datetime_string)
+func httpToTimestamp(httpDatetimeString string) string {
+	t, _ := dateparse.ParseAny(httpDatetimeString)
 	return string(t.Unix())
 }

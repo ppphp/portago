@@ -777,55 +777,55 @@ type fakedbapi struct {
 	cpvdict, cpdict, _match_cache map[string]string
 }
 
-func (f *fakedbapi) _set_multi_instance(){}
+func (f *fakedbapi) _set_multi_instance() {}
 
 func (f *fakedbapi) _instance_key_cpv(cpv *pkgStr, support_string bool) *pkgStr { // false
 	return cpv
 }
 
-func (f *fakedbapi) _instance_key_multi_instance(){}
+func (f *fakedbapi) _instance_key_multi_instance() {}
 
-func (f *fakedbapi) clear(){
+func (f *fakedbapi) clear() {
 	f._clear_cache()
-	f.cpvdict = map[string]string{	}
+	f.cpvdict = map[string]string{}
 	f.cpdict = map[string]string{}
 }
 
-func (f *fakedbapi) _clear_cache(){
+func (f *fakedbapi) _clear_cache() {
 	if f._categories != nil {
 		f._categories = nil
 	}
-	if len(f._match_cache)>0{
+	if len(f._match_cache) > 0 {
 		f._match_cache = map[string]string{}
 	}
 }
 
-func (f *fakedbapi) match(){}
+func (f *fakedbapi) match() {}
 
-func (f *fakedbapi)cpv_exists (){}
+func (f *fakedbapi) cpv_exists() {}
 
-func (f *fakedbapi) cp_list(){}
+func (f *fakedbapi) cp_list() {}
 
-func (f *fakedbapi) cp_all(sortt bool) []string{
+func (f *fakedbapi) cp_all(sortt bool) []string {
 	s := []string{}
-	for x := range f.cpdict{
+	for x := range f.cpdict {
 		s = append(s, x)
 	}
-	if sortt{
+	if sortt {
 		sort.Strings(s)
 	}
 	return s
 }
 
-func (f *fakedbapi) cpv_all(){}
+func (f *fakedbapi) cpv_all() {}
 
-func (f *fakedbapi) cpv_inject(){}
+func (f *fakedbapi) cpv_inject() {}
 
-func (f *fakedbapi) cpv_remove(){}
+func (f *fakedbapi) cpv_remove() {}
 
-func (f *fakedbapi) aux_get(){}
+func (f *fakedbapi) aux_get() {}
 
-func (f *fakedbapi) aux_update(){}
+func (f *fakedbapi) aux_update() {}
 
 func NewFakeDbApi(settings *Config, exclusive_slots, multi_instance bool) *fakedbapi { // nil, true, false
 	f := &fakedbapi{dbapi: NewDbapi(), _exclusive_slots: exclusive_slots,
@@ -838,47 +838,48 @@ func NewFakeDbApi(settings *Config, exclusive_slots, multi_instance bool) *faked
 
 type bindbapi struct {
 	*fakedbapi
-	bintree *binarytree
-	move_ent
+	bintree  *binarytree
+	move_ent func()
 
-	_aux_chache map[string]string
+	_aux_chache  map[string]string
+	auxCacheKeys map[string]bool
 }
 
-func (b *bindbapi) writable()bool{
-	if f, err := os.Stat(firstExisting(b.bintree.pkgdir)); err != nil ||f == nil {
+func (b *bindbapi) writable() bool {
+	if f, err := os.Stat(firstExisting(b.bintree.pkgdir)); err != nil || f == nil {
 		return false
 	} else {
 		return true
 	}
 }
 
-func (b *bindbapi) match(){}
+func (b *bindbapi) match() {}
 
-func (b *bindbapi) cpv_exists(cpv, myrepo string){}
+func (b *bindbapi) cpv_exists(cpv, myrepo string) {}
 
-func (b *bindbapi) cpv_inject(){}
+func (b *bindbapi) cpv_inject() {}
 
-func (b *bindbapi) cpv_remove(){}
+func (b *bindbapi) cpv_remove() {}
 
-func (b *bindbapi) aux_get(){}
+func (b *bindbapi) aux_get() {}
 
-func (b *bindbapi) aux_update(){}
+func (b *bindbapi) aux_update() {}
 
-func (b *bindbapi) cp_list(){}
+func (b *bindbapi) cp_list() {}
 
-func (b *bindbapi) cp_all(){}
+func (b *bindbapi) cp_all() {}
 
-func (b *bindbapi) cpv_all(){}
+func (b *bindbapi) cpv_all() {}
 
-func (b *bindbapi) getfetchsizes(){}
+func (b *bindbapi) getfetchsizes() {}
 
-func NewBinDbApi(mybintree *binarytree,settings *Config) *bindbapi { //
+func NewBinDbApi(mybintree *binarytree, settings *Config) *bindbapi { //
 	b := &bindbapi{}
 	b.fakedbapi = NewFakeDbApi(settings, false, true)
-	b.bintree= mybintree
+	b.bintree = mybintree
 	b.move_ent = mybintree.move_ent
 	b.auxCacheKeys = map[string]bool{}
-	b._aux_cache_slot_dict
+	//b._aux_cache_slot_dict
 	b._aux_chache = map[string]string{}
 	return b
 }
@@ -887,73 +888,73 @@ type binarytree struct {
 	pkgdir string
 }
 
-func (b *binarytree) root(){}
+func (b *binarytree) root() {}
 
-func (b *binarytree) move_ent(){}
+func (b *binarytree) move_ent() {}
 
-func (b *binarytree) prevent_collision(){}
+func (b *binarytree) prevent_collision() {}
 
-func (b *binarytree) _ensure_dir(){}
+func (b *binarytree) _ensure_dir() {}
 
-func (b *binarytree) _file_permissions(){}
+func (b *binarytree) _file_permissions() {}
 
-func (b *binarytree) populate(){}
+func (b *binarytree) populate() {}
 
-func (b *binarytree) _populate_local(){}
+func (b *binarytree) _populate_local() {}
 
-func (b *binarytree) _populate_remote(){}
+func (b *binarytree) _populate_remote() {}
 
-func (b *binarytree) inject(){}
+func (b *binarytree) inject() {}
 
-func (b *binarytree) _read_metadata(){}
+func (b *binarytree) _read_metadata() {}
 
-func (b *binarytree) _inject_file(){}
+func (b *binarytree) _inject_file() {}
 
-func (b *binarytree) _pkgindex_write(){}
+func (b *binarytree) _pkgindex_write() {}
 
-func (b *binarytree) _pkgindex_entry(){}
+func (b *binarytree) _pkgindex_entry() {}
 
-func (b *binarytree) _new_pkgindex(){}
+func (b *binarytree) _new_pkgindex() {}
 
-func (b *binarytree) _merge_pkgindex_header(){}
+func (b *binarytree) _merge_pkgindex_header() {}
 
-func (b *binarytree) _propagate_config(){}
+func (b *binarytree) _propagate_config() {}
 
-func (b *binarytree) _update_pkgindex_header(){}
+func (b *binarytree) _update_pkgindex_header() {}
 
-func (b *binarytree) _pkgindex_version_supported(){}
+func (b *binarytree) _pkgindex_version_supported() {}
 
-func (b *binarytree) _eval_use_flags(){}
+func (b *binarytree) _eval_use_flags() {}
 
-func (b *binarytree) exists_specific(){}
+func (b *binarytree) exists_specific() {}
 
-func (b *binarytree) dep_bestmatch(){}
+func (b *binarytree) dep_bestmatch() {}
 
-func (b *binarytree) getname(){}
+func (b *binarytree) getname() {}
 
-func (b *binarytree) _is_specific_instance(){}
+func (b *binarytree) _is_specific_instance() {}
 
-func (b *binarytree) _max_build_id(){}
+func (b *binarytree) _max_build_id() {}
 
-func (b *binarytree) _allocate_filename(){}
+func (b *binarytree) _allocate_filename() {}
 
-func (b *binarytree) _allocate_filename_multi(){}
+func (b *binarytree) _allocate_filename_multi() {}
 
-func (b *binarytree) _parse_build_id(){}
+func (b *binarytree) _parse_build_id() {}
 
-func (b *binarytree) isremote(){}
+func (b *binarytree) isremote() {}
 
-func (b *binarytree) get_pkgindex_uri(){}
+func (b *binarytree) get_pkgindex_uri() {}
 
-func (b *binarytree) gettbz2(){}
+func (b *binarytree) gettbz2() {}
 
-func (b *binarytree) _load_pkgindex(){}
+func (b *binarytree) _load_pkgindex() {}
 
-func (b *binarytree) _get_digests(){}
+func (b *binarytree) _get_digests() {}
 
-func (b *binarytree) digestCheck(){}
+func (b *binarytree) digestCheck() {}
 
-func (b *binarytree) getslot(){}
+func (b *binarytree) getslot() {}
 
 func NewBinaryTree(pkgDir string, setting *Config) *binarytree {
 	b := &binarytree{}
