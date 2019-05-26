@@ -1040,9 +1040,14 @@ func NewProjectFilename(mydest, newmd5 string, force bool) string {
 	return newPFile
 }
 
-func readConfigs(parser *configparser.Configuration, paths []string) {
+func readConfigs(parser configparser.ConfigParser, paths []string) {
 	for _, p := range paths {
-		parser.ReadFile(p)
+		f, err := os.Open(p)
+		if err != nil {
+			continue
+		}
+		f.Close()
+		parser.ReadFile(f, p)
 	}
 }
 

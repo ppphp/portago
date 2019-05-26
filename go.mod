@@ -2,7 +2,6 @@ module github.com/ppphp/portago
 
 require (
 	github.com/BurntSushi/toml v0.3.1
-	github.com/alyu/configparser v0.0.0-20180327070247-c505e6011694 // indirect
 	github.com/gin-contrib/sse v0.0.0-20190301062529-5545eab6dad3 // indirect
 	github.com/gin-contrib/static v0.0.0-20190301062546-ed515893e96b
 	github.com/gin-gonic/contrib v0.0.0-20190408155029-b5986969cb50
@@ -16,12 +15,11 @@ require (
 	github.com/martinlindhe/gogost v0.0.0-20170914195721-31862914ae20
 	github.com/mattn/go-isatty v0.0.7 // indirect
 	github.com/noaway/dateparse v0.0.0-20171117034806-ad2b19d7b298
-	github.com/ppphp/configparser v0.0.0-20190303091157-5a4cc43be5f3
+	github.com/ppphp/configparser v0.0.0-20190526194330-e13eff91f4b8
 	github.com/sirupsen/logrus v1.4.1
 	github.com/spf13/pflag v1.0.3
 	github.com/stretchr/testify v1.3.0 // indirect
-	golang.org/x/crypto v0.0.0-20190426145343-a29dc8fdc734
-	golang.org/x/net v0.0.0-20190501004415-9ce7a6920f09 // indirect
+	golang.org/x/crypto v0.0.0-20190513172903-22d7a77e9e5f
 	golang.org/x/sys v0.0.0-20190429190828-d89cdac9e872
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 )

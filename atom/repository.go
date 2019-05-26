@@ -508,8 +508,9 @@ func (r *repoConfigLoader) addRepositories(portDir, portdirOverlay string, prepo
 }
 
 func (r *repoConfigLoader) parse(paths []string, prepos map[string]*repoConfig, localConfig bool, defaultOpts map[string]string) error {
-	parser := configparser.NewConfiguration()
-	//parser.Default(defaultopts)
+	args := configparser.DefaultArgument
+	args.Defaults = defaultOpts
+	parser := configparser.NewConfigParser(args)
 	recursivePaths := []string{}
 	for _, p := range paths {
 		recursivePaths = append(recursivePaths, recursiveFileList(p)...)
@@ -517,20 +518,22 @@ func (r *repoConfigLoader) parse(paths []string, prepos map[string]*repoConfig, 
 
 	readConfigs(parser, recursivePaths)
 
-	prepos["DEFAULT"] = NewRepoConfig("DEFAULT", parser.Default(), localConfig)
-	secs, err := parser.Sections("")
-	if err != nil {
-		return err
-	}
-	for _, sname := range secs {
+	prepos["DEFAULT"] = NewRepoConfig("DEFAULT", parser.Defaults(), localConfig)
+	for _, sname := range parser.Sections() {
 		optdict := map[string]string{}
-		repo := NewRepoConfig(sname.Name(), optdict, localConfig)
+		onames, _ := parser.Options(sname)
+		for _, oname := range onames {
+			optdict[oname], _ = parser.Get(sname, oname, false, nil, "")
+		}
+		repo := NewRepoConfig(sname, optdict, localConfig)
 		for o := range moduleSpecificOptions(repo) {
-			if v := sname.ValueOf(o); v != "" {
+			if parser.HasOption(sname, o) {
+				v, _ := parser.Get(sname, o, false, nil, "")
 				repo.setModuleSpecificOpt(o, v)
 			}
-			prepos[sname.Name()] = repo
 		}
+		//validateConfig(repo, logging)
+		prepos[sname] = repo
 	}
 	return nil
 }
