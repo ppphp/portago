@@ -181,15 +181,15 @@ func (c *Config) initDirs() {
 		CachePath:   {*portage_gid, 0755, 02, false},
 	}
 
-	for mypath, s := range dirModeMap {
-		gid, mode, modemask, preserve_perms := s.gid, s.mode, s.mask, s.preservePerms
-		mydir := path.Join(c.ValueDict["EROOT"], mypath)
-		st, _ := os.Stat(mydir)
-		if preserve_perms && st.IsDir() {
+	for myPath, s := range dirModeMap {
+		gid, mode, modemask, preservePerms := s.gid, s.mode, s.mask, s.preservePerms
+		myDir := path.Join(c.ValueDict["EROOT"], myPath)
+		st, _ := os.Stat(myDir)
+		if preservePerms && st.IsDir() {
 			continue
 		}
-		if !ensureDirs(mydir, 0, gid, mode, modemask, nil, false) {
-			WriteMsg(fmt.Sprintf("!!! Directory initialization failed: '%s'\n", mydir), -1, nil)
+		if !ensureDirs(myDir, 0, gid, mode, modemask, nil, false) {
+			WriteMsg(fmt.Sprintf("!!! Directory initialization failed: '%s'\n", myDir), -1, nil)
 			WriteMsg(fmt.Sprintf("!!! %v\n"), -1, nil) // error
 		}
 	}
@@ -1491,7 +1491,7 @@ func (c *Config) archlist() map[string]bool {
 
 var eapiCache = map[string]bool{}
 
-func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configIncrementals []string, configRoot, targetRoot, sysroot, eprefix string, localConfig bool, env map[string]string, unmatchedRemoval bool, repositories *repoConfigLoader) *Config {
+func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configIncrementals []string, configRoot, targetRoot, sysroot, eprefix string, localConfig bool, env map[string]string, unmatchedRemoval bool, repositories *repoConfigLoader) *Config { // nil, nil, "", nil, "","","","",true, nil, false, nil
 	eapiCache = make(map[string]bool)
 	tolerant := initializingGlobals == nil
 	c := &Config{
@@ -1707,11 +1707,11 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		makeConf := map[string]string{}
 		for _, x := range makeConfPaths {
 			mygcfg := getConfig(x, tolerant, true, true, true, makeConf)
-			if len(mygcfg) > 0 {
+			if mygcfg != nil {
 				for k, v := range mygcfg {
 					makeConf[k] = v
-					makeConfCount += 1
 				}
+				makeConfCount += 1
 			}
 		}
 		if makeConfCount == 2 {
@@ -1735,7 +1735,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		oldMakeGlobals := path.Join(configRoot, "etc", "make.globals")
 		f1, _ := filepath.EvalSymlinks(makeGlobalsPath)
 		f2, _ := filepath.EvalSymlinks(oldMakeGlobals)
-		if s, err := os.Stat(oldMakeGlobals); err != nil || (!s.IsDir() && f1 != f2) {
+		if s, err := os.Stat(oldMakeGlobals); err == nil && (!s.IsDir() && f1 != f2) {
 			WriteMsg(fmt.Sprintf("!!!Found obsolete make.globals file: '%s', (using '%s' instead)\n", oldMakeGlobals, makeGlobalsPath), -1, nil)
 		}
 		makeGlobals := getConfig(makeGlobalsPath, tolerant, false, true, false, expandMap)
@@ -1890,24 +1890,24 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 			}
 		}
 		c.unpackDependencies = loadUnpackDependenciesConfiguration(c.repositories)
-		mygcfg := map[string]string{}
+		myGCfg := map[string]string{}
 		if len(profilesComplex) != 0 {
-			mygcfgDlists := []map[string]string{}
+			myGCfgDLists := []map[string]string{}
 			for _, x := range profilesComplex {
-				mygcfgDlists = append(mygcfgDlists, getConfig(path.Join(x.location, "make.defaults"), tolerant, false, true, x.portage1Directories, expandMap))
+				myGCfgDLists = append(myGCfgDLists, getConfig(path.Join(x.location, "make.defaults"), tolerant, false, true, x.portage1Directories, expandMap))
 			}
-			c.makeDefaults = mygcfgDlists
-			mygcfg = stackDicts(mygcfgDlists, 0, c.incrementals, 0)
-			if len(mygcfg) == 0 {
-				mygcfg = map[string]string{}
+			c.makeDefaults = myGCfgDLists
+			myGCfg = stackDicts(myGCfgDLists, 0, c.incrementals, 0)
+			if len(myGCfg) == 0 {
+				myGCfg = map[string]string{}
 			}
 		}
-		c.configList = append(c.configList, mygcfg)
+		c.configList = append(c.configList, myGCfg)
 		c.configDict["defaults"] = c.configList[len(c.configList)-1]
-		mygcfg = map[string]string{}
+		myGCfg = map[string]string{}
 		for _, x := range makeConfPaths {
 			for k, v := range getConfig(x, tolerant, true, true, true, expandMap) {
-				mygcfg[k] = v
+				myGCfg[k] = v
 			}
 		}
 		p := [][2]string{}
@@ -1939,9 +1939,9 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 			delete(envD, k)
 		}
 		for k := range profileOnlyVariables {
-			delete(mygcfg, k.value)
+			delete(myGCfg, k.value)
 		}
-		c.configList = append(c.configList, mygcfg)
+		c.configList = append(c.configList, myGCfg)
 		c.configDict["conf"] = c.configList[len(c.configList)-1]
 		c.configList = append(c.configList, map[string]string{}) //LazyItemsDict
 		c.configDict["pkg"] = c.configList[len(c.configList)-1]
@@ -2055,33 +2055,33 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 					c.pacceptRestrict[k.cp][k] = v
 				}
 			}
-			penvdict := grabDictPackage(path.Join(absUserConfig, "package.env"), false, true, false, true, true, true, false, false, "", "0")
+			pEnvDict := grabDictPackage(path.Join(absUserConfig, "package.env"), false, true, false, true, true, true, false, false, "", "0")
 			v = nil
-			for a, x := range penvdict {
+			for a, x := range pEnvDict {
 				if a.value == "*/*" {
 					v = x
 				}
-				delete(penvdict, a)
+				delete(pEnvDict, a)
 			}
 			if v != nil {
 				globalWildcardConf := map[string]string{}
 				c.grabPkgEnv(v, globalWildcardConf, nil)
 				incrementals := c.incrementals
-				confConfigdict := c.configDict["conf"]
+				confConfigDict := c.configDict["conf"]
 				for k, v := range globalWildcardConf {
 					if incrementals[k] {
-						if _, ok := confConfigdict[k]; ok {
-							confConfigdict[k] = confConfigdict[k] + v
+						if _, ok := confConfigDict[k]; ok {
+							confConfigDict[k] = confConfigDict[k] + v
 						} else {
-							confConfigdict[k] = v
+							confConfigDict[k] = v
 						}
 					} else {
-						confConfigdict[k] = v
+						confConfigDict[k] = v
 					}
 					expandMap[k] = v
 				}
 			}
-			for k, v := range penvdict {
+			for k, v := range pEnvDict {
 				if _, ok := c.penvdict[k.cp]; !ok {
 					c.penvdict[k.cp] = map[*Atom][]string{k: v}
 				} else {
@@ -2106,9 +2106,9 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 					continue
 				}
 				for k, v := range bashrc {
-					envfiles := []string{}
+					envFiles := []string{}
 					for _, envname := range v {
-						envfiles = append(envfiles, path.Join(profile.location, "bashrc", envname))
+						envFiles = append(envFiles, path.Join(profile.location, "bashrc", envname))
 					}
 					if _, ok := c.pbashrcdict[profile][k.cp]; !ok {
 						c.pbashrcdict[profile][k.cp] = map[*Atom][]string{k: v}
@@ -2784,9 +2784,9 @@ func (l *locationsManager) setPortDirs(portdir, portdirOverlay string) {
 	}
 }
 
-func NewLocaitonsManager(configRoot, eprefix, configProfilePath string, localConfig bool, targetRoot, sysroot string) *locationsManager {
+func NewLocaitonsManager(configRoot, eprefix, configProfilePath string, localConfig bool, targetRoot, sysroot string) *locationsManager { // "", "", "", true, "", ""
 	l := &locationsManager{userProfileDir: "", localRepoConfPath: "", eprefix: eprefix, configRoot: configRoot, targetRoot: targetRoot, sysroot: sysroot, userConfig: localConfig}
-	if l.eprefix != "" {
+	if l.eprefix == "" {
 		l.eprefix = EPREFIX
 	} else {
 		l.eprefix = NormalizePath(l.eprefix)
@@ -2797,20 +2797,29 @@ func NewLocaitonsManager(configRoot, eprefix, configProfilePath string, localCon
 	if l.configRoot == "" {
 		l.configRoot = EPREFIX + string(os.PathSeparator)
 	}
-	fap, _ := filepath.Abs(l.configRoot)
-	if fap == "" {
-		l.configRoot = string(os.PathSeparator)
+	fap := ""
+	if l.configRoot != "" {
+		s, err := filepath.Abs(l.configRoot)
+		if err != nil {
+			println(s, err.Error())
+		}
+		fap = s
 	} else {
-		l.configRoot = NormalizePath(strings.TrimSuffix(l.configRoot, string(os.PathSeparator))) + string(os.PathSeparator)
+		s, err := filepath.Abs(string(os.PathSeparator))
+		if err != nil {
+			println(s, err.Error())
+		}
+		fap = s
 	}
-	l.checkVarDirectory("PORTAGE_CONFIGROOT", configRoot)
+	l.configRoot = strings.TrimRight(NormalizePath(fap), string(os.PathSeparator)) + string(os.PathSeparator)
+	l.checkVarDirectory("PORTAGE_CONFIGROOT", l.configRoot)
 	l.absUserConfig = path.Join(l.configRoot, UserConfigPath)
 	l.configProfilePath = configProfilePath
 	if l.sysroot == "" {
 		l.sysroot = "/"
 	} else {
 		fap, _ := filepath.Abs(l.sysroot)
-		l.sysroot = NormalizePath(fap)
+		l.sysroot = strings.TrimSuffix(NormalizePath(fap), string(os.PathSeparator)) + string(os.PathSeparator)
 	}
 	l.esysroot = strings.TrimSuffix(l.sysroot, string(os.PathSeparator)) + l.eprefix + string(os.PathSeparator)
 	l.broot = EPREFIX
@@ -4273,13 +4282,13 @@ func (v *virtualManager) _populate_treeVirtuals(vartree *varTree) {
 	}
 	v._treeVirtuals = map[string][]string{}
 
-	for provide, cpv_list := range vartree.get_all_provides() {
+	for provide, cpvList := range vartree.get_all_provides() {
 		provideA, err := NewAtom(provide, nil, false, nil, nil, "", nil, nil)
 		if err != nil {
 			continue
 		}
 		v._treeVirtuals[provideA.cp] = []string{}
-		for _, cpv := range cpv_list {
+		for _, cpv := range cpvList {
 			v._treeVirtuals[provideA.cp] = append(v._treeVirtuals[provideA.cp], cpv.cp)
 		}
 	}

@@ -1,7 +1,5 @@
 package atom
 
-// a colleciton of util in lib/portage/util
-
 import (
 	"bytes"
 	"fmt"
@@ -920,7 +918,10 @@ func existsRaiseEaccess(path string) bool {
 // if access return
 func isdirRaiseEaccess(path string) bool {
 	f, err := os.Stat(path)
-	if err != os.ErrPermission {
+	if err != nil {
+		if err == os.ErrPermission {
+			//raise PermissionDenied("stat('%s')" % path)
+		}
 		return false
 	}
 	return f.IsDir()

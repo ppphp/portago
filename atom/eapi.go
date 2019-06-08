@@ -183,7 +183,7 @@ type eapiAttrs struct {
 	useDeps, useDepDefaults bool
 }
 
-var eapiAttrsCache map[string]eapiAttrs
+var eapiAttrsCache = map[string]eapiAttrs{}
 
 func getEapiAttrs(eapi string) eapiAttrs {
 	if e, ok := eapiAttrsCache[eapi]; ok {

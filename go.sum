@@ -51,8 +51,6 @@ github.com/noaway/dateparse v0.0.0-20171117034806-ad2b19d7b298 h1:KxSjks3AZ9UzCE
 github.com/noaway/dateparse v0.0.0-20171117034806-ad2b19d7b298/go.mod h1:igayvLRJcte85zNxjysR9x255KAJmDUAMEiG3P6z0IY=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/ppphp/configparser v0.0.0-20190526193100-7653e34caeee h1:M5EOb2CDgs3pFsLTPD+NfKo0jeUyawdD/0Ijj+fyfLY=
-github.com/ppphp/configparser v0.0.0-20190526193100-7653e34caeee/go.mod h1:xKajQGMienIFvgNWQAeo+DRuNAr+1eqglQOpZmW5qII=
 github.com/ppphp/configparser v0.0.0-20190526194330-e13eff91f4b8 h1:yMmxn85TCYnkhlE6YA6WFQzUytdEhR3RwHXQBnNdQ74=
 github.com/ppphp/configparser v0.0.0-20190526194330-e13eff91f4b8/go.mod h1:xKajQGMienIFvgNWQAeo+DRuNAr+1eqglQOpZmW5qII=
 github.com/sirupsen/logrus v1.4.1 h1:GL2rEmy6nsikmW0r8opw9JIRScdMF5hA8cOYLH7In1k=
@@ -82,8 +80,8 @@ golang.org/x/sys v0.0.0-20181221143128-b4a75ba826a6/go.mod h1:STP8DvDyc/dI5b8T5h
 golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
 golang.org/x/sys v0.0.0-20190222072716-a9d3bda3a223/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
 golang.org/x/sys v0.0.0-20190412213103-97732733099d/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
-golang.org/x/sys v0.0.0-20190429190828-d89cdac9e872 h1:cGjJzUd8RgBw428LXP65YXni0aiGNA4Bl+ls8SmLOm8=
-golang.org/x/sys v0.0.0-20190429190828-d89cdac9e872/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+golang.org/x/sys v0.0.0-20190602015325-4c4f7f33c9ed h1:uPxWBzB3+mlnjy9W58qY1j/cjyFjutgw/Vhan2zLy/A=
+golang.org/x/sys v0.0.0-20190602015325-4c4f7f33c9ed/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=

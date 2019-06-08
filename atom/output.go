@@ -65,154 +65,12 @@ var (
 		"0xFF55FF", "0x00AAAA", "0x55FFFF", "0xAAAAAA", "0xFFFFFF"}
 )
 
-func nc_len(mystr string) int {
-	re, _ := regexp.Compile(escSeq + "^m]+m")
-	tmp := re.ReplaceAllString(mystr, "")
-	return len(tmp)
-}
-
-var (
-	_legal_terms_re, _        = regexp.Compile("^(xterm|xterm-color|Eterm|aterm|rxvt|screen|kterm|rxvt-unicode|gnome|interix|tmux|st-256color)")
-	_disable_xtermTitle *bool = nil
-	_max_xtermTitle_len       = 253
-)
-
-func xtermTitle(mystr string, raw bool) { // f
-	if _disable_xtermTitle == nil {
-		_disable_xtermTitle = new(bool)
-		ts, tb := os.LookupEnv("TERM")
-		*_disable_xtermTitle = !(terminal.IsTerminal(int(os.Stderr.Fd())) && tb && _legal_terms_re.MatchString(ts))
-	}
-
-	if doTitles != 0 && !*_disable_xtermTitle {
-		if len(mystr) > _max_xtermTitle_len {
-			mystr = mystr[:_max_xtermTitle_len]
-		}
-		if !raw {
-			mystr = fmt.Sprintf("\x1b]0;%s\x07", mystr)
-		}
-		f := os.Stderr
-		f.WriteString(mystr)
-	}
-}
-
-var default_xterm_title = ""
-
-func xtermTitleReset() {
-	if default_xterm_title == "" {
-		promptCommand := os.Getenv("PROMPT_COMMAND")
-		if promptCommand == "" {
-			default_xterm_title = ""
-		} else if promptCommand != "" {
-			ts, tb := os.LookupEnv("TERM")
-			if doTitles != 0 && tb && _legal_terms_re.MatchString(ts) && terminal.IsTerminal(int(os.Stderr.Fd())) {
-				shell := os.Getenv("SHELL")
-				st, _ := os.Stat(shell)
-				if shell == "" || st.Mode()&syscall.O_EXCL != 0 {
-					shell = FindBinary("sh")
-				}
-				if shell != "" {
-					spawn([]string{shell, "-c", promptCommand}, nil, "", map[int]uintptr{
-						0: getStdin().Fd(),
-						1: os.Stderr.Fd(),
-						2: os.Stderr.Fd(),
-					}, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
-				} else {
-					c := exec.Command(promptCommand)
-					c.Run()
-				}
-			}
-			return
-		} else {
-			pwd := os.Getenv("PWD")
-			home := os.Getenv("HOME")
-			if home != "" && strings.HasPrefix(pwd, home) {
-				pwd = "~" + pwd[len(home):]
-			}
-			default_xterm_title = fmt.Sprintf("\x1b]0;%s@%s:%s\x07",
-				os.Getenv("LOGNAME"),
-				strings.SplitN(os.Getenv("HOSTNAME"), ".", 1)[0], pwd)
-		}
-	}
-	xtermTitle(default_xterm_title, true)
-}
-
-var compat_functions_colors = []string{
-	"bold", "white", "teal", "turquoise", "darkteal",
-	"fuchsia", "purple", "blue", "darkblue", "green", "darkgreen", "yellow",
-	"brown", "darkyellow", "red", "darkred",
-}
-
-type create_color_func struct {
-	colorKey string
-}
-
-func (c *create_color_func) call(text string) string {
-	return colorize(c.colorKey, text)
-}
-
-func NewCreateColorFunc(colorKey string) *create_color_func {
-	return &create_color_func{colorKey: colorKey}
-}
-
 func color(fg, bg string, attr []string) string {
 	myStr := codes[fg]
 	for _, x := range append([]string{bg}, attr...) {
 		myStr += codes[x]
 	}
 	return myStr
-}
-
-func init() {
-	for x := 30; x < 38; x++ {
-		ansiCodes = append(ansiCodes, fmt.Sprintf("%vm", x))
-		ansiCodes = append(ansiCodes, fmt.Sprintf("%v;01m", x))
-	}
-	for k, v := range rgb_ansi_colors {
-		codes[v] = escSeq + ansiCodes[k]
-	}
-
-	codes["black"] = codes["0x000000"]
-	codes["darkgray"] = codes["0x555555"]
-
-	codes["red"] = codes["0xFF5555"]
-	codes["darkred"] = codes["0xAA0000"]
-
-	codes["green"] = codes["0x55FF55"]
-	codes["darkgreen"] = codes["0x00AA00"]
-
-	codes["yellow"] = codes["0xFFFF55"]
-	codes["brown"] = codes["0xAA5500"]
-
-	codes["blue"] = codes["0x5555FF"]
-	codes["darkblue"] = codes["0x0000AA"]
-
-	codes["fuchsia"] = codes["0xFF55FF"]
-	codes["purple"] = codes["0xAA00AA"]
-
-	codes["turquoise"] = codes["0x55FFFF"]
-	codes["teal"] = codes["0x00AAAA"]
-
-	codes["white"] = codes["0xFFFFFF"]
-	codes["lightgray"] = codes["0xAAAAAA"]
-
-	codes["darkteal"] = codes["turquoise"]
-	codes["0xAAAA00"] = codes["brown"]
-	codes["darkyellow"] = codes["0xAAAA00"]
-}
-
-var havecolor = 1
-
-func NoColor() {
-	havecolor = 0
-}
-
-func noTitles() {
-	doTitles = 0
-}
-
-func resetColor() string {
-	return codes["reset"]
 }
 
 func parseColorMap(configRoot string, onerror func(error) error) error { // /n
@@ -309,6 +167,90 @@ func parseColorMap(configRoot string, onerror func(error) error) error { // /n
 	return nil
 }
 
+func nc_len(mystr string) int {
+	re, _ := regexp.Compile(escSeq + "^m]+m")
+	tmp := re.ReplaceAllString(mystr, "")
+	return len(tmp)
+}
+
+var (
+	_legal_terms_re, _        = regexp.Compile("^(xterm|xterm-color|Eterm|aterm|rxvt|screen|kterm|rxvt-unicode|gnome|interix|tmux|st-256color)")
+	_disable_xtermTitle *bool = nil
+	_max_xtermTitle_len       = 253
+)
+
+func xtermTitle(mystr string, raw bool) { // f
+	if _disable_xtermTitle == nil {
+		_disable_xtermTitle = new(bool)
+		ts, tb := os.LookupEnv("TERM")
+		*_disable_xtermTitle = !(terminal.IsTerminal(int(os.Stderr.Fd())) && tb && _legal_terms_re.MatchString(ts))
+	}
+
+	if doTitles != 0 && !*_disable_xtermTitle {
+		if len(mystr) > _max_xtermTitle_len {
+			mystr = mystr[:_max_xtermTitle_len]
+		}
+		if !raw {
+			mystr = fmt.Sprintf("\x1b]0;%s\x07", mystr)
+		}
+		f := os.Stderr
+		f.WriteString(mystr)
+	}
+}
+
+var default_xterm_title = ""
+
+func xtermTitleReset() {
+	if default_xterm_title == "" {
+		promptCommand := os.Getenv("PROMPT_COMMAND")
+		if promptCommand == "" {
+			default_xterm_title = ""
+		} else if promptCommand != "" {
+			ts, tb := os.LookupEnv("TERM")
+			if doTitles != 0 && tb && _legal_terms_re.MatchString(ts) && terminal.IsTerminal(int(os.Stderr.Fd())) {
+				shell := os.Getenv("SHELL")
+				st, _ := os.Stat(shell)
+				if shell == "" || st.Mode()&syscall.O_EXCL != 0 {
+					shell = FindBinary("sh")
+				}
+				if shell != "" {
+					spawn([]string{shell, "-c", promptCommand}, nil, "", map[int]uintptr{
+						0: getStdin().Fd(),
+						1: os.Stderr.Fd(),
+						2: os.Stderr.Fd(),
+					}, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
+				} else {
+					c := exec.Command(promptCommand)
+					c.Run()
+				}
+			}
+			return
+		} else {
+			pwd := os.Getenv("PWD")
+			home := os.Getenv("HOME")
+			if home != "" && strings.HasPrefix(pwd, home) {
+				pwd = "~" + pwd[len(home):]
+			}
+			default_xterm_title = fmt.Sprintf("\x1b]0;%s@%s:%s\x07",
+				os.Getenv("LOGNAME"),
+				strings.SplitN(os.Getenv("HOSTNAME"), ".", 1)[0], pwd)
+		}
+	}
+	xtermTitle(default_xterm_title, true)
+}
+
+func noTitles() {
+	doTitles = 0
+}
+
+func NoColor() {
+	haveColor = 0
+}
+
+func resetColor() string {
+	return codes["reset"]
+}
+
 func styleToAnsiCode(style string) string {
 	ret := ""
 	for _, attrName := range styles[style] {
@@ -342,6 +284,213 @@ func colorize(color_key, text string) string {
 	} else {
 		return text
 	}
+}
+
+var compat_functions_colors = []string{
+	"bold", "white", "teal", "turquoise", "darkteal",
+	"fuchsia", "purple", "blue", "darkblue", "green", "darkgreen", "yellow",
+	"brown", "darkyellow", "red", "darkred",
+}
+
+type create_color_func struct {
+	colorKey string
+}
+
+func (c *create_color_func) call(text string) string {
+	return colorize(c.colorKey, text)
+}
+
+func NewCreateColorFunc(colorKey string) *create_color_func {
+	return &create_color_func{colorKey: colorKey}
+}
+
+type consoleStyleFile struct {
+	_file, _styles, write_listener string
+}
+
+func NewConsoleStylefile(f string) *consoleStyleFile {
+	c := &consoleStyleFile{_file: f}
+	return c
+}
+
+func (c *consoleStyleFile) new_styles() {}
+
+func (c *consoleStyleFile) write() {}
+
+func (c *consoleStyleFile) _write() {}
+
+func (c *consoleStyleFile) writelines() {}
+
+func (c *consoleStyleFile) flush() {}
+
+func (c *consoleStyleFile) close() {}
+
+func get_term_size(fd int) (int, int, error) { // 0
+	if fd == 0 {
+		fd = syscall.Stdout
+	}
+	if !terminal.IsTerminal(fd) {
+		return 0, 0, nil
+	}
+	return terminal.GetSize(fd)
+}
+
+func set_term_size(lines, columns, fd int) error {
+	_, err := spawn([]string{"stty", "rows", string(lines), "columns", string(columns)}, nil, "", map[int]uintptr{0: uintptr(fd)}, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
+	return err
+}
+
+type eOutput struct {
+	__last_e_cmd               string
+	__last_e_len, term_columns int
+	quiet                      bool
+}
+
+func NewEOutput(quiet bool) *eOutput { // false
+	e := &eOutput{}
+	e.__last_e_cmd = ""
+	e.__last_e_len = 0
+	e.quiet = quiet
+	_, columns, _ := get_term_size(0)
+	if columns <= 0 {
+		columns = 80
+	}
+	e.term_columns = columns
+	return e
+}
+
+func (e *eOutput) _write(f *os.File, s string) {
+	WriteMsg(s, -1, f)
+}
+
+func (e *eOutput) __eend(caller string, errno int, msg string) {
+	status_brackets := ""
+	if errno == 0 {
+		status_brackets = colorize("BRACKET", "[ ") + colorize("GOOD", "ok") + colorize("BRACKET", " ]")
+	} else {
+		status_brackets = colorize("BRACKET", "[ ") + colorize("BAD", "!!") + colorize("BRACKET", " ]")
+		if msg != "" {
+			if caller == "eend" {
+				e.eerror(msg[:1])
+			} else if caller == "ewend" {
+				e.ewarn(msg[:1])
+			}
+		}
+	}
+	if e.__last_e_cmd != "ebegin" {
+		e.__last_e_len = 0
+	}
+	if !e.quiet {
+		out := os.Stdout
+		e._write(out,
+			fmt.Sprintf("%*s%s\n", e.term_columns-e.__last_e_len-7,
+				"", status_brackets))
+	}
+}
+
+func (e *eOutput) ebegin(msg string) {
+	msg += " ..."
+	if !e.quiet {
+		e.einfon(msg)
+	}
+	e.__last_e_len = len(msg) + 3
+	e.__last_e_cmd = "ebegin"
+}
+
+func (e *eOutput) eend(errno int, msg string) {
+	if !e.quiet {
+		e.__eend("eend", errno, msg)
+	}
+	e.__last_e_cmd = "eend"
+}
+
+func (e *eOutput) eerror(msg string) {
+	out := os.Stderr
+	if !e.quiet {
+		if e.__last_e_cmd == "ebegin" {
+			e._write(out, "\n")
+		}
+		e._write(out, colorize("BAD", " * ")+msg+"\n")
+	}
+	e.__last_e_cmd = "eerror"
+}
+
+func (e *eOutput) einfo(msg string) {
+	out := os.Stderr
+	if !e.quiet {
+		if e.__last_e_cmd == "ebegin" {
+			e._write(out, "\n")
+		}
+		e._write(out, colorize("GOOD", " * ")+msg+"\n")
+	}
+	e.__last_e_cmd = "einfo"
+}
+
+func (e *eOutput) einfon(msg string) {
+	out := os.Stderr
+	if !e.quiet {
+		if e.__last_e_cmd == "ebegin" {
+			e._write(out, "\n")
+		}
+		e._write(out, colorize("GOOD", " * ")+msg)
+	}
+	e.__last_e_cmd = "einfon"
+}
+
+func (e *eOutput) ewarn(msg string) {
+	out := os.Stderr
+	if !e.quiet {
+		if e.__last_e_cmd == "ebegin" {
+			e._write(out, "\n")
+		}
+		e._write(out, colorize("WARN", " * ")+msg+"\n")
+	}
+	e.__last_e_cmd = "ewarn"
+}
+
+func (e *eOutput) ewend(errno int, msg string) {
+	if !e.quiet {
+		e.__eend("ewend", errno, msg)
+	}
+	e.__last_e_cmd = "ewend"
+}
+
+func init() {
+	for x := 30; x < 38; x++ {
+		ansiCodes = append(ansiCodes, fmt.Sprintf("%vm", x))
+		ansiCodes = append(ansiCodes, fmt.Sprintf("%v;01m", x))
+	}
+	for k, v := range rgb_ansi_colors {
+		codes[v] = escSeq + ansiCodes[k]
+	}
+
+	codes["black"] = codes["0x000000"]
+	codes["darkgray"] = codes["0x555555"]
+
+	codes["red"] = codes["0xFF5555"]
+	codes["darkred"] = codes["0xAA0000"]
+
+	codes["green"] = codes["0x55FF55"]
+	codes["darkgreen"] = codes["0x00AA00"]
+
+	codes["yellow"] = codes["0xFFFF55"]
+	codes["brown"] = codes["0xAA5500"]
+
+	codes["blue"] = codes["0x5555FF"]
+	codes["darkblue"] = codes["0x0000AA"]
+
+	codes["fuchsia"] = codes["0xFF55FF"]
+	codes["purple"] = codes["0xAA00AA"]
+
+	codes["turquoise"] = codes["0x55FFFF"]
+	codes["teal"] = codes["0x00AAAA"]
+
+	codes["white"] = codes["0xFFFFFF"]
+	codes["lightgray"] = codes["0xAAAAAA"]
+
+	codes["darkteal"] = codes["turquoise"]
+	codes["0xAAAA00"] = codes["brown"]
+	codes["darkyellow"] = codes["0xAAAA00"]
 }
 
 type AbstractFormatter struct {

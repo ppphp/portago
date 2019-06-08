@@ -268,7 +268,7 @@ func createTrees(config_root, target_root string, ts map[string]*tree, env map[s
 		env = expandEnv()
 	}
 
-	settings := NewConfig(nil, nil, "", nil, config_root, target_root, sysroot, eprefix, false, env, false, nil)
+	settings := NewConfig(nil, nil, "", nil, config_root, target_root, sysroot, eprefix, true, env, false, nil)
 	settings.lock()
 
 	depcachedir := settings.ValueDict["PORTAGE_DEPCACHEDIR"]
