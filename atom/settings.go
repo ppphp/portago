@@ -1707,6 +1707,8 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		makeConf := map[string]string{}
 		for _, x := range makeConfPaths {
 			mygcfg := getConfig(x, tolerant, true, true, true, makeConf)
+			fmt.Printf("%+v\n", mygcfg)
+
 			if mygcfg != nil {
 				for k, v := range mygcfg {
 					makeConf[k] = v
@@ -1714,6 +1716,9 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 				makeConfCount += 1
 			}
 		}
+		os.Exit(0)
+		fmt.Printf("%+v", makeConf)
+
 		if makeConfCount == 2 {
 			WriteMsg(fmt.Sprintf("!!! %s\nFound 2 make.conf files, using both '%s' and '%s'", makeConfPaths), -1, nil)
 		}
@@ -1811,23 +1816,30 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		portDir := ""
 		portDirOverlay := ""
 		portDirSync := ""
+		fmt.Printf("%+v", makeConf)
+
 		for _, confs := range []map[string]string{makeGlobals, makeConf, c.configDict["env"]} {
 			if v, ok := confs["PORTDIR"]; ok {
 				portDir = v
 				knownRepos = append(knownRepos, v)
+				println(v)
 			}
 			if v, ok := confs["PORTDIR_OVERLAY"]; ok {
 				portDirOverlay = v
 				ss, _ := shlex.Split(v)
 				knownRepos = append(knownRepos, ss...)
+				println(v)
 			}
 			if v, ok := confs["SYNC"]; ok {
 				portDirSync = v
+				println(v)
 			}
 			if _, ok := confs["PORTAGE_RSYNC_EXTRA_OPTS"]; ok {
 				c.ValueDict["PORTAGE_RSYNC_EXTRA_OPTS"] = confs["PORTAGE_RSYNC_EXTRA_OPTS"]
 			}
 		}
+		fmt.Printf("%+v", knownRepos)
+		os.Exit(0)
 		c.ValueDict["PORTDIR"] = portDir
 		c.ValueDict["PORTDIR_OVERLAY"] = portDirOverlay
 		if portDirSync != "" {
@@ -1871,6 +1883,8 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		c.backupChanges("PORTDIR_OVERLAY")
 		expandMap["PORTDIR_OVERLAY"] = c.ValueDict["PORTDIR_OVERLAY"]
 		locationsManager.setPortDirs(c.ValueDict["PORTDIR"], c.ValueDict["PORTDIR_OVERLAY"])
+		fmt.Printf("%+v", knownRepos)
+		os.Exit(0)
 		locationsManager.loadProfiles(c.repositories, knownRepos)
 		profilesComplex := locationsManager.profilesComplex
 		c.profiles = locationsManager.profiles

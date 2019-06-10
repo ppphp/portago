@@ -53,6 +53,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/ppphp/configparser v0.0.0-20190526194330-e13eff91f4b8 h1:yMmxn85TCYnkhlE6YA6WFQzUytdEhR3RwHXQBnNdQ74=
 github.com/ppphp/configparser v0.0.0-20190526194330-e13eff91f4b8/go.mod h1:xKajQGMienIFvgNWQAeo+DRuNAr+1eqglQOpZmW5qII=
+github.com/ppphp/shlex v0.0.0-20190610181805-4397eecd96b9 h1:YEtWZxq1Wi5EE5s5Qc20ppKymkmub+LxMBN6E/Au2sU=
+github.com/ppphp/shlex v0.0.0-20190610181805-4397eecd96b9/go.mod h1:bk7ct1P8C7I/gotyXgYO07TwK7i2I6uxq6BWrVw3atg=
 github.com/sirupsen/logrus v1.4.1 h1:GL2rEmy6nsikmW0r8opw9JIRScdMF5hA8cOYLH7In1k=
 github.com/sirupsen/logrus v1.4.1/go.mod h1:ni0Sbl8bgC9z8RoU9G6nDWqqs/fq4eDPysMBDgk/93Q=
 github.com/spf13/pflag v1.0.3 h1:zPAT6CGy6wXeQ7NtTnaTerfKOsV6V6F8agHXFiazDkg=

@@ -16,6 +16,7 @@ require (
 	github.com/mattn/go-isatty v0.0.7 // indirect
 	github.com/noaway/dateparse v0.0.0-20171117034806-ad2b19d7b298
 	github.com/ppphp/configparser v0.0.0-20190526194330-e13eff91f4b8
+	github.com/ppphp/shlex v0.0.0-20190610181805-4397eecd96b9
 	github.com/sirupsen/logrus v1.4.1
 	github.com/spf13/pflag v1.0.3
 	github.com/stretchr/testify v1.3.0 // indirect

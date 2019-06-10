@@ -3,9 +3,10 @@ package atom
 import (
 	"bytes"
 	"fmt"
-	"github.com/google/shlex"
 	"github.com/noaway/dateparse"
 	"github.com/ppphp/configparser"
+	"github.com/ppphp/shlex"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -468,7 +469,7 @@ func grabFilePackage(myfilename string, compatLevel int, recursive, allowWildcar
 	return atoms
 }
 
-func recursiveBasenameFileter(f string) bool {
+func recursiveBasenameFilter(f string) bool {
 	return (!strings.HasPrefix(f, ".")) && (!strings.HasSuffix(f, "~"))
 }
 
@@ -486,7 +487,7 @@ func recursiveFileList(p string) []string {
 			continue
 		}
 		if st.Mode().IsDir() {
-			if VcsDirs[fname] || !recursiveBasenameFileter(fname) {
+			if VcsDirs[fname] || !recursiveBasenameFilter(fname) {
 				continue
 			}
 			children, err := ioutil.ReadDir(fullPath)
@@ -497,7 +498,7 @@ func recursiveFileList(p string) []string {
 				stack = append(stack, [2]string{fullPath, v.Name()})
 			}
 		} else if st.Mode().IsRegular() {
-			if !recursiveBasenameFileter(fname) {
+			if recursiveBasenameFilter(fname) {
 				ret = append(ret, fullPath)
 			}
 		}
@@ -563,7 +564,7 @@ func findUpdatedConfigFiles(targetRoot string, configProtect []string) []sss {
 				myCommand = fmt.Sprintf("find '%s' -maxdepth 1 -name '._cfg????_%s'", d, f)
 			}
 			myCommand += " ! -name '.*~' ! -iname '.*.bak' -print0"
-			cmd, _ := shlex.Split(myCommand)
+			cmd, _ := shlex.Split(strings.NewReader(myCommand), false, false)
 			if FindBinary(cmd[0]) == "" {
 				return nil
 			}
@@ -592,6 +593,7 @@ func findUpdatedConfigFiles(targetRoot string, configProtect []string) []sss {
 }
 
 type getConfigShlex struct {
+	*shlex.Shlex
 	source          string
 	varExpandMap    map[string]string
 	portageTolerant bool
@@ -602,9 +604,16 @@ func (g *getConfigShlex) allowSourcing(varExpandMap map[string]string) {
 	g.varExpandMap = varExpandMap
 }
 
-func NewGetConfgShlex(portageTolerant bool) *getConfigShlex {
-	//shlex.shlex.__init__(self, **kwargs)
-	return &getConfigShlex{portageTolerant: portageTolerant}
+func (g *getConfigShlex) SourceHook(newfile string) (string, *os.File, error) {
+	newfile = varExpand(newfile, g.varExpandMap, "")
+	return g.Shlex.SourceHook(newfile)
+}
+
+func NewGetConfgShlex(instream io.Reader, infile string, posix bool, punctuation_chars string, portageTolerant bool) *getConfigShlex {
+	g := &getConfigShlex{portageTolerant: portageTolerant}
+	g.Shlex = shlex.NewShlex(instream, infile, posix, punctuation_chars)
+
+	return g
 }
 
 var invalidVarNameRe = regexp.MustCompile("^\\d|\\W")
@@ -639,28 +648,28 @@ func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, ex
 	content := string(c)
 	f.Close()
 
-	if content != "" && content[len(content)-1] != '\n' {
+	if content != "" && !strings.HasSuffix(content, "\n") {
 		content += "\n"
 	}
 	if strings.Contains(content, "\r") {
 		WriteMsg(fmt.Sprintf("!!! Please use dos2unix to convert line endings in config file: '%s'\n", mycfg), -1, nil)
 	}
-	//lex := NewGetConfgShlex(tolerant)
-	lex := shlex.NewLexer(f)
-	//lex.wordchars = portage._native_string(string.digits + string.ascii_letters + r"~!@#$%*_\:;?,./-+{}")
-	//lex.quotes = portage._native_string("\"'")
-	//if allowSourcing {
-	//	lex.allowSourcing(expandMap)
-	//}
+	lex := NewGetConfgShlex(strings.NewReader(content), mycfg, true, "", tolerant)
+	lex.Wordchars = "abcdfeghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789~!@#$%*_\\:;?,./-+{}"
+	lex.Quotes = "\"'"
+	if allowSourcing {
+		lex.allowSourcing(expandMap)
+	}
 	for {
-		key, _ := lex.Next()
+		key, _ := lex.GetToken()
 		if key == "export" {
-			key, _ = lex.Next()
+			key, _ = lex.GetToken()
 		}
+		println(key)
 		if key == "" {
 			break
 		}
-		equ, _ := lex.Next()
+		equ, _ := lex.GetToken()
 		if equ == "" {
 			msg := "Unexpected EOF" //TODO error_leader
 			if !tolerant {
@@ -678,7 +687,8 @@ func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, ex
 				return myKeys
 			}
 		}
-		val, _ := lex.Next()
+		val, _ := lex.GetToken()
+		println(val)
 		if val == "" {
 			msg := fmt.Sprintf("Unexpected end of config file: variable '%s'", key) //TODO error_leader
 			if !tolerant {
@@ -715,6 +725,8 @@ func varExpand(myString string, mydict map[string]string, errorLeader string) st
 	if mydict == nil {
 		mydict = map[string]string{}
 	}
+	fmt.Printf("%v\n", myString)
+	fmt.Printf("%+v\n", mydict)
 	var numVars, insing, indoub, pos int
 	length := len(myString)
 	newString := []string{}
