@@ -665,7 +665,6 @@ func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, ex
 		if key == "export" {
 			key, _ = lex.GetToken()
 		}
-		println(key)
 		if key == "" {
 			break
 		}
@@ -688,7 +687,6 @@ func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, ex
 			}
 		}
 		val, _ := lex.GetToken()
-		println(val)
 		if val == "" {
 			msg := fmt.Sprintf("Unexpected end of config file: variable '%s'", key) //TODO error_leader
 			if !tolerant {
@@ -709,6 +707,7 @@ func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, ex
 		}
 		if expand {
 			myKeys[key] = varExpand(val, expandMap, "") //TODO lex.error_leader
+			expandMap[key] = myKeys[key]
 		} else {
 			myKeys[key] = val
 		}
@@ -725,32 +724,31 @@ func varExpand(myString string, mydict map[string]string, errorLeader string) st
 	if mydict == nil {
 		mydict = map[string]string{}
 	}
-	fmt.Printf("%v\n", myString)
-	fmt.Printf("%+v\n", mydict)
-	var numVars, insing, indoub, pos int
+	var numVars, inSingle, inDouble, pos int
 	length := len(myString)
 	newString := []string{}
 	for pos < length {
 		current := myString[pos]
-		if current == ' ' {
-			if indoub > 0 {
+		if current == '\'' {
+			if inDouble > 0 {
 				newString = append(newString, "'")
 			} else {
 				newString = append(newString, "'")
-				insing = 1 - insing
+				inSingle = 1 - inSingle
 			}
 			pos += 1
 			continue
 		} else if current == '"' {
-			if insing > 0 {
+			if inSingle > 0 {
 				newString = append(newString, "\"")
 			} else {
 				newString = append(newString, "\"")
-				indoub = 1 - indoub
+				inDouble = 1 - inDouble
 			}
+			pos += 1
 			continue
 		}
-		if insing <= 0 {
+		if inSingle <= 0 {
 			if current == '\n' {
 				newString = append(newString, " ")
 				pos += 1
@@ -840,7 +838,7 @@ func varExpand(myString string, mydict map[string]string, errorLeader string) st
 				}
 				numVars += 1
 				if _, ok := mydict[myVarName]; ok {
-					newString = append(newString, string(myVarName))
+					newString = append(newString, mydict[myVarName])
 				}
 			} else {
 				newString = append(newString, string(current))
