@@ -1,10 +1,11 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/json"
 	"github.com/ppphp/portago/atom"
-	"net/http"
 )
 
 func getCategory(c *gin.Context) {

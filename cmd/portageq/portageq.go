@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/atom"
-	flag "github.com/spf13/pflag"
 	"os"
 	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
+
+	"github.com/ppphp/portago/atom"
+	flag "github.com/spf13/pflag"
 )
 
 func init() {

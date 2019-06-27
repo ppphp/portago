@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"github.com/google/shlex"
 	"os"
 	"os/user"
 	"path"
@@ -16,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/google/shlex"
 )
 
 var (
@@ -1818,17 +1819,14 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 			if v, ok := confs["PORTDIR"]; ok {
 				portDir = v
 				knownRepos = append(knownRepos, v)
-				println(v)
 			}
 			if v, ok := confs["PORTDIR_OVERLAY"]; ok {
 				portDirOverlay = v
 				ss, _ := shlex.Split(v)
 				knownRepos = append(knownRepos, ss...)
-				println(v)
 			}
 			if v, ok := confs["SYNC"]; ok {
 				portDirSync = v
-				println(v)
 			}
 			if _, ok := confs["PORTAGE_RSYNC_EXTRA_OPTS"]; ok {
 				c.ValueDict["PORTAGE_RSYNC_EXTRA_OPTS"] = confs["PORTAGE_RSYNC_EXTRA_OPTS"]
@@ -1839,12 +1837,13 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		if portDirSync != "" {
 			c.ValueDict["SYNC"] = portDirSync
 		}
-		c.lookupList = []map[string]string{c.configDict["env"]}\
+		c.lookupList = []map[string]string{c.configDict["env"]}
 		if repositories == nil {
 			c.repositories = loadRepositoryConfig(c, "")
 		} else {
 			c.repositories = repositories
 		}
+		os.Exit(0)
 		for _, v := range c.repositories.prepos {
 			knownRepos = append(knownRepos, v.location)
 		}

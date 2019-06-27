@@ -3,9 +3,6 @@ package atom
 import (
 	"bytes"
 	"fmt"
-	"github.com/noaway/dateparse"
-	"github.com/ppphp/configparser"
-	"github.com/ppphp/shlex"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -20,6 +17,10 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/noaway/dateparse"
+	"github.com/ppphp/configparser"
+	"github.com/ppphp/shlex"
 )
 
 var noiseLimit = 0
@@ -1051,15 +1052,18 @@ func NewProjectFilename(mydest, newmd5 string, force bool) string {
 	return newPFile
 }
 
-func readConfigs(parser configparser.ConfigParser, paths []string) {
+func readConfigs(parser configparser.ConfigParser, paths []string) error {
 	for _, p := range paths {
 		f, err := os.Open(p)
 		if err != nil {
 			continue
 		}
-		f.Close()
-		parser.ReadFile(f, p)
+		defer f.Close()
+		if err := parser.ReadFile(f, p); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func expandEnv() map[string]string {

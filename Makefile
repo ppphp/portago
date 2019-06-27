@@ -9,7 +9,7 @@ deps:
 	GOPROXY=https://goproxy.io go get -u
 
 fmt:
-	gofmt -s -w .
+	goimports -w .
 
 build:
 	GOPROXY=https://goproxy.io go build

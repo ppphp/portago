@@ -1,9 +1,10 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/ppphp/portago/sync"
-	"net/http"
 )
 
 func getSync(c *gin.Context) {

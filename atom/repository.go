@@ -3,9 +3,6 @@ package atom
 import (
 	"bufio"
 	"fmt"
-	"github.com/google/shlex"
-	"github.com/ppphp/configparser"
-	"golang.org/x/sys/unix"
 	"os"
 	"path"
 	"path/filepath"
@@ -13,6 +10,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/google/shlex"
+	"github.com/ppphp/configparser"
+	"golang.org/x/sys/unix"
 )
 
 var repoNameSubRe = regexp.MustCompile(`[^\w-]`)
@@ -44,15 +45,15 @@ func findInvalidPathChar(path string, pos int, endpos int) int {
 }
 
 type repoConfig struct {
-	allowMissingManifest, autoSync, cloneDepth, eapi, format, location, mainRepo, manifestHashes, manifestRequiredHashes, name, syncDepth, syncOpenpgpKeyPath, syncOpenpgpKeyRefreshRetryCount, syncOpenpgpKeyRefreshRetryDelayExpBase, syncOpenpgpKeyRefreshRetryDelayMax, syncOpenpgpKeyRefreshRetryDelayMult, syncOpenpgpKeyRefreshRetryOverallTimeout, syncRcuStoreDir, syncType, syncUmask, syncUri, syncUser, userLocation, mastersOrig string
-	eclassDb                                                                                                                                                                                                                                                                                                                                                                                                                                  *cache
-	eapisBanned, eapisDeprecated, force, aliases, eclassOverrides                                                                                                                                                                                                                                                                                                                                                                             map[string]bool
-	cacheFormats, profileFormats, masters, eclassLocations                                                                                                                                                                                                                                                                                                                                                                                    []string
-	mastersRepo                                                                                                                                                                                                                                                                                                                                                                                                                               []*repoConfig
-	moduleSpecificOptions                                                                                                                                                                                                                                                                                                                                                                                                                     map[string]string
-	localConfig, syncHooksOnlyOnChange, strictMiscDigests, syncAllowHardlinks, syncRcu, missingRepoName, signCommit, signManifest, thinManifest, allowProvideVirtual, createManifest, disableManifest, updateChangelog, portage1Profiles, portage1ProfilesCompat                                                                                                                                                                              bool
-	priority, syncRcuSpareSnapshots, syncRcuTtlDays                                                                                                                                                                                                                                                                                                                                                                                           int
-	findInvalidPathChar                                                                                                                                                                                                                                                                                                                                                                                                                       func(string, int, int) int
+	allowMissingManifest, autoSync, cloneDepth, eapi, format, location, mainRepo, manifestHashes, manifestRequiredHashes, name, syncDepth, syncOpenpgpKeyPath, syncOpenpgpKeyRefreshRetryCount, syncOpenpgpKeyRefreshRetryDelayExpBase, syncOpenpgpKeyRefreshRetryDelayMax, syncOpenpgpKeyRefreshRetryDelayMult, syncOpenpgpKeyRefreshRetryOverallTimeout, syncRcuStoreDir, syncType, syncUmask, syncUri, syncUser, userLocation string
+	eclassDb                                                                                                                                                                                                                                                                                                                                                                                                                     *cache
+	eapisBanned, eapisDeprecated, force, aliases, eclassOverrides                                                                                                                                                                                                                                                                                                                                                                map[string]bool
+	cacheFormats, profileFormats, masters, eclassLocations, mastersOrig                                                                                                                                                                                                                                                                                                                                                          []string
+	mastersRepo                                                                                                                                                                                                                                                                                                                                                                                                                  []*repoConfig
+	moduleSpecificOptions                                                                                                                                                                                                                                                                                                                                                                                                        map[string]string
+	localConfig, syncHooksOnlyOnChange, strictMiscDigests, syncAllowHardlinks, syncRcu, missingRepoName, signCommit, signManifest, thinManifest, allowProvideVirtual, createManifest, disableManifest, updateChangelog, portage1Profiles, portage1ProfilesCompat                                                                                                                                                                 bool
+	priority, syncRcuSpareSnapshots, syncRcuTtlDays                                                                                                                                                                                                                                                                                                                                                                              int
+	findInvalidPathChar                                                                                                                                                                                                                                                                                                                                                                                                          func(string, int, int) int
 }
 
 func (r *repoConfig) setModuleSpecificOpt(opt, val string) {
@@ -251,11 +252,11 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 	r.portage1Profiles = true
 	r.portage1ProfilesCompat = false
 	r.findInvalidPathChar = findInvalidPathChar
-	r.mastersOrig = ""
+	r.mastersOrig = []string{}
 
 	if len(r.location) > 0 {
 		layoutData, _ := parseLayoutConf(r.location, r.name)
-		r.mastersOrig = layoutData["masters"][0]
+		r.mastersOrig = layoutData["masters"]
 		if r.masters == nil {
 			r.masters = layoutData["masters"]
 		}
@@ -516,14 +517,16 @@ func (r *repoConfigLoader) parse(paths []string, prepos map[string]*repoConfig, 
 		recursivePaths = append(recursivePaths, recursiveFileList(p)...)
 	}
 
-	readConfigs(parser, recursivePaths)
+	if err := readConfigs(parser, recursivePaths); err != nil {
+		return err
+	}
 
 	prepos["DEFAULT"] = NewRepoConfig("DEFAULT", parser.Defaults(), localConfig)
 	for _, sname := range parser.Sections() {
 		optdict := map[string]string{}
 		onames, _ := parser.Options(sname)
 		for _, oname := range onames {
-			optdict[oname], _ = parser.Get(sname, oname, false, nil, "")
+			optdict[oname], _ = parser.Gett(sname, oname)
 		}
 		repo := NewRepoConfig(sname, optdict, localConfig)
 		for o := range moduleSpecificOptions(repo) {
@@ -741,7 +744,7 @@ func (r *repoConfigLoader) configString() string {
 func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 	r := &repoConfigLoader{}
 	prepos, locationMap, treeMap, ignoredMap, defaultOpts := map[string]*repoConfig{}, map[string]string{}, map[string]string{}, map[string][]string{}, map[string]string{"EPREFIX": settings.ValueDict["EPREFIX"], "EROOT": settings.ValueDict["EROOT"], "PORTAGE_CONFIGROOT": settings.ValueDict["PORTAGE_CONFIGROOT"], "ROOT": settings.ValueDict["ROOT"]}
-	portDir, portDirOverlay := "", ""
+	var portDir, portDirOverlay string
 
 	if _, ok := settings.ValueDict["PORTAGE_REPOSITORIES"]; !ok {
 		portDir = settings.ValueDict["PORTDIR"]
@@ -755,7 +758,17 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 		locationMap = map[string]string{}
 		treeMap = map[string]string{}
 	}
-	defaultPortDir := path.Join(string(os.PathSeparator), strings.TrimPrefix(settings.ValueDict["EPREFIX"], string(os.PathSeparator)), "usr", "portage")
+	repoLocations := map[string]bool{}
+	for repo := range prepos {
+		repoLocations[repo] = true
+	}
+	var defaultPortDir string
+	for _, repoLocation := range []string{"var/db/repos/gentoo", "usr/portage"} {
+		defaultPortDir = path.Join(string(os.PathSeparator), strings.TrimPrefix(settings.ValueDict["EPREFIX"], string(os.PathSeparator)), repoLocation)
+		if repoLocations[defaultPortDir] {
+			break
+		}
+	}
 	portDir = r.addRepositories(portDir, portDirOverlay, prepos, ignoredMap, settings.localConfig, defaultPortDir)
 	if portDir != "" && strings.TrimSpace(portDir) == "" {
 		portDir, _ = filepath.EvalSymlinks(portDir)
@@ -774,7 +787,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 		if repo.location == "" {
 			if repoName != "DEFAULT" {
 				if settings.localConfig && len(paths) > 0 {
-					writeMsgLevel(fmt.Sprintf("!!! %s\nSection '%s' in repos.conf is missing location attribute", repo.name), 40, -1)
+					writeMsgLevel(fmt.Sprintf("!!! %s\n", fmt.Sprintf("Section '%s' in repos.conf is missing location attribute", repo.name)), 40, -1)
 				}
 				delete(prepos, repoName)
 				continue
@@ -782,7 +795,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 		} else {
 			if !SyncMode {
 				if !isdirRaiseEaccess(repo.location) {
-					writeMsgLevel(fmt.Sprintf("!!! %s\nSection '%s' in repos.conf has location attribute set to nonexistent directory: '%s'", repoName, repo.location), 40, -1)
+					writeMsgLevel(fmt.Sprintf("!!! %s\n", fmt.Sprintf("Section '%s' in repos.conf has location attribute set to nonexistent directory: '%s'", repoName, repo.location)), 40, -1)
 					if repo.name != "gentoo" {
 						delete(prepos, repoName)
 						continue
@@ -957,7 +970,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 		if repoName == "DEFAULT" {
 			continue
 		}
-		if repo.mastersOrig == "" && r.mainRepo() != nil && repo.name != r.mainRepo().name && !SyncMode {
+		if repo.mastersOrig == nil && r.mainRepo() != nil && repo.name != r.mainRepo().name && !SyncMode {
 			writeMsgLevel(fmt.Sprintf("!!! %s\nRepository '%s' is missing masters attribute in '%s'", repo.name, path.Join(repo.location, "metadata", "layout.conf"))+fmt.Sprintf("!!! %s\nSet 'masters = %s' in this file for future compatibility", r.mainRepo().name), 30, -1)
 		}
 	}
@@ -968,21 +981,21 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 }
 
 func loadRepositoryConfig(settings *Config, extraFiles string) *repoConfigLoader {
-	repoconfigpaths := []string{}
+	repoConfigPaths := []string{}
 	if pr, ok := settings.ValueDict["PORTAGE_REPOSITORIES"]; ok {
-		repoconfigpaths = append(repoconfigpaths, pr)
+		repoConfigPaths = append(repoConfigPaths, pr)
 	} else {
 		if notInstalled {
-			repoconfigpaths = append(repoconfigpaths, path.Join(PORTAGE_BASE_PATH, "cnf", "repos.conf"))
+			repoConfigPaths = append(repoConfigPaths, path.Join(PORTAGE_BASE_PATH, "cnf", "repos.conf"))
 		} else {
-			repoconfigpaths = append(repoconfigpaths, path.Join(settings.globalConfigPath, "repos.conf"))
+			repoConfigPaths = append(repoConfigPaths, path.Join(settings.globalConfigPath, "repos.conf"))
 		}
 	}
-	repoconfigpaths = append(repoconfigpaths, path.Join(settings.ValueDict["PORTAGE_CONFIGROOT"], UserConfigPath, "repos.conf"))
-	if extraFiles != "" {
-		repoconfigpaths = append(repoconfigpaths, extraFiles)
+	repoConfigPaths = append(repoConfigPaths, path.Join(settings.ValueDict["PORTAGE_CONFIGROOT"], UserConfigPath, "repos.conf"))
+	if len(extraFiles) > 0 {
+		repoConfigPaths = append(repoConfigPaths, extraFiles)
 	}
-	return NewRepoConfigLoader(repoconfigpaths, settings)
+	return NewRepoConfigLoader(repoConfigPaths, settings)
 }
 
 func getRepoName(repoLocation, cached string) string {

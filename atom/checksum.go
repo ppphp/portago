@@ -7,6 +7,13 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"fmt"
+	"hash"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"sort"
+	"strings"
+
 	"github.com/jzelinskie/whirlpool"
 	"github.com/martinlindhe/gogost/gost34112012256"
 	"github.com/martinlindhe/gogost/gost34112012512"
@@ -14,12 +21,6 @@ import (
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/ripemd160"
 	"golang.org/x/crypto/sha3"
-	"hash"
-	"io/ioutil"
-	"os"
-	"os/exec"
-	"sort"
-	"strings"
 )
 
 var (

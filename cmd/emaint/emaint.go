@@ -1,10 +1,11 @@
 package main
 
 import (
-	"github.com/ppphp/portago/atom"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/ppphp/portago/atom"
 )
 
 func init() {

@@ -26,8 +26,6 @@ github.com/json-iterator/go v1.1.6 h1:MrUvLMLTMxbqFJ9kzlvat/rYZqZnW3u4wkLzWTaFwK
 github.com/json-iterator/go v1.1.6/go.mod h1:+SdeFBvtyEkXs7REEP0seUULqWtbJapLOCVDaaPEHmU=
 github.com/jzelinskie/whirlpool v0.0.0-20170603002051-c19460b8caa6 h1:RyOL4+OIUc6u5ac2LclitlZvFES6k+sg18fBMfxFUUs=
 github.com/jzelinskie/whirlpool v0.0.0-20170603002051-c19460b8caa6/go.mod h1:KmHnJWQrgEvbuy0vcvj00gtMqbvNn1L+3YUZLK/B92c=
-github.com/kdar/stringio v0.0.0-20130311154137-75d7b735c367 h1:EZImxLsFQLY3KIZkw7M04Yyzr8Xsstqjbv3u4fH4pYI=
-github.com/kdar/stringio v0.0.0-20130311154137-75d7b735c367/go.mod h1:xCG9XLh2wTN/Wn4bCbl4e7aC0lw3y+nu9cyCxVkEhds=
 github.com/konsorten/go-windows-terminal-sequences v1.0.1 h1:mweAR1A6xJ3oS2pRaGiHgQ4OO8tzTaLawm8vnODuwDk=
 github.com/konsorten/go-windows-terminal-sequences v1.0.1/go.mod h1:T0+1ngSBFLxvqU3pZ+m/2kptfBszLMUkC4ZK/EgS/cQ=
 github.com/konsorten/go-windows-terminal-sequences v1.0.2 h1:DB17ag19krx9CFsz4o3enTrPXyIXCl+2iCXH/aMAp9s=
@@ -51,8 +49,8 @@ github.com/noaway/dateparse v0.0.0-20171117034806-ad2b19d7b298 h1:KxSjks3AZ9UzCE
 github.com/noaway/dateparse v0.0.0-20171117034806-ad2b19d7b298/go.mod h1:igayvLRJcte85zNxjysR9x255KAJmDUAMEiG3P6z0IY=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/ppphp/configparser v0.0.0-20190526194330-e13eff91f4b8 h1:yMmxn85TCYnkhlE6YA6WFQzUytdEhR3RwHXQBnNdQ74=
-github.com/ppphp/configparser v0.0.0-20190526194330-e13eff91f4b8/go.mod h1:xKajQGMienIFvgNWQAeo+DRuNAr+1eqglQOpZmW5qII=
+github.com/ppphp/configparser v0.0.0-20190627184405-a9be30f3683b h1:XRGGWaU7/bKfuak1vljZLjglFpClqobu9LZj9jO9hDY=
+github.com/ppphp/configparser v0.0.0-20190627184405-a9be30f3683b/go.mod h1:SHaDUUvFx7myXyp1jsP6RM3jAadELyDxsarjjA01EbI=
 github.com/ppphp/shlex v0.0.0-20190610181805-4397eecd96b9 h1:YEtWZxq1Wi5EE5s5Qc20ppKymkmub+LxMBN6E/Au2sU=
 github.com/ppphp/shlex v0.0.0-20190610181805-4397eecd96b9/go.mod h1:bk7ct1P8C7I/gotyXgYO07TwK7i2I6uxq6BWrVw3atg=
 github.com/sirupsen/logrus v1.4.1 h1:GL2rEmy6nsikmW0r8opw9JIRScdMF5hA8cOYLH7In1k=

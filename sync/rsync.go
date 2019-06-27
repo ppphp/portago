@@ -2,9 +2,10 @@ package sync
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/config"
 	"os/exec"
 	"strings"
+
+	"github.com/ppphp/portago/config"
 )
 
 // /usr/portage
