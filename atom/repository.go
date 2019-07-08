@@ -114,6 +114,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 			f[x] = true
 		}
 	}
+	fmt.Printf("%+v\n", repoOpts)
 	r.force = f
 	r.localConfig = localConfig
 	a := map[string]bool{}
@@ -217,10 +218,14 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 	r.moduleSpecificOptions = map[string]string{}
 	r.format = strings.TrimSpace(repoOpts["format"])
 
-	if s, err := os.Stat(repoOpts["location"]); err == nil && (s.IsDir() || SyncMode) {
-		r.userLocation = repoOpts["location"]
-		r.location, _ = filepath.EvalSymlinks(repoOpts["location"])
+	location := repoOpts["location"]
+	if s, err := os.Stat(location); err == nil && (s.IsDir() || SyncMode) {
+		r.userLocation = location
+		location, _ = filepath.EvalSymlinks(location)
+	} else {
+		location = ""
 	}
+	r.location = location
 	missing := true
 	r.name = name
 	if len(r.location) > 0 {
@@ -331,7 +336,6 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 		for _, v := range layoutData["eapis-deprecated"] {
 			r.eapisDeprecated[v] = true
 		}
-
 	}
 
 	return r

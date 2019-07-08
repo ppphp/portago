@@ -15,7 +15,7 @@ require (
 	github.com/martinlindhe/gogost v0.0.0-20170914195721-31862914ae20
 	github.com/mattn/go-isatty v0.0.7 // indirect
 	github.com/noaway/dateparse v0.0.0-20171117034806-ad2b19d7b298
-	github.com/ppphp/configparser v0.0.0-20190627184405-a9be30f3683b
+	github.com/ppphp/configparser v0.0.0-20190708190048-9ca95707ffee
 	github.com/ppphp/shlex v0.0.0-20190610181805-4397eecd96b9
 	github.com/sirupsen/logrus v1.4.1
 	github.com/spf13/pflag v1.0.3

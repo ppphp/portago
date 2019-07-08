@@ -49,8 +49,8 @@ github.com/noaway/dateparse v0.0.0-20171117034806-ad2b19d7b298 h1:KxSjks3AZ9UzCE
 github.com/noaway/dateparse v0.0.0-20171117034806-ad2b19d7b298/go.mod h1:igayvLRJcte85zNxjysR9x255KAJmDUAMEiG3P6z0IY=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/ppphp/configparser v0.0.0-20190627184405-a9be30f3683b h1:XRGGWaU7/bKfuak1vljZLjglFpClqobu9LZj9jO9hDY=
-github.com/ppphp/configparser v0.0.0-20190627184405-a9be30f3683b/go.mod h1:SHaDUUvFx7myXyp1jsP6RM3jAadELyDxsarjjA01EbI=
+github.com/ppphp/configparser v0.0.0-20190708190048-9ca95707ffee h1:5/SfygDJiOOBRA7sXPe/JIMfHJYdvragLOaYaAyL1yY=
+github.com/ppphp/configparser v0.0.0-20190708190048-9ca95707ffee/go.mod h1:SHaDUUvFx7myXyp1jsP6RM3jAadELyDxsarjjA01EbI=
 github.com/ppphp/shlex v0.0.0-20190610181805-4397eecd96b9 h1:YEtWZxq1Wi5EE5s5Qc20ppKymkmub+LxMBN6E/Au2sU=
 github.com/ppphp/shlex v0.0.0-20190610181805-4397eecd96b9/go.mod h1:bk7ct1P8C7I/gotyXgYO07TwK7i2I6uxq6BWrVw3atg=
 github.com/sirupsen/logrus v1.4.1 h1:GL2rEmy6nsikmW0r8opw9JIRScdMF5hA8cOYLH7In1k=

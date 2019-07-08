@@ -364,14 +364,19 @@ func readCorrespondingEapiFile(filename, defaults string) string { // "0"
 		}
 	}
 	eapi = ""
-	f, _ := os.Open(eapiFile)
-	r, _ := ioutil.ReadAll(f)
-	lines := strings.Split(string(r), "\n")
-	if len(lines) == 1 {
-		eapi = strings.TrimSuffix(lines[0], "\n")
-	} else {
-		WriteMsg(fmt.Sprintf("--- Invalid 'eapi' file (doesn't contain exactly one line): %s\n", eapiFile), -1, nil)
+	f, err := os.Open(eapiFile)
+	if err == nil {
+		r, err := ioutil.ReadAll(f)
+		if err == nil {
+			lines := strings.Split(string(r), "\n")
+			if len(lines) == 2 {
+				eapi = strings.TrimSuffix(lines[0], "\n")
+			} else {
+				WriteMsg(fmt.Sprintf("--- Invalid 'eapi' file (doesn't contain exactly one line): %s\n", eapiFile), -1, nil)
+			}
+		}
 	}
+
 	eapiFileCache[eapiFile] = eapi
 	if eapi == "" {
 		return defaults
