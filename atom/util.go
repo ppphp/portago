@@ -48,8 +48,8 @@ func writeMsgLevel(msg string, level, noiselevel int) { //00
 	WriteMsg(msg, noiselevel, fd)
 }
 
-func NormalizePath(mypath string) string {
-	return path.Clean(mypath)
+func NormalizePath(myPath string) string {
+	return path.Clean(myPath)
 }
 
 func grabFile(myFileName string, compatLevel int, recursive, rememberSourceFile bool) [][2]string { // 00f

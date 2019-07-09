@@ -1690,7 +1690,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		c.keywordsManagerObj = nil
 		c.maskManagerObj = nil
 		c.virtualsManagerObj = nil
-		locationsManager := NewLocaitonsManager(configRoot, eprefix, configProfilePath, localConfig, targetRoot, sysroot)
+		locationsManager := NewLocationsManager(configRoot, eprefix, configProfilePath, localConfig, targetRoot, sysroot)
 		c.locationsManager = locationsManager
 		eprefix := locationsManager.eprefix
 		configRoot = locationsManager.configRoot
@@ -1843,7 +1843,6 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		} else {
 			c.repositories = repositories
 		}
-		os.Exit(0)
 		for _, v := range c.repositories.prepos {
 			knownRepos = append(knownRepos, v.location)
 		}
@@ -1878,8 +1877,6 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		c.backupChanges("PORTDIR_OVERLAY")
 		expandMap["PORTDIR_OVERLAY"] = c.ValueDict["PORTDIR_OVERLAY"]
 		locationsManager.setPortDirs(c.ValueDict["PORTDIR"], c.ValueDict["PORTDIR_OVERLAY"])
-		fmt.Printf("%+v", knownRepos)
-		os.Exit(0)
 		locationsManager.loadProfiles(c.repositories, knownRepos)
 		profilesComplex := locationsManager.profilesComplex
 		c.profiles = locationsManager.profiles
@@ -2758,7 +2755,7 @@ func (l *locationsManager) setRootOverride(rootOverwrite string) error {
 		l.targetRoot = string(os.PathSeparator)
 	}
 	fap, _ := filepath.Abs(l.targetRoot)
-	l.targetRoot = NormalizePath(strings.TrimSuffix(fap, string(os.PathSeparator))) + string(os.PathSeparator)
+	l.targetRoot = strings.TrimSuffix(NormalizePath(fap), string(os.PathSeparator)) + string(os.PathSeparator)
 	if l.sysroot != "/" && l.sysroot != l.targetRoot {
 		WriteMsg(fmt.Sprintf("!!! Error: SYSROOT (currently %s) must "+
 			"equal / or ROOT (currently %s).\n", l.sysroot, l.targetRoot), 1, nil)
@@ -2793,7 +2790,7 @@ func (l *locationsManager) setPortDirs(portdir, portdirOverlay string) {
 	}
 }
 
-func NewLocaitonsManager(configRoot, eprefix, configProfilePath string, localConfig bool, targetRoot, sysroot string) *locationsManager { // "", "", "", true, "", ""
+func NewLocationsManager(configRoot, eprefix, configProfilePath string, localConfig bool, targetRoot, sysroot string) *locationsManager { // "", "", "", true, "", ""
 	l := &locationsManager{userProfileDir: "", localRepoConfPath: "", eprefix: eprefix, configRoot: configRoot, targetRoot: targetRoot, sysroot: sysroot, userConfig: localConfig}
 	if l.eprefix == "" {
 		l.eprefix = EPREFIX
@@ -2803,6 +2800,7 @@ func NewLocaitonsManager(configRoot, eprefix, configProfilePath string, localCon
 			l.eprefix = ""
 		}
 	}
+
 	if l.configRoot == "" {
 		l.configRoot = EPREFIX + string(os.PathSeparator)
 	}

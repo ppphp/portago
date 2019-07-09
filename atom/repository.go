@@ -114,7 +114,6 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 			f[x] = true
 		}
 	}
-	fmt.Printf("%+v\n", repoOpts)
 	r.force = f
 	r.localConfig = localConfig
 	a := map[string]bool{}
@@ -516,7 +515,7 @@ func (r *repoConfigLoader) parse(paths []string, prepos map[string]*repoConfig, 
 	args := configparser.DefaultArgument
 	args.Defaults = defaultOpts
 	parser := configparser.NewConfigParser(args)
-	recursivePaths := []string{}
+	var recursivePaths []string
 	for _, p := range paths {
 		recursivePaths = append(recursivePaths, recursiveFileList(p)...)
 	}
@@ -670,7 +669,7 @@ func (r *repoConfigLoader) iter() []string {
 }
 
 func (r *repoConfigLoader) configString() string {
-	config_string := ""
+	configString := ""
 	repoName := []string{}
 	for r := range r.prepos {
 		if r != "DEFAULT" {
@@ -680,57 +679,57 @@ func (r *repoConfigLoader) configString() string {
 	sort.Strings(repoName)
 	repoName = append(repoName, "DEFAULT")
 	for _, v := range repoName {
-		config_string += fmt.Sprintf("\n[%s]\n", v)
+		configString += fmt.Sprintf("\n[%s]\n", v)
 		repo := r.prepos[v]
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("strict_misc_digests", "_", "-", -1), repo.strictMiscDigests)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_allow_hardlinks", "_", "-", -1), repo.syncAllowHardlinks)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_rcu", "_", "-", -1), repo.syncRcu)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("auto_sync", "_", "-", -1), repo.autoSync)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("clone_depth", "_", "-", -1), repo.cloneDepth)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("format", "_", "-", -1), repo.format)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("location", "_", "-", -1), repo.location)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("main_repo", "_", "-", -1), repo.mainRepo)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("priority", "_", "-", -1), repo.priority)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_depth", "_", "-", -1), repo.syncDepth)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_path", "_", "-", -1), repo.syncOpenpgpKeyPath)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_refresh_retry_count", "_", "-", -1), repo.syncOpenpgpKeyRefreshRetryCount)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_refresh_retry_delay_exp_base", "_", "-", -1), repo.syncOpenpgpKeyRefreshRetryDelayExpBase)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_refresh_retry_delay_max", "_", "-", -1), repo.syncOpenpgpKeyRefreshRetryDelayMax)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_refresh_retry_delay_mult", "_", "-", -1), repo.syncOpenpgpKeyRefreshRetryDelayMult)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_refresh_retry_overall_timeout", "_", "-", -1), repo.syncOpenpgpKeyRefreshRetryOverallTimeout)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_rcu_spare_snapshots", "_", "-", -1), repo.syncRcuSpareSnapshots)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_rcu_store_dir", "_", "-", -1), repo.syncRcuStoreDir)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_rcu_ttl_days", "_", "-", -1), repo.syncRcuTtlDays)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_type", "_", "-", -1), repo.syncType)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_umask", "_", "-", -1), repo.syncUmask)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_uri", "_", "-", -1), repo.syncUri)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("sync_user", "_", "-", -1), repo.syncUser)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("strict_misc_digests", "_", "-", -1), repo.strictMiscDigests)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_allow_hardlinks", "_", "-", -1), repo.syncAllowHardlinks)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_rcu", "_", "-", -1), repo.syncRcu)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("auto_sync", "_", "-", -1), repo.autoSync)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("clone_depth", "_", "-", -1), repo.cloneDepth)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("format", "_", "-", -1), repo.format)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("location", "_", "-", -1), repo.location)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("main_repo", "_", "-", -1), repo.mainRepo)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("priority", "_", "-", -1), repo.priority)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_depth", "_", "-", -1), repo.syncDepth)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_path", "_", "-", -1), repo.syncOpenpgpKeyPath)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_refresh_retry_count", "_", "-", -1), repo.syncOpenpgpKeyRefreshRetryCount)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_refresh_retry_delay_exp_base", "_", "-", -1), repo.syncOpenpgpKeyRefreshRetryDelayExpBase)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_refresh_retry_delay_max", "_", "-", -1), repo.syncOpenpgpKeyRefreshRetryDelayMax)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_refresh_retry_delay_mult", "_", "-", -1), repo.syncOpenpgpKeyRefreshRetryDelayMult)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_openpgp_key_refresh_retry_overall_timeout", "_", "-", -1), repo.syncOpenpgpKeyRefreshRetryOverallTimeout)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_rcu_spare_snapshots", "_", "-", -1), repo.syncRcuSpareSnapshots)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_rcu_store_dir", "_", "-", -1), repo.syncRcuStoreDir)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_rcu_ttl_days", "_", "-", -1), repo.syncRcuTtlDays)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_type", "_", "-", -1), repo.syncType)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_umask", "_", "-", -1), repo.syncUmask)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_uri", "_", "-", -1), repo.syncUri)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_user", "_", "-", -1), repo.syncUser)
 		aliases := []string{}
 		for k := range repo.aliases {
 			aliases = append(aliases, k)
 		}
 		sort.Strings(aliases)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("aliases", "_", "-", -1), strings.Join(aliases, " "))
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("aliases", "_", "-", -1), strings.Join(aliases, " "))
 		eclassOverrides := []string{}
 		for k := range repo.eclassOverrides {
 			eclassOverrides = append(eclassOverrides, k)
 		}
 		sort.Strings(eclassOverrides)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("eclass_overrides", "_", "-", -1), strings.Join(eclassOverrides, " "))
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("eclass_overrides", "_", "-", -1), strings.Join(eclassOverrides, " "))
 		force := []string{}
 		for k := range repo.force {
 			force = append(force, k)
 		}
 		sort.Strings(force)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("force", "_", "-", -1), strings.Join(force, " "))
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("force", "_", "-", -1), strings.Join(force, " "))
 		masters := []string{}
 		for _, k := range repo.mastersRepo {
 			masters = append(masters, k.name)
 		}
 		sort.Strings(masters)
-		config_string += fmt.Sprintf("%s = %s\n", strings.Replace("masters", "_", "-", -1), strings.Join(masters, " "))
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("masters", "_", "-", -1), strings.Join(masters, " "))
 		if v == "DEFAULT" {
-			config_string += ""
+			configString += ""
 		}
 
 		keys := []string{}
@@ -739,10 +738,10 @@ func (r *repoConfigLoader) configString() string {
 		}
 		sort.Strings(keys)
 		for _, v := range keys {
-			config_string += fmt.Sprintf("%s = %s\n", v, repo.moduleSpecificOptions[v])
+			configString += fmt.Sprintf("%s = %s\n", v, repo.moduleSpecificOptions[v])
 		}
 	}
-	return strings.TrimPrefix(config_string, "\n")
+	return strings.TrimPrefix(configString, "\n")
 }
 
 func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
@@ -777,7 +776,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 	if portDir != "" && strings.TrimSpace(portDir) == "" {
 		portDir, _ = filepath.EvalSymlinks(portDir)
 	}
-	ignoredRepos := []sss{}
+	var ignoredRepos []sss
 	for k, v := range ignoredMap {
 		ignoredRepos = append(ignoredRepos, sss{k, v})
 	}
@@ -824,7 +823,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 		names := map[string]bool{}
 		names[repoName] = true
 		if len(repo.aliases) > 0 {
-			a := [][2]string{}
+			var a [][2]string
 			for v := range repo.aliases {
 				a = append(a, [2]string{v})
 			}
@@ -865,7 +864,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 	if mainRepo != "" && prepos[mainRepo].priority == 0 {
 		prepos[mainRepo].priority = -1000
 	}
-	p := []*repoConfig{}
+	var p []*repoConfig
 	for key, repo := range prepos {
 		if repo.name == key && key != "DEFAULT" && repo.location != "" {
 			p = append(p, repo)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -11,6 +12,10 @@ import (
 	"github.com/ppphp/portago/atom"
 	flag "github.com/spf13/pflag"
 )
+
+func init() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+}
 
 func init() {
 	signalHandler := func() {
