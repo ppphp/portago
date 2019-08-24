@@ -2439,14 +2439,14 @@ func (f *featuresSet) discard(k string) {
 
 func (f *featuresSet) validate() {
 	if f.features["unknown-features-warn"] {
-		unknownFeatures := []string{}
+		var unknownFeatures []string
 		for k := range f.features {
 			if !SUPPORTED_FEATURES[k] {
 				unknownFeatures = append(unknownFeatures, k)
 			}
 		}
 		if len(unknownFeatures) > 0 {
-			unknownFeatures2 := []string{}
+			var unknownFeatures2 []string
 			for _, u := range unknownFeatures {
 				if !f.settings.unknownFeatures[u] {
 					unknownFeatures2 = append(unknownFeatures2, u)
@@ -2456,15 +2456,12 @@ func (f *featuresSet) validate() {
 				for _, u := range unknownFeatures2 {
 					f.settings.unknownFeatures[u] = true
 				}
-				//writemsg_level(colorize("BAD",
-				//	_("FEATURES variable contains unknown value(s): %s") % \
-				//", ".join(sorted(unknown_features))) \
-				//+ "\n", level=logging.WARNING, noiselevel=-1)
+				writeMsgLevel(colorize("BAD", fmt.Sprintf("FEATURES variable contains unknown value(s): %s", strings.Join(unknownFeatures2, ", "))+"\n"), 30, -1)
 			}
 		}
 	}
 	if f.features["unknown-features-filter"] {
-		unknownFeatures := []string{}
+		var unknownFeatures []string
 		for k := range f.features {
 			if !SUPPORTED_FEATURES[k] {
 				unknownFeatures = append(unknownFeatures, k)

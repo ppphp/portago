@@ -280,7 +280,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 		if len(layoutData["allow-missing-manifest"]) > 0 {
 			r.allowMissingManifest = layoutData["allow-missing-manifest"][0]
 		}
-		if len(layoutData["repo-name"]) > 0 {
+		if len(layoutData["repo-name"]) > 0 && len(layoutData["repo-name"][0]) > 0 {
 			r.name = layoutData["repo-name"][0]
 			r.missingRepoName = false
 		}
@@ -805,12 +805,12 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 					}
 				}
 				if repo.missingRepoName && repo.name != repoName {
-					writeMsgLevel(fmt.Sprintf("!!! %s\nSection '%s' in repos.conf refers to repository without repository name set in '%s'", repoName, path.Join(repo.location, RepoNameLoc)), 40, -1)
+					writeMsgLevel(fmt.Sprintf("!!! Section '%s' in repos.conf refers to repository without repository name set in '%s'\n", repoName, path.Join(repo.location, RepoNameLoc)), 40, -1)
 					delete(prepos, repoName)
 					continue
 				}
 				if repo.name != repoName {
-					writeMsgLevel(fmt.Sprintf("!!! %s\nSection '%s' in repos.conf has name different from repository name '%s' set inside repository", repoName, repo.name), 40, -1)
+					writeMsgLevel(fmt.Sprintf("!!! Section '%s' in repos.conf has name different from repository name '%s' set inside repository\n", repoName, repo.name), 40, -1)
 					delete(prepos, repoName)
 					continue
 				}
@@ -974,7 +974,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 			continue
 		}
 		if repo.mastersOrig == nil && r.mainRepo() != nil && repo.name != r.mainRepo().name && !SyncMode {
-			writeMsgLevel(fmt.Sprintf("!!! %s\nRepository '%s' is missing masters attribute in '%s'", repo.name, path.Join(repo.location, "metadata", "layout.conf"))+fmt.Sprintf("!!! %s\nSet 'masters = %s' in this file for future compatibility", r.mainRepo().name), 30, -1)
+			writeMsgLevel(fmt.Sprintf("!!! Repository '%s' is missing masters attribute in '%s'\n", repo.name, path.Join(repo.location, "metadata", "layout.conf"))+fmt.Sprintf("!!! Set 'masters = %s' in this file for future compatibility\n", r.mainRepo().name), 30, -1)
 		}
 	}
 	r.preposChanged = true
