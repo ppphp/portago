@@ -15,6 +15,7 @@ const (
 	v           = `(?P<major>\d+)(?P<minors>(?P<minor>\.\d+)*)(?P<letter>[a-z]?)(?P<additional>(?P<suffix>_(?P<status>pre|p|beta|alpha|rc)\d*)*)`
 	rev         = `\d+`
 	vr          = v + "(?P<revision>-r(" + rev + "))?"
+	ver         = "^" + vr + "$"
 )
 
 var (
@@ -34,10 +35,9 @@ var (
 		"dots_disallowed_in_PN": "(?P<pn>" + pkg["dots_disallowed_in_PN"] + "(?P<pn_inval>-" + vr + ")?)" + "-(?P<ver>" + v + ")(-r(?P<rev>" + rev + "))?",
 		"dots_allowed_in_PN":    "(?P<pn>" + pkg["dots_allowed_in_PN"] + "(?P<pn_inval>-" + vr + ")?)" + "-(?P<ver>" + v + ")(-r(?P<rev>" + rev + "))?",
 	}
-	verRegexp       = regexp.MustCompile("^" + vr + "$")
-	suffix_regexp   = regexp.MustCompile("^(alpha|beta|rc|pre|p)(\\d*)$")
-	suffix_value    = map[string]int{"pre": -2, "p": 0, "alpha": -4, "beta": -3, "rc": -1}
-	endversion_keys = []string{"pre", "p", "alpha", "beta", "rc"}
+	verRegexp      = regexp.MustCompile(ver)
+	suffixRegexp   = regexp.MustCompile("^(alpha|beta|rc|pre|p)(\\d*)$")
+	endversionKeys = []string{"pre", "p", "alpha", "beta", "rc"}
 
 	slotReCache = map[bool]*regexp.Regexp{}
 	pvReCache   = map[bool]*regexp.Regexp{}
@@ -45,8 +45,8 @@ var (
 
 func getSlotRe(eapiAttrs eapiAttrs) *regexp.Regexp {
 
-	cache_key := eapiAttrs.SlotOperator
-	slotRe, ok := slotReCache[cache_key]
+	cacheKey := eapiAttrs.SlotOperator
+	slotRe, ok := slotReCache[cacheKey]
 	if ok {
 		return slotRe
 	}
@@ -61,7 +61,7 @@ func getSlotRe(eapiAttrs eapiAttrs) *regexp.Regexp {
 
 	slotRe = regexp.MustCompile("^" + s + "$")
 
-	slotReCache[cache_key] = slotRe
+	slotReCache[cacheKey] = slotRe
 	return slotRe
 }
 
@@ -105,28 +105,98 @@ func toi(s string) int {
 	return i
 }
 
+type VersionStatus string
+
+const (
+	VersionStatusPre   = "pre"
+	VersionStatusP     = "p"
+	VersionStatusAlpha = "alpha"
+	VersionStatusBeta  = "beta"
+	VersionStatusRC    = "rc"
+)
+
+var suffixValue = map[VersionStatus]int{
+	VersionStatusPre:   -2,
+	VersionStatusP:     0,
+	VersionStatusAlpha: -4,
+	VersionStatusBeta:  -3,
+	VersionStatusRC:    -1}
+
+type VersionString struct {
+	Exists bool
+	Value  string
+}
+
+func (v VersionString) Cmp(v2 VersionString) int {
+	return 0 // TODO
+}
+
+type Version struct {
+	Major   VersionString
+	Minors  []string
+	Letter  string
+	Suffix  string
+	Status  string
+	Revison string
+}
+
+func (v Version) Cmp(v2 Version) int {
+	return 0 // TODO
+}
+
+func NewVersion(ver string) (*Version, error) {
+	v := &Version{}
+	if !verRegexp.MatchString(ver) {
+		return nil, fmt.Errorf("!!! syntax error in version: %s", ver)
+	}
+	major := getNamedRegexp(verRegexp, ver, "major")
+	if major != "" {
+		v.Major.Exists = true
+		v.Major.Value = major
+	}
+	return nil, nil
+}
+
 func verCmp(ver1, ver2 string) (int, error) {
 	if ver1 == ver2 {
 		return 0, nil
 	}
 
-	if !verRegexp.MatchString(ver1) || !verRegexp.MatchString(ver2) {
-		return 0, errors.New("a")
+	var verRegexp = regexp.MustCompile("^(?P<major>\\d+)(?P<minors>(?P<minor>\\.\\d+)*)(?P<letter>[a-z]?)(?P<additional>(?P<suffix>_(?P<status>pre|p|beta|alpha|rc)\\d*)*)(-r(?P<revision>\\d+))?$")
+	if !verRegexp.MatchString(ver1) {
+		return 0, fmt.Errorf("!!! syntax error in version: %s", ver1)
 	}
-	v1, err := strconv.Atoi(verRegexp.FindString(ver1))
-	if err != nil {
-		return 0, err
+	if !verRegexp.MatchString(ver2) {
+		return 0, fmt.Errorf("!!! syntax error in version: %s", ver2)
 	}
-	v2, err := strconv.Atoi(verRegexp.FindString(ver2))
-	if err != nil {
-		return 0, err
+	v1 := verRegexp.FindStringSubmatch(ver1)[1]
+	v2 := verRegexp.FindStringSubmatch(ver2)[1]
+
+	major1, _ := strconv.Atoi(v1)
+	major2, _ := strconv.Atoi(v2)
+	if major1 > major2 {
+		return 1,nil
+	}else if major1< major2{
+		return -1,nil
 	}
-	list1 := []int{v1}
-	list2 := []int{v2}
+	
+	
+	list1 := []string{v1}
+	list2 := []string{v2}
 
 	if getNamedRegexp(verRegexp, ver1, "minors") != "" || getNamedRegexp(verRegexp, ver2, "minors") != "" {
-		vlist1 := strings.Split(getNamedRegexp(verRegexp, ver1, "minors")[1:], ".")
-		vlist2 := strings.Split(getNamedRegexp(verRegexp, ver2, "minors")[1:], ".")
+		g1 := getNamedRegexp(verRegexp, ver1, "minors")
+		if len(g1) >= 1 {
+			g1 = g1[1:]
+		}
+		vlist1 := strings.Split(g1, ".")
+		g2 := getNamedRegexp(verRegexp, ver2, "minors")
+		if len(g2) >= 1 {
+			g2 = g2[1:]
+		}
+		vlist2 := strings.Split(g2, ".")
+
+		// fmt.Printf("%v%v%+v%+v\n", ver1, ver2,vlist1, vlist2) // TODO
 
 		l := len(vlist1)
 		if len(vlist2) > l {
@@ -135,37 +205,31 @@ func verCmp(ver1, ver2 string) (int, error) {
 
 		for i := 0; i < l; i++ {
 			if len(vlist1) <= i || len(vlist1[i]) == 0 {
-				list1 = append(list1, -1)
-				n, _ := strconv.Atoi(vlist2[i])
-				list2 = append(list2, n)
-			} else if len(vlist1) <= i || len(vlist1[i]) == 0 {
-				list2 = append(list1, -1)
-				n, _ := strconv.Atoi(vlist1[i])
-				list1 = append(list1, n)
+				list1 = append(list1, "-1")
+				list2 = append(list2, vlist2[i])
+			} else if len(vlist2) <= i || len(vlist2[i]) == 0 {
+				list2 = append(list2, "-1")
+				list1 = append(list1, vlist1[i])
 			} else if vlist1[i][0] != '0' && vlist2[i][0] != '0' {
-				n1, _ := strconv.Atoi(vlist1[i])
-				list1 = append(list1, n1)
-				n2, _ := strconv.Atoi(vlist2[i])
-				list2 = append(list2, n2)
+				list1 = append(list1, vlist1[i])
+				list2 = append(list2, vlist2[i])
 			} else {
 				ml := len(vlist1[i])
 				if len(vlist2) > ml {
 					ml = len(vlist2[i])
 				}
-				n1, _ := strconv.Atoi(fmt.Sprintf("%-0"+string(ml)+"v", vlist1[i]))
-				list1 = append(list1, n1)
-				n2, _ := strconv.Atoi(fmt.Sprintf("%-0"+string(ml)+"v", vlist2[i]))
-				list2 = append(list2, n2)
+				list1 = append(list1, fmt.Sprintf("%-0"+string(ml)+"v", vlist1[i]))
+				list2 = append(list2, fmt.Sprintf("%-0"+string(ml)+"v", vlist2[i]))
 			}
 		}
 	}
 	if getNamedRegexp(verRegexp, ver1, "letter") != "" {
-		list1 = append(list1, int([]byte(getNamedRegexp(verRegexp, ver1, "letter"))[0]))
+		list1 = append(list1,string(getNamedRegexp(verRegexp, ver1, "letter")[0]))
 	}
 	if getNamedRegexp(verRegexp, ver2, "letter") != "" {
-		list2 = append(list2, int([]byte(getNamedRegexp(verRegexp, ver2, "letter"))[0]))
+		list2 = append(list2, string(getNamedRegexp(verRegexp, ver2, "letter")[0]))
 	}
-	for i := 0; i < len(list1) && i < len(list2); i++ {
+	for i := 0; i < len(list1) || i < len(list2); i++ {
 		if len(list1) <= i {
 			return -1, nil
 		} else if len(list2) <= i {
@@ -173,38 +237,46 @@ func verCmp(ver1, ver2 string) (int, error) {
 		} else if list1[i] != list2[i] {
 			if list1[i] > list2[i] {
 				return 2, nil
-			} else if list1[i] > list2[i] {
-				return -1, nil
+			} else if list1[i] < list2[i] {
+				return -2, nil
 			} else {
 				return 0, nil
 			}
 		}
 	}
-	l1 := strings.Split(getNamedRegexp(verRegexp, ver1, "suffix")[1:], "_")
-	l2 := strings.Split(getNamedRegexp(verRegexp, ver2, "suffix")[1:], "_")
-	for i := 0; i < len(l1) && i < len(l2); i++ {
+	g1 := getNamedRegexp(verRegexp, ver1, "suffix")
+	if len(g1) >= 1 {
+		g1 = g1[1:]
+	}
+	l1 := strings.Split(g1, "_")
+	g2 := getNamedRegexp(verRegexp, ver2, "suffix")
+	if len(g2) >= 1 {
+		g2 = g2[1:]
+	}
+	l2 := strings.Split(g2, "_")
+	for i := 0; i < len(l1) || i < len(l2); i++ {
 		var s1, s2 []string
 		if len(list1) <= i {
 			s1 = []string{"p", "-1"}
 		} else {
-			s1 = suffix_regexp.FindStringSubmatch(l1[i])
+			s1 = suffixRegexp.FindStringSubmatch(l1[i])
 		}
 		if len(list2) <= i {
 			s2 = []string{"p", "-1"}
 		} else {
-			s2 = suffix_regexp.FindStringSubmatch(l2[i])
+			s2 = suffixRegexp.FindStringSubmatch(l2[i])
 		}
-		if s1[0] != s2[0] {
-			return suffix_value[s1[0]] - suffix_value[s2[0]], nil
+		if len(s1) > 1 && len(s2) > 1 && s1[1] != s2[2] {
+			return suffixValue[VersionStatus(s1[1])] - suffixValue[VersionStatus(s2[1])], nil
 		}
-		if s1[1] != s2[1] {
-			n1, _ := strconv.Atoi(s1[1])
-			n2, _ := strconv.Atoi(s2[1])
+		if len(s1) > 2 && len(s2) > 2 && s1[2] != s2[2] {
+			n1, _ := strconv.Atoi(s1[2])
+			n2, _ := strconv.Atoi(s2[2])
 			return n1 - n2, nil
 		}
 	}
 	n1, _ := strconv.Atoi(getNamedRegexp(verRegexp, ver1, "revision"))
-	n2, _ := strconv.Atoi(getNamedRegexp(verRegexp, ver1, "revision"))
+	n2, _ := strconv.Atoi(getNamedRegexp(verRegexp, ver2, "revision"))
 	if n1 > n2 {
 		return 1, nil
 	} else if n1 == n2 {

@@ -393,7 +393,7 @@ func hardlock_name(p string) string {
 	base, tail := path.Split(p)
 	var un *syscall.Utsname
 	syscall.Uname(un)
-	return path.Join(base, fmt.Sprintf(".%s.hardlock-%s-%s", tail, un.Nodename, os.Getpid()))
+	return path.Join(base, fmt.Sprintf(".%s.hardlock-%v-%v", tail, un.Nodename, os.Getpid()))
 }
 
 func hardlink_is_mine(link, lock string) bool {

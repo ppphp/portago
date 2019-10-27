@@ -191,7 +191,7 @@ func (c *Config) initDirs() {
 		}
 		if !ensureDirs(myDir, 0, gid, mode, modemask, nil, false) {
 			WriteMsg(fmt.Sprintf("!!! Directory initialization failed: '%s'\n", myDir), -1, nil)
-			WriteMsg(fmt.Sprintf("!!! %v\n"), -1, nil) // error
+			WriteMsg(fmt.Sprintf("!!! %v\n", false), -1, nil) // error
 		}
 	}
 }
@@ -1718,7 +1718,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		}
 
 		if makeConfCount == 2 {
-			WriteMsg(fmt.Sprintf("!!! %s\nFound 2 make.conf files, using both '%s' and '%s'", makeConfPaths), -1, nil)
+			WriteMsg(fmt.Sprintf("!!! Found 2 make.conf files, using both '%s' and '%s'\n", makeConfPaths[0], makeConfPaths[1]), -1, nil)
 		}
 		locationsManager.setRootOverride(makeConf["ROOT"])
 		targetRoot = locationsManager.targetRoot
@@ -2554,7 +2554,7 @@ func (l *locationsManager) loadProfiles(repositories *repoConfigLoader, knownRep
 		if isdirRaiseEaccess(l.configProfilePath) {
 			l.profilePath = l.configProfilePath
 			if isdirRaiseEaccess(deprecatedProfilePath) && path.Clean(l.profilePath) != deprecatedProfilePath {
-				WriteMsg(fmt.Sprintf("!!! %s\nFound 2 make.profile dirs: using '%s', ignoring '%s'", l.profilePath, deprecatedProfilePath), -1, nil)
+				WriteMsg(fmt.Sprintf("!!! Found 2 make.profile dirs: using '%s', ignoring '%s'\n", l.profilePath, deprecatedProfilePath), -1, nil)
 			}
 		} else {
 			l.configProfilePath = deprecatedProfilePath
@@ -3070,16 +3070,16 @@ func (u *useManager) parseRepositoryPackageusealiases(repositorires *repoConfigL
 			elements := strings.Fields(line[0])
 			atom1, err := NewAtom(elements[0], nil, false, nil, nil, eapi, nil, nil)
 			if err != nil {
-				WriteMsg(fmt.Sprintf("--- Invalid atom1 in '%s': '%s'\n", fileName, atom1), 0, nil)
+				WriteMsg(fmt.Sprintf("--- Invalid atom1 in '%s': '%v'\n", fileName, atom1), 0, nil)
 				continue
 			}
 			if len(elements) == 1 {
-				WriteMsg(fmt.Sprintf("--- Missing real USE flag for '%s' in '%s'\n", fileName, atom1), -1, nil)
+				WriteMsg(fmt.Sprintf("--- Missing real USE flag for '%s' in '%v'\n", fileName, atom1), -1, nil)
 				continue
 			}
 			realFlag := elements[1]
 			if !useFlagRe.MatchString(realFlag) {
-				WriteMsg(fmt.Sprintf("--- Invalid real USE flag in '%s': '%s'\n", fileName, realFlag), -1, nil)
+				WriteMsg(fmt.Sprintf("--- Invalid real USE flag in '%s': '%v'\n", fileName, realFlag), -1, nil)
 			} else {
 				for _, alias := range elements[2:] {
 					if !useFlagRe.MatchString(alias) {
@@ -3333,7 +3333,7 @@ func (u *useManager) getUseAliases(pkg *pkgStr) map[string][]string {
 						}
 					}
 					if in {
-						WriteMsg(fmt.Sprintf("--- Duplicated USE flag alias for '%s%s%s': '%s'\n", pkg.cpv, repoSeparator, pkg.repo, alias), -1, nil)
+						WriteMsg(fmt.Sprintf("--- Duplicated USE flag alias for '%v%s%s': '%s'\n", pkg.cpv, repoSeparator, pkg.repo, alias), -1, nil)
 					} else {
 						if _, ok := useAliases[realFlag]; ok {
 							useAliases[realFlag] = append(useAliases[realFlag], alias)
@@ -3368,7 +3368,7 @@ func (u *useManager) getUseAliases(pkg *pkgStr) map[string][]string {
 								}
 							}
 							if in {
-								WriteMsg(fmt.Sprintf("--- Duplicated USE flag alias for '%s%s%s': '%s'\n", pkg.cpv, repoSeparator, pkg.repo, alias), -1, nil)
+								WriteMsg(fmt.Sprintf("--- Duplicated USE flag alias for '%v%s%s': '%s'\n", pkg.cpv, repoSeparator, pkg.repo, alias), -1, nil)
 							} else {
 								if _, ok := useAliases[realFlag]; ok {
 									useAliases[realFlag] = append(useAliases[realFlag], alias)
@@ -3575,7 +3575,7 @@ func NewMaskManager(repositories *repoConfigLoader, profiles []*profileNode, abs
 					ur = append(ur, r)
 				}
 				if len(ur) > 3 {
-					WriteMsg(fmt.Sprintf("--- Unmatched removal atoms in %s: %s and %s more\n", sourceFile, strings.Join(ur[:3], ","), len(ur)-3), -1, nil)
+					WriteMsg(fmt.Sprintf("--- Unmatched removal atoms in %s: %s and %v more\n", sourceFile, strings.Join(ur[:3], ","), len(ur)-3), -1, nil)
 				} else {
 					WriteMsg(fmt.Sprintf("--- Unmatched removal atom(s) in %s: %s\n", sourceFile, strings.Join(ur[:3], ",")), -1, nil)
 				}

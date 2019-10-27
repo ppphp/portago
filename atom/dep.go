@@ -146,7 +146,7 @@ func parenEnclose(myList [][]string, unevaluatedAtom, opconvert bool) string {
 	myStrParts := []string{}
 	for _, x := range myList {
 		if opconvert && len(x) > 0 && x[0] != "||" {
-			myStrParts = append(myStrParts, fmt.Sprintf("%s ( %s )"), x[0], parenEncloses(x[1:], false, false))
+			myStrParts = append(myStrParts, fmt.Sprintf("%s ( %s )", x[0], parenEncloses(x[1:], false, false)))
 		} else {
 			myStrParts = append(myStrParts, fmt.Sprintf("( %s )", parenEncloses(x, false, false)))
 		}
@@ -1904,7 +1904,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 			}
 			result, err := verCmp(pkg.version, mydepA.version)
 			if err != nil {
-				WriteMsg(fmt.Sprintf("\nInvalid package name: %s\n", x), -1, nil)
+				WriteMsg(fmt.Sprintf("\nInvalid package name: %v\n", x), -1, nil)
 				//raise
 			}
 			if operator == ">" {

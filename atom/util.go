@@ -299,7 +299,7 @@ func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 			if len(tokens) > 3 {
 				selected := []string{tokens[len(tokens)-1], tokens[len(tokens)-2], tokens[len(tokens)-3]}
 				tokens = tokens[:len(tokens)-3]
-				WriteMsg(fmt.Sprintf("--- Unmatched removal atoms in %s: %s and %s more\n", sourceFile, strings.Join(selected, ", "), len(tokens)), -1, nil)
+				WriteMsg(fmt.Sprintf("--- Unmatched removal atoms in %s: %s and %v more\n", sourceFile, strings.Join(selected, ", "), len(tokens)), -1, nil)
 			} else {
 				WriteMsg(fmt.Sprintf("--- Unmatched removal Atom(s) in %s: %s\n", sourceFile, strings.Join(tokens, ", ")), -1, nil)
 			}

@@ -106,7 +106,7 @@ func parseColorMap(configRoot string, onerror func(error) error) error { // /n
 		splitLine := strings.Split(line, "=")
 		var e error
 		if len(splitLine) != 2 {
-			e = fmt.Errorf("'%s', line %s: expected exactly one occurrence of '=' operator", myfile, lineno)
+			e = fmt.Errorf("'%s', line %v: expected exactly one occurrence of '=' operator", myfile, lineno)
 			if onerror != nil {
 				if err := onerror(e); err != nil {
 					return err
@@ -122,7 +122,7 @@ func parseColorMap(configRoot string, onerror func(error) error) error { // /n
 		_, ok1 := styles[k]
 		_, ok2 := codes[k]
 		if !ok1 && !ok2 {
-			e = fmt.Errorf("'%s', line %s: Unknown variable: '%s'", myfile, lineno, k)
+			e = fmt.Errorf("'%s', line %v: Unknown variable: '%s'", myfile, lineno, k)
 			if onerror != nil {
 				if err := onerror(e); err != nil {
 					return err
@@ -148,7 +148,7 @@ func parseColorMap(configRoot string, onerror func(error) error) error { // /n
 						codeList = append(codeList, codes[x])
 					}
 				} else {
-					e = fmt.Errorf("'%s', line %s: Undefined: '%s'", myfile, lineno, x)
+					e = fmt.Errorf("'%s', line %v: Undefined: '%s'", myfile, lineno, x)
 					if onerror != nil {
 						if err := onerror(e); err != nil {
 							return err
