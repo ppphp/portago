@@ -175,12 +175,11 @@ func verCmp(ver1, ver2 string) (int, error) {
 	major1, _ := strconv.Atoi(v1)
 	major2, _ := strconv.Atoi(v2)
 	if major1 > major2 {
-		return 1,nil
-	}else if major1< major2{
-		return -1,nil
+		return 1, nil
+	} else if major1 < major2 {
+		return -1, nil
 	}
-	
-	
+
 	list1 := []string{v1}
 	list2 := []string{v2}
 
@@ -224,7 +223,7 @@ func verCmp(ver1, ver2 string) (int, error) {
 		}
 	}
 	if getNamedRegexp(verRegexp, ver1, "letter") != "" {
-		list1 = append(list1,string(getNamedRegexp(verRegexp, ver1, "letter")[0]))
+		list1 = append(list1, string(getNamedRegexp(verRegexp, ver1, "letter")[0]))
 	}
 	if getNamedRegexp(verRegexp, ver2, "letter") != "" {
 		list2 = append(list2, string(getNamedRegexp(verRegexp, ver2, "letter")[0]))
@@ -483,20 +482,19 @@ func cpvGetVersion(mycpv, eapi string) string {
 
 var splitCache = map[string]*pkgStr{}
 
-func cmpCpv(cpv1, cpv2, eapi string) (int, error) {
-	split1, ok := splitCache[cpv1]
-	if !ok {
-		//split1 = cpv1.pv //TODO
-		split1 = NewPkgStr(cpv1, nil, nil, eapi, "", "", 0, "", "", 0, "")
-		splitCache[cpv1] = split1
-	}
-	split2 := NewPkgStr(cpv1, nil, nil, eapi, "", "", 0, "", "", 0, "")
-	splitCache[cpv2] = split2
-	//return verCmp(cpv1.version, cpv2.version)
-	return verCmp(cpv1, cpv2)
-}
-
 func cpvSortKey(eapi string) func(string, string, string) (int, error) {
+	cmpCpv := func(cpv1, cpv2, eapi string) (int, error) {
+		split1, ok := splitCache[cpv1]
+		if !ok {
+			//split1 = cpv1.pv //TODO
+			split1 = NewPkgStr(cpv1, nil, nil, eapi, "", "", 0, "", "", 0, "")
+			splitCache[cpv1] = split1
+		}
+		split2 := NewPkgStr(cpv1, nil, nil, eapi, "", "", 0, "", "", 0, "")
+		splitCache[cpv2] = split2
+		//return verCmp(cpv1.version, cpv2.version)
+		return verCmp(cpv1, cpv2)
+	}
 	return cmpCpv // a sort key
 }
 

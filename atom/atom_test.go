@@ -1,6 +1,8 @@
 package atom
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestVerCmpGreater(t *testing.T) {
 	for _, test := range [][2]string{
@@ -83,4 +85,3 @@ func TestVerNotEqual(t *testing.T) {
 		}
 	}
 }
-

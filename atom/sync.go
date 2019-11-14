@@ -1,5 +1,51 @@
 package atom
 
+import "fmt"
+
+type syncBase struct {
+	options                                                                                         map[string]string
+	settings, logger, repo, xtermTitles, spawnKwargs, _repoStorage, downloadDir, binCommand, binPkg string
+}
+
+func (s *syncBase) repoStorage() {
+}
+
+func (s *syncBase) hasBin() bool {
+	if s.binCommand == "" {
+		msg := []string{fmt.Sprintf("Command not found: %s", s.binCommand),
+			fmt.Sprintf("Type \"emerge %s\" to enable %s support.", s.binPkg, s.binCommand)}
+		for _, l := range msg {
+			writeMsgLevel(fmt.Sprintf("!!! %s", l), -40, -1)
+		}
+		return false
+	}
+
+	return true
+}
+
+func NewSyncBase(binCommand, binPkg string) *syncBase {
+	if binCommand != "" {
+		binCommand = FindBinary(binCommand)
+	}
+	s := &syncBase{}
+	s.binCommand = binCommand
+	s.binPkg = binPkg
+	return s
+}
+
+type newBase struct {
+	*syncBase
+}
+
+func (n *newBase) sync() {
+
+}
+
+func NewNewBase(binCommand, binPkg string) *newBase {
+	n := &newBase{syncBase: NewSyncBase(binCommand, binPkg)}
+	return n
+}
+
 type cvsSync struct {
 }
 
@@ -15,10 +61,15 @@ func NewGitSync() *gitSync {
 }
 
 type rsyncSync struct {
+	*newBase
+}
+
+func (r *rsyncSync) name() string {
+	return "RsyncSync"
 }
 
 func NewRsyncSync() *rsyncSync {
-	return &rsyncSync{}
+	return &rsyncSync{newBase: NewNewBase("rsync", RsyncPackageAtom)}
 }
 
 type svnSync struct {
