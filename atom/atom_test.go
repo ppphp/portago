@@ -1,6 +1,8 @@
 package atom
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestVerCmpGreater(t *testing.T) {
 	for _, test := range [][2]string{
@@ -83,17 +85,4 @@ func TestVerNotEqual(t *testing.T) {
 			t.Errorf("vercmp wrong, %v == %v\n", test[0], test[1])
 		}
 	}
-}
-
-func TestCpvSortKey(t *testing.T) {
-
-
-	for _, test := range 
-		tests = [
-			(("a/b-2_alpha", "a", "b", "a/b-2", "a/a-1", "a/b-1"),
-			 ("a", "a/a-1", "a/b-1", "a/b-2_alpha", "a/b-2", "b")),
-		]
-
-		for test in tests:
-			self.assertEqual(tuple(sorted(test[0], key=cpv_sort_key())), test[1])
 }

@@ -187,12 +187,12 @@ func verCmp(ver1, ver2 string) (int, error) {
 	v1 := verRegexp.FindStringSubmatch(ver1)[1]
 	v2 := verRegexp.FindStringSubmatch(ver2)[1]
 
-	c, err := cmpString(v1, v2)
-	if err != nil {
-		return 0, err
-	}
-	if c != 0 {
-		return c, nil
+	major1, _ := strconv.Atoi(v1)
+	major2, _ := strconv.Atoi(v2)
+	if major1 > major2 {
+		return 1, nil
+	} else if major1 < major2 {
+		return -1, nil
 	}
 
 	list1 := []string{v1}
@@ -232,12 +232,12 @@ func verCmp(ver1, ver2 string) (int, error) {
 				if len(vlist2) > ml {
 					ml = len(vlist2[i])
 				}
-				for i := 0; i < ml; i ++ {
+				for i := 0; i < ml; i++ {
 					if len(v1) < i {
-						v1 = v1 +"0"
+						v1 = v1 + "0"
 					}
 					if len(v2) < i {
-						v2 = v2 +"0"
+						v2 = v2 + "0"
 					}
 				}
 			}
@@ -510,20 +510,19 @@ func cpvGetVersion(mycpv, eapi string) string {
 
 var splitCache = map[string]*pkgStr{}
 
-func cmpCpv(cpv1, cpv2, eapi string) (int, error) {
-	split1, ok := splitCache[cpv1]
-	if !ok {
-		//split1 = cpv1.pv //TODO
-		split1 = NewPkgStr(cpv1, nil, nil, eapi, "", "", 0, "", "", 0, "")
-		splitCache[cpv1] = split1
-	}
-	split2 := NewPkgStr(cpv1, nil, nil, eapi, "", "", 0, "", "", 0, "")
-	splitCache[cpv2] = split2
-	//return verCmp(cpv1.version, cpv2.version)
-	return verCmp(cpv1, cpv2)
-}
-
 func cpvSortKey(eapi string) func(string, string, string) (int, error) {
+	cmpCpv := func(cpv1, cpv2, eapi string) (int, error) {
+		split1, ok := splitCache[cpv1]
+		if !ok {
+			//split1 = cpv1.pv //TODO
+			split1 = NewPkgStr(cpv1, nil, nil, eapi, "", "", 0, "", "", 0, "")
+			splitCache[cpv1] = split1
+		}
+		split2 := NewPkgStr(cpv1, nil, nil, eapi, "", "", 0, "", "", 0, "")
+		splitCache[cpv2] = split2
+		//return verCmp(cpv1.version, cpv2.version)
+		return verCmp(cpv1, cpv2)
+	}
 	return cmpCpv // a sort key
 }
 
