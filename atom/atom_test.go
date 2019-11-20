@@ -5,6 +5,7 @@ import "testing"
 func TestVerCmpGreater(t *testing.T) {
 	for _, test := range [][2]string{
 		{"6.0", "5.0"},
+		{"5.12", "5.2"},
 		{"5.0", "5"},
 		{"1.0-r1", "1.0-r0"},
 		{"1.0-r1", "1.0"},
@@ -84,3 +85,15 @@ func TestVerNotEqual(t *testing.T) {
 	}
 }
 
+func TestCpvSortKey(t *testing.T) {
+
+
+	for _, test := range 
+		tests = [
+			(("a/b-2_alpha", "a", "b", "a/b-2", "a/a-1", "a/b-1"),
+			 ("a", "a/a-1", "a/b-1", "a/b-2_alpha", "a/b-2", "b")),
+		]
+
+		for test in tests:
+			self.assertEqual(tuple(sorted(test[0], key=cpv_sort_key())), test[1])
+}

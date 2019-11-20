@@ -3,6 +3,7 @@ package atom
 import (
 	"errors"
 	"fmt"
+	"math/big"
 	"regexp"
 	"strconv"
 	"strings"
@@ -157,6 +158,20 @@ func NewVersion(ver string) (*Version, error) {
 	return nil, nil
 }
 
+func cmpString(s1, s2 string) (int, error) {
+
+	major1, ok1 := new(big.Int).SetString(s1, 10)
+	if !ok1 {
+		return 0, fmt.Errorf("!!! syntax error in version: %s", s1)
+	}
+	major2, ok2 := new(big.Int).SetString(s2, 10)
+	if !ok2 {
+		return 0, fmt.Errorf("!!! syntax error in version: %s", s2)
+	}
+	c := major1.Cmp(major2)
+	return c, nil
+}
+
 func verCmp(ver1, ver2 string) (int, error) {
 	if ver1 == ver2 {
 		return 0, nil
@@ -172,15 +187,14 @@ func verCmp(ver1, ver2 string) (int, error) {
 	v1 := verRegexp.FindStringSubmatch(ver1)[1]
 	v2 := verRegexp.FindStringSubmatch(ver2)[1]
 
-	major1, _ := strconv.Atoi(v1)
-	major2, _ := strconv.Atoi(v2)
-	if major1 > major2 {
-		return 1,nil
-	}else if major1< major2{
-		return -1,nil
+	c, err := cmpString(v1, v2)
+	if err != nil {
+		return 0, err
 	}
-	
-	
+	if c != 0 {
+		return c, nil
+	}
+
 	list1 := []string{v1}
 	list2 := []string{v2}
 
@@ -196,35 +210,48 @@ func verCmp(ver1, ver2 string) (int, error) {
 		}
 		vlist2 := strings.Split(g2, ".")
 
-		// fmt.Printf("%v%v%+v%+v\n", ver1, ver2,vlist1, vlist2) // TODO
-
 		l := len(vlist1)
 		if len(vlist2) > l {
 			l = len(vlist2)
 		}
 
 		for i := 0; i < l; i++ {
+			v1 := "-1"
+			v2 := "-1"
 			if len(vlist1) <= i || len(vlist1[i]) == 0 {
-				list1 = append(list1, "-1")
-				list2 = append(list2, vlist2[i])
+				v2 = vlist2[i]
 			} else if len(vlist2) <= i || len(vlist2[i]) == 0 {
-				list2 = append(list2, "-1")
-				list1 = append(list1, vlist1[i])
+				v1 = vlist1[i]
 			} else if vlist1[i][0] != '0' && vlist2[i][0] != '0' {
-				list1 = append(list1, vlist1[i])
-				list2 = append(list2, vlist2[i])
+				v2 = vlist2[i]
+				v1 = vlist1[i]
 			} else {
+				v2 = vlist2[i]
+				v1 = vlist1[i]
 				ml := len(vlist1[i])
 				if len(vlist2) > ml {
 					ml = len(vlist2[i])
 				}
-				list1 = append(list1, fmt.Sprintf("%-0"+string(ml)+"v", vlist1[i]))
-				list2 = append(list2, fmt.Sprintf("%-0"+string(ml)+"v", vlist2[i]))
+				for i := 0; i < ml; i ++ {
+					if len(v1) < i {
+						v1 = v1 +"0"
+					}
+					if len(v2) < i {
+						v2 = v2 +"0"
+					}
+				}
+			}
+			c, err := cmpString(v1, v2)
+			if err != nil {
+				return 0, err
+			}
+			if c != 0 {
+				return c, nil
 			}
 		}
 	}
 	if getNamedRegexp(verRegexp, ver1, "letter") != "" {
-		list1 = append(list1,string(getNamedRegexp(verRegexp, ver1, "letter")[0]))
+		list1 = append(list1, string(getNamedRegexp(verRegexp, ver1, "letter")[0]))
 	}
 	if getNamedRegexp(verRegexp, ver2, "letter") != "" {
 		list2 = append(list2, string(getNamedRegexp(verRegexp, ver2, "letter")[0]))
