@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"github.com/ppphp/portago/atom"
+	"github.com/ppphp/portago/pkg/emerge"
 
 	"github.com/spf13/pflag"
 )
@@ -32,12 +33,8 @@ func init() {
 	atom.DisableLegacyGlobals()
 }
 
-type opts struct {
-	Action string
-}
-
-func ParseOpts() *opts {
-	o := &opts{}
+func ParseOpts() *emerge.Opts {
+	o := &emerge.Opts{}
 	clean := pflag.BoolP("clean", "", false, "")
 	checkNews := pflag.BoolP("check-news", "", false, "")
 	config := pflag.BoolP("config", "", false, "")

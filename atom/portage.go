@@ -256,7 +256,7 @@ func NewTreesDict(dict map[string]*tree) *_trees_dict {
 	return &_trees_dict{valueDict: dict}
 }
 
-func createTrees(config_root, target_root string, ts map[string]*tree, env map[string]string, sysroot, eprefix string) *_trees_dict {
+func CreateTrees(config_root, target_root string, ts map[string]*tree, env map[string]string, sysroot, eprefix string) *_trees_dict {
 	var trees *_trees_dict = nil
 	if ts == nil {
 		trees = NewTreesDict(nil)
@@ -367,7 +367,7 @@ func Mtimedbfile() string {
 func _get_legacy_global() { // a fake copy, just init no return
 	initializingGlobals = new(bool)
 	*initializingGlobals = true
-	_db = createTrees(os.Getenv("PORTAGE_CONFIGROOT"), os.Getenv("ROOT"), nil, nil, os.Getenv("SYSROOT"), os.Getenv("EPREFIX"))
+	_db = CreateTrees(os.Getenv("PORTAGE_CONFIGROOT"), os.Getenv("ROOT"), nil, nil, os.Getenv("SYSROOT"), os.Getenv("EPREFIX"))
 	initializingGlobals = nil
 	_settings = _db.valueDict[_db._target_eroot].VarTree().settings
 	_root = new(string)

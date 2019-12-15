@@ -68,7 +68,7 @@ _______________________
 
 `
 
-func multiple_actions(action1, action2 string) {
+func multipleActions(action1, action2 string) {
 	os.Stderr.Write([]byte("\n!!! Multiple actions requested... Please choose one only.\n"))
 	os.Stderr.Write([]byte(fmt.Sprintf("!!! '%s' or '%s'\n\n", action1, action2)))
 	os.Exit(1)
