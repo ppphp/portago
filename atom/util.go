@@ -1071,7 +1071,7 @@ func readConfigs(parser configparser.ConfigParser, paths []string) error {
 	return nil
 }
 
-func expandEnv() map[string]string {
+func ExpandEnv() map[string]string {
 	m := map[string]string{}
 	for _, v := range os.Environ() {
 		s := strings.SplitN(v, "=", 2)

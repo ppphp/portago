@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	haveColor = 1
+	HaveColor = 1
 	doTitles  = 1
 	styles    = map[string][]string{
 		"NORMAL":                  {"normal"},
@@ -245,7 +245,7 @@ func noTitles() {
 }
 
 func NoColor() {
-	haveColor = 0
+	HaveColor = 0
 }
 
 func resetColor() string {
@@ -274,7 +274,7 @@ func ColorMap() string {
 }
 
 func colorize(color_key, text string) string {
-	if haveColor != 0 {
+	if HaveColor != 0 {
 		if _, ok := codes[color_key]; ok {
 			return codes[color_key] + text + codes["reset"]
 		} else if _, ok := styles[color_key]; ok {
@@ -304,6 +304,10 @@ func (c *create_color_func) call(text string) string {
 func NewCreateColorFunc(colorKey string) *create_color_func {
 	return &create_color_func{colorKey: colorKey}
 }
+
+var Bold = func(text string) string { return colorize("bold", text) }
+var Turquoise = func(text string) string { return colorize("turquoise", text) }
+var Green = func(text string) string { return colorize("green", text) }
 
 type consoleStyleFile struct {
 	_file, _styles, write_listener string

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -33,89 +32,9 @@ func init() {
 	atom.DisableLegacyGlobals()
 }
 
-func ParseOpts() *emerge.Opts {
-	o := &emerge.Opts{}
-	clean := pflag.BoolP("clean", "", false, "")
-	checkNews := pflag.BoolP("check-news", "", false, "")
-	config := pflag.BoolP("config", "", false, "")
-	depclean := pflag.BoolP("depclean", "", false, "")
-	help := pflag.BoolP("help", "", false, "")
-	info := pflag.BoolP("info", "", false, "")
-	listSets := pflag.BoolP("list-sets", "", false, "")
-	metadata := pflag.BoolP("metadata", "", false, "")
-	moo := pflag.BoolP("moo", "", false, "")
-	prune := pflag.BoolP("prune", "", false, "")
-	rageClean := pflag.BoolP("rage-clean", "", false, "")
-	regen := pflag.BoolP("regen", "", false, "")
-	search := pflag.BoolP("search", "", false, "")
-	sync := pflag.BoolP("sync", "", false, "")
-	unmerge := pflag.BoolP("unmerge", "", false, "")
-	version := pflag.BoolP("version", "", false, "")
-
-	pflag.Parse()
-
-	action := []string{}
-	if *clean {
-		action = append(action, "clean")
-	}
-	if *checkNews {
-		action = append(action, "check-news")
-	}
-	if *config {
-		action = append(action, "config")
-	}
-	if *depclean {
-		action = append(action, "depclean")
-	}
-	if *help {
-		action = append(action, "help")
-	}
-	if *info {
-		action = append(action, "info")
-	}
-	if *listSets {
-		action = append(action, "list-sets")
-	}
-	if *metadata {
-		action = append(action, "metadata")
-	}
-	if *moo {
-		action = append(action, "moo")
-	}
-	if *prune {
-		action = append(action, "prune")
-	}
-	if *rageClean {
-		action = append(action, "rage-clean")
-	}
-	if *regen {
-		action = append(action, "regen")
-	}
-	if *search {
-		action = append(action, "search")
-	}
-	if *sync {
-		action = append(action, "sync")
-	}
-	if *unmerge {
-		action = append(action, "unmerge")
-	}
-	if *version {
-		action = append(action, "version")
-	}
-	if len(action) > 1 {
-		os.Stderr.Write([]byte("\n!!! Multiple actions requested... Please choose one only.\n"))
-		os.Stderr.Write([]byte(fmt.Sprintf("!!! '%s' or '%s'\n\n", action[0], action[1])))
-		os.Exit(1)
-	}
-
-	return o
-
-}
-
 func main() {
 	atom.SanitizeFds()
-	ParseOpts()
+	emerge.EmergeMain(nil)
 
 	pflag.BoolP("alert", "A", false, "alert (terminal bell) on prompts")
 	pflag.BoolP("ask", "a", false, "prompt before performing any actions")

@@ -208,8 +208,8 @@ func unprivilegedMode(eroot string, erootSt os.FileInfo) bool {
 	return os.Getuid() != 0 && st.Mode()&2 != 0 && erootSt.Mode()&00002 == 0
 }
 
-// my data structure, a lazy tree
-type tree struct {
+// my data structure, a lazy Tree
+type Tree struct {
 	_virtuals           map[string][]string
 	_vartree            *varTree
 	_porttree, _bintree string
@@ -219,45 +219,45 @@ type tree struct {
 	bintree             func()
 }
 
-func (t *tree) Virtuals() map[string][]string {
+func (t *Tree) Virtuals() map[string][]string {
 	if t._virtuals != nil {
 		t._virtuals = t.virtuals()
 	}
 	return t._virtuals
 }
 
-func (t *tree) VarTree() *varTree {
+func (t *Tree) VarTree() *varTree {
 	if t._vartree != nil {
 		t._vartree = t.vartree()
 	}
 	return t._vartree
 }
 
-func (t *tree) PortTree() map[string][]string {
+func (t *Tree) PortTree() map[string][]string {
 	if t._virtuals != nil {
 		t._virtuals = t.virtuals()
 	}
 	return t._virtuals
 }
 
-func (t *tree) BinTree() map[string][]string {
+func (t *Tree) BinTree() map[string][]string {
 	if t._virtuals != nil {
 		t._virtuals = t.virtuals()
 	}
 	return t._virtuals
 }
 
-type _trees_dict struct {
-	valueDict                     map[string]*tree
+type TreesDict struct {
+	valueDict                     map[string]*Tree
 	_running_eroot, _target_eroot string
 }
 
-func NewTreesDict(dict map[string]*tree) *_trees_dict {
-	return &_trees_dict{valueDict: dict}
+func NewTreesDict(dict map[string]*Tree) *TreesDict {
+	return &TreesDict{valueDict: dict}
 }
 
-func CreateTrees(config_root, target_root string, ts map[string]*tree, env map[string]string, sysroot, eprefix string) *_trees_dict {
-	var trees *_trees_dict = nil
+func CreateTrees(config_root, target_root string, ts map[string]*Tree, env map[string]string, sysroot, eprefix string) *TreesDict {
+	var trees *TreesDict = nil
 	if ts == nil {
 		trees = NewTreesDict(nil)
 	} else {
@@ -265,7 +265,7 @@ func CreateTrees(config_root, target_root string, ts map[string]*tree, env map[s
 	}
 
 	if env == nil {
-		env = expandEnv()
+		env = ExpandEnv()
 	}
 
 	settings := NewConfig(nil, nil, "", nil, config_root, target_root, sysroot, eprefix, true, env, false, nil)
@@ -325,13 +325,13 @@ var _legacy_global_var_names = []string{"archlist", "db", "features",
 	"settings", "thirdpartymirrors"} // no use
 var mtimedb, portdb int
 
-var _db *_trees_dict = nil
+var _db *TreesDict = nil
 var _settings *Config = nil
 var _root, _mtimedbfile *string = nil, nil
 
 var _legacy_globals_constructed map[string]bool
 
-func Db() *_trees_dict {
+func Db() *TreesDict {
 	if _db != nil {
 		return _db
 	}

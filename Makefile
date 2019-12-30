@@ -5,6 +5,9 @@ all: build
 portageq: fmt
 	GOPROXY=https://goproxy.io go build github.com/ppphp/portago/cmd/portageq
 
+emerge: fmt
+	GOPROXY=https://goproxy.io go build github.com/ppphp/portago/cmd/emerge
+
 deps:
 	GOPROXY=https://goproxy.io go get -u
 

@@ -127,7 +127,7 @@ func spawn(mycommand []string, env map[string]string, opt_name string, fd_pipes 
 	close_fds, unshare_net, unshare_ipc, unshare_mount, unshare_pid bool,
 	cgroup string) ([]int, error) { // nil, "", nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, ""
 	if env == nil {
-		env = expandEnv()
+		env = ExpandEnv()
 	}
 	binary := mycommand[0]
 	stb, err := os.Stat(binary)
