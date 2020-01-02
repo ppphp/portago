@@ -483,7 +483,7 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 	if repository != "" && repository != (&Package{}).UnknownRepo {
 		repos := []string{}
 		for _, repo := range c.repositories.getitem(repository).mastersRepo {
-			repos = append(repos, repo.name)
+			repos = append(repos, repo.Name)
 		}
 		repos = append(repos, repository)
 		for _, repo := range repos {
@@ -2003,7 +2003,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 					delete(d, k)
 				}
 			}
-			c.repoMakeDefaults[repo.name] = d
+			c.repoMakeDefaults[repo.Name] = d
 		}
 		c.useManager = NewUserManager(c.repositories, profilesComplex, absUserConfig, c.isStable, localConfig)
 		c.usemask = c.useManager.getUseMask(nil, nil)
@@ -2977,7 +2977,7 @@ func (u *useManager) parseUserFilesToExtatomdict(fileName, location string, user
 func (u *useManager) parseRepositoryFilesToDictOfTuples(fileName string, repositories *repoConfigLoader, eapiFilter func(string) bool) map[string][]string { // n
 	ret := map[string][]string{}
 	for _, repo := range repositories.reposWithProfiles() {
-		ret[repo.name] = u.parseFileToTuple(path.Join(repo.location, "profiles", fileName), true, eapiFilter, "", repo.eapi)
+		ret[repo.Name] = u.parseFileToTuple(path.Join(repo.location, "profiles", fileName), true, eapiFilter, "", repo.eapi)
 	}
 	return ret
 }
@@ -2992,7 +2992,7 @@ func (u *useManager) parseRepositoryFilesToDictOfDicts(fileName string, reposito
 				break
 			}
 		}
-		ret[repo.name] = u.parseFileToDict(path.Join(repo.location, "profiles", fileName), false, true, eapiFilter, false, "0", repo.eapi, in)
+		ret[repo.Name] = u.parseFileToDict(path.Join(repo.location, "profiles", fileName), false, true, eapiFilter, false, "0", repo.eapi, in)
 	}
 	return ret
 }
@@ -3052,7 +3052,7 @@ func (u *useManager) parseRepositoryUsealiases(repositorires *repoConfigLoader) 
 				}
 			}
 		}
-		ret[repo.name] = fileDict
+		ret[repo.Name] = fileDict
 	}
 
 	return ret
@@ -3116,7 +3116,7 @@ func (u *useManager) parseRepositoryPackageusealiases(repositorires *repoConfigL
 				}
 			}
 		}
-		ret[repo.name] = fileDict
+		ret[repo.Name] = fileDict
 	}
 	return ret
 }
@@ -3516,7 +3516,7 @@ func NewMaskManager(repositories *repoConfigLoader, profiles []*profileNode, abs
 	m := &maskManager{}
 	m._punmaskdict, m._pmaskdict, m._pmaskdict_raw = map[string][]*Atom{}, map[string][]*Atom{}, map[string][]*Atom{}
 	pmaskCache := map[string][][2]string{}
-	grabPMask := func(loc string, repoConfig *repoConfig) [][2]string {
+	grabPMask := func(loc string, repoConfig *RepoConfig) [][2]string {
 		if _, ok := pmaskCache[loc]; !ok {
 			path := path.Join(loc, "profiles", "package.mask")
 			in := false
@@ -3589,7 +3589,7 @@ func NewMaskManager(repositories *repoConfigLoader, profiles []*profileNode, abs
 				ls = append(ls, [2]string{a.value, s})
 			}
 		}
-		repoPkgMaskLines = append(repoPkgMaskLines, appendRepo(stackLists([][][2]string{ls}, 1, false, false, false, false), repo.name, true)...)
+		repoPkgMaskLines = append(repoPkgMaskLines, appendRepo(stackLists([][][2]string{ls}, 1, false, false, false, false), repo.Name, true)...)
 	}
 	repoPkgUnmaskLines := []AS{}
 	for _, repo := range repositories.reposWithProfiles() {
@@ -3605,7 +3605,7 @@ func NewMaskManager(repositories *repoConfigLoader, profiles []*profileNode, abs
 		}
 		repoLines := grabFilePackage(path.Join(repo.location, "profiles", "package.unmask"), 0, true, false, false, in, true, true, "", repo.eapi)
 		lines := stackLists([][][2]string{repoLines}, 1, true, true, strict_umatched_removal, false)
-		repoPkgUnmaskLines = append(repoPkgUnmaskLines, appendRepo(lines, repo.name, true)...)
+		repoPkgUnmaskLines = append(repoPkgUnmaskLines, appendRepo(lines, repo.Name, true)...)
 	}
 	profilePkgMaskLiness := [][][2]string{}
 	profilePkgUnmaskLiness := [][][2]string{}
@@ -4366,12 +4366,12 @@ func loadUnpackDependenciesConfiguration(repositories *repoConfigLoader) map[str
 					}
 					depend := strings.Join(elements[1:], " ")
 					useReduce(depend, map[string]bool{}, []string{}, false, []string{}, false, eapi, false, false, nil, nil, false)
-					if repoDict[repo.name] == nil {
-						repoDict[repo.name] = map[string]map[string]string{eapi: {suffix: depend}}
-					} else if repoDict[repo.name][eapi] == nil {
-						repoDict[repo.name][eapi] = map[string]string{suffix: depend}
+					if repoDict[repo.Name] == nil {
+						repoDict[repo.Name] = map[string]map[string]string{eapi: {suffix: depend}}
+					} else if repoDict[repo.Name][eapi] == nil {
+						repoDict[repo.Name][eapi] = map[string]string{suffix: depend}
 					} else {
-						repoDict[repo.name][eapi][suffix] = depend
+						repoDict[repo.Name][eapi][suffix] = depend
 					}
 				}
 			}
@@ -4381,19 +4381,19 @@ func loadUnpackDependenciesConfiguration(repositories *repoConfigLoader) map[str
 	for _, repo := range repositories.reposWithProfiles() {
 		names := []string{}
 		for _, v := range repo.mastersRepo {
-			names = append(names, v.name)
+			names = append(names, v.Name)
 		}
-		names = append(names, repo.name)
+		names = append(names, repo.Name)
 		for _, repoName := range names {
 			for eapi := range repoDict[repoName] {
 				if repoDict[repoName] != nil {
 					for suffix, depend := range repoDict[repoName][eapi] {
-						if ret[repo.name] == nil {
-							ret[repo.name] = map[string]map[string]string{eapi: {suffix: depend}}
-						} else if repoDict[repo.name][eapi] == nil {
-							ret[repo.name][eapi] = map[string]string{suffix: depend}
+						if ret[repo.Name] == nil {
+							ret[repo.Name] = map[string]map[string]string{eapi: {suffix: depend}}
+						} else if repoDict[repo.Name][eapi] == nil {
+							ret[repo.Name][eapi] = map[string]string{suffix: depend}
 						} else {
-							ret[repo.name][eapi][suffix] = depend
+							ret[repo.Name][eapi][suffix] = depend
 						}
 					}
 				}

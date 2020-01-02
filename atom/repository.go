@@ -44,31 +44,31 @@ func findInvalidPathChar(path string, pos int, endpos int) int {
 	return -1
 }
 
-type repoConfig struct {
-	allowMissingManifest, autoSync, cloneDepth, eapi, format, location, mainRepo, manifestHashes, manifestRequiredHashes, name, syncDepth, syncOpenpgpKeyPath, syncOpenpgpKeyRefreshRetryCount, syncOpenpgpKeyRefreshRetryDelayExpBase, syncOpenpgpKeyRefreshRetryDelayMax, syncOpenpgpKeyRefreshRetryDelayMult, syncOpenpgpKeyRefreshRetryOverallTimeout, syncRcuStoreDir, syncType, syncUmask, syncUri, syncUser, userLocation string
+type RepoConfig struct {
+	allowMissingManifest, AutoSync, cloneDepth, eapi, format, location, mainRepo, manifestHashes, manifestRequiredHashes, Name, syncDepth, syncOpenpgpKeyPath, syncOpenpgpKeyRefreshRetryCount, syncOpenpgpKeyRefreshRetryDelayExpBase, syncOpenpgpKeyRefreshRetryDelayMax, syncOpenpgpKeyRefreshRetryDelayMult, syncOpenpgpKeyRefreshRetryOverallTimeout, syncRcuStoreDir, syncType, syncUmask, syncUri, syncUser, userLocation string
 	eclassDb                                                                                                                                                                                                                                                                                                                                                                                                                     *cache
-	eapisBanned, eapisDeprecated, force, aliases, eclassOverrides                                                                                                                                                                                                                                                                                                                                                                map[string]bool
+	eapisBanned, eapisDeprecated, force, Aliases, eclassOverrides                                                                                                                                                                                                                                                                                                                                                                map[string]bool
 	cacheFormats, profileFormats, masters, eclassLocations, mastersOrig                                                                                                                                                                                                                                                                                                                                                          []string
-	mastersRepo                                                                                                                                                                                                                                                                                                                                                                                                                  []*repoConfig
+	mastersRepo                                                                                                                                                                                                                                                                                                                                                                                                                  []*RepoConfig
 	moduleSpecificOptions                                                                                                                                                                                                                                                                                                                                                                                                        map[string]string
 	localConfig, syncHooksOnlyOnChange, strictMiscDigests, syncAllowHardlinks, syncRcu, missingRepoName, signCommit, signManifest, thinManifest, allowProvideVirtual, createManifest, disableManifest, updateChangelog, portage1Profiles, portage1ProfilesCompat                                                                                                                                                                 bool
 	priority, syncRcuSpareSnapshots, syncRcuTtlDays                                                                                                                                                                                                                                                                                                                                                                              int
 	findInvalidPathChar                                                                                                                                                                                                                                                                                                                                                                                                          func(string, int, int) int
 }
 
-func (r *repoConfig) setModuleSpecificOpt(opt, val string) {
+func (r *RepoConfig) setModuleSpecificOpt(opt, val string) {
 	r.moduleSpecificOptions[opt] = val
 }
 
-func (r *repoConfig) eapiIsBanned(eapi string) bool {
+func (r *RepoConfig) eapiIsBanned(eapi string) bool {
 	return r.eapisBanned[eapi]
 }
 
-func (r *repoConfig) eapiIsDeprecated(eapi string) bool {
+func (r *RepoConfig) eapiIsDeprecated(eapi string) bool {
 	return r.eapisDeprecated[eapi]
 }
 
-func (r *repoConfig) iterPregeneratedCaches(auxdbkeys string, readonly, force bool) { // truefalse
+func (r *RepoConfig) iterPregeneratedCaches(auxdbkeys string, readonly, force bool) { // truefalse
 	formats := r.cacheFormats
 	if len(formats) == 0 {
 		if !force {
@@ -81,12 +81,12 @@ func (r *repoConfig) iterPregeneratedCaches(auxdbkeys string, readonly, force bo
 	//}
 }
 
-func (r *repoConfig) writable() bool {
+func (r *RepoConfig) writable() bool {
 	s, _ := os.Stat(firstExisting(r.location))
 	return s.Mode()&unix.W_OK != 0
 }
 
-func (r *repoConfig) readValidRepoName(repoPath string) (string, bool) {
+func (r *RepoConfig) readValidRepoName(repoPath string) (string, bool) {
 	name, missing := r.readRepoName(repoPath)
 	name = genValidRepo(name)
 	if len(name) == 0 {
@@ -96,7 +96,7 @@ func (r *repoConfig) readValidRepoName(repoPath string) (string, bool) {
 	return name, missing
 }
 
-func (r *repoConfig) readRepoName(repoPath string) (string, bool) {
+func (r *RepoConfig) readRepoName(repoPath string) (string, bool) {
 	repoNamePath := path.Join(repoPath, RepoNameLoc)
 	f, _ := os.Open(repoNamePath)
 	defer f.Close()
@@ -105,8 +105,8 @@ func (r *repoConfig) readRepoName(repoPath string) (string, bool) {
 	return string(line), false
 }
 
-func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *repoConfig {
-	r := &repoConfig{}
+func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *RepoConfig {
+	r := &RepoConfig{}
 	force, ok := repoOpts["get"]
 	f := map[string]bool{}
 	if ok {
@@ -125,7 +125,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 			}
 		}
 	}
-	r.aliases = a
+	r.Aliases = a
 
 	e := map[string]bool{}
 	if localConfig || f["eclass-overrides"] {
@@ -174,9 +174,9 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 	}
 	autoSync, ok := repoOpts["auto-sync"]
 	if ok {
-		r.autoSync = strings.ToLower(strings.TrimSpace(autoSync))
+		r.AutoSync = strings.ToLower(strings.TrimSpace(autoSync))
 	} else {
-		r.autoSync = "yes"
+		r.AutoSync = "yes"
 	}
 	r.cloneDepth = repoOpts["clone-depth"]
 	r.syncDepth = repoOpts["sync-depth"]
@@ -226,12 +226,12 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 	}
 	r.location = location
 	missing := true
-	r.name = name
+	r.Name = name
 	if len(r.location) > 0 {
-		r.name, missing = r.readValidRepoName(r.location)
+		r.Name, missing = r.readValidRepoName(r.location)
 		if missing {
 			if len(name) > 0 {
-				r.name = name
+				r.Name = name
 			}
 			if SyncMode {
 				missing = false
@@ -259,29 +259,29 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 	r.mastersOrig = []string{}
 
 	if len(r.location) > 0 {
-		layoutData, _ := parseLayoutConf(r.location, r.name)
+		layoutData, _ := parseLayoutConf(r.location, r.Name)
 		r.mastersOrig = layoutData["masters"]
 		if r.masters == nil {
 			r.masters = layoutData["masters"]
 		}
 		if (localConfig || f["aliases"]) && len(layoutData["aliases"]) != 0 {
-			aliases := r.aliases
+			aliases := r.Aliases
 			if len(aliases) == 0 {
 				aliases = map[string]bool{}
 			}
-			r.aliases = map[string]bool{}
+			r.Aliases = map[string]bool{}
 			for _, s := range layoutData["aliases"] {
-				r.aliases[s] = true
+				r.Aliases[s] = true
 			}
 			for k := range aliases {
-				r.aliases[k] = true
+				r.Aliases[k] = true
 			}
 		}
 		if len(layoutData["allow-missing-manifest"]) > 0 {
 			r.allowMissingManifest = layoutData["allow-missing-manifest"][0]
 		}
 		if len(layoutData["repo-name"]) > 0 && len(layoutData["repo-name"][0]) > 0 {
-			r.name = layoutData["repo-name"][0]
+			r.Name = layoutData["repo-name"][0]
 			r.missingRepoName = false
 		}
 		r.cacheFormats = layoutData["cache-formats"]
@@ -342,7 +342,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *r
 
 type repoConfigLoader struct {
 	locationMap, treeMap map[string]string
-	prepos               map[string]*repoConfig
+	prepos               map[string]*RepoConfig
 	preposOrder          []string
 	missingRepoNames     map[string]bool
 	preposChanged        bool
@@ -350,7 +350,7 @@ type repoConfigLoader struct {
 	ignoredRepos         []sss
 }
 
-func (r *repoConfigLoader) addRepositories(portDir, portdirOverlay string, prepos map[string]*repoConfig, ignoredMap map[string][]string, localConfig bool, defaultPortdir string) string {
+func (r *repoConfigLoader) addRepositories(portDir, portdirOverlay string, prepos map[string]*RepoConfig, ignoredMap map[string][]string, localConfig bool, defaultPortdir string) string {
 	overlays := []string{}
 	portDirOrig := ""
 	if portDir != "" {
@@ -369,9 +369,9 @@ func (r *repoConfigLoader) addRepositories(portDir, portdirOverlay string, prepo
 	}
 	overlays = append(overlays, portOv...)
 	defaultRepoOpt := map[string]string{}
-	if prepos["DEFAULT"].aliases != nil {
+	if prepos["DEFAULT"].Aliases != nil {
 		s := []string{}
-		for k := range prepos["DEFAULT"].aliases {
+		for k := range prepos["DEFAULT"].Aliases {
 			s = append(s, k)
 		}
 		defaultRepoOpt["aliases"] = strings.Join(s, "k")
@@ -387,7 +387,7 @@ func (r *repoConfigLoader) addRepositories(portDir, portdirOverlay string, prepo
 		defaultRepoOpt["aliases"] = strings.Join(prepos["DEFAULT"].masters, "k")
 	}
 	if len(overlays) != 0 {
-		reposConf := map[string]*repoConfig{}
+		reposConf := map[string]*RepoConfig{}
 		for k, v := range prepos {
 			reposConf[k] = v
 		}
@@ -404,13 +404,13 @@ func (r *repoConfigLoader) addRepositories(portDir, portdirOverlay string, prepo
 					name = prepos["DEFAULT"].mainRepo
 				}
 				repo := NewRepoConfig(name, repoOpts, localConfig)
-				reposConfOpts := reposConf[repo.name]
+				reposConfOpts := reposConf[repo.Name]
 				if reposConfOpts != nil {
-					if reposConfOpts.aliases != nil {
-						repo.aliases = reposConfOpts.aliases
+					if reposConfOpts.Aliases != nil {
+						repo.Aliases = reposConfOpts.Aliases
 					}
-					if reposConfOpts.autoSync != "" {
-						repo.autoSync = reposConfOpts.autoSync
+					if reposConfOpts.AutoSync != "" {
+						repo.AutoSync = reposConfOpts.AutoSync
 					}
 					if reposConfOpts.cloneDepth != "" {
 						repo.cloneDepth = reposConfOpts.cloneDepth
@@ -482,13 +482,13 @@ func (r *repoConfigLoader) addRepositories(portDir, portdirOverlay string, prepo
 						repo.syncUser = reposConfOpts.syncUser
 					}
 				}
-				if _, ok := prepos[repo.name]; ok {
-					oldLocation := prepos[repo.name].location
+				if _, ok := prepos[repo.Name]; ok {
+					oldLocation := prepos[repo.Name].location
 					if oldLocation != "" && oldLocation != repo.location && !(basePriority == 0 && oldLocation == defaultPortdir) {
-						if ignoredMap[repo.name] == nil {
-							ignoredMap[repo.name] = []string{}
+						if ignoredMap[repo.Name] == nil {
+							ignoredMap[repo.Name] = []string{}
 						}
-						ignoredMap[repo.name] = append(ignoredMap[repo.name], oldLocation)
+						ignoredMap[repo.Name] = append(ignoredMap[repo.Name], oldLocation)
 						if oldLocation == portDir {
 							portDir = repo.location
 						}
@@ -511,7 +511,7 @@ func (r *repoConfigLoader) addRepositories(portDir, portdirOverlay string, prepo
 	return portDir
 }
 
-func (r *repoConfigLoader) parse(paths []string, prepos map[string]*repoConfig, localConfig bool, defaultOpts map[string]string) error {
+func (r *repoConfigLoader) parse(paths []string, prepos map[string]*RepoConfig, localConfig bool, defaultOpts map[string]string) error {
 	args := configparser.DefaultArgument
 	args.Defaults = defaultOpts
 	parser := configparser.NewConfigParser(args)
@@ -552,7 +552,7 @@ func (r *repoConfigLoader) mainRepoLocation() string {
 	return r.prepos[mainRepo].location
 }
 
-func (r *repoConfigLoader) mainRepo() *repoConfig {
+func (r *repoConfigLoader) mainRepo() *RepoConfig {
 	mainRepo := r.prepos["DEFAULT"].mainRepo
 	if mainRepo == "" {
 		return nil
@@ -595,8 +595,8 @@ func (r *repoConfigLoader) checkLocations() {
 	}
 }
 
-func (r *repoConfigLoader) reposWithProfiles() []*repoConfig {
-	rp := []*repoConfig{}
+func (r *repoConfigLoader) reposWithProfiles() []*RepoConfig {
+	rp := []*RepoConfig{}
 	for _, repoName := range r.preposOrder {
 		repo := r.prepos[repoName]
 		if repo.format != "unavailable" {
@@ -617,11 +617,11 @@ func (r *repoConfigLoader) getLocationForName(repoName string) string {
 	return r.treeMap[repoName]
 }
 
-func (r *repoConfigLoader) getRepoForLocation(location string) *repoConfig {
+func (r *repoConfigLoader) getRepoForLocation(location string) *RepoConfig {
 	return r.prepos[r.getNameForLocation(location)]
 }
 
-func (r *repoConfigLoader) getitem(repoName string) *repoConfig {
+func (r *repoConfigLoader) getitem(repoName string) *RepoConfig {
 	return r.prepos[repoName]
 }
 
@@ -684,7 +684,7 @@ func (r *repoConfigLoader) configString() string {
 		configString += fmt.Sprintf("%s = %v\n", strings.Replace("strict_misc_digests", "_", "-", -1), repo.strictMiscDigests)
 		configString += fmt.Sprintf("%s = %v\n", strings.Replace("sync_allow_hardlinks", "_", "-", -1), repo.syncAllowHardlinks)
 		configString += fmt.Sprintf("%s = %v\n", strings.Replace("sync_rcu", "_", "-", -1), repo.syncRcu)
-		configString += fmt.Sprintf("%s = %s\n", strings.Replace("auto_sync", "_", "-", -1), repo.autoSync)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("auto_sync", "_", "-", -1), repo.AutoSync)
 		configString += fmt.Sprintf("%s = %s\n", strings.Replace("clone_depth", "_", "-", -1), repo.cloneDepth)
 		configString += fmt.Sprintf("%s = %s\n", strings.Replace("format", "_", "-", -1), repo.format)
 		configString += fmt.Sprintf("%s = %s\n", strings.Replace("location", "_", "-", -1), repo.location)
@@ -705,7 +705,7 @@ func (r *repoConfigLoader) configString() string {
 		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_uri", "_", "-", -1), repo.syncUri)
 		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_user", "_", "-", -1), repo.syncUser)
 		aliases := []string{}
-		for k := range repo.aliases {
+		for k := range repo.Aliases {
 			aliases = append(aliases, k)
 		}
 		sort.Strings(aliases)
@@ -724,7 +724,7 @@ func (r *repoConfigLoader) configString() string {
 		configString += fmt.Sprintf("%s = %s\n", strings.Replace("force", "_", "-", -1), strings.Join(force, " "))
 		masters := []string{}
 		for _, k := range repo.mastersRepo {
-			masters = append(masters, k.name)
+			masters = append(masters, k.Name)
 		}
 		sort.Strings(masters)
 		configString += fmt.Sprintf("%s = %s\n", strings.Replace("masters", "_", "-", -1), strings.Join(masters, " "))
@@ -746,7 +746,7 @@ func (r *repoConfigLoader) configString() string {
 
 func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 	r := &repoConfigLoader{}
-	prepos, locationMap, treeMap, ignoredMap, defaultOpts := map[string]*repoConfig{}, map[string]string{}, map[string]string{}, map[string][]string{}, map[string]string{"EPREFIX": settings.ValueDict["EPREFIX"], "EROOT": settings.ValueDict["EROOT"], "PORTAGE_CONFIGROOT": settings.ValueDict["PORTAGE_CONFIGROOT"], "ROOT": settings.ValueDict["ROOT"]}
+	prepos, locationMap, treeMap, ignoredMap, defaultOpts := map[string]*RepoConfig{}, map[string]string{}, map[string]string{}, map[string][]string{}, map[string]string{"EPREFIX": settings.ValueDict["EPREFIX"], "EROOT": settings.ValueDict["EROOT"], "PORTAGE_CONFIGROOT": settings.ValueDict["PORTAGE_CONFIGROOT"], "ROOT": settings.ValueDict["ROOT"]}
 	var portDir, portDirOverlay string
 
 	if _, ok := settings.ValueDict["PORTAGE_REPOSITORIES"]; !ok {
@@ -756,7 +756,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 	defaultOpts["sync-rsync-extra-opts"] = settings.ValueDict["PORTAGE_RSYNC_EXTRA_OPTS"]
 	if err := r.parse(paths, prepos, settings.localConfig, defaultOpts); err != nil {
 		WriteMsg(fmt.Sprintf("!!! Error while reading repo config file: %s\n", err), -1, nil)
-		prepos = map[string]*repoConfig{}
+		prepos = map[string]*RepoConfig{}
 		prepos["DEFAULT"] = NewRepoConfig("DEFAULT", nil, settings.localConfig)
 		locationMap = map[string]string{}
 		treeMap = map[string]string{}
@@ -790,7 +790,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 		if repo.location == "" {
 			if repoName != "DEFAULT" {
 				if settings.localConfig && len(paths) > 0 {
-					writeMsgLevel(fmt.Sprintf("!!! %s\n", fmt.Sprintf("Section '%s' in repos.conf is missing location attribute", repo.name)), 40, -1)
+					writeMsgLevel(fmt.Sprintf("!!! %s\n", fmt.Sprintf("Section '%s' in repos.conf is missing location attribute", repo.Name)), 40, -1)
 				}
 				delete(prepos, repoName)
 				continue
@@ -799,18 +799,18 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 			if !SyncMode {
 				if !isdirRaiseEaccess(repo.location) {
 					writeMsgLevel(fmt.Sprintf("!!! %s\n", fmt.Sprintf("Section '%s' in repos.conf has location attribute set to nonexistent directory: '%s'", repoName, repo.location)), 40, -1)
-					if repo.name != "gentoo" {
+					if repo.Name != "gentoo" {
 						delete(prepos, repoName)
 						continue
 					}
 				}
-				if repo.missingRepoName && repo.name != repoName {
+				if repo.missingRepoName && repo.Name != repoName {
 					writeMsgLevel(fmt.Sprintf("!!! Section '%s' in repos.conf refers to repository without repository name set in '%s'\n", repoName, path.Join(repo.location, RepoNameLoc)), 40, -1)
 					delete(prepos, repoName)
 					continue
 				}
-				if repo.name != repoName {
-					writeMsgLevel(fmt.Sprintf("!!! Section '%s' in repos.conf has name different from repository name '%s' set inside repository\n", repoName, repo.name), 40, -1)
+				if repo.Name != repoName {
+					writeMsgLevel(fmt.Sprintf("!!! Section '%s' in repos.conf has name different from repository name '%s' set inside repository\n", repoName, repo.Name), 40, -1)
 					delete(prepos, repoName)
 					continue
 				}
@@ -822,9 +822,9 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 	for repoName, repo := range prepos {
 		names := map[string]bool{}
 		names[repoName] = true
-		if len(repo.aliases) > 0 {
+		if len(repo.Aliases) > 0 {
 			var a [][2]string
-			for v := range repo.aliases {
+			for v := range repo.Aliases {
 				a = append(a, [2]string{v})
 			}
 			aliases := stackLists([][][2]string{a}, 1, false, false, false, false)
@@ -864,9 +864,9 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 	if mainRepo != "" && prepos[mainRepo].priority == 0 {
 		prepos[mainRepo].priority = -1000
 	}
-	var p []*repoConfig
+	var p []*RepoConfig
 	for key, repo := range prepos {
-		if repo.name == key && key != "DEFAULT" && repo.location != "" {
+		if repo.Name == key && key != "DEFAULT" && repo.location != "" {
 			p = append(p, repo)
 		}
 	}
@@ -874,16 +874,16 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 		if p[i].priority != p[j].priority {
 			return p[i].priority < p[j].priority
 		}
-		for k := 0; k < len(p[i].name) && k < len(p[j].name); k++ {
-			if p[i].name[k] != p[j].name[k] {
-				return p[i].name[k] < p[j].name[k]
+		for k := 0; k < len(p[i].Name) && k < len(p[j].Name); k++ {
+			if p[i].Name[k] != p[j].Name[k] {
+				return p[i].Name[k] < p[j].Name[k]
 			}
 		}
-		return len(p[i].name) < len(p[j].name)
+		return len(p[i].Name) < len(p[j].Name)
 	})
 	preposOrder := []string{}
 	for _, v := range p {
-		preposOrder = append(preposOrder, v.name)
+		preposOrder = append(preposOrder, v.Name)
 	}
 	r.prepos = prepos
 	r.preposOrder = preposOrder
@@ -898,22 +898,22 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 			continue
 		}
 		if repo.masters == nil {
-			if r.mainRepo() != nil && repoName != r.mainRepo().name {
-				repo.mastersRepo = []*repoConfig{r.mainRepo()}
+			if r.mainRepo() != nil && repoName != r.mainRepo().Name {
+				repo.mastersRepo = []*RepoConfig{r.mainRepo()}
 			} else {
-				repo.mastersRepo = []*repoConfig{}
+				repo.mastersRepo = []*RepoConfig{}
 			}
 		} else {
 			if len(repo.masters) > 0 {
 				continue
 			}
-			masterRepos := []*repoConfig{}
+			masterRepos := []*RepoConfig{}
 			for _, masterName := range repo.mastersRepo {
-				if _, ok := prepos[masterName.name]; !ok {
+				if _, ok := prepos[masterName.Name]; !ok {
 					layoutFilename := path.Join(repo.location, "metadata", "layout.conf")
-					writeMsgLevel(fmt.Sprintf("Unavailable repository '%s' referenced by masters entry in '%s'\n", masterName.name, layoutFilename), 40, -1)
+					writeMsgLevel(fmt.Sprintf("Unavailable repository '%s' referenced by masters entry in '%s'\n", masterName.Name, layoutFilename), 40, -1)
 				} else {
-					masterRepos = append(masterRepos, prepos[masterName.name])
+					masterRepos = append(masterRepos, prepos[masterName.Name])
 				}
 			}
 			repo.mastersRepo = masterRepos
@@ -973,8 +973,8 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 		if repoName == "DEFAULT" {
 			continue
 		}
-		if repo.mastersOrig == nil && r.mainRepo() != nil && repo.name != r.mainRepo().name && !SyncMode {
-			writeMsgLevel(fmt.Sprintf("!!! Repository '%s' is missing masters attribute in '%s'\n", repo.name, path.Join(repo.location, "metadata", "layout.conf"))+fmt.Sprintf("!!! Set 'masters = %s' in this file for future compatibility\n", r.mainRepo().name), 30, -1)
+		if repo.mastersOrig == nil && r.mainRepo() != nil && repo.Name != r.mainRepo().Name && !SyncMode {
+			writeMsgLevel(fmt.Sprintf("!!! Repository '%s' is missing masters attribute in '%s'\n", repo.Name, path.Join(repo.location, "metadata", "layout.conf"))+fmt.Sprintf("!!! Set 'masters = %s' in this file for future compatibility\n", r.mainRepo().Name), 30, -1)
 		}
 	}
 	r.preposChanged = true
@@ -1005,7 +1005,7 @@ func getRepoName(repoLocation, cached string) string {
 	if cached != "" {
 		return cached
 	}
-	name, missing := (&repoConfig{}).readRepoName(repoLocation)
+	name, missing := (&RepoConfig{}).readRepoName(repoLocation)
 	if missing {
 		return ""
 	}

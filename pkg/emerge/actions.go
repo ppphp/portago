@@ -11,7 +11,7 @@ import (
 type EmergeConfig struct {
 	action                      string
 	args                        []string
-	opts                        []string
+	opts                        map[string]string
 	runningConfig, targetConfig string
 	trees                       map[string]*atom.TreesDict
 }
@@ -54,7 +54,7 @@ func runAction(emergeConfig *EmergeConfig) int {
 }
 
 func actionSync(emerge_config *EmergeConfig) int {
-	//syncer = SyncRepos(emerge_config)
+	syncer := NewSyncRepos(emerge_config, false)
 	return_messages := false
 	for _, o := range emerge_config.opts {
 		if o == "--quiet" {
@@ -64,16 +64,21 @@ func actionSync(emerge_config *EmergeConfig) int {
 	}
 	options := map[string]interface{}{"return-messages": return_messages}
 	var msgs []string = nil
+	var success bool
 	if len(emerge_config.args) > 0 {
 		options["repo"] = emerge_config.args
 		//success, msgs = syncer.repo(options=options)
 	} else {
-		//success, msgs = syncer.auto_sync(options=options)
+		success, msgs = syncer.auto_sync(options)
 	}
 	if return_messages {
 		print_results(msgs)
 	}
-	return 0
+	if success {
+		return 0
+	} else {
+		return 1
+	}
 }
 
 func print_results(results []string) {

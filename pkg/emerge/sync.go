@@ -1,5 +1,13 @@
 package emerge
 
+import (
+	"fmt"
+	"strings"
+	"syscall"
+
+	"github.com/ppphp/portago/atom"
+)
+
 type SyncRepos struct {
 	emerge_config *EmergeConfig
 	xterm_titles  bool
@@ -13,8 +21,21 @@ func (SyncRepos) can_progressbar(func()) bool {
 	return false
 }
 
-func (s *SyncRepos) auto_sync() {
-	return
+func (s *SyncRepos) auto_sync(options map[string]interface{}) (bool, []string) {
+	return_messages := false
+	if len(options) > 0 {
+		return_messages, _ = options["return-messages"].(bool)
+	}
+
+	success, repos, msgs := s._get_repos(true, nil)
+	if !success {
+		if return_messages {
+			return false, msgs
+		}
+		return false, nil
+	}
+	return s._sync(repos, return_messages, options)
+
 }
 
 func (s *SyncRepos) all_repos() {
@@ -25,20 +46,76 @@ func (s *SyncRepos) repo() {
 	return
 }
 
-func (s *SyncRepos) _match_repos() {
-	return
+func (s *SyncRepos) _match_repos(repos []*atom.RepoConfig, available []*atom.RepoConfig) []*atom.RepoConfig {
+	selected := []*atom.RepoConfig{}
+	for _, repo := range available {
+		in := false
+		for _, r := range repos {
+			if repo.Name == r.Name {
+				in = true
+				break
+			}
+		}
+		if in {
+			selected = append(selected, repo)
+		} else if repo.Aliases != nil {
+			in := false
+			for aliases := range repo.Aliases {
+				for _, repo := range repos {
+					if aliases == repo.Name {
+						in = true
+						break
+					}
+				}
+				if in {
+					break
+				}
+			}
+			if in {
+				selected = append(selected, repo)
+			}
+		}
+	}
+	return selected
 }
 
-func (s *SyncRepos) _get_repos() {
-	return
+func (s *SyncRepos) _get_repos(auto_sync_only bool, match_repos interface{}) (bool, []string, []string) { // true, nil
+
+	msgs := []string{}
+	//repos := s.emerge_config.target_config.settings.repositories
+	return true, nil, msgs
 }
 
-func (s *SyncRepos) _filter_auto() {
-	return
+func (s *SyncRepos) _filter_auto(repos []*atom.RepoConfig) []*atom.RepoConfig {
+	selected := []*atom.RepoConfig{}
+	for _, repo := range repos {
+		if repo.AutoSync == "yes" || repo.AutoSync == "true" {
+			selected = append(selected, repo)
+		}
+	}
+	return selected
 }
 
-func (s *SyncRepos) _sync() {
-	return
+func (s *SyncRepos) _sync(selected_repos []string, return_messages bool, emaint_opts map[string]interface{}) (bool, []string) { // nil
+	msgs := []string{}
+	if len(selected_repos) == 0 {
+		if return_messages {
+			msgs = append(msgs, "Nothing to sync... returning")
+			return true, msgs
+		}
+		return true, nil
+	}
+	if emaint_opts != nil {
+		for k, v := range emaint_opts {
+			if v != nil {
+				k = "--" + strings.ReplaceAll(k, "_", "-")
+				s.emerge_config.opts[k] = fmt.Sprint(v)
+			}
+		}
+	}
+	syscall.Umask(0o22)
+
+	return false, nil
 }
 
 func (s *SyncRepos) _do_pkg_moves() {
