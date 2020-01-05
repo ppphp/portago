@@ -122,7 +122,7 @@ type Config struct {
 	pbashrcdict                                                                                                                          map[*profileNode]map[string]map[*Atom][]string
 	prevmaskdict                                                                                                                         map[string][]*Atom
 	modulePriority, incrementals, validateCommands, unknownFeatures, nonUserVariables, envDBlacklist, pbashrc, categories, iuseEffective map[string]bool
-	features                                                                                                                             *featuresSet
+	Features                                                                                                                             *featuresSet
 	repositories                                                                                                                         *repoConfigLoader
 	modules                                                                                                                              map[string]map[string][]string
 	locationsManager                                                                                                                     *locationsManager
@@ -298,14 +298,14 @@ func (c *Config) validate() {
 		WriteMsg(fmt.Sprintf("!!! It should point into a profile within %s/profiles/\n", c.ValueDict["PORTDIR"]), 0, nil)
 		WriteMsg(fmt.Sprintf("!!! (You can safely ignore this message when syncing. It's harmless.)\n\n\n"), 0, nil)
 	}
-	if !sandbox_capable && (c.features.features["sandbox"] || c.features.features["usersandbox"]) {
+	if !sandbox_capable && (c.Features.Features["sandbox"] || c.Features.Features["usersandbox"]) {
 		cp, _ := filepath.EvalSymlinks(c.profilePath)
 		pp, _ := filepath.EvalSymlinks(path.Join(c.ValueDict["PORTAGE_CONFIGROOT"], ProfilePath))
 		if c.profilePath != "" && cp == pp {
 			WriteMsg(colorize("BAD", fmt.Sprintf("!!! Problem with sandbox binary. Disabling...\n\n")), -1, nil)
 		}
 	}
-	if c.features.features["fakeroot"] && !fakeroot_capable {
+	if c.Features.Features["fakeroot"] && !fakeroot_capable {
 		WriteMsg(fmt.Sprintf("!!! FEATURES=fakeroot is enabled, but the fakeroot binary is not installed.\n"), -1, nil)
 	}
 
@@ -647,7 +647,7 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 		c.reset(1)
 	}
 
-	if c.features.features["test"] {
+	if c.Features.Features["test"] {
 		featureUse = append(featureUse, "test")
 	}
 
@@ -705,7 +705,7 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 		}
 	}
 
-	if restrictTest && c.features.features["test"] {
+	if restrictTest && c.Features.Features["test"] {
 		pkgInternalUseList = append(pkgInternalUseList, "-test")
 		pkgInternalUse = strings.Join(pkgInternalUseList, " ")
 		c.configDict["pkginternal"]["USE"] = pkgInternalUse
@@ -791,7 +791,7 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 	ebuildForceTest := !restrictTest && c.ValueDict["EBUILD_FORCE_TEST"] == "1"
 
 	if explicitIUse["test"] || iUseImplicitMatch("test") {
-		if c.features.features["test"] {
+		if c.Features.Features["test"] {
 			in := false
 			var at *Atom
 			for a := range c.usemask {
@@ -814,7 +814,7 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 		}
 		if restrictTest || (in && !ebuildForceTest) {
 			fs := []string{}
-			for x := range c.features.features {
+			for x := range c.Features.Features {
 				if x != "test" {
 					fs = append(fs, x)
 				}
@@ -1380,16 +1380,16 @@ func (c *Config) regenerate(useonly int) { // 0
 			}
 		}
 	}
-	if c.features != nil {
-		c.features.features = map[string]bool{}
+	if c.Features != nil {
+		c.Features.Features = map[string]bool{}
 	} else {
-		c.features = NewFeaturesSet(c)
+		c.Features = NewFeaturesSet(c)
 	}
 	for _, x := range strings.Fields(c.ValueDict["FEATURES"]) {
-		c.features.features[x] = true
+		c.Features.Features[x] = true
 	}
-	c.features.syncEnvVar()
-	c.features.validate()
+	c.Features.syncEnvVar()
+	c.Features.validate()
 	for x := range c.useforce {
 		myFlags[x.value] = true
 	}
@@ -1673,8 +1673,8 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		c.backupenv = c.configDict["backupenv"]
 		c.prevmaskdict = clone.prevmaskdict   // CopyMapSS(clone.prevmaskdict)
 		c.pprovideddict = clone.pprovideddict //CopyMapSS()
-		c.features = NewFeaturesSet(c)
-		c.features.features = CopyMapSB(clone.features.features)
+		c.Features = NewFeaturesSet(c)
+		c.Features.Features = CopyMapSB(clone.Features.Features)
 		c.featuresOverrides = append(clone.featuresOverrides[:0:0], clone.featuresOverrides...)
 		c.licenseManager = clone.licenseManager
 
@@ -2292,7 +2292,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 
 		c.regenerate(0)
 		featureUse := []string{}
-		if !c.features.features["test"] {
+		if !c.Features.Features["test"] {
 			featureUse = append(featureUse, "test")
 		}
 		c.defaultFeaturesUse = strings.Join(featureUse, " ")
@@ -2301,11 +2301,11 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 			c.regenerate(0)
 		}
 		if unprivileged {
-			c.features.features["unprivileged"] = true
+			c.Features.Features["unprivileged"] = true
 		}
 
 		if runtime.GOOS == "FreeBSD" {
-			c.features.features["chflags"] = true
+			c.Features.Features["chflags"] = true
 		}
 		c.initIuse()
 
@@ -2361,16 +2361,16 @@ func CopyMSMASS(m map[string]map[*Atom][]string) map[string]map[*Atom][]string {
 
 type featuresSet struct {
 	settings *Config
-	features map[string]bool
+	Features map[string]bool
 }
 
 func (f *featuresSet) contains(k string) bool {
-	return f.features[k]
+	return f.Features[k]
 }
 
 func (f *featuresSet) iter() []string {
 	r := []string{}
-	for k := range f.features {
+	for k := range f.Features {
 		r = append(r, k)
 	}
 	return r
@@ -2385,8 +2385,8 @@ func (f *featuresSet) syncEnvVar() {
 func (f *featuresSet) add(k string) {
 	f.settings.modifying()
 	f.settings.featuresOverrides = append(f.settings.featuresOverrides, k)
-	if !f.features[k] {
-		f.features[k] = true
+	if !f.Features[k] {
+		f.Features[k] = true
 		f.syncEnvVar()
 	}
 }
@@ -2396,10 +2396,10 @@ func (f *featuresSet) update(values []string) {
 	f.settings.featuresOverrides = append(f.settings.featuresOverrides, values...)
 	needSync := false
 	for _, k := range values {
-		if f.features[k] {
+		if f.Features[k] {
 			continue
 		}
-		f.features[k] = true
+		f.Features[k] = true
 		needSync = true
 	}
 	if needSync {
@@ -2412,13 +2412,13 @@ func (f *featuresSet) differenceUpdate(values []string) {
 	removeUs := []string{}
 	for _, v := range values {
 		f.settings.featuresOverrides = append(f.settings.featuresOverrides, "-"+v)
-		if f.features[v] {
+		if f.Features[v] {
 			removeUs = append(removeUs, v)
 		}
 	}
 	if len(removeUs) > 0 {
 		for _, k := range removeUs {
-			delete(f.features, k)
+			delete(f.Features, k)
 		}
 		f.syncEnvVar()
 	}
@@ -2431,16 +2431,16 @@ func (f *featuresSet) remove(k string) {
 func (f *featuresSet) discard(k string) {
 	f.settings.modifying()
 	f.settings.featuresOverrides = append(f.settings.featuresOverrides, "-"+v)
-	if f.features[v] {
-		delete(f.features, k)
+	if f.Features[v] {
+		delete(f.Features, k)
 	}
 	f.syncEnvVar()
 }
 
 func (f *featuresSet) validate() {
-	if f.features["unknown-features-warn"] {
+	if f.Features["unknown-features-warn"] {
 		var unknownFeatures []string
-		for k := range f.features {
+		for k := range f.Features {
 			if !SUPPORTED_FEATURES[k] {
 				unknownFeatures = append(unknownFeatures, k)
 			}
@@ -2460,9 +2460,9 @@ func (f *featuresSet) validate() {
 			}
 		}
 	}
-	if f.features["unknown-features-filter"] {
+	if f.Features["unknown-features-filter"] {
 		var unknownFeatures []string
-		for k := range f.features {
+		for k := range f.Features {
 			if !SUPPORTED_FEATURES[k] {
 				unknownFeatures = append(unknownFeatures, k)
 			}
@@ -2501,7 +2501,7 @@ func (f *featuresSet) pruneOverrides() {
 }
 
 func NewFeaturesSet(settings *Config) *featuresSet {
-	return &featuresSet{settings: settings, features: map[string]bool{}}
+	return &featuresSet{settings: settings, Features: map[string]bool{}}
 }
 
 var (

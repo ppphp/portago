@@ -12,7 +12,7 @@ type EmergeConfig struct {
 	action                      string
 	args                        []string
 	opts                        map[string]string
-	runningConfig, targetConfig string
+	runningConfig, targetConfig struct{ settings *atom.Config }
 	trees                       map[string]*atom.TreesDict
 }
 

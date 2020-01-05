@@ -60,7 +60,7 @@ func data_init(settings *Config) {
 		v := 0
 		if uid == 0 {
 			v = 2
-		} else if settings.features.features["unprivileged"] {
+		} else if settings.Features.Features["unprivileged"] {
 			v = 2
 		} else if i, err := os.Getgroups(); err != nil {
 			for _, x := range i {
