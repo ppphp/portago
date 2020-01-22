@@ -67,7 +67,7 @@ func actionSync(emerge_config *EmergeConfig) int {
 	var success bool
 	if len(emerge_config.args) > 0 {
 		options["repo"] = emerge_config.args
-		//success, msgs = syncer.repo(options=options)
+		success, msgs = syncer.repo(options)
 	} else {
 		success, msgs = syncer.auto_sync(options)
 	}

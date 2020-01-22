@@ -123,7 +123,7 @@ type Config struct {
 	prevmaskdict                                                                                                                         map[string][]*Atom
 	modulePriority, incrementals, validateCommands, unknownFeatures, nonUserVariables, envDBlacklist, pbashrc, categories, iuseEffective map[string]bool
 	Features                                                                                                                             *featuresSet
-	repositories                                                                                                                         *repoConfigLoader
+	Repositories                                                                                                                         *repoConfigLoader
 	modules                                                                                                                              map[string]map[string][]string
 	locationsManager                                                                                                                     *locationsManager
 	environWhitelistRe                                                                                                                   *regexp.Regexp
@@ -205,7 +205,7 @@ func (c *Config) keywordsManager() *keywordsManager {
 
 func (c *Config) maskManager() *maskManager {
 	if c.maskManagerObj == nil {
-		c.maskManagerObj = NewMaskManager(c.repositories, c.locationsManager.profilesComplex, c.locationsManager.absUserConfig, c.localConfig, c.unmatchedRemoval)
+		c.maskManagerObj = NewMaskManager(c.Repositories, c.locationsManager.profilesComplex, c.locationsManager.absUserConfig, c.localConfig, c.unmatchedRemoval)
 	}
 	return c.maskManagerObj
 }
@@ -482,7 +482,7 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 	var repoEnv []map[string]string = nil
 	if repository != "" && repository != (&Package{}).UnknownRepo {
 		repos := []string{}
-		for _, repo := range c.repositories.getitem(repository).mastersRepo {
+		for _, repo := range c.Repositories.getitem(repository).mastersRepo {
 			repos = append(repos, repo.Name)
 		}
 		repos = append(repos, repository)
@@ -1627,7 +1627,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		c.profilePath = clone.profilePath
 		c.profiles = clone.profiles
 		c.packages = clone.packages
-		c.repositories = clone.repositories
+		c.Repositories = clone.Repositories
 		c.unpackDependencies = clone.unpackDependencies
 		c.defaultFeaturesUse = clone.defaultFeaturesUse
 		c.iuseEffective = clone.iuseEffective
@@ -1839,26 +1839,26 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		}
 		c.lookupList = []map[string]string{c.configDict["env"]}
 		if repositories == nil {
-			c.repositories = loadRepositoryConfig(c, "")
+			c.Repositories = loadRepositoryConfig(c, "")
 		} else {
-			c.repositories = repositories
+			c.Repositories = repositories
 		}
-		for _, v := range c.repositories.prepos {
+		for _, v := range c.Repositories.Prepos {
 			knownRepos = append(knownRepos, v.location)
 		}
 		kr := map[string]bool{}
 		for _, v := range knownRepos {
 			kr[v] = true
 		}
-		c.ValueDict["PORTAGE_REPOSITORIES"] = c.repositories.configString()
+		c.ValueDict["PORTAGE_REPOSITORIES"] = c.Repositories.configString()
 		c.backupChanges("PORTAGE_REPOSITORIES")
-		mainRepo := c.repositories.mainRepo()
+		mainRepo := c.Repositories.mainRepo()
 		if mainRepo != nil {
 			c.ValueDict["PORTDIR"] = mainRepo.location
 			c.backupChanges("PORTDIR")
 			expandMap["PORTDIR"] = c.ValueDict["PORTDIR"]
 		}
-		portDirOverlay1 := c.repositories.repoLocationList
+		portDirOverlay1 := c.Repositories.repoLocationList
 		if len(portDirOverlay1) > 0 && portDirOverlay1[0] == c.ValueDict["PORTDIR"] {
 			portDirOverlay1 = portDirOverlay1[1:]
 		}
@@ -1877,7 +1877,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		c.backupChanges("PORTDIR_OVERLAY")
 		expandMap["PORTDIR_OVERLAY"] = c.ValueDict["PORTDIR_OVERLAY"]
 		locationsManager.setPortDirs(c.ValueDict["PORTDIR"], c.ValueDict["PORTDIR_OVERLAY"])
-		locationsManager.loadProfiles(c.repositories, knownRepos)
+		locationsManager.loadProfiles(c.Repositories, knownRepos)
 		profilesComplex := locationsManager.profilesComplex
 		c.profiles = locationsManager.profiles
 		c.profilePath = locationsManager.profilePath
@@ -1895,7 +1895,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 				c.prevmaskdict[x.cp] = append(c.prevmaskdict[x.cp], x)
 			}
 		}
-		c.unpackDependencies = loadUnpackDependenciesConfiguration(c.repositories)
+		c.unpackDependencies = loadUnpackDependenciesConfiguration(c.Repositories)
 		myGCfg := map[string]string{}
 		if len(profilesComplex) != 0 {
 			myGCfgDLists := []map[string]string{}
@@ -1990,7 +1990,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		c.pbashrc = map[string]bool{}
 		c.repoMakeDefaults = map[string]map[string]string{}
 
-		for _, repo := range c.repositories.reposWithProfiles() {
+		for _, repo := range c.Repositories.reposWithProfiles() {
 			d := getConfig(path.Join(repo.location, "profiles", "make.defaults"), tolerant, false, true, repo.portage1Profiles, CopyMapSS(c.configDict["globals"]))
 			if len(d) > 0 {
 				for k := range c.envBlacklist {
@@ -2005,7 +2005,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 			}
 			c.repoMakeDefaults[repo.Name] = d
 		}
-		c.useManager = NewUserManager(c.repositories, profilesComplex, absUserConfig, c.isStable, localConfig)
+		c.useManager = NewUserManager(c.Repositories, profilesComplex, absUserConfig, c.isStable, localConfig)
 		c.usemask = c.useManager.getUseMask(nil, nil)
 		c.useforce = c.useManager.getUseForce(nil, nil)
 		c.configDict["conf"]["USE"] = c.useManager.extract_global_USE_changes(c.configDict["conf"]["USE"])
@@ -3308,7 +3308,7 @@ func (u *useManager) getUseAliases(pkg *pkgStr) map[string][]string {
 	useAliases := map[string][]string{}
 	if pkg.repo != "" && pkg.repo != unknownRepo {
 		repos := []string{}
-		for _, repo := range u.repositories.prepos[pkg.repo].masters {
+		for _, repo := range u.repositories.Prepos[pkg.repo].masters {
 			repos = append(repos, repo)
 		}
 		for _, repo := range repos {

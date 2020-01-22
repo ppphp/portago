@@ -45,7 +45,7 @@ func findInvalidPathChar(path string, pos int, endpos int) int {
 }
 
 type RepoConfig struct {
-	allowMissingManifest, AutoSync, cloneDepth, eapi, format, location, mainRepo, manifestHashes, manifestRequiredHashes, Name, syncDepth, syncOpenpgpKeyPath, syncOpenpgpKeyRefreshRetryCount, syncOpenpgpKeyRefreshRetryDelayExpBase, syncOpenpgpKeyRefreshRetryDelayMax, syncOpenpgpKeyRefreshRetryDelayMult, syncOpenpgpKeyRefreshRetryOverallTimeout, syncRcuStoreDir, syncType, syncUmask, syncUri, syncUser, userLocation string
+	allowMissingManifest, AutoSync, cloneDepth, eapi, format, location, mainRepo, manifestHashes, manifestRequiredHashes, Name, syncDepth, syncOpenpgpKeyPath, syncOpenpgpKeyRefreshRetryCount, syncOpenpgpKeyRefreshRetryDelayExpBase, syncOpenpgpKeyRefreshRetryDelayMax, syncOpenpgpKeyRefreshRetryDelayMult, syncOpenpgpKeyRefreshRetryOverallTimeout, syncRcuStoreDir, SyncType, syncUmask, SyncUri, syncUser, userLocation string
 	eclassDb                                                                                                                                                                                                                                                                                                                                                                                                                     *cache
 	eapisBanned, eapisDeprecated, force, Aliases, eclassOverrides                                                                                                                                                                                                                                                                                                                                                                map[string]bool
 	cacheFormats, profileFormats, masters, eclassLocations, mastersOrig                                                                                                                                                                                                                                                                                                                                                          []string
@@ -158,7 +158,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *R
 	}
 	syncType, ok := repoOpts["sync-type"]
 	if ok {
-		r.syncType = strings.TrimSpace(syncType)
+		r.SyncType = strings.TrimSpace(syncType)
 	}
 	syncUmask, ok := repoOpts["sync-umask"]
 	if ok {
@@ -166,7 +166,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *R
 	}
 	syncUri, ok := repoOpts["sync-uri"]
 	if ok {
-		r.syncUri = strings.TrimSpace(syncUri)
+		r.SyncUri = strings.TrimSpace(syncUri)
 	}
 	syncUser, ok := repoOpts["sync-user"]
 	if ok {
@@ -342,7 +342,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *R
 
 type repoConfigLoader struct {
 	locationMap, treeMap map[string]string
-	prepos               map[string]*RepoConfig
+	Prepos               map[string]*RepoConfig
 	preposOrder          []string
 	missingRepoNames     map[string]bool
 	preposChanged        bool
@@ -469,14 +469,14 @@ func (r *repoConfigLoader) addRepositories(portDir, portdirOverlay string, prepo
 					if reposConfOpts.syncRcuTtlDays != 0 {
 						repo.syncRcuTtlDays = reposConfOpts.syncRcuTtlDays
 					}
-					if reposConfOpts.syncType != "" {
-						repo.syncType = reposConfOpts.syncType
+					if reposConfOpts.SyncType != "" {
+						repo.SyncType = reposConfOpts.SyncType
 					}
 					if reposConfOpts.syncUmask != "" {
 						repo.syncUmask = reposConfOpts.syncUmask
 					}
-					if reposConfOpts.syncUri != "" {
-						repo.syncUri = reposConfOpts.syncUri
+					if reposConfOpts.SyncUri != "" {
+						repo.SyncUri = reposConfOpts.SyncUri
 					}
 					if reposConfOpts.syncUser != "" {
 						repo.syncUser = reposConfOpts.syncUser
@@ -545,27 +545,27 @@ func (r *repoConfigLoader) parse(paths []string, prepos map[string]*RepoConfig, 
 }
 
 func (r *repoConfigLoader) mainRepoLocation() string {
-	mainRepo := r.prepos["DEFAULT"].mainRepo
-	if _, ok := r.prepos[mainRepo]; mainRepo == "" || !ok {
+	mainRepo := r.Prepos["DEFAULT"].mainRepo
+	if _, ok := r.Prepos[mainRepo]; mainRepo == "" || !ok {
 		return ""
 	}
-	return r.prepos[mainRepo].location
+	return r.Prepos[mainRepo].location
 }
 
 func (r *repoConfigLoader) mainRepo() *RepoConfig {
-	mainRepo := r.prepos["DEFAULT"].mainRepo
+	mainRepo := r.Prepos["DEFAULT"].mainRepo
 	if mainRepo == "" {
 		return nil
 	}
-	return r.prepos[mainRepo]
+	return r.Prepos[mainRepo]
 }
 
 func (r *repoConfigLoader) RepoLocationList() []string {
 	if r.preposChanged {
 		repoLocationList := []string{}
 		for _, repo := range r.preposOrder {
-			if r.prepos[repo].location != "" {
-				repoLocationList = append(repoLocationList, r.prepos[repo].location)
+			if r.Prepos[repo].location != "" {
+				repoLocationList = append(repoLocationList, r.Prepos[repo].location)
 			}
 		}
 		r.repoLocationList = repoLocationList
@@ -575,7 +575,7 @@ func (r *repoConfigLoader) RepoLocationList() []string {
 }
 
 func (r *repoConfigLoader) checkLocations() {
-	for name, re := range r.prepos {
+	for name, re := range r.Prepos {
 		if name != "DEFAULT" {
 			if re.location != "" {
 				WriteMsg(fmt.Sprintf("!!! Location not set for repository %s\n", name), -1, nil)
@@ -598,7 +598,7 @@ func (r *repoConfigLoader) checkLocations() {
 func (r *repoConfigLoader) reposWithProfiles() []*RepoConfig {
 	rp := []*RepoConfig{}
 	for _, repoName := range r.preposOrder {
-		repo := r.prepos[repoName]
+		repo := r.Prepos[repoName]
 		if repo.format != "unavailable" {
 			rp = append(rp, repo)
 		}
@@ -618,19 +618,19 @@ func (r *repoConfigLoader) getLocationForName(repoName string) string {
 }
 
 func (r *repoConfigLoader) getRepoForLocation(location string) *RepoConfig {
-	return r.prepos[r.getNameForLocation(location)]
+	return r.Prepos[r.getNameForLocation(location)]
 }
 
 func (r *repoConfigLoader) getitem(repoName string) *RepoConfig {
-	return r.prepos[repoName]
+	return r.Prepos[repoName]
 }
 
 func (r *repoConfigLoader) delitem(repoName string) {
-	if repoName == r.prepos["DEFAULT"].mainRepo {
-		r.prepos["DEFAULT"].mainRepo = ""
+	if repoName == r.Prepos["DEFAULT"].mainRepo {
+		r.Prepos["DEFAULT"].mainRepo = ""
 	}
-	location := r.prepos[repoName].location
-	delete(r.prepos, repoName)
+	location := r.Prepos[repoName].location
+	delete(r.Prepos, repoName)
 	n := []string{}
 	for _, v := range r.preposOrder {
 		if v != repoName {
@@ -656,7 +656,7 @@ func (r *repoConfigLoader) delitem(repoName string) {
 }
 
 func (r *repoConfigLoader) contains(repoName string) bool {
-	_, ok := r.prepos[repoName]
+	_, ok := r.Prepos[repoName]
 	return ok
 }
 
@@ -671,7 +671,7 @@ func (r *repoConfigLoader) iter() []string {
 func (r *repoConfigLoader) configString() string {
 	configString := ""
 	repoName := []string{}
-	for r := range r.prepos {
+	for r := range r.Prepos {
 		if r != "DEFAULT" {
 			repoName = append(repoName, r)
 		}
@@ -680,7 +680,7 @@ func (r *repoConfigLoader) configString() string {
 	repoName = append(repoName, "DEFAULT")
 	for _, v := range repoName {
 		configString += fmt.Sprintf("\n[%s]\n", v)
-		repo := r.prepos[v]
+		repo := r.Prepos[v]
 		configString += fmt.Sprintf("%s = %v\n", strings.Replace("strict_misc_digests", "_", "-", -1), repo.strictMiscDigests)
 		configString += fmt.Sprintf("%s = %v\n", strings.Replace("sync_allow_hardlinks", "_", "-", -1), repo.syncAllowHardlinks)
 		configString += fmt.Sprintf("%s = %v\n", strings.Replace("sync_rcu", "_", "-", -1), repo.syncRcu)
@@ -700,9 +700,9 @@ func (r *repoConfigLoader) configString() string {
 		configString += fmt.Sprintf("%s = %v\n", strings.Replace("sync_rcu_spare_snapshots", "_", "-", -1), repo.syncRcuSpareSnapshots)
 		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_rcu_store_dir", "_", "-", -1), repo.syncRcuStoreDir)
 		configString += fmt.Sprintf("%s = %v\n", strings.Replace("sync_rcu_ttl_days", "_", "-", -1), repo.syncRcuTtlDays)
-		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_type", "_", "-", -1), repo.syncType)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_type", "_", "-", -1), repo.SyncType)
 		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_umask", "_", "-", -1), repo.syncUmask)
-		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_uri", "_", "-", -1), repo.syncUri)
+		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_uri", "_", "-", -1), repo.SyncUri)
 		configString += fmt.Sprintf("%s = %s\n", strings.Replace("sync_user", "_", "-", -1), repo.syncUser)
 		aliases := []string{}
 		for k := range repo.Aliases {
@@ -885,7 +885,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 	for _, v := range p {
 		preposOrder = append(preposOrder, v.Name)
 	}
-	r.prepos = prepos
+	r.Prepos = prepos
 	r.preposOrder = preposOrder
 	r.ignoredRepos = ignoredRepos
 	r.locationMap = locationMap

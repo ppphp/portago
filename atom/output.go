@@ -306,8 +306,15 @@ func NewCreateColorFunc(colorKey string) *create_color_func {
 }
 
 var Bold = func(text string) string { return colorize("bold", text) }
+var White = func(text string) string { return colorize("white", text) }
+var Teal = func(text string) string { return colorize("teal", text) }
 var Turquoise = func(text string) string { return colorize("turquoise", text) }
+var Darkteal = func(text string) string { return colorize("darkteal", text) }
+var Fuchsia = func(text string) string { return colorize("fuschia", text) }
+var Purple = func(text string) string { return colorize("purple", text) }
+var Blue = func(text string) string { return colorize("blue", text) }
 var Green = func(text string) string { return colorize("green", text) }
+var Red = func(text string) string { return colorize("red", text) }
 
 type consoleStyleFile struct {
 	_file, _styles, write_listener string

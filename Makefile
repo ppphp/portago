@@ -3,10 +3,10 @@
 all: build
 
 portageq: fmt
-	GOPROXY=https://goproxy.io go build github.com/ppphp/portago/cmd/portageq
+	GOPROXY=https://goproxy.io go build ./cmd/portageq
 
 emerge: fmt
-	GOPROXY=https://goproxy.io go build github.com/ppphp/portago/cmd/emerge
+	GOPROXY=https://goproxy.io go build ./cmd/emerge
 
 deps:
 	GOPROXY=https://goproxy.io go get -u
@@ -16,7 +16,7 @@ fmt:
 
 build:
 	GOPROXY=https://goproxy.io go build
-	GOPROXY=https://goproxy.io go build github.com/ppphp/portago/cmd/emerge
+	GOPROXY=https://goproxy.io go build ./cmd/emerge
 
 test:
 	go test ./...

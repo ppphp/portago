@@ -42,13 +42,13 @@ func (s *SyncRepos) all_repos() {
 	return
 }
 
-func (s *SyncRepos) repo() {
-	return
+func (s *SyncRepos) repo(map[string]interface{}) (bool, []string) { // TODO
+	return false, nil
 }
 
-func (s *SyncRepos) _match_repos(repos []*atom.RepoConfig, available []*atom.RepoConfig) []*atom.RepoConfig {
-	selected := []*atom.RepoConfig{}
-	for _, repo := range available {
+func (s *SyncRepos) _match_repos(repos []*atom.RepoConfig, available map[string]*atom.RepoConfig) map[string]*atom.RepoConfig {
+	selected := map[string]*atom.RepoConfig{}
+	for k, repo := range available {
 		in := false
 		for _, r := range repos {
 			if repo.Name == r.Name {
@@ -57,7 +57,7 @@ func (s *SyncRepos) _match_repos(repos []*atom.RepoConfig, available []*atom.Rep
 			}
 		}
 		if in {
-			selected = append(selected, repo)
+			selected[k] = repo
 		} else if repo.Aliases != nil {
 			in := false
 			for aliases := range repo.Aliases {
@@ -72,31 +72,102 @@ func (s *SyncRepos) _match_repos(repos []*atom.RepoConfig, available []*atom.Rep
 				}
 			}
 			if in {
-				selected = append(selected, repo)
+				selected[k] = repo
 			}
 		}
 	}
 	return selected
 }
 
-func (s *SyncRepos) _get_repos(auto_sync_only bool, match_repos interface{}) (bool, []string, []string) { // true, nil
-
+func (s *SyncRepos) _get_repos(auto_sync_only bool, match_repos []*atom.RepoConfig) (bool, map[string]*atom.RepoConfig, []string) { // true, nil
 	msgs := []string{}
-	//repos := s.emerge_config.target_config.settings.repositories
-	return true, nil, msgs
+	repos := s.emerge_config.targetConfig.settings.Repositories.Prepos
+	if match_repos != nil {
+		repos := s._match_repos(match_repos, repos)
+		if len(repos) < len(match_repos) {
+			repo_names := map[string]bool{}
+			for _, repo := range repos {
+				repo_names[repo.Name] = true
+				if repo.Aliases != nil {
+					for k := range repo.Aliases {
+						repo_names[k] = true
+					}
+				}
+			}
+			missing := []string{}
+			for _, k := range match_repos {
+				if !repo_names[k.Name] {
+					missing = append(missing, k.Name)
+				}
+			}
+			if len(missing) > 0 {
+				msgs = append(msgs, fmt.Sprintf(atom.Red(" * ")+"The specified repo(s) were not found: %s",
+					strings.Join(missing, " ")+
+						"\n   ...returning"))
+				return false, repos, msgs
+			}
+		}
+	}
+	if auto_sync_only {
+		repos = s._filter_auto(repos)
+	}
+
+	sync_disabled := []string{}
+	for _, repo := range repos {
+		if repo.SyncType == "" {
+			sync_disabled = append(sync_disabled, repo.Name)
+		}
+	}
+	if len(sync_disabled) > 0 {
+		rs := map[string]*atom.RepoConfig{}
+		for k, repo := range repos {
+			if repo.SyncType != "" {
+				rs[k] = repo
+			}
+		}
+		repos = rs
+		if match_repos != nil {
+			msgs = append(msgs, atom.Red(" * ")+fmt.Sprintf("The specified repo(s) have sync disabled: %s",
+				strings.Join(sync_disabled, " ")+
+					"\n   ...returning"))
+			return false, repos, msgs
+		}
+	}
+	missing_sync_uri := []string{}
+
+	for _, repo := range repos {
+		if repo.SyncUri == "" {
+			missing_sync_uri = append(missing_sync_uri, repo.Name)
+		}
+	}
+	if len(missing_sync_uri) > 0 {
+		rs := map[string]*atom.RepoConfig{}
+		for k, repo := range repos {
+			if repo.SyncUri != "" {
+				rs[k] = repo
+			}
+		}
+		repos = rs
+		msgs = append(msgs, fmt.Sprintf(atom.Red(" * ")+"The specified repo(s) are missing sync-uri: %s",
+			strings.Join(missing_sync_uri, " ")+
+				"\n   ...returning"))
+		return false, repos, msgs
+	}
+
+	return true, repos, msgs
 }
 
-func (s *SyncRepos) _filter_auto(repos []*atom.RepoConfig) []*atom.RepoConfig {
-	selected := []*atom.RepoConfig{}
-	for _, repo := range repos {
+func (s *SyncRepos) _filter_auto(repos map[string]*atom.RepoConfig) map[string]*atom.RepoConfig {
+	selected := map[string]*atom.RepoConfig{}
+	for k, repo := range repos {
 		if repo.AutoSync == "yes" || repo.AutoSync == "true" {
-			selected = append(selected, repo)
+			selected[k] = repo
 		}
 	}
 	return selected
 }
 
-func (s *SyncRepos) _sync(selected_repos []string, return_messages bool, emaint_opts map[string]interface{}) (bool, []string) { // nil
+func (s *SyncRepos) _sync(selected_repos map[string]*atom.RepoConfig, return_messages bool, emaint_opts map[string]interface{}) (bool, []string) { // nil
 	msgs := []string{}
 	if len(selected_repos) == 0 {
 		if return_messages {
@@ -324,6 +395,7 @@ func (s *SyncManager) sync_async(emerge_config *EmergeConfig, repo interface{}, 
 	*/ //TODO: async
 	s.sync(emerge_config, repo, master_hooks)
 	s._sync_callback(nil)
+	panic("here")
 	return nil
 }
 

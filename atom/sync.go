@@ -94,8 +94,8 @@ var moduleController modules
 
 func moduleSpecificOptions(repo *RepoConfig) map[string]bool {
 	r := map[string]bool{}
-	if repo.syncType != "" {
-		for _, v := range moduleController.modules[repo.syncType]["module_specific_options"] {
+	if repo.SyncType != "" {
+		for _, v := range moduleController.modules[repo.SyncType]["module_specific_options"] {
 			r[v] = true
 		}
 	}
