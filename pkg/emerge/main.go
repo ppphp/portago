@@ -78,7 +78,7 @@ func multipleActions(action1, action2 string) {
 	os.Exit(1)
 }
 
-func ParseOpts(args []string, silent bool) string { // false
+func ParseOpts(args []string, silent bool) (string, map[string]string, []string) { // false
 	clean := pflag.BoolP("clean", "", false, "")
 	checkNews := pflag.BoolP("check-news", "", false, "")
 	config := pflag.BoolP("config", "", false, "")
@@ -153,17 +153,21 @@ func ParseOpts(args []string, silent bool) string { // false
 		os.Exit(1)
 	}
 
-	return action[0]
+	return action[0], nil, nil
 
 }
 
-func EmergeMain(args []string) int {
+func EmergeMain(args []string) int { // nil
 	if args == nil {
 		args = os.Args[1:]
 	}
+	// TODO: set locale
 	atom.HaveColor = 0
 
-	myAction := ParseOpts(args, true)
+	myAction, myOpts, myFiles := ParseOpts(args, true)
+	if _, ok := myOpts["--debug"]; ok {
+		os.Setenv("PORTAGE_DEBUG", "1")
+	} // TODO: others
 	switch myAction {
 	case "help":
 		emergeHelp()
@@ -179,7 +183,7 @@ func EmergeMain(args []string) int {
 		devNull.Close()
 	}
 
-	emergeConfig := LoadEmergeConfig(nil, nil, myAction)
+	emergeConfig := LoadEmergeConfig(nil, nil, myAction, myOpts, myFiles)
 
 	runAction(emergeConfig)
 	return 0

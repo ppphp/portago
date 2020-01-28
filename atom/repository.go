@@ -577,7 +577,7 @@ func (r *repoConfigLoader) RepoLocationList() []string {
 func (r *repoConfigLoader) checkLocations() {
 	for name, re := range r.Prepos {
 		if name != "DEFAULT" {
-			if re.location != "" {
+			if re.location == "" {
 				WriteMsg(fmt.Sprintf("!!! Location not set for repository %s\n", name), -1, nil)
 			} else {
 				if !isdirRaiseEaccess(re.location) && !SyncMode {

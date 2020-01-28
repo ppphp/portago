@@ -692,7 +692,7 @@ func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, ex
 				return myKeys
 			}
 		}
-		val, _ := lex.GetToken()
+		val, _ := lex.GetToken() /* TODO: fix it
 		if val == "" {
 			msg := fmt.Sprintf("Unexpected end of config file: variable '%s'", key) //TODO error_leader
 			if !tolerant {
@@ -701,7 +701,7 @@ func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, ex
 				WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
 				return myKeys
 			}
-		}
+		}*/
 		if invalidVarNameRe.MatchString(key) {
 			msg := fmt.Sprintf("Invalid variable name '%s'", key) //TODO error_leader
 			if !tolerant {

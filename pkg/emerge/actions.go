@@ -13,7 +13,7 @@ type EmergeConfig struct {
 	args                        []string
 	opts                        map[string]string
 	runningConfig, targetConfig struct{ settings *atom.Config }
-	trees                       map[string]*atom.TreesDict
+	Trees                       *atom.TreesDict
 }
 
 func NewEmergeConfig(action string) *EmergeConfig {
@@ -21,11 +21,15 @@ func NewEmergeConfig(action string) *EmergeConfig {
 	return e
 }
 
-func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, myaction string) *EmergeConfig {
+func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, myaction string, myOpts map[string]string, myFiles []string) *EmergeConfig {
 	if emergeConfig == nil {
 		emergeConfig = NewEmergeConfig(myaction)
 	}
-	//emergeConfig.trees = atom.CreateTrees("", "", emergeConfig.trees, atom.ExpandEnv(), "", "")
+	if env == nil {
+		env = atom.ExpandEnv()
+	}
+	emergeConfig.Trees = atom.CreateTrees(env["PORTAGE_CONFIGROOT"], env["ROOT"], emergeConfig.Trees, atom.ExpandEnv(), env["SYSROOT"], env["EPREFIX"])
+
 	return emergeConfig
 }
 

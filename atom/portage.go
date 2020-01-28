@@ -252,11 +252,15 @@ type TreesDict struct {
 	_running_eroot, _target_eroot string
 }
 
-func NewTreesDict(dict map[string]*Tree) *TreesDict {
-	return &TreesDict{valueDict: dict}
+func NewTreesDict(dict *TreesDict) *TreesDict {
+	t := &TreesDict{}
+	if dict != nil {
+		*t = *dict
+	}
+	return t
 }
 
-func CreateTrees(config_root, target_root string, ts map[string]*Tree, env map[string]string, sysroot, eprefix string) *TreesDict {
+func CreateTrees(config_root, target_root string, ts *TreesDict, env map[string]string, sysroot, eprefix string) *TreesDict {
 	var trees *TreesDict = nil
 	if ts == nil {
 		trees = NewTreesDict(nil)

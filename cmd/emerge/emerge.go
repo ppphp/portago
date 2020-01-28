@@ -7,8 +7,6 @@ import (
 
 	"github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/pkg/emerge"
-
-	"github.com/spf13/pflag"
 )
 
 func init() {
@@ -36,6 +34,7 @@ func main() {
 	atom.SanitizeFds()
 	emerge.EmergeMain(nil)
 
+	/* TODO: remove it
 	pflag.BoolP("alert", "A", false, "alert (terminal bell) on prompts")
 	pflag.BoolP("ask", "a", false, "prompt before performing any actions")
 	pflag.BoolP("autounmask", "", false, "automatically unmask packages")
@@ -96,5 +95,6 @@ func main() {
 	pflag.BoolP("verbose", "", false, "")
 	pflag.BoolP("verbose-slot-rebuilds", "", false, "")
 	pflag.BoolP("with-test-deps", "", false, "")
+	*/
 
 }

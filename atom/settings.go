@@ -2664,7 +2664,7 @@ func (l *locationsManager) addProfile(currentPath string, repositories *repoConf
 		o := []string{}
 		for x := range offenders {
 			s, _ := os.Stat(path.Join(currentPath, x))
-			if s.IsDir() {
+			if s != nil && s.IsDir() {
 				o = append(o, x)
 			}
 		}
