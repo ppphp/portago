@@ -92,6 +92,8 @@ func grabFile(myFileName string, compatLevel int, recursive, rememberSourceFile 
 					}
 				}
 				continue
+			} else {
+				continue
 			}
 		}
 		if rememberSourceFile {

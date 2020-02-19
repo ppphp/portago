@@ -329,7 +329,7 @@ func pkgSplit(mypkg, eapi string) [3]string {
 	if getNamedRegexp(re, mypkg, "pn_inval") != "" {
 		return [3]string{}
 	}
-	rev := getNamedRegexp(re, mypkg, "pn_inval")
+	rev := getNamedRegexp(re, mypkg, "rev")
 	if rev == "" {
 		rev = "0"
 	}
@@ -344,7 +344,7 @@ var (
 
 func catPkgSplit(mydata string, silent int, eapi string) [4]string { // 1n
 	// return mydata.cpv_split // if can
-	mySplit := strings.SplitN(mydata, "/", 1)
+	mySplit := strings.SplitN(mydata, "/", 2)
 	var cat string
 	var p [3]string
 	if len(mySplit) == 1 {

@@ -63,12 +63,13 @@ func getAtomRe(attrs eapiAttrs) *regexp.Regexp {
 		cps = cp["dots_disallowed_in_PN"]
 		cpvs = cpv["dots_disallowed_in_PN"]
 	}
-	atomRe = regexp.MustCompile("^(?P<without_use>(?:" +
+	mc := "^(?P<without_use>(?:" +
 		"(?P<op>" + op + cpvs + ")|" +
 		"(?P<star>=" + cpvs + "\\*)|" +
 		"(?P<simple>" + cps + "))" +
 		"(" + slotSeparator + slotLoose + ")?" +
-		repo + ")(" + use + ")?$")
+		repo + ")(" + use + ")?$"
+	atomRe = regexp.MustCompile(mc)
 	atomReCache[cacheKey] = atomRe
 	return atomRe
 }
@@ -1180,13 +1181,14 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 				base = k
 			}
 		}
-		op = atomRe.FindAllString(s, -1)[base+1]
-		cpv = atomRe.FindAllString(s, -1)[base+2]
-		cp = atomRe.FindAllString(s, -1)[base+3]
-		slot = atomRe.FindAllString(s, -1)[base-2]
-		repo = atomRe.FindAllString(s, -1)[base-1]
-		useStr = atomRe.FindAllString(s, -1)[len(atomRe.SubexpNames())]
-		version := atomRe.FindAllString(s, -1)[base+4]
+		op = atomRe.FindStringSubmatch(s)[base+1]
+		cpv = atomRe.FindStringSubmatch(s)[base+2]
+		cp = atomRe.FindStringSubmatch(s)[base+3]
+		groups := len(atomRe.SubexpNames())
+		slot = atomRe.FindStringSubmatch(s)[groups-3]
+		repo = atomRe.FindStringSubmatch(s)[groups-2]
+		useStr = atomRe.FindStringSubmatch(s)[groups-1]
+		version := atomRe.FindStringSubmatch(s)[base+4]
 		if version != "" {
 			if *allowBuildId {
 				cpvBuildId := cpv
@@ -1210,12 +1212,13 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 			}
 		}
 		op = "=*"
-		cpv = atomRe.FindAllString(s, -1)[base+1]
-		cp = atomRe.FindAllString(s, -1)[base+2]
-		slot = atomRe.FindAllString(s, -1)[len(atomRe.SubexpNames())-2]
-		repo = atomRe.FindAllString(s, -1)[len(atomRe.SubexpNames())-1]
-		useStr = atomRe.FindAllString(s, -1)[len(atomRe.SubexpNames())]
-		if len(atomRe.FindAllString(s, -1)) >= base+3 {
+		cpv = atomRe.FindStringSubmatch(s)[base+1]
+		cp = atomRe.FindStringSubmatch(s)[base+2]
+		groups := len(atomRe.SubexpNames())
+		slot = atomRe.FindStringSubmatch(s)[groups-3]
+		repo = atomRe.FindStringSubmatch(s)[groups-2]
+		useStr = atomRe.FindStringSubmatch(s)[groups-1]
+		if len(atomRe.FindStringSubmatch(s)) >= base+3 {
 			return nil, errors.New("InvalidAtom")
 		}
 	} else if getNamedRegexp(atomRe, s, "simple") != "" {
@@ -1227,12 +1230,19 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 				base = k
 			}
 		}
-		cp = atomRe.FindAllString(s, -1)[base+1]
+		cp = atomRe.FindStringSubmatch(s)[base+1]
 		cpv = cp
-		slot = atomRe.FindAllString(s, -1)[len(atomRe.SubexpNames())-2]
-		repo = atomRe.FindAllString(s, -1)[len(atomRe.SubexpNames())-1]
-		useStr = atomRe.FindAllString(s, -1)[len(atomRe.SubexpNames())]
-		if len(atomRe.FindAllString(s, -1)) >= base+2 {
+		groups := len(atomRe.SubexpNames())
+		slot = atomRe.FindStringSubmatch(s)[groups-3]
+		repo = atomRe.FindStringSubmatch(s)[groups-2]
+		useStr = atomRe.FindStringSubmatch(s)[groups-1]
+		smp := 0
+		for i, n := range atomRe.SubexpNames() {
+			if n == "simple" {
+				smp = i
+			}
+		}
+		if len(atomRe.FindStringSubmatch(s)) >= smp+2 && atomRe.FindStringSubmatch(s)[smp+2] != "" {
 			return nil, errors.New("InvalidAtom")
 		}
 
