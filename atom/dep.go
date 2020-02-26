@@ -1218,7 +1218,7 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 		slot = atomRe.FindStringSubmatch(s)[groups-3]
 		repo = atomRe.FindStringSubmatch(s)[groups-2]
 		useStr = atomRe.FindStringSubmatch(s)[groups-1]
-		if len(atomRe.FindStringSubmatch(s)) >= base+3 {
+		if len(atomRe.FindStringSubmatch(s)) >= base+3 && atomRe.FindStringSubmatch(s)[base+3] != "" {
 			return nil, errors.New("InvalidAtom")
 		}
 	} else if getNamedRegexp(atomRe, s, "simple") != "" {
@@ -1245,7 +1245,6 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 		if len(atomRe.FindStringSubmatch(s)) >= smp+2 && atomRe.FindStringSubmatch(s)[smp+2] != "" {
 			return nil, errors.New("InvalidAtom")
 		}
-
 	} else {
 		return nil, fmt.Errorf("required group not found in Atom: '%v'", a)
 	}

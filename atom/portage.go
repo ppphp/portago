@@ -308,6 +308,12 @@ func CreateTrees(config_root, target_root string, ts *TreesDict, env map[string]
 
 	for _, v := range myroots {
 		myroot, mysettings := v.s, v.t
+		if trees.valueDict == nil {
+			trees.valueDict = map[string]*Tree{}
+		}
+		if trees.valueDict[myroot] == nil {
+			trees.valueDict[myroot] = &Tree{}
+		}
 		trees.valueDict[myroot].virtuals = mysettings.getVirtuals
 		trees.valueDict[myroot].vartree = func() *varTree {
 			return NewVarTree(mysettings.categories, mysettings)

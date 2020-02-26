@@ -314,7 +314,7 @@ func grabDict(myFileName string, justStrings, empty, recursive, incremental, new
 	newDict := map[string][]string{}
 	for _, x := range grabLines(myFileName, recursive, false) {
 		v := x[0]
-		if v[0] == '#' {
+		if strings.HasPrefix(v, "#") {
 			continue
 		}
 		myLine := strings.Fields(v)
@@ -651,10 +651,16 @@ func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, ex
 		return myKeys
 	}
 
-	f, _ := os.Open(mycfg)
-	c, _ := ioutil.ReadAll(f)
-	content := string(c)
+	f, err := os.Open(mycfg)
+	if err != nil {
+		return nil
+	}
 	f.Close()
+	c, err := ioutil.ReadAll(f)
+	if err != nil {
+		return nil
+	}
+	content := string(c)
 
 	if content != "" && !strings.HasSuffix(content, "\n") {
 		content += "\n"

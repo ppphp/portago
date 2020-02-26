@@ -1152,6 +1152,9 @@ func (c *Config) regenerate(useonly int) { // 0
 		if acceptLicenseStr == "" {
 			acceptLicenseStr = "* -@EULA"
 		}
+		if c.configList[len(c.configList)-1] == nil {
+			c.configList[len(c.configList)-1] = map[string]string{}
+		}
 		c.configList[len(c.configList)-1]["ACCEPT_LICENSE"] = acceptLicenseStr
 		c.licenseManager.setAcceptLicenseStr(acceptLicenseStr)
 	} else {
@@ -2005,7 +2008,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 			}
 			c.repoMakeDefaults[repo.Name] = d
 		}
-		c.useManager = NewUserManager(c.Repositories, profilesComplex, absUserConfig, c.isStable, localConfig)
+		c.useManager = NewUseManager(c.Repositories, profilesComplex, absUserConfig, c.isStable, localConfig)
 		c.usemask = c.useManager.getUseMask(nil, nil)
 		c.useforce = c.useManager.getUseForce(nil, nil)
 		c.configDict["conf"]["USE"] = c.useManager.extract_global_USE_changes(c.configDict["conf"]["USE"])
@@ -2014,7 +2017,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 
 		for _, profile := range profilesComplex {
 			s, err := os.Stat(path.Join(profile.location, "profile.bashrc"))
-			c.profileBashrc = append(c.profileBashrc, err != nil && !s.IsDir())
+			c.profileBashrc = append(c.profileBashrc, err == nil && !s.IsDir())
 		}
 		if localConfig {
 			propDict := grabDictPackage(path.Join(absUserConfig, "package.properties"), false, true, false, true, true, true, false, false, "", "0")
@@ -2860,7 +2863,7 @@ func (u *useManager) parseFileToTuple(fileName string, recursive bool, eapiFilte
 		prefixedUseflag := v[0]
 		useflag := ""
 		if prefixedUseflag[:1] == "-" {
-			useflag = prefixedUseflag[:1]
+			useflag = prefixedUseflag[1:]
 		} else {
 			useflag = prefixedUseflag
 		}
@@ -3434,7 +3437,7 @@ func (u *useManager) extract_global_USE_changes(old string) string { //""
 	return ret
 }
 
-func NewUserManager(repositories *repoConfigLoader, profiles []*profileNode, absUserConfig string, isStable func(*pkgStr) bool, userConfig bool) *useManager { // t
+func NewUseManager(repositories *repoConfigLoader, profiles []*profileNode, absUserConfig string, isStable func(*pkgStr) bool, userConfig bool) *useManager { // t
 	u := &useManager{}
 	u.userConfig = userConfig
 	u.isStable = isStable
@@ -4489,13 +4492,13 @@ func pruneIncremental(split []string) []string {
 	ReverseSlice(split)
 	for i, x := range split {
 		if x == "*" {
-			split = split[-i-1:]
+			split = split[len(split)-i-1:]
 			break
 		} else if x == "-*" {
 			if i == 0 {
 				split = []string{}
 			} else {
-				split = split[-i:]
+				split = split[len(split)-i:]
 			}
 			break
 		}

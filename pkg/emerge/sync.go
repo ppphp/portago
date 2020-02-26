@@ -395,7 +395,6 @@ func (s *SyncManager) sync_async(emerge_config *EmergeConfig, repo interface{}, 
 	*/ //TODO: async
 	s.sync(emerge_config, repo, master_hooks)
 	s._sync_callback(nil)
-	panic("here")
 	return nil
 }
 
