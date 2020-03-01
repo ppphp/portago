@@ -180,7 +180,7 @@ var (
 	_max_xtermTitle_len       = 253
 )
 
-func xtermTitle(mystr string, raw bool) { // f
+func XtermTitle(mystr string, raw bool) { // false
 	if _disable_xtermTitle == nil {
 		_disable_xtermTitle = new(bool)
 		ts, tb := os.LookupEnv("TERM")
@@ -237,7 +237,7 @@ func xtermTitleReset() {
 				strings.SplitN(os.Getenv("HOSTNAME"), ".", 1)[0], pwd)
 		}
 	}
-	xtermTitle(default_xterm_title, true)
+	XtermTitle(default_xterm_title, true)
 }
 
 func noTitles() {

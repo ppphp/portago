@@ -81,6 +81,7 @@ func (s *SyncRepos) _match_repos(repos []*atom.RepoConfig, available map[string]
 
 func (s *SyncRepos) _get_repos(auto_sync_only bool, match_repos []*atom.RepoConfig) (bool, map[string]*atom.RepoConfig, []string) { // true, nil
 	msgs := []string{}
+	panic(s.emerge_config.targetConfig.settings == nil)
 	repos := s.emerge_config.targetConfig.settings.Repositories.Prepos
 	if match_repos != nil {
 		repos := s._match_repos(match_repos, repos)

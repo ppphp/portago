@@ -32,7 +32,8 @@ func init() {
 
 func main() {
 	atom.SanitizeFds()
-	emerge.EmergeMain(nil)
+	retval := emerge.EmergeMain(nil)
+	os.Exit(retval)
 
 	/* TODO: remove it
 	pflag.BoolP("alert", "A", false, "alert (terminal bell) on prompts")

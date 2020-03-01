@@ -252,6 +252,10 @@ type TreesDict struct {
 	_running_eroot, _target_eroot string
 }
 
+func (t *TreesDict) Values() map[string]*Tree {
+	return t.valueDict
+}
+
 func NewTreesDict(dict *TreesDict) *TreesDict {
 	t := &TreesDict{}
 	if dict != nil {

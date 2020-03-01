@@ -16,24 +16,34 @@ type EmergeConfig struct {
 	Trees                       *atom.TreesDict
 }
 
-func NewEmergeConfig(action string) *EmergeConfig {
-	e := &EmergeConfig{action: action}
+func NewEmergeConfig(action string, args []string, opts map[string]string) *EmergeConfig {
+	e := &EmergeConfig{action: action, args: args, opts: opts}
 	return e
 }
 
-func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, myaction string, myOpts map[string]string, myFiles []string) *EmergeConfig {
+func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, action string, args []string, opts map[string]string) *EmergeConfig {
 	if emergeConfig == nil {
-		emergeConfig = NewEmergeConfig(myaction)
+		emergeConfig = NewEmergeConfig(action, args, opts)
 	}
 	if env == nil {
 		env = atom.ExpandEnv()
 	}
 	emergeConfig.Trees = atom.CreateTrees(env["PORTAGE_CONFIGROOT"], env["ROOT"], emergeConfig.Trees, atom.ExpandEnv(), env["SYSROOT"], env["EPREFIX"])
 
+	for _, root_trees := range emergeConfig.Trees.Values() {
+		settings := root_trees.VarTree()
+	}
+
 	return emergeConfig
 }
 
 func runAction(emergeConfig *EmergeConfig) int {
+
+	_, xterm_titles := emergeConfig.targetConfig.settings.Features.Features["notitles"]
+	if xterm_titles {
+		atom.XtermTitle("emerge", false)
+	}
+
 	if emergeConfig.action == "version" {
 	} else if emergeConfig.action == "help" {
 		emergeHelp()

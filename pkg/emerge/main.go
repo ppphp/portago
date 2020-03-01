@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"syscall"
 
 	"github.com/ppphp/portago/atom"
 	"github.com/spf13/pflag"
@@ -182,8 +183,9 @@ func EmergeMain(args []string) int { // nil
 	if devNull != nil {
 		devNull.Close()
 	}
+	syscall.Umask(0o22)
 
-	emergeConfig := LoadEmergeConfig(nil, nil, myAction, myOpts, myFiles)
+	emergeConfig := LoadEmergeConfig(nil, nil, myAction, myFiles, myOpts)
 
 	runAction(emergeConfig)
 	return 0
