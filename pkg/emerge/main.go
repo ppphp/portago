@@ -168,7 +168,26 @@ func EmergeMain(args []string) int { // nil
 	myAction, myOpts, myFiles := ParseOpts(args, true)
 	if _, ok := myOpts["--debug"]; ok {
 		os.Setenv("PORTAGE_DEBUG", "1")
-	} // TODO: others
+	}
+	if _, ok := myOpts["--config-root"]; ok {
+		os.Setenv("PORTAGE_CONFIGROOT", myOpts["--config-root"])
+	}
+	if _, ok := myOpts["--sysroot"]; ok {
+		os.Setenv("SYSROOT", myOpts["--sysroot"])
+	}
+	if _, ok := myOpts["--root"]; ok {
+		os.Setenv("ROOT", myOpts["--root"])
+	}
+	if _, ok := myOpts["--prefix"]; ok {
+		os.Setenv("EPREFIX", myOpts["--prefix"])
+	}
+	if _, ok := myOpts["--accept-properties"]; ok {
+		os.Setenv("ACCEPT_PROPERTIES", myOpts["--accept-properties"])
+	}
+	if _, ok := myOpts["--accept-restrict"]; ok {
+		os.Setenv("ACCEPT_RESTRICT", myOpts["--accept-restrict"])
+	}
+
 	switch myAction {
 	case "help":
 		emergeHelp()

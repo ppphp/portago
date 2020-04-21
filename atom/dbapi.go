@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"syscall"
+	"time"
 )
 
 func dep_expand(mydep *Atom, mydb *dbapi, use_cache int, settings *Config) *Atom { //nil,1,nil
@@ -106,6 +109,165 @@ type dbapi struct {
 	settings          *Config
 }
 
+func (d *dbapi) categories() []string {
+	if d._categories != nil {
+		return d._categories
+	}
+	m := map[string]bool{}
+	for _, x := range d.cp_all(false) {
+		m[catsplit(x)[0]] = true
+	}
+	d._categories = []string{}
+	for x := range m {
+		d._categories = append(d._categories, x)
+	}
+	sort.Strings(d._categories)
+
+	return d._categories
+}
+
+func (d *dbapi) close_caches() {}
+
+func (d *dbapi) cp_list(cp string, useCache int) []*pkgStr { //1
+	panic("")
+	return nil
+}
+
+func (d *dbapi) _cmp_cpv(cpv1, cpv2 *pkgStr) int {
+	result, _ := verCmp(cpv1.version, cpv2.version)
+	if result == 0 && cpv1.buildTime != 0 && cpv2.buildTime != 0 {
+		if (cpv1.buildTime > cpv2.buildTime) && (cpv1.buildTime < cpv2.buildTime) {
+			result = 0
+		} else if !(cpv1.buildTime > cpv2.buildTime) && (cpv1.buildTime < cpv2.buildTime) {
+			result = -2
+		} else if (cpv1.buildTime > cpv2.buildTime) && !(cpv1.buildTime < cpv2.buildTime) {
+			result = 2
+		} else { // (cpv1.buildTime > cpv2.buildTime)&&(cpv1.buildTime < cpv2.buildTime)
+			result = 0
+		}
+	}
+	return result
+}
+
+func (d *dbapi) _cpv_sort_ascending(cpv_list []*pkgStr) {
+	if len(cpv_list) > 1 {
+		sort.Slice(cpv_list, func(i, j int) bool {
+			return d._cmp_cpv(cpv_list[i], cpv_list[j]) < 0
+		})
+	}
+}
+
+func (d *dbapi) cpv_all() []*pkgStr {
+	cpvList := []*pkgStr{}
+	for _, cp := range d.cp_all(false) {
+		cpvList = append(cpvList, d.cp_list(cp, 1)...)
+	}
+	return cpvList
+}
+
+func (d *dbapi) cp_all(sort bool) []string { // false
+	panic("")
+	return nil
+}
+
+func (d *dbapi) auxGet(myCpv *pkgStr, myList []string, myRepo string) []string {
+	panic("NotImplementedError")
+	return nil
+}
+
+func (d *dbapi) auxUpdate(cpv string, metadataUpdates map[string]string) {
+	panic("NotImplementedError")
+}
+
+func (d *dbapi) match(origdep *Atom, useCache int) []*pkgStr { // 1
+	mydep := dep_expand(origdep, d, 1, d.settings)
+	return d._iter_match(mydep, d.cp_list(mydep.cp, useCache))
+}
+
+func (d *dbapi) _iter_match(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
+	cpvIter = matchFromList(atom, cpvIter)
+	if atom.repo != "" {
+
+	}
+	cpvIter = d._iter_match_repo(atom, cpvIter)
+	if atom.slot != "" {
+		cpvIter = d._iter_match_slot(atom, cpvIter)
+	}
+	if atom.unevaluatedAtom.use != nil {
+		cpvIter = d._iter_match_use(atom, cpvIter)
+	}
+	return cpvIter
+}
+
+func (d *dbapi) _pkg_str(cpv *pkgStr, repo string) *pkgStr {
+	//try:
+	//cpv.slot
+	//except AttributeError:
+	//pass
+	//else:
+	return cpv
+	//
+	//metadata = dict(zip(self._pkg_str_aux_keys,
+	//self.aux_get(cpv, self._pkg_str_aux_keys, myrepo=repo)))
+	//
+	//return _pkg_str(cpv, metadata=metadata, settings=self.settings, db=self)
+}
+
+func (d *dbapi) _iter_match_repo(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
+	r := []*pkgStr{}
+	for _, cpv := range cpvIter {
+		pkgStr := d._pkg_str(cpv, atom.repo)
+		if pkgStr.repo == atom.repo {
+			r = append(r, pkgStr)
+		}
+	}
+	return r
+}
+
+func (d *dbapi) _iter_match_slot(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
+	r := []*pkgStr{}
+	for _, cpv := range cpvIter {
+		pkgStr := d._pkg_str(cpv, atom.repo)
+		if matchSlot(atom, cpv) {
+			r = append(r, pkgStr)
+		}
+	}
+	return r
+}
+
+func (d *dbapi) _iter_match_use(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
+	aux_keys := []string{"EAPI", "IUSE", "KEYWORDS", "SLOT", "USE", "repository"}
+
+	r := []*pkgStr{}
+	for _, cpv := range cpvIter {
+		metadata := map[string]string{}
+		a := d.auxGet(cpv, aux_keys, atom.repo)
+		for i, k := range aux_keys {
+			metadata[k] = a[i]
+		}
+		if !d._match_use(atom, cpv, metadata, false) {
+			continue
+		}
+		r = append(r, cpv)
+	}
+	return r
+}
+
+func (d *dbapi) _repoman_iuse_implicit_cnstr(pkg, metadata map[string]string) func(flag string) bool {
+	eapiAttrs := getEapiAttrs(metadata["EAPI"])
+	var iuseImplicitMatch func(flag string) bool = nil
+	if eapiAttrs.iuseEffective {
+		iuseImplicitMatch = func(flag string) bool {
+			return d.settings.iuseEffectiveMatch(flag)
+		}
+	} else {
+		iuseImplicitMatch = func(flag string) bool {
+			return d.settings.iuseImplicitMatch.call(flag)
+		}
+	}
+	return iuseImplicitMatch
+}
+
 func (d *dbapi) _iuse_implicit_cnstr(pkg *pkgStr, metadata map[string]string) func(string) bool {
 	eapiAttrs := getEapiAttrs(metadata["EAPI"])
 	var iuseImplicitMatch func(string) bool
@@ -132,98 +294,6 @@ func (d *dbapi) _iuse_implicit_cnstr(pkg *pkgStr, metadata map[string]string) fu
 	}
 
 	return iuseImplicitMatch
-}
-
-func (d *dbapi) _repoman_iuse_implicit_cnstr(pkg, metadata map[string]string) func(flag string) bool {
-	eapiAttrs := getEapiAttrs(metadata["EAPI"])
-	var iuseImplicitMatch func(flag string) bool = nil
-	if eapiAttrs.iuseEffective {
-		iuseImplicitMatch = func(flag string) bool {
-			return d.settings.iuseEffectiveMatch(flag)
-		}
-	} else {
-		iuseImplicitMatch = func(flag string) bool {
-			return d.settings.iuseImplicitMatch.call(flag)
-		}
-	}
-	return iuseImplicitMatch
-}
-
-func (d *dbapi) invalidentry(mypath string) {
-	if strings.Contains(mypath, "/"+MergingIdentifier) {
-		if _, err := os.Stat(mypath); err != nil {
-			WriteMsg(colorize("BAD", "INCOMPLETE MERGE:"+fmt.Sprintf(" %s\n", mypath)), -1, nil)
-		}
-	} else {
-		WriteMsg(fmt.Sprintf("!!! Invalid db entry: %s\n", mypath), -1, nil)
-	}
-}
-func (d *dbapi) cpv_all() []*pkgStr {
-	cpvList := []*pkgStr{}
-	for _, cp := range d.cp_all(false) {
-		cpvList = append(cpvList, d.cp_list(cp, 1)...)
-	}
-	return cpvList
-}
-
-func (d *dbapi) update_ents(updates map[string][][]*Atom, onProgress, onUpdate func(int, int)) {
-	cpvAll := d.cpv_all()
-	sort.Slice(cpvAll, func(i, j int) bool {
-		return cpvAll[i].string < cpvAll[j].string
-	})
-	maxval := len(cpvAll)
-	auxGet := d.auxGet
-	auxUpdate := d.auxUpdate
-	updateKeys := Package{}.depKeys
-	metaKeys := append(updateKeys, d._pkg_str_aux_keys...)
-	repoDict := updates // is dict, else nil
-	if onUpdate != nil {
-		onUpdate(maxval, 0)
-	}
-	if onProgress != nil {
-		onProgress(maxval, 0)
-	}
-	for i, cpv := range cpvAll {
-
-		metadata := map[string]string{}
-		a := auxGet(cpv, metaKeys, "")
-		for i, v := range metaKeys {
-			metadata[v] = a[i]
-		}
-		//except KeyError:
-		//continue
-		pkg := NewPkgStr(cpv.string, metadata, d.settings, "", "", "", 0, "", "", 0, "")
-		//except InvalidData:
-		//continue
-		m := map[string]string{}
-		for _, k := range updateKeys {
-			m[k] = metadata[k]
-		}
-		//if repo_dict ==nil{ // always false
-		//	updates_list = updates
-		//} else{
-		var updatesList [][]*Atom = nil
-		var ok bool
-		if updatesList, ok = repoDict[pkg.repo]; !ok {
-			if updatesList, ok = repoDict["DEFAULT"]; !ok {
-				continue
-			}
-		}
-
-		if len(updatesList) == 0 {
-			continue
-		}
-		metadataUpdates := update_dbentries(updatesList, metadata, "", pkg)
-		if len(metadataUpdates) != 0 {
-			auxUpdate(cpv.string, metadataUpdates)
-		}
-		if onUpdate != nil {
-			onUpdate(maxval, i+1)
-		}
-		if onProgress != nil {
-			onProgress(maxval, i+1)
-		}
-	}
 }
 
 func (d *dbapi) _match_use(atom *Atom, pkg *pkgStr, metadata map[string]string, ignore_profile bool) bool { // false
@@ -364,139 +434,75 @@ func (d *dbapi) _match_use(atom *Atom, pkg *pkgStr, metadata map[string]string, 
 
 	return true
 }
-func (d *dbapi) categories() []string {
-	if d._categories != nil {
-		return d._categories
-	}
-	m := map[string]bool{}
-	for _, x := range d.cp_all(false) {
-		m[catsplit(x)[0]] = true
-	}
-	d._categories = []string{}
-	for x := range m {
-		d._categories = append(d._categories, x)
-	}
-	sort.Strings(d._categories)
 
-	return d._categories
-}
-
-func (d *dbapi) _cpv_sort_ascending(cpv_list []*pkgStr) {
-	if len(cpv_list) > 1 {
-		sort.Slice(cpv_list, func(i, j int) bool {
-			return d._cmp_cpv(cpv_list[i], cpv_list[j]) < 0
-		})
-	}
-}
-
-func (d *dbapi) auxGet(myCpv *pkgStr, myList []string, myRepo string) []string {
-	panic("NotImplementedError")
-	return nil
-}
-
-func (d *dbapi) auxUpdate(cpv string, metadataUpdates map[string]string) {
-	panic("NotImplementedError")
-}
-
-func (d *dbapi) close_caches() {}
-
-func (d *dbapi) cp_list(cp string, useCache int) []*pkgStr { //1
-	panic("")
-	return nil
-}
-
-func (d *dbapi) _cmp_cpv(cpv1, cpv2 *pkgStr) int {
-	result, _ := verCmp(cpv1.version, cpv2.version)
-	if result == 0 && cpv1.buildTime != 0 && cpv2.buildTime != 0 {
-		if (cpv1.buildTime > cpv2.buildTime) && (cpv1.buildTime < cpv2.buildTime) {
-			result = 0
-		} else if !(cpv1.buildTime > cpv2.buildTime) && (cpv1.buildTime < cpv2.buildTime) {
-			result = -2
-		} else if (cpv1.buildTime > cpv2.buildTime) && !(cpv1.buildTime < cpv2.buildTime) {
-			result = 2
-		} else { // (cpv1.buildTime > cpv2.buildTime)&&(cpv1.buildTime < cpv2.buildTime)
-			result = 0
+func (d *dbapi) invalidentry(mypath string) {
+	if strings.Contains(mypath, "/"+MergingIdentifier) {
+		if _, err := os.Stat(mypath); err != nil {
+			WriteMsg(colorize("BAD", "INCOMPLETE MERGE:"+fmt.Sprintf(" %s\n", mypath)), -1, nil)
 		}
+	} else {
+		WriteMsg(fmt.Sprintf("!!! Invalid db entry: %s\n", mypath), -1, nil)
 	}
-	return result
 }
 
-func (d *dbapi) cp_all(sort bool) []string { // false
-	panic("")
-	return nil
-}
-
-func (d *dbapi) match(origdep *Atom, useCache int) []*pkgStr { // 1
-	mydep := dep_expand(origdep, d, 1, d.settings)
-	return d._iter_match(mydep, d.cp_list(mydep.cp, useCache))
-}
-
-func (d *dbapi) _iter_match(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
-	cpvIter = matchFromList(atom, cpvIter)
-	if atom.repo != "" {
-
+func (d *dbapi) update_ents(updates map[string][][]*Atom, onProgress, onUpdate func(int, int)) {
+	cpvAll := d.cpv_all()
+	sort.Slice(cpvAll, func(i, j int) bool {
+		return cpvAll[i].string < cpvAll[j].string
+	})
+	maxval := len(cpvAll)
+	auxGet := d.auxGet
+	auxUpdate := d.auxUpdate
+	updateKeys := Package{}.depKeys
+	metaKeys := append(updateKeys, d._pkg_str_aux_keys...)
+	repoDict := updates // is dict, else nil
+	if onUpdate != nil {
+		onUpdate(maxval, 0)
 	}
-	cpvIter = d._iter_match_repo(atom, cpvIter)
-	if atom.slot != "" {
-		cpvIter = d._iter_match_slot(atom, cpvIter)
+	if onProgress != nil {
+		onProgress(maxval, 0)
 	}
-	if atom.unevaluatedAtom.use != nil {
-		cpvIter = d._iter_match_use(atom, cpvIter)
-	}
-	return cpvIter
-}
+	for i, cpv := range cpvAll {
 
-func (d *dbapi) _pkg_str(cpv *pkgStr, repo string) *pkgStr {
-	//try:
-	//cpv.slot
-	//except AttributeError:
-	//pass
-	//else:
-	return cpv
-	//
-	//metadata = dict(zip(self._pkg_str_aux_keys,
-	//self.aux_get(cpv, self._pkg_str_aux_keys, myrepo=repo)))
-	//
-	//return _pkg_str(cpv, metadata=metadata, settings=self.settings, db=self)
-}
-
-func (d *dbapi) _iter_match_repo(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
-	r := []*pkgStr{}
-	for _, cpv := range cpvIter {
-		pkgStr := d._pkg_str(cpv, atom.repo)
-		if pkgStr.repo == atom.repo {
-			r = append(r, pkgStr)
-		}
-	}
-	return r
-}
-func (d *dbapi) _iter_match_slot(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
-	r := []*pkgStr{}
-	for _, cpv := range cpvIter {
-		pkgStr := d._pkg_str(cpv, atom.repo)
-		if matchSlot(atom, cpv) {
-			r = append(r, pkgStr)
-		}
-	}
-	return r
-}
-
-func (d *dbapi) _iter_match_use(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
-	aux_keys := []string{"EAPI", "IUSE", "KEYWORDS", "SLOT", "USE", "repository"}
-
-	r := []*pkgStr{}
-	for _, cpv := range cpvIter {
 		metadata := map[string]string{}
-		a := d.auxGet(cpv, aux_keys, atom.repo)
-		for i, k := range aux_keys {
-			metadata[k] = a[i]
+		a := auxGet(cpv, metaKeys, "")
+		for i, v := range metaKeys {
+			metadata[v] = a[i]
 		}
-		if !d._match_use(atom, cpv, metadata, false) {
+		//except KeyError:
+		//continue
+		pkg := NewPkgStr(cpv.string, metadata, d.settings, "", "", "", 0, "", "", 0, "")
+		//except InvalidData:
+		//continue
+		m := map[string]string{}
+		for _, k := range updateKeys {
+			m[k] = metadata[k]
+		}
+		//if repo_dict ==nil{ // always false
+		//	updates_list = updates
+		//} else{
+		var updatesList [][]*Atom = nil
+		var ok bool
+		if updatesList, ok = repoDict[pkg.repo]; !ok {
+			if updatesList, ok = repoDict["DEFAULT"]; !ok {
+				continue
+			}
+		}
+
+		if len(updatesList) == 0 {
 			continue
 		}
-		r = append(r, cpv)
+		metadataUpdates := update_dbentries(updatesList, metadata, "", pkg)
+		if len(metadataUpdates) != 0 {
+			auxUpdate(cpv.string, metadataUpdates)
+		}
+		if onUpdate != nil {
+			onUpdate(maxval, i+1)
+		}
+		if onProgress != nil {
+			onProgress(maxval, i+1)
+		}
 	}
-	return r
 }
 
 func (d *dbapi) move_slot_ent(mylist []*Atom, repo_match func(string) bool) int { // nil
@@ -572,25 +578,44 @@ func NewVdbMetadataDelta(vardb *vardbapi) *vdbMetadataDelta {
 type vardbapi struct {
 	*dbapi
 	_exclude_dirs, _aux_cache_keys_re, _aux_multi_line_re *regexp.Regexp
-	_aux_cache_version, _owners_cache_version             string
+	_aux_cache_version, _owners_cache_version, _lock      string
 	_aux_cache_threshold                                  int
 
 	_pkgs_changed, _flush_cache_enabled                                                        bool
-	mtdircache, matchcache, cpcache, blockers, _slot_locks                                     map[string]string
+	mtdircache, matchcache, cpcache, blockers                                                  map[string]string
 	_eroot, _dbroot, _conf_mem_file, _aux_cache_filename, _cache_delta_filename, _counter_path string
-	_lock, _fs_lock_obj, _aux_cache_obj, _cached_counter                                       interface{}
-	_lock_count, _fs_lock_count                                                                int
-	vartree                                                                                    *varTree
-	_aux_cache_keys                                                                            map[string]bool
-	_cache_delta                                                                               *vdbMetadataDelta
-	_plib_registry                                                                             *preservedLibsRegistry
-	_linkmap                                                                                   *linkageMapELF
-	_owners                                                                                    *_owners_db
+	_fs_lock_obj                                                                               *struct {
+		string
+		int
+		bool
+		method func(int, int) error
+	}
+	_slot_locks map[*Atom]*struct {
+		s *struct {
+			string
+			int
+			bool
+			method func(int, int) error
+		}
+		int
+	}
+	_aux_cache_obj, _cached_counter interface{}
+	_lock_count, _fs_lock_count     int
+	vartree                         *varTree
+	_aux_cache_keys                 map[string]bool
+	_cache_delta                    *vdbMetadataDelta
+	_plib_registry                  *preservedLibsRegistry
+	_linkmap                        *linkageMapELF
+	_owners                         *_owners_db
 }
 
 func (v *vardbapi) writable() bool {
 	st, err := os.Stat(firstExisting(v._dbroot))
 	return err != nil && st.Mode()&os.FileMode(os.O_WRONLY) != 0
+}
+
+func (v *vardbapi) root() string {
+	return v.settings.ValueDict["ROOT"]
 }
 
 func (v *vardbapi) getpath(mykey, filename string) string { // ""
@@ -605,7 +630,7 @@ func (v *vardbapi) lock() {
 	if v._lock_count != 0 {
 		v._lock_count++
 	} else {
-		if v._lock != nil {
+		if v._lock != "" {
 			//raise AssertionError("already locked")
 		}
 		ensureDirs(v._dbroot, -1, -1, -1, -1, nil, true)
@@ -613,19 +638,119 @@ func (v *vardbapi) lock() {
 	}
 }
 
-func (v *vardbapi) unlock() {}
+func (v *vardbapi) unlock() {
+	if v._lock_count > 1 {
+		v._lock_count -= 1
+	} else {
+		if v._lock == "" {
+			panic("not locked")
+		}
+		v._lock_count = 0
+		unlockdir(v._lock)
+		v._lock = ""
+	}
 
-func (v *vardbapi) _fs_lock() {}
+}
 
-func (v *vardbapi) _fs_unlock() {}
+func (v *vardbapi) _fs_lock() {
+	if v._fs_lock_count < 1 {
+		if v._fs_lock_obj != nil {
+			panic("already locked")
+		}
+		a, b, c, d, _ := lockfile(v._conf_mem_file, false, false, "", 0)
+		v._fs_lock_obj = &struct {
+			string
+			int
+			bool
+			method func(int, int) error
+		}{a, b, c, d}
+		// if err == InvalidLocataion {
+		// v.settings.init_dirs()
+		//
+		// }
+	}
+	v._fs_lock_count += 1
+}
 
-func (v *vardbapi) _slot_lock() {}
+func (v *vardbapi) _fs_unlock() {
+	if v._fs_lock_count < 1 {
+		if v._fs_lock_obj == nil {
+			panic("not locked")
+		}
+		unlockfile(v._fs_lock_obj.string, v._fs_lock_obj.int, v._fs_lock_obj.bool, v._fs_lock_obj.method)
+		v._fs_lock_obj = nil
+	}
+	v._fs_lock_count -= 1
+}
 
-func (v *vardbapi) _slot_unlock() {}
+func (v *vardbapi) _slot_lock(slot_atom *Atom) {
+	lock := v._slot_locks[slot_atom].s
+	counter := v._slot_locks[slot_atom].int
+	if lock == nil {
+		lock_path := v.getpath(fmt.Sprintf("%s:%s", slot_atom.cp, slot_atom.slot), "")
+		ensureDirs(path.Dir(lock_path), -1, -1, -1, -1, nil, true)
+		a, b, c, d, _ := lockfile(lock_path, true, false, "", 0)
+		lock = &struct {
+			string
+			int
+			bool
+			method func(int, int) error
+		}{a, b, c, d}
+	}
+	v._slot_locks[slot_atom] = &struct {
+		s *struct {
+			string
+			int
+			bool
+			method func(int, int) error
+		}
+		int
+	}{lock, counter + 1}
+}
 
-func (v *vardbapi) _bump_mtime() {}
+func (v *vardbapi) _slot_unlock(slot_atom *Atom) {
+	lock := v._slot_locks[slot_atom].s
+	counter := v._slot_locks[slot_atom].int
+	if lock == nil {
+		panic("not locked")
+	}
+	counter -= 1
+	if counter == 0 {
+		unlockfile(lock.string, lock.int, lock.bool, lock.method)
+		delete(v._slot_locks, slot_atom)
+	} else {
+		v._slot_locks[slot_atom] = &struct {
+			s *struct {
+				string
+				int
+				bool
+				method func(int, int) error
+			}
+			int
+		}{s: lock, int: counter}
+	}
+}
 
-func (v *vardbapi) cpv_exists() {}
+func (v *vardbapi) _bump_mtime(cpv string) {
+	base := v._eroot + VdbPath
+	cat := catsplit(cpv)[0]
+	catdir := base + string(filepath.Separator) + cat
+	t := time.Now()
+
+	for _, x := range []string{catdir, base} {
+		if err := syscall.Utime(x, &syscall.Utimbuf{Actime: t.Unix(), Modtime: t.Unix()}); err != nil {
+			ensureDirs(catdir, -1, -1, -1, -1, nil, true)
+		}
+	}
+}
+
+func (v *vardbapi) cpv_exists(mykey, myrepo string) bool {
+	_, err := os.Stat(v.getpath(mykey, ""))
+	if err != nil {
+		return true
+	}
+	return false
+}
 
 func (v *vardbapi) cpv_counter() {}
 
@@ -706,13 +831,21 @@ func NewVarDbApi(settings *Config, vartree *varTree) *vardbapi { // nil, nil
 	v.settings = settings
 	v._eroot = settings.ValueDict["EROOT"]
 	v._dbroot = v._eroot + VdbPath
-	v._lock = nil
+	v._lock = ""
 	v._lock_count = 0
 
 	v._conf_mem_file = v._eroot + ConfigMemoryFile
 	v._fs_lock_obj = nil
 	v._fs_lock_count = 0
-	v._slot_locks = map[string]string{}
+	v._slot_locks = map[*Atom]*struct {
+		s *struct {
+			string
+			int
+			bool
+			method func(int, int) error
+		}
+		int
+	}{}
 
 	if vartree == nil {
 		vartree = Db().valueDict[settings.ValueDict["EROOT"]].VarTree()
