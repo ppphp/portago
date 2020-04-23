@@ -30,9 +30,9 @@ func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, action 
 	}
 	emergeConfig.Trees = atom.CreateTrees(env["PORTAGE_CONFIGROOT"], env["ROOT"], emergeConfig.Trees, atom.ExpandEnv(), env["SYSROOT"], env["EPREFIX"])
 
-	//for _, root_trees := range emergeConfig.Trees.Values() {
-	//settings := root_trees.VarTree()
-	//}
+	for _, root_trees := range emergeConfig.Trees.Values() {
+		settings := root_trees.VarTree()
+	}
 
 	return emergeConfig
 }

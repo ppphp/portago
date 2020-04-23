@@ -6,6 +6,7 @@ import (
 	"syscall"
 
 	"github.com/ppphp/portago/atom"
+	"github.com/ppphp/portago/pkg/portage/emaint"
 )
 
 func init() {
@@ -29,5 +30,11 @@ func init() {
 }
 
 func main() {
-
+	err := emaint.EmaintMain(os.Args[1:])
+	if err != nil {
+		if err == syscall.EACCES {
+			print("\nemaint: Need superuser access\n")
+		}
+		os.Exit(1)
+	}
 }

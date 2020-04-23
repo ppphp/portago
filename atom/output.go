@@ -467,6 +467,165 @@ func (e *eOutput) ewend(errno int, msg string) {
 	e.__last_e_cmd = "ewend"
 }
 
+type ProgressBar struct {
+	_title, _label, _desc              string
+	_maxval, _curval, _desc_max_length int
+}
+
+func (p *ProgressBar) curval() int {
+	return p._curval
+}
+
+func (p *ProgressBar) maxval() int {
+	return p._maxval
+}
+
+func (p *ProgressBar) title(newstr string) {
+	p._title = newstr
+	p._set_desc()
+}
+
+func (p *ProgressBar) label(newstr string) {
+	p._label = newstr
+	p._set_desc()
+}
+
+func (p *ProgressBar) _set_desc() {
+	p._desc = fmt.Sprintf("%s%s", fmt.Sprintf(
+		"%s: ", p._title), fmt.Sprintf(
+		"%s", p._label))
+
+	if len(p._desc) > p._desc_max_length {
+		p._desc = fmt.Sprintf("%s...", p._desc[:p._desc_max_length-3])
+	}
+	if len(p._desc) > 0 {
+		p._desc = fmt.Sprintf("%"+fmt.Sprint(p._desc_max_length)+"s", p._desc)
+	}
+
+}
+
+func (p *ProgressBar) set(value, maxval int) { // 0
+	if maxval != 0 {
+		p._maxval = maxval
+	}
+	if value < 0 {
+		value = 0
+	} else if value > p._maxval {
+		value = p._maxval
+	}
+	p._curval = value
+}
+
+func (p *ProgressBar) inc(n int) { // 1
+	p.set(p._curval+n, 0)
+}
+
+func NewProgressBar(title string, maxval int, label string, max_desc_length int) *ProgressBar { // "", 0, "", 25
+	p := &ProgressBar{}
+	p._title = title
+	p._maxval = maxval
+	p._label = label
+	p._curval = 0
+	p._desc = ""
+	p._desc_max_length = max_desc_length
+	p._set_desc()
+
+	return p
+}
+
+type TermProgressBar struct {
+	*ProgressBar
+	term_columns, _min_columns, _max_columns int
+	_position                                float64
+	file                                     *os.File
+}
+
+func (t *TermProgressBar) set(value, maxval int) { // 0
+	t.ProgressBar.set(value, maxval)
+	t._display_image(t._create_image())
+}
+
+func (t *TermProgressBar) _display_image(image []byte) {
+	t.file.Write([]byte("\r"))
+	t.file.Write(image)
+}
+
+func (t *TermProgressBar) _create_image() []byte {
+	cols := t.term_columns
+	if cols > t._max_columns {
+		cols = t._max_columns
+	}
+	min_columns := t._min_columns
+	curval := t._curval
+	maxval := t._maxval
+	position := t._position
+	percentage_str_width := 5
+	square_brackets_width := 2
+	if cols < percentage_str_width {
+		return []byte{}
+	}
+	bar_space := cols - percentage_str_width - square_brackets_width - 1
+	if t._desc != "" {
+		bar_space -= t._desc_max_length
+	}
+	if maxval == 0 {
+		max_bar_width := bar_space - 3
+		_percent := fmt.Sprintf("%"+fmt.Sprint(percentage_str_width)+"s", "")
+		if cols < min_columns {
+			return []byte{}
+		}
+		var offset float64
+		if position <= 0.5 {
+			offset = 2 * position
+		} else {
+			offset = 2 * (1 - position)
+		}
+		delta := 0.5 / float64(max_bar_width)
+		position += delta
+		if position >= 1.0 {
+			position = 0.0
+		}
+		if 1.0-position < delta {
+			position = 1.0
+		}
+		if position < 0.5 && 0.5-position < delta {
+			position = 0.5
+		}
+		t._position = position
+		bar_width := int(offset * float64(max_bar_width))
+		image := fmt.Sprintf("%s%s%s", t._desc, _percent,
+			"["+strings.Repeat(" ", bar_width)+
+				"<=>"+strings.Repeat(" ", max_bar_width-bar_width)+"]")
+		return []byte(image)
+	} else {
+		percentage := 100 * curval // maxval
+		max_bar_width := bar_space - 1
+		_percent := fmt.Sprintf("%"+fmt.Sprint(percentage_str_width)+"d", fmt.Sprintf("%d%% ", percentage))
+		image := fmt.Sprintf("%s%s", t._desc, _percent)
+
+		if cols < min_columns {
+			return []byte(image)
+		}
+		offset := curval / maxval
+		bar_width := int(offset * max_bar_width)
+		image = image + "[" + strings.Repeat("=", bar_width) +
+			">" + strings.Repeat(" ", max_bar_width-bar_width) + "]"
+		return []byte(image)
+	}
+}
+
+func NewTermProgressBar(fd *os.File, title string, maxval int, label string, max_desc_length int) *TermProgressBar { // os.Stdout, "", 0, "", 25
+	t := &TermProgressBar{}
+	t.ProgressBar = NewProgressBar(title, maxval, label, max_desc_length)
+	_, t.term_columns, _ = get_term_size(int(fd.Fd()))
+	t.file = fd
+	t._min_columns = 11
+	t._max_columns = 80
+	t._position = 0.0
+
+	return t
+}
+
 func init() {
 	for x := 30; x < 38; x++ {
 		ansiCodes = append(ansiCodes, fmt.Sprintf("%vm", x))
