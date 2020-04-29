@@ -202,7 +202,7 @@ func EmergeMain(args []string) int { // nil
 	if devNull != nil {
 		devNull.Close()
 	}
-	syscall.Umask(0o22)
+	syscall.Umask(022)
 
 	emergeConfig := LoadEmergeConfig(nil, nil, myAction, myFiles, myOpts)
 

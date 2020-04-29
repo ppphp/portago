@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"golang.org/x/sys/unix"
 )
 
 type OptionItem struct {
-	short, log, target, help, status, fun, action, typ, dest, choices string
+	short, long, target, help, status, fun, action, typ, dest, choices string
 }
 
 func (o *OptionItem) pargs() []string {
@@ -47,7 +49,7 @@ func NewOptionItem(opt map[string]string) *OptionItem {
 
 	o.short = opt["short"]
 	o.long = opt["long"]
-	o.target = strings.Replace(o.long[2:], "-", "_")
+	o.target = strings.ReplaceAll(o.long[2:], "-", "_")
 	o.help = opt["help"]
 	o.status = opt["status"]
 	o.fun = opt["func"]
@@ -91,12 +93,12 @@ func usage(module_controller) string {
 		_usage += "\nCommands:\n"
 		_usage += fmt.Sprintf("  %s", fmt.Sprintf("%15s", "all")) +
 			"Perform all supported commands\n"
-		textwrap.subsequent_indent = fmt.Sprintf("%17s", " ")
+		subsequent_indent := fmt.Sprintf("%17s", " ")
 		for _, mod := range module_controller.module_names {
 			desc := SplitSubN(module_controller.get_description(mod), 65)
 			_usage += fmt.Sprintf("  %s%s\n", fmt.Sprintf("%15s", mod), desc[0])
 			for _, d := range desc[1:] {
-				_usage += fmt.Sprintf("  %s%s\n", fmt.Sprintf("%15s", " "), d)
+				_usage += subsequent_indent + fmt.Sprintf("  %s%s\n", fmt.Sprintf("%15s", " "), d)
 			}
 		}
 	}
@@ -104,14 +106,15 @@ func usage(module_controller) string {
 }
 
 func module_opts(module_controller, module) string {
-	_usage = fmt.Sprintf(" %s module options:\n", module)
-	opts = module_controller.get_func_descriptions(module)
+	_usage := fmt.Sprintf(" %s module options:\n", module)
+	opts := module_controller.get_func_descriptions(module)
 	if len(opts) == 0 {
 		opts = DEFAULT_OPTIONS
 	}
 
 	for opt := range opts {
-		optd = opts[opt]
+		optd := opts[opt]
+		opto := ""
 		if _, ok := optd["short"]; ok {
 			opto = fmt.Sprintf("  %s, %s", optd["short"], optd["long"])
 		} else {
@@ -120,7 +123,7 @@ func module_opts(module_controller, module) string {
 		_usage += fmt.Sprintf("%s %s\n", fmt.Sprintf("%15s", opto), optd["help"])
 	}
 
-	_usage += '\n'
+	_usage += "\n"
 	return _usage
 }
 
@@ -128,7 +131,7 @@ type TaskHandler struct {
 	show_progress_bar, verbose, isatty bool
 	callback                           func()
 	module_output                      interface{}
-	progress_bar                       *ProgressBar
+	progress_bar                       *ProgressBar2
 }
 
 func NewTaskHandler(show_progress_bar, verbose bool, callback func(), module_output interface{}) *TaskHandler { // true, true, nil, nil
@@ -137,12 +140,13 @@ func NewTaskHandler(show_progress_bar, verbose bool, callback func(), module_out
 	t.verbose = verbose
 	t.callback = callback
 	t.module_output = module_output
-	t.isatty = os.Getenv("TERM") != "dumb" && os.Stdout.isatty()
+	_, err := unix.IoctlGetTermios(int(os.Stdout.Fd()), unix.TCGETS)
+	t.isatty = os.Getenv("TERM") != "dumb" && err == nil
 	t.progress_bar = NewProgressBar2(t.isatty, os.Stdout, "Emaint", 0, "", 27)
 	return t
 }
 
-func (t *TaskHandler) run_tasks(tasks, fun, status, verbose bool, options string) []int { // nil, true, nil
+func (t *TaskHandler) run_tasks(tasks []task, fun, status, verbose bool, options string) []int { // nil, true, nil
 	if tasks == nil || fun == nil {
 		return nil
 	}
@@ -154,19 +158,19 @@ func (t *TaskHandler) run_tasks(tasks, fun, status, verbose bool, options string
 			show_progress = inst.can_progressbar(fun)
 		}
 		if show_progress {
-			self.progress_bar.reset()
-			self.progress_bar.set_label(fun + " " + inst.name())
-			onProgress = self.progress_bar.start()
+			t.progress_bar.reset()
+			t.progress_bar.set_label(fun + " " + inst.name())
+			onProgress = t.progress_bar.start()
 		} else {
-			onProgress = None
+			onProgress = nil
 		}
 		kwargs = map[string]interface{}{
 			"onProgress":    onProgress,
 			"module_output": t.module_output,
 			"options":       options.copy(),
 		}
-		returncode, msgs = getattr(inst, fun)(**kwargs)
-		returncodes.append(returncode)
+		returncode, msgs := getattr(inst, fun)(**kwargs)
+		returncodes = append(retruncodes, returncode)
 		if show_progress {
 			t.progress_bar.display()
 			print()

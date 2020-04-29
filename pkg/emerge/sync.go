@@ -185,7 +185,7 @@ func (s *SyncRepos) _sync(selected_repos map[string]*atom.RepoConfig, return_mes
 			}
 		}
 	}
-	syscall.Umask(0o22)
+	syscall.Umask(022)
 	sync_manager := NewSyncManager(s.emerge_config.targetConfig.settings, emergelog)
 
 	var max_jobs string

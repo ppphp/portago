@@ -210,13 +210,14 @@ func unprivilegedMode(eroot string, erootSt os.FileInfo) bool {
 
 // my data structure, a lazy Tree
 type Tree struct {
-	_virtuals           map[string][]string
-	_vartree            *varTree
-	_porttree, _bintree string
-	virtuals            func() map[string][]string
-	vartree             func() *varTree
-	porttree            func()
-	bintree             func()
+	_virtuals map[string][]string
+	_vartree  *varTree
+	_porttree *PortageTree
+	_bintree  *BinaryTree
+	virtuals  func() map[string][]string
+	vartree   func() *varTree
+	porttree  func() *PortageTree
+	bintree   func() *BinaryTree
 }
 
 func (t *Tree) Virtuals() map[string][]string {
@@ -233,18 +234,18 @@ func (t *Tree) VarTree() *varTree {
 	return t._vartree
 }
 
-func (t *Tree) PortTree() map[string][]string {
-	if t._virtuals != nil {
-		t._virtuals = t.virtuals()
+func (t *Tree) PortTree() *PortageTree {
+	if t._porttree != nil {
+		t._porttree = t.porttree()
 	}
-	return t._virtuals
+	return t._porttree
 }
 
-func (t *Tree) BinTree() map[string][]string {
-	if t._virtuals != nil {
-		t._virtuals = t.virtuals()
+func (t *Tree) BinTree() *BinaryTree {
+	if t._bintree != nil {
+		t._bintree = t.bintree()
 	}
-	return t._virtuals
+	return t._bintree
 }
 
 type TreesDict struct {
@@ -323,9 +324,9 @@ func CreateTrees(config_root, target_root string, ts *TreesDict, env map[string]
 			return NewVarTree(mysettings.categories, mysettings)
 		}
 		//	trees[myroot].addLazySingleton("porttree",
-		//		portagetree, settings=mysettings)
+		//		PortageTree, settings=mysettings)
 		//	trees[myroot].addLazySingleton("bintree",
-		//		binarytree, pkgdir=mysettings["PKGDIR"], settings=mysettings)
+		//		BinaryTree, pkgdir=mysettings["PKGDIR"], settings=mysettings)
 	}
 	return trees
 }
