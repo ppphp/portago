@@ -1518,7 +1518,8 @@ func extractUnpackDependencies(srcUri string, unpackers map[string]string) strin
 	return strings.Join(depend, " ")
 }
 
-func isValidAtom(atom string, allowBlockers, allowWildcard, allowRepo bool, eapi string, allowBuildId bool) bool { //false, false, false, "", false
+//false, false, false, "", false
+func isValidAtom(atom string, allowBlockers, allowWildcard, allowRepo bool, eapi string, allowBuildId bool) bool {
 	a, err := NewAtom(atom, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId)
 	if err != nil {
 		return false

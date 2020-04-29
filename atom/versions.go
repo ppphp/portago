@@ -87,8 +87,16 @@ func getPvRe(eapiAttrs eapiAttrs) *regexp.Regexp {
 	return pvRe
 }
 
-func verVerify(myver string) bool {
-	return verRegexp.MatchString(myver)
+// 1
+func verVerify(myver string, silent int) bool {
+	if verRegexp.MatchString(myver) {
+		return true
+	} else {
+		if silent != 0 {
+			fmt.Printf("!!! syntax error in version: %s", myver)
+		}
+		return false
+	}
 }
 
 func getNamedRegexp(re *regexp.Regexp, target, name string) string {
@@ -321,6 +329,7 @@ func pkgCmp(pkg1, pkg2 [3]string) (int, error) {
 	return verCmp(strings.Join(pkg1[1:], "-"), strings.Join(pkg2[1:], "-"))
 }
 
+// ""
 func pkgSplit(mypkg, eapi string) [3]string {
 	if !getPvRe(getEapiAttrs(eapi)).MatchString(mypkg) {
 		return [3]string{}
@@ -467,6 +476,7 @@ func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, r
 	return p
 }
 
+// 1, nil
 func PkgSplit(mypkg string, silent int, eapi string) [3]string {
 	catPSplit := catPkgSplit(mypkg, 1, eapi)
 	if catPSplit == [4]string{} {

@@ -37,36 +37,6 @@ func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, action 
 	return emergeConfig
 }
 
-func runAction(emergeConfig *EmergeConfig) int {
-
-	_, xterm_titles := emergeConfig.targetConfig.settings.Features.Features["notitles"]
-	if xterm_titles {
-		atom.XtermTitle("emerge", false)
-	}
-
-	if emergeConfig.action == "version" {
-	} else if emergeConfig.action == "help" {
-		emergeHelp()
-		return 0
-	}
-
-	switch emergeConfig.action {
-	case "config", "metadata", "regen", "sync":
-		for _, o := range emergeConfig.opts {
-			if o == "--pretend" {
-				os.Stderr.Write([]byte(fmt.Sprintf("emerge: The '%s' action does "+
-					"not support '--pretend'.\n", emergeConfig.action)))
-				return 1
-			}
-		}
-	}
-	if "sync" == emergeConfig.action {
-		return actionSync(emergeConfig)
-	}
-
-	return 0
-}
-
 func actionSync(emerge_config *EmergeConfig) int {
 	syncer := NewSyncRepos(emerge_config, false)
 	return_messages := false
@@ -101,4 +71,37 @@ func print_results(results []string) {
 		println(strings.Join(results, "\n"))
 		println("\n")
 	}
+}
+
+func runAction(emergeConfig *EmergeConfig) int {
+	if map[string]bool{"help":true,"info":true,"sync":true,"version":true}[emergeConfig.action] && emergeConfig.opts["--package-moves"]!= "n" {
+
+	}
+
+	_, xterm_titles := emergeConfig.targetConfig.settings.Features.Features["notitles"]
+	if xterm_titles {
+		atom.XtermTitle("emerge", false)
+	}
+
+	if emergeConfig.action == "version" {
+	} else if emergeConfig.action == "help" {
+		emergeHelp()
+		return 0
+	}
+
+	switch emergeConfig.action {
+	case "config", "metadata", "regen", "sync":
+		for _, o := range emergeConfig.opts {
+			if o == "--pretend" {
+				os.Stderr.Write([]byte(fmt.Sprintf("emerge: The '%s' action does "+
+					"not support '--pretend'.\n", emergeConfig.action)))
+				return 1
+			}
+		}
+	}
+	if "sync" == emergeConfig.action {
+		return actionSync(emergeConfig)
+	}
+
+	return 0
 }

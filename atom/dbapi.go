@@ -2,11 +2,13 @@ package atom
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -578,12 +580,13 @@ func NewVdbMetadataDelta(vardb *vardbapi) *vdbMetadataDelta {
 
 type vardbapi struct {
 	*dbapi
-	_exclude_dirs, _aux_cache_keys_re, _aux_multi_line_re *regexp.Regexp
-	_aux_cache_version, _owners_cache_version, _lock      string
-	_aux_cache_threshold                                  int
+	_excluded_dirs, _aux_cache_keys_re, _aux_multi_line_re *regexp.Regexp
+	_aux_cache_version, _owners_cache_version, _lock       string
+	_aux_cache_threshold                                   int
 
 	_pkgs_changed, _flush_cache_enabled                                                        bool
-	mtdircache, matchcache, cpcache, blockers                                                  map[string]string
+	 matchcache, cpcache, blockers                                                  map[string]string
+	mtdircache map[string]int
 	_eroot, _dbroot, _conf_mem_file, _aux_cache_filename, _cache_delta_filename, _counter_path string
 	_fs_lock_obj                                                                               *struct {
 		string
@@ -753,15 +756,151 @@ func (v *vardbapi) cpv_exists(mykey, myrepo string) bool {
 	return false
 }
 
-func (v *vardbapi) cpv_counter() {}
+func (v *vardbapi) cpv_counter(mycpv *pkgStr) int {
+	s, err := strconv.Atoi(v.auxGet(mycpv, []string{"COUNTER"}, "")[0])
+	if err != nil {
+		writeMsgLevel(fmt.Sprintf("portage: COUNTER for %s was corrupted; resetting to value of 0\n",mycpv.string), 40, -1)
+		return 0
+	}
+	return s
+}
 
-func (v *vardbapi) cpv_inject() {}
+func (v *vardbapi) cpv_inject(mycpv *pkgStr) {
+	ensureDirs(v.getpath(mycpv.string, ""),  -1,-1,-1,-1,nil,true)
+	counter := v.counter_tick(mycpv)
+	write_atomic(v.getpath(mycpv.string, "COUNTER"), string(counter))
+}
 
-func (v *vardbapi) isInjected() {}
+func (v *vardbapi) isInjected(mycpv string)bool {
+	if v.cpv_exists(mycpv, ""){
+		if _, err := os.Stat(v.getpath(mycpv, "INJECTED")); err == nil {
+			return true
+		}
+		if _, err := os.Stat(v.getpath(mycpv, "CONTENTS")); err != nil {
+			return true
+		}
+	}
+	return false
+}
 
-func (v *vardbapi) move_ent() {}
+// nil
+func (v *vardbapi) move_ent(mylist []*Atom, repo_match func(string)bool) int{
+	origcp := mylist[1]
+	newcp := mylist[2]
 
-func (v *vardbapi) cp_list() {}
+	for _, atom := range []*Atom{origcp, newcp}{
+		if ! isJustName(atom.value){
+			//raise InvalidPackageName(str(atom))
+		}
+	}
+	origmatches := v.match(origcp, 0)
+	moves := 0
+	if len(origmatches)==0 {
+		return moves
+	}
+	for _, mycpv := range origmatches{
+		mycpv = v._pkg_str(mycpv, "")
+		mycpv_cp := cpvGetKey(mycpv, "")
+		if mycpv_cp != origcp.value{
+			continue
+		}
+		if repo_match != nil && !repo_match(mycpv.repo) {
+			continue
+		}
+
+		if ! isValidAtom(newcp.value,false, false, false, mycpv.eapi, false ) {
+			continue
+		}
+
+		mynewcpv := strings.Replace(mycpv.string, mycpv_cp, newcp.value, 1)
+		mynewcat := catsplit(newcp.value)[0]
+		origpath := v.getpath(mycpv,"")
+		if _, err := os.Stat(origpath); err != nil {
+			continue
+		}
+		moves += 1
+		if _, err := os.Stat(v.getpath(mynewcat, "")); err != nil {
+			ensureDirs(v.getpath(mynewcat, ""), -1,-1,-1,-1,nil,true)
+		}
+		newpath := v.getpath(mynewcpv, "")
+		if _, err := os.Stat(newpath); err == nil{
+			continue
+		}
+		_movefile(origpath, newpath, nil, nil, v.settings, nil)
+		v._clear_pkg_cache(v._dblink(mycpv))
+		v._clear_pkg_cache(v._dblink(mynewcpv))
+
+			old_pf = catsplit(mycpv)[1]
+		new_pf = catsplit(mynewcpv)[1]
+		if new_pf != old_pf:
+	try:
+		os.rename(os.path.join(newpath, old_pf + ".ebuild"),
+			os.path.join(newpath, new_pf + ".ebuild"))
+		except EnvironmentError as e:
+		if e.errno != errno.ENOENT:
+		raise
+		del e
+		write_atomic(path.Join(newpath, "PF"), new_pf+"\n")
+		write_atomic(path.Join(newpath, "CATEGORY"), mynewcat+"\n")
+	}
+	return moves
+}
+
+func (v *vardbapi) cp_list(mycp *pkgStr, use_cache int) []*pkgStr{
+	mysplit:=catsplit(mycp.string)
+	if mysplit[0] == "*"{
+		mysplit[0] = mysplit[0][1:]
+	}
+	mystatt, err := os.Stat(v.getpath(mysplit[0], ""))
+
+	mystat := int64(0)
+	if err == nil {
+		mystat = mystatt.ModTime().UnixNano()
+	}
+	if cpc, ok := v.cpcache[mycp.string]; use_cache!= 0 && ok {
+		if cpc[0] == mystat {
+			return cpc[1][:]
+		}
+	}
+	cat_dir := v.getpath(mysplit[0], "")
+	dir_list, err := ioutil.ReadDir(cat_dir)
+	if err != nil {
+		if err ==syscall.EPERM {
+			//raise PermissionDenied(cat_dir)
+		}
+		dir_list = []os.FileInfo{}
+	}
+
+	returnme := []*pkgStr{}
+	for _, x := range dir_list{
+		if v._excluded_dirs.MatchString(x.Name()) {
+			continue
+		}
+		ps := PkgSplit(x.Name(), 1, "")
+		if ps==[3]string{}{
+			v.invalidentry(path.Join(v.getpath(mysplit[0], ""), x.Name()))
+			continue
+		}
+		if len(mysplit) > 1{
+			if ps[0] == mysplit[1]{
+				cpv := fmt.Sprintf("%s/%s" ,mysplit[0], x)
+				metadata := map[string]string{}
+				for i := range v._aux_cache_keys {
+					metadata[i]= v.aux_get(cpv, v._aux_cache_keys)
+				}
+				returnme = append(returnme, NewPkgStr(cpv, metadata,
+					v.settings, "", "", "", 0, "", "", 0, v.dbapi))
+			}
+		}
+	}
+	v._cpv_sort_ascending(returnme)
+	if use_cache!= 0 {
+		v.cpcache[mycp.string] = []string{mystat, returnme[:]}
+}else if _, ok := v.cpcache[mycp.string];ok{
+delete(v.cpcache,mycp.string)
+}
+	return returnme
+}
 
 func (v *vardbapi) cpv_all() {}
 
@@ -777,9 +916,41 @@ func (v *vardbapi) _remove() {}
 
 func (v *vardbapi) _clear_pkg_cache() {}
 
-func (v *vardbapi) match() {}
+// 1
+func (v *vardbapi) match(origdep *Atom, use_cache int) []*pkgStr {
+	mydep := dep_expand(origdep, v.dbapi, use_cache, v.settings)
+	cache_key := []*Atom{mydep, mydep.unevaluatedAtom}
+	mykey := depGetKey(mydep.value)
+	mycat := catsplit(mykey)[0]
+	if use_cache== 0{
+		if _, ok := v.matchcache[mykey]; ok {
+			delete( v.mtdircache,mycat)
+			delete( v.matchcache,mycat)
+		}
+		return v._iter_match(mydep,
+			v.cp_list(mydep.cp, use_cache))
+	}
+	st, err := os.Stat(path.Join(v._eroot, VdbPath, mycat))
+	curmtime := 0
+	if err == nil {
+		curmtime = st.ModTime().Nanosecond()
+	}
 
-func (v *vardbapi) findname() {}
+	if  _, ok:= v.matchcache[mycat]; !ok ||v.mtdircache[mycat] != curmtime{
+		v.mtdircache[mycat] = curmtime
+		v.matchcache[mycat] = map[]
+	}
+	if _, ok:= v.matchcache[mycat][mydep.value]; !ok {
+		mymatch := v._iter_match(mydep,
+			v.cp_list(mydep.cp, use_cache))
+		v.matchcache[mycat][cache_key] = mymatch
+	}
+	return v.matchcache[mycat][cache_key][:]
+}
+
+func (v *vardbapi) findname(mycpv string) string {
+	return v.getpath(mycpv, catsplit(mycpv)[1]+".ebuild")
+}
 
 func (v *vardbapi) flush_cache() {}
 
@@ -787,9 +958,166 @@ func (v *vardbapi) _aux_cache() {}
 
 func (v *vardbapi) _aux_cache_init() {}
 
-func (v *vardbapi) aux_get() {}
+// nil
+func (v *vardbapi) aux_get(mycpv string, wants map[string] bool, myrepo = None) {
+	cache_these_wants := map[string]bool{}
+	for k := range v._aux_cache_keys {
+		if wants[k] {
+			cache_these_wants[k]=true
+		}
+	}
+	for x := range wants{
+		if v._aux_cache_keys_re.MatchString(x){
+		cache_these_wants[x]=true
+	}
+	}
 
-func (v *vardbapi) _aux_get() {}
+	if len(cache_these_wants)==0{
+		mydata := v._aux_get(mycpv, wants)
+		ret := []string{		}
+		for x := range wants{
+			ret = append(ret, mydata[x])
+		}
+		return ret
+	}
+
+	cache_these := map[string]bool {}
+	for k := range v._aux_cache_keys {
+		cache_these[k]=true
+	}
+	for k := range cache_these_wants {
+		cache_these[k]=true
+	}
+
+	mydir := v.getpath(mycpv, "")
+	mydir_stat = None
+	try:
+	mydir_stat = os.stat(mydir)
+	except OSError as e:
+	if e.errno != errno.ENOENT:
+	raise
+	raise KeyError(mycpv)
+	# Use float mtime when available.
+	mydir_mtime = mydir_stat.st_mtime
+	pkg_data = self._aux_cache["packages"].get(mycpv)
+	pull_me = cache_these.union(wants)
+	mydata = {"_mtime_" : mydir_mtime}
+	cache_valid = False
+	cache_incomplete = False
+	cache_mtime = None
+	metadata = None
+	if pkg_data is not None:
+	if not isinstance(pkg_data, tuple) or len(pkg_data) != 2:
+	pkg_data = None
+	else:
+	cache_mtime, metadata = pkg_data
+	if not isinstance(cache_mtime, (float, long, int)) or \
+	not isinstance(metadata, dict):
+	pkg_data = None
+
+	if pkg_data:
+	cache_mtime, metadata = pkg_data
+	if isinstance(cache_mtime, float):
+	if cache_mtime == mydir_stat.st_mtime:
+	cache_valid = True
+
+	# Handle truncated mtime in order to avoid cache
+	# invalidation for livecd squashfs (bug 564222).
+	elif long(cache_mtime) == mydir_stat.st_mtime:
+	cache_valid = True
+	else:
+	# Cache may contain integer mtime.
+	cache_valid = cache_mtime == mydir_stat[stat.ST_MTIME]
+
+	if cache_valid:
+	# Migrate old metadata to unicode.
+	for k, v in metadata.items():
+	metadata[k] = _unicode_decode(v,
+	encoding=_encodings['repo.content'], errors='replace')
+
+	mydata.update(metadata)
+	pull_me.difference_update(mydata)
+
+	if pull_me:
+	# pull any needed data and cache it
+	aux_keys = list(pull_me)
+	mydata.update(self._aux_get(mycpv, aux_keys, st=mydir_stat))
+	if not cache_valid or cache_these.difference(metadata):
+	cache_data = {}
+	if cache_valid and metadata:
+	cache_data.update(metadata)
+	for aux_key in cache_these:
+	cache_data[aux_key] = mydata[aux_key]
+	self._aux_cache["packages"][_unicode(mycpv)] = \
+	(mydir_mtime, cache_data)
+	self._aux_cache["modified"].add(mycpv)
+
+	eapi_attrs = _get_eapi_attrs(mydata['EAPI'])
+	if _get_slot_re(eapi_attrs).match(mydata['SLOT']) is None:
+	# Empty or invalid slot triggers InvalidAtom exceptions when
+	# generating slot atoms for packages, so translate it to '0' here.
+	mydata['SLOT'] = '0'
+
+	return [mydata[x] for x in wants]
+}
+
+// nil
+func (v *vardbapi) _aux_get(mycpv, wants, st=None) {
+	mydir = self.getpath(mycpv)
+	if st is None:
+try:
+	st = os.stat(mydir)
+	except OSError as e:
+	if e.errno == errno.ENOENT:
+	raise KeyError(mycpv)
+	elif e.errno == PermissionDenied.errno:
+	raise PermissionDenied(mydir)
+	else:
+	raise
+	if not stat.S_ISDIR(st.st_mode):
+	raise KeyError(mycpv)
+	results = {}
+	env_keys = []
+	for x in wants:
+	if x == "_mtime_":
+	results[x] = st[stat.ST_MTIME]
+	continue
+try:
+	with io.open(
+		_unicode_encode(os.path.join(mydir, x),
+			encoding=_encodings['fs'], errors='strict'),
+	mode='r', encoding=_encodings['repo.content'],
+		errors='replace') as f:
+	myd = f.read()
+	except IOError:
+	if x not in self._aux_cache_keys and \
+	self._aux_cache_keys_re.match(x) is None:
+	env_keys.append(x)
+	continue
+	myd = ''
+
+	# Preserve \n for metadata that is known to
+	# contain multiple lines.
+	if self._aux_multi_line_re.match(x) is None:
+	myd = " ".join(myd.split())
+
+	results[x] = myd
+
+	if env_keys:
+	env_results = self._aux_env_search(mycpv, env_keys)
+	for k in env_keys:
+	v = env_results.get(k)
+	if v is None:
+	v = ''
+	if self._aux_multi_line_re.match(k) is None:
+	v = " ".join(v.split())
+	results[k] = v
+
+	if results.get("EAPI") == "":
+	results["EAPI"] = '0'
+
+	return results
+}
 
 func (v *vardbapi) _aux_env_search() {}
 
@@ -813,7 +1141,7 @@ func NewVarDbApi(settings *Config, vartree *varTree) *vardbapi { // nil, nil
 	for _, v := range []string{"CVS", "lost+found"} {
 		e = append(e, regexp.QuoteMeta(v))
 	}
-	v._exclude_dirs = regexp.MustCompile("^(\\..*|" + MergingIdentifier + ".*|" + strings.Join(e, "|") + ")$")
+	v._excluded_dirs = regexp.MustCompile("^(\\..*|" + MergingIdentifier + ".*|" + strings.Join(e, "|") + ")$")
 	v._aux_cache_version = "1"
 	v._owners_cache_version = "1"
 	v._aux_cache_threshold = 5

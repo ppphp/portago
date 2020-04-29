@@ -2,62 +2,71 @@ package atom
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"sort"
+	"strings"
 	"time"
 )
 
+func _cmp_cpv(d1,d2 map[string]int ) int{
+	cpv1 := d1["CPV"]
+	cpv2 := d2["CPV"]
+	if cpv1 > cpv2 {
+		return 1
+	}else if cpv1 == cpv2 {
+		return 0
+	}else{
+			return -1
+		}
+}
+
 type PackageIndex struct {
 	modified bool
-	header, _default_header_data map[string]string
+	header, _default_header_data, _write_translation_map map[string]string
+	_pkg_slot_dict func()map[string]string
 }
 
 // true
-func (p* PackageIndex) _readpkgindex( pkgfile *os.File, pkg_entry bool) {
-
-	allowed_keys = None
-	if p._pkg_slot_dict is
-	None
-	or
-	not
-pkg_entry:
-	d =
-	{
+func (p* PackageIndex) _readpkgindex( pkgfile *os.File, pkg_entry bool) map[string]string {
+	var allowed_keys map[string]string = nil
+	d := map[string]string{}
+	if p._pkg_slot_dict == nil || !pkg_entry{
+	} else{
+		d = p._pkg_slot_dict()
+		allowed_keys = d.allowed_keys
 	}
-	else:
-	d = p._pkg_slot_dict()
-	allowed_keys = d.allowed_keys
 
-	for line
-	in
-pkgfile:
-	line = line.rstrip("\n")
-	if not line:
-	break
-	line = line.split(":", 1)
-	if not len(line) == 2:
-	continue
-	k, v = line
-	if v:
-	v = v[1:]
-	k = p._read_translation_map.get(k, k)
-	if allowed_keys is
-	not
-	None
-	and \
-	k
-	not
-	in
-allowed_keys:
-	continue
-	d[k] = v
+	b, _ := ioutil.ReadAll(pkgfile)
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimRight(line, "\n")
+		if line=="" {
+			break
+		}
+		lines := strings.SplitN(line, ":", 2)
+		if len(lines) != 2{
+			continue
+		}
+		k, v := lines[0], lines[1]
+		if v!= "" {
+			v = v[1:]
+		}
+		k = p._read_translation_map.get(k, k)
+		if _, ok := allowed_keys[k]; allowed_keys != nil && !ok {
+			continue
+		}
+		d[k] = v
+	}
 	return d
 }
 
 	func (p* PackageIndex) _writepkgindex( pkgfile *os.File, items[]string ) {
 		for k, v :=range	items{
-			pkgfile.write("%s: %s\n" % \
-			(p._write_translation_map.get(k, k), v))
+			a, ok :=p._write_translation_map[k]
+			if !ok{
+				a = k
+			}
+			pkgfile.write("%s: %s\n" , a, v)
 		}
 		pkgfile.write("\n")
 	}
@@ -68,7 +77,9 @@ func (p* PackageIndex) read( pkgfile *os.File) {
 }
 
 func (p* PackageIndex) readHeader( pkgfile *os.File) {
-	p.header.update(p._readpkgindex(pkgfile, pkg_entry = False))
+	for k, v := range p._readpkgindex(pkgfile, false) {
+		p.header[k] = v
+	}
 }
 
 func (p* PackageIndex) readBody( pkgfile *os.File) {
@@ -100,7 +111,7 @@ None:
 func (p* PackageIndex) write( pkgfile *os.File) {
 	if p.modified {
 		p.header["TIMESTAMP"] = fmt.Sprint(time.Now().Unix())
-		p.header["PACKAGES"] = str(len(p.packages))
+		p.header["PACKAGES"] = fmt.Sprint(len(p.packages))
 	}
 	keys:= []string{}
 	for k := range p.header{

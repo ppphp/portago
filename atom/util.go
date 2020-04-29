@@ -1008,7 +1008,8 @@ func applyPermissions(filename string, uid, gid, mode, mask int, statCached os.F
 	return modified
 }
 
-func ensureDirs(dirpath string, uid, gid, mode, mask int, statCached os.FileInfo, followLinks bool) bool { // -1,-1,-1,-1,nil,true
+// -1,-1,-1,-1,nil,true
+func ensureDirs(dirpath string, uid, gid, mode, mask int, statCached os.FileInfo, followLinks bool) bool {
 	createdDir := false
 	if err := os.MkdirAll(dirpath, 0755); err == nil {
 		createdDir = true
@@ -1233,4 +1234,319 @@ func timestampToHttp(timestamp string) string {
 func httpToTimestamp(httpDatetimeString string) string {
 	t, _ := dateparse.ParseAny(httpDatetimeString)
 	return string(t.Unix())
+}
+
+// nil, nil, nil, nil
+func _movefile(src, dest, newmtime=None, sstat=None, mysettings *Config,
+hardlink_candidates=None, encoding=_encodings['fs']) {
+
+	if mysettings == nil{
+		mysettings = Settings()
+	}
+
+	xattr_enabled :=mysettings.Features.Features[ "xattr"]
+
+	selinux_enabled := mysettings.selinux()
+	if selinux_enabled{
+		selinux = _unicode_module_wrapper(_selinux, encoding = encoding)
+		_copyfile = selinux.copyfile
+		_rename = selinux.rename
+	} else{
+		_copyfile = copyfile
+		_rename = _os.rename
+	}
+
+	lchown = _unicode_func_wrapper(portage.data.lchown, encoding = encoding)
+	os = _unicode_module_wrapper(_os,
+		encoding = encoding, overrides = _os_overrides)
+
+try:
+	if not sstat:
+	sstat = os.lstat(src)
+
+	except
+	SystemExit
+	as
+e:
+	raise
+	except
+	Exception
+	as
+e:
+	writemsg("!!! %s\n"%_("Stating source file failed... movefile()"),
+		noiselevel = -1)
+	writemsg("!!! %s\n" % (e, ), noiselevel = -1)
+	return None
+
+	destexists = 1
+try:
+	dstat = os.lstat(dest)
+	except(OSError, IOError):
+	dstat = os.lstat(os.path.dirname(dest))
+	destexists = 0
+
+	if bsd_chflags:
+	if destexists and
+	dstat.st_flags != 0:
+	bsd_chflags.lchflags(dest, 0)
+	# Use
+	normal
+	stat / chflags
+	for the
+	parent
+	since
+	we
+	want
+	to
+	# follow
+	any
+	symlinks
+	to
+	the
+	real
+	parent
+	directory.
+		pflags = os.stat(os.path.dirname(dest)).st_flags
+	if pflags != 0:
+	bsd_chflags.chflags(os.path.dirname(dest), 0)
+
+	if destexists:
+	if stat.S_ISLNK(dstat[stat.ST_MODE]):
+try:
+	os.unlink(dest)
+	destexists = 0
+	except
+	SystemExit
+	as
+e:
+	raise
+	except
+	Exception
+	as
+e:
+	pass
+
+	if stat.S_ISLNK(sstat[stat.ST_MODE]):
+try:
+	target = os.readlink(src)
+	if mysettings and
+	"D"
+	in
+	mysettings
+	and \
+	target.startswith(mysettings["D"]):
+	target = target[len(mysettings["D"])-1:]
+	if destexists and
+	not
+	stat.S_ISDIR(dstat[stat.ST_MODE]):
+	os.unlink(dest)
+try:
+	if selinux_enabled:
+	selinux.symlink(target, dest, src)
+	else:
+	os.symlink(target, dest)
+	except
+	OSError
+	as
+e:
+	# Some
+	programs
+	will
+	create
+	symlinks
+	automatically, so
+	we
+	have
+	# to
+	tolerate
+	these
+	links
+	being
+	recreated
+	during
+	the
+	merge
+	# process.In
+	any case , if the link is pointing at the right
+# place, we're in good shape.
+if e.errno not in (errno.ENOENT, errno.EEXIST) or \
+target != os.readlink(dest):
+raise
+lchown(dest, sstat[stat.ST_UID], sstat[stat.ST_GID])
+
+try:
+_os.unlink(src_bytes)
+except OSError:
+pass
+
+if sys.hexversion >= 0x3030000:
+try:
+os.utime(dest, ns = (sstat.st_mtime_ns, sstat.st_mtime_ns), follow_symlinks = False)
+except NotImplementedError:
+# utimensat() and lutimes() missing in libc.
+return os.stat(dest, follow_symlinks = False).st_mtime_ns else:
+return sstat.st_mtime_ns else:
+# utime() in Python <3.3 only works on the target of a symlink, so it's not
+# possible to preserve mtime on symlinks.
+return os.lstat(dest)[stat.ST_MTIME]
+except SystemExit as e:
+raise
+except Exception as e:
+writemsg("!!! %s\n" % _("failed to properly create symlink:"),
+noiselevel = -1)
+writemsg("!!! %s -> %s\n" % (dest, target), noiselevel = -1)
+writemsg("!!! %s\n" % (e, ), noiselevel = -1)
+return None
+
+hardlinked = False
+# Since identical files might be merged to multiple filesystems,
+# so os.link() calls might fail for some paths, so try them all.
+# For atomic replacement, first create the link as a temp file
+# and them use os.rename() to replace the destination.
+if hardlink_candidates:
+head, tail = os.path.split(dest)
+hardlink_tmp = os.path.join(head, ".%s._portage_merge_.%s" % \
+(tail, os.getpid()))
+try:
+os.unlink(hardlink_tmp)
+except OSError as e:
+if e.errno != errno.ENOENT:
+writemsg(_("!!! Failed to remove hardlink temp file: %s\n") % \
+(hardlink_tmp, ), noiselevel =-1)
+writemsg("!!! %s\n" % (e, ), noiselevel = -1)
+return None
+del e
+for hardlink_src in hardlink_candidates:
+try:
+os.link(hardlink_src, hardlink_tmp)
+except OSError:
+continue else:
+try:
+os.rename(hardlink_tmp, dest)
+except OSError as e:
+writemsg(_("!!! Failed to rename %s to %s\n") % \
+(hardlink_tmp, dest), noiselevel =-1)
+writemsg("!!! %s\n" % (e, ), noiselevel = -1)
+return None
+hardlinked = True
+try:
+_os.unlink(src_bytes)
+except OSError:
+pass
+break
+
+renamefailed = 1
+if hardlinked:
+renamefailed = False
+if not hardlinked and (selinux_enabled or sstat.st_dev == dstat.st_dev):
+try:
+if selinux_enabled:
+selinux.rename(src, dest) else:
+os.rename(src, dest)
+renamefailed = 0
+except OSError as e:
+if e.errno != errno.EXDEV:
+# Some random error.
+writemsg("!!! %s\n" % _("Failed to move %(src)s to %(dest)s") %
+{"src": src, "dest": dest}, noiselevel = -1)
+writemsg("!!! %s\n" % (e, ), noiselevel = -1)
+return None
+# Invalid cross-device-link 'bind' mounted or actually Cross-Device
+if renamefailed:
+if stat.S_ISREG(sstat[stat.ST_MODE]):
+dest_tmp = dest + "#new"
+dest_tmp_bytes = _unicode_encode(dest_tmp, encoding =encoding,
+errors = 'strict')
+try: # For safety copy then move it over.
+_copyfile(src_bytes, dest_tmp_bytes)
+_apply_stat(sstat, dest_tmp_bytes)
+if xattr_enabled:
+try:
+_copyxattr(src_bytes, dest_tmp_bytes,
+exclude = mysettings.get("PORTAGE_XATTR_EXCLUDE", ""))
+except SystemExit:
+raise
+except:
+msg = _("Failed to copy extended attributes. "
+"In order to avoid this error, set "
+"FEATURES=\"-xattr\" in make.conf.")
+msg = textwrap.wrap(msg, 65)
+for line in msg:
+writemsg("!!! %s\n" % (line, ), noiselevel =-1)
+raise
+_rename(dest_tmp_bytes, dest_bytes)
+_os.unlink(src_bytes)
+except SystemExit as e:
+raise
+except Exception as e:
+writemsg("!!! %s\n" % _('copy %(src)s -> %(dest)s failed.') %
+{"src": src, "dest": dest}, noiselevel = -1)
+writemsg("!!! %s\n" % (e, ), noiselevel = -1)
+return None else:
+#we don't yet handle special, so we need to fall back to /bin/mv
+a = spawn([MOVE_BINARY, '-f', src, dest], env = os.environ)
+if a != os.EX_OK:
+writemsg(_("!!! Failed to move special file:\n"), noiselevel = -1)
+writemsg(_("!!! '%(src)s' to '%(dest)s'\n") % \
+{"src": _unicode_decode(src, encoding = encoding),
+"dest": _unicode_decode(dest, encoding = encoding)}, noiselevel = -1)
+writemsg("!!! %s\n" % a, noiselevel = -1)
+return None # failure
+
+# In Python <3.3 always use stat_obj[stat.ST_MTIME] for the integral timestamp
+# which is returned, since the stat_obj.st_mtime float attribute rounds *up*
+# if the nanosecond part of the timestamp is 999999881 ns or greater.
+try:
+if hardlinked:
+if sys.hexversion >= 0x3030000:
+newmtime = os.stat(dest).st_mtime_ns else:
+newmtime = os.stat(dest)[stat.ST_MTIME]
+else:
+# Note: It is not possible to preserve nanosecond precision
+# (supported in POSIX.1-2008 via utimensat) with the IEEE 754
+# double precision float which only has a 53 bit significand.
+if newmtime is not None:
+if sys.hexversion >= 0x3030000:
+os.utime(dest, ns = (newmtime, newmtime))
+else:
+os.utime(dest, (newmtime, newmtime)) else:
+if sys.hexversion >= 0x3030000:
+newmtime = sstat.st_mtime_ns
+else:
+newmtime = sstat[stat.ST_MTIME]
+if renamefailed:
+if sys.hexversion >= 0x3030000:
+# If rename succeeded then timestamps are automatically
+# preserved with complete precision because the source
+# and destination inodes are the same.Otherwise, manually
+# update timestamps with nanosecond precision.
+os.utime(dest, ns = (newmtime, newmtime)) else:
+# If rename succeeded then timestamps are automatically
+# preserved with complete precision because the source
+# and destination inodes are the same.Otherwise, round
+# down to the nearest whole second since python's float
+# st_mtime cannot be used to preserve the st_mtim.tv_nsec
+# field with complete precision.Note that we have to use
+# stat_obj[stat.ST_MTIME] here because the float
+# stat_obj.st_mtime rounds *up* sometimes.
+os.utime(dest, (newmtime, newmtime))
+except OSError:
+# The utime can fail here with EPERM even though the move succeeded.
+# Instead of failing, use stat to return the mtime if possible.
+try:
+if sys.hexversion >= 0x3030000:
+newmtime = os.stat(dest).st_mtime_ns else:
+newmtime = os.stat(dest)[stat.ST_MTIME]
+except OSError as e:
+writemsg(_("!!! Failed to stat in movefile()\n"), noiselevel = -1)
+writemsg("!!! %s\n" % dest, noiselevel =-1)
+writemsg("!!! %s\n" % str(e), noiselevel = -1)
+return None
+
+if bsd_chflags:
+# Restore the flags we saved before moving
+if pflags:
+bsd_chflags.chflags(os.path.dirname(dest), pflags)
+
+return newmtime
 }

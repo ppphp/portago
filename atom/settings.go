@@ -102,7 +102,7 @@ type Config struct {
 		mydb *vardbapi
 	}
 	sonameProvided                                                                                                                       map[*sonameAtom]bool
-	parentStable                                                                                                                         *bool
+	parentStable, _selinux_enabled                                                                                                                         *bool
 	puse, depcachedir, profilePath, defaultFeaturesUse, userProfileDir, globalConfigPath                                                 string
 	useManager                                                                                                                           *useManager
 	keywordsManagerObj                                                                                                                   *keywordsManager
@@ -1491,6 +1491,32 @@ func (c *Config) archlist() map[string]bool {
 		archlist["~"+myarch] = true
 	}
 	return archlist
+}
+
+func (c*Config )selinux_enabled()bool {
+	if c._selinux_enabled == nil {
+		f := false
+		c._selinux_enabled = &f
+		in := false
+		for _, v:=  range strings.Fields(c.ValueDict["USE"]){
+			if v == "selinux"{
+				in = true
+				break
+			}
+		}
+		if in {
+			if selinux{
+				if selinux.is_selinux_enabled() == 1{
+					f = true
+					c._selinux_enabled = &f
+				}
+			} else{
+				WriteMsg("!!! SELinux module not found. Please verify that it was installed.\n", -1, nil)
+			}
+		}
+	}
+
+	return c._selinux_enabled
 }
 
 var eapiCache = map[string]bool{}
