@@ -74,7 +74,7 @@ func print_results(results []string) {
 }
 
 func runAction(emergeConfig *EmergeConfig) int {
-	if map[string]bool{"help":true,"info":true,"sync":true,"version":true}[emergeConfig.action] && emergeConfig.opts["--package-moves"]!= "n" {
+	if map[string]bool{"help": true, "info": true, "sync": true, "version": true}[emergeConfig.action] && emergeConfig.opts["--package-moves"] != "n" {
 
 	}
 

@@ -9,170 +9,216 @@ import (
 	"time"
 )
 
-func _cmp_cpv(d1,d2 map[string]int ) int{
+func _cmp_cpv(d1, d2 map[string]string) int {
 	cpv1 := d1["CPV"]
 	cpv2 := d2["CPV"]
 	if cpv1 > cpv2 {
 		return 1
-	}else if cpv1 == cpv2 {
+	} else if cpv1 == cpv2 {
 		return 0
-	}else{
-			return -1
-		}
+	} else {
+		return -1
+	}
 }
 
 type PackageIndex struct {
-	modified bool
-	header, _default_header_data, _write_translation_map map[string]string
-	_pkg_slot_dict func()map[string]string
+	modified                                                                                       bool
+	header, _default_header_data, _write_translation_map, _read_translation_map, _default_pkg_data map[string]string
+	packages                                                                                       []map[string]string
+	_pkg_slot_dict                                                                                 func() map[string]string
+	_inherited_keys                                                                                []string
 }
 
 // true
-func (p* PackageIndex) _readpkgindex( pkgfile *os.File, pkg_entry bool) map[string]string {
-	var allowed_keys map[string]string = nil
+func (p *PackageIndex) _readpkgindex(pkgfile *os.File, pkg_entry bool) map[string]string {
+	//var allowed_keys []string = nil
 	d := map[string]string{}
-	if p._pkg_slot_dict == nil || !pkg_entry{
-	} else{
+	if p._pkg_slot_dict == nil || !pkg_entry {
+	} else {
 		d = p._pkg_slot_dict()
-		allowed_keys = d.allowed_keys
+		//allowed_keys = []
 	}
 
 	b, _ := ioutil.ReadAll(pkgfile)
 	for _, line := range strings.Split(string(b), "\n") {
 		line = strings.TrimRight(line, "\n")
-		if line=="" {
+		if line == "" {
 			break
 		}
 		lines := strings.SplitN(line, ":", 2)
-		if len(lines) != 2{
+		if len(lines) != 2 {
 			continue
 		}
 		k, v := lines[0], lines[1]
-		if v!= "" {
+		if v != "" {
 			v = v[1:]
 		}
-		k = p._read_translation_map.get(k, k)
-		if _, ok := allowed_keys[k]; allowed_keys != nil && !ok {
-			continue
+		if v, ok := p._read_translation_map[k]; ok {
+			k = v
 		}
+		// TODO: allowed keys logic
+		//in := false
+		//for _, v := range allowed_keys{
+		//	if v == k {
+		//		in = true
+		//		break
+		//	}
+		//}
+		//if allowed_keys != nil && !in {
+		//	continue
+		//}
 		d[k] = v
 	}
 	return d
 }
 
-	func (p* PackageIndex) _writepkgindex( pkgfile *os.File, items[]string ) {
-		for k, v :=range	items{
-			a, ok :=p._write_translation_map[k]
-			if !ok{
-				a = k
-			}
-			pkgfile.write("%s: %s\n" , a, v)
+func (p *PackageIndex) _writepkgindex(pkgfile *os.File, items [][2]string) {
+	for _, x := range items {
+		k, v := x[0], x[1]
+		a, ok := p._write_translation_map[k]
+		if !ok {
+			a = k
 		}
-		pkgfile.write("\n")
+		pkgfile.Write([]byte(fmt.Sprintf("%s: %s\n", a, v)))
 	}
+	pkgfile.Write([]byte("\n"))
+}
 
-func (p* PackageIndex) read( pkgfile *os.File) {
+func (p *PackageIndex) read(pkgfile *os.File) {
 	p.readHeader(pkgfile)
 	p.readBody(pkgfile)
 }
 
-func (p* PackageIndex) readHeader( pkgfile *os.File) {
+func (p *PackageIndex) readHeader(pkgfile *os.File) {
 	for k, v := range p._readpkgindex(pkgfile, false) {
 		p.header[k] = v
 	}
 }
 
-func (p* PackageIndex) readBody( pkgfile *os.File) {
-	while
-True:
-	d = p._readpkgindex(pkgfile)
-	if not d:
-	break
-	mycpv = d.get("CPV")
-	if not mycpv:
-	continue
-	if p._default_pkg_data:
-	for k, v
-	in
-	p._default_pkg_data.items():
-	d.setdefault(k, v)
-	if p._inherited_keys:
-	for k
-	in
-	p._inherited_keys:
-	v = p.header.get(k)
-	if v is
-	not
-None:
-	d.setdefault(k, v)
-	p.packages.append(d)
+func (p *PackageIndex) readBody(pkgfile *os.File) {
+	for {
+		d := p._readpkgindex(pkgfile, true)
+		if len(d) == 0 {
+			break
+		}
+		mycpv := d["CPV"]
+		if len(mycpv) == 0 {
+			continue
+		}
+		if len(p._default_pkg_data) != 0 {
+			for k, v := range p._default_pkg_data {
+				if _, ok := d[k]; !ok {
+					d[k] = v
+				}
+			}
+		}
+		if len(p._inherited_keys) != 0 {
+			for _, k := range p._inherited_keys {
+				v := p.header[k]
+				if v != "" {
+					if _, ok := d[k]; !ok {
+						d[k] = v
+					}
+				}
+			}
+		}
+		p.packages = append(p.packages, d)
+	}
 }
 
-func (p* PackageIndex) write( pkgfile *os.File) {
+func (p *PackageIndex) write(pkgfile *os.File) {
 	if p.modified {
 		p.header["TIMESTAMP"] = fmt.Sprint(time.Now().Unix())
 		p.header["PACKAGES"] = fmt.Sprint(len(p.packages))
 	}
-	keys:= []string{}
-	for k := range p.header{
+	keys := []string{}
+	for k := range p.header {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	p._writepkgindex(pkgfile, [(k, p.header[k]) \
-	for k
-	in
-	keys
-	if p.header[k]])
-for metadata in sorted(p.packages,
-key = portage.util.cmp_sort_key(_cmp_cpv)):
-metadata = metadata.copy()
-if p._inherited_keys:
-for k in p._inherited_keys:
-v = p.header.get(k)
-if v is not None and v == metadata.get(k):
-del metadata[k]
-if p._default_pkg_data:
-for k, v in p._default_pkg_data.items():
-if metadata.get(k) == v:
-metadata.pop(k, None)
-keys = list(metadata)
-keys.sort()
-p._writepkgindex(pkgfile,
-[(k, metadata[k]) for k in keys if metadata[k]])
+	s := [][2]string{}
+	for _, k := range keys {
+		if len(p.header[k]) != 0 {
+			s = append(s, [2]string{k, p.header[k]})
+		}
+	}
+
+	p._writepkgindex(pkgfile, s)
+	sort.Slice(p.packages, func(i, j int) bool {
+		return _cmp_cpv(p.packages[i], p.packages[j]) < 0
+	})
+	for _, metadata := range p.packages {
+		metadata = CopyMapSS(metadata)
+		if len(p._inherited_keys) != 0 {
+			for _, k := range p._inherited_keys {
+				v := p.header[k]
+				if v != "" && v == metadata[k] {
+					delete(metadata, k)
+				}
+			}
+		}
+		if len(p._default_pkg_data) != 0 {
+			for k, v := range p._default_pkg_data {
+				if metadata[k] == v {
+					delete(metadata, k)
+				}
+			}
+		}
+		keys := []string{}
+		for k := range metadata {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+
+		s := [][2]string{}
+		for _, k := range keys {
+			if metadata[k] != "" {
+				s = append(s, [2]string{k, metadata[k]})
+			}
+		}
+		p._writepkgindex(pkgfile, s)
+	}
 }
 
 // nil, nil, nil, nil, nil
 func NewPackageIndex(
-	allowed_pkg_keys=None,
-	default_header_data map[string]string,
-	default_pkg_data=None,
-	inherited_keys=None,
-	translated_keys=None) *PackageIndex{
-	p:=&PackageIndex{}
+	allowedPkgKeys map[string]bool,
+	defaultHeaderData map[string]string,
+	defaultPkgData map[string]string,
+	inheritedKeys []string,
+	translatedKeys [][2]string) *PackageIndex {
+	p := &PackageIndex{}
 
-	p._pkg_slot_dict = None
-	if allowed_pkg_keys != None {
-		p._pkg_slot_dict = slot_dict_class(allowed_pkg_keys)
+	p._pkg_slot_dict = nil
+	if allowedPkgKeys != nil {
+		p._pkg_slot_dict = func() map[string]string {
+			return map[string]string{}
+		} //slot_dict_class(allowed_pkg_keys)
 	}
 
-	p._default_header_data = default_header_data
-	p._default_pkg_data = default_pkg_data
-	p._inherited_keys = inherited_keys
-	p._write_translation_map = {}
-	p._read_translation_map = {}
-	if translated_keys {
-		p._write_translation_map.update(translated_keys)
-		p._read_translation_map.update(((y, x)
-		for (x, y) in
-		translated_keys))
+	p._default_header_data = defaultHeaderData
+	p._default_pkg_data = defaultPkgData
+	p._inherited_keys = inheritedKeys
+	p._write_translation_map = map[string]string{}
+	p._read_translation_map = map[string]string{}
+	if len(translatedKeys) > 0 {
+		for _, x := range translatedKeys {
+			k, v := x[0], x[1]
+			p._write_translation_map[k] = v
+		}
+		for _, x := range translatedKeys {
+			k, v := x[0], x[1]
+			p._read_translation_map[v] = k
+		}
 	}
 	p.header = map[string]string{}
 	if len(p._default_header_data) != 0 {
-		for k, v := range p._default_header_data{
+		for k, v := range p._default_header_data {
 			p.header[k] = v
 		}
 	}
-	p.packages = []
+	p.packages = []map[string]string{}
 	p.modified = true
-}
 
+	return p
+}

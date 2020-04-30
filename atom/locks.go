@@ -73,14 +73,15 @@ func _close_fds() {
 }
 
 func lockdir(mydir string, flags int) (string, int, bool, func(int, int) error, error) { // 0
-	return lockfile(mydir, true, false, "", flags)
+	return Lockfile(mydir, true, false, "", flags)
 }
 
 func unlockdir(mylock string) bool {
 	return unlockfile(mylock, 0, false, nil)
 }
 
-func lockfile(mypath string, wantnewlockfile, unlinkfile bool, waiting_msg string, flags int) (string, int, bool, func(int, int) error, error) { // false, false, "", 0
+// false, false, "", 0
+func Lockfile(mypath string, wantnewlockfile, unlinkfile bool, waiting_msg string, flags int) (string, int, bool, func(int, int) error, error) {
 	var a string
 	var b int
 	var c bool
@@ -138,7 +139,7 @@ func _lockfile_iteration(mypath string, wantnewlockfile, unlinkfile bool, waitin
 		}
 		if err := syscall.Chown(lockfilename, -1, gid); err != nil {
 			if err == syscall.ENONET || err == syscall.ESTALE {
-				return lockfile(mypath, wantnewlockfile, unlinkfile, waiting_msg, flags)
+				return Lockfile(mypath, wantnewlockfile, unlinkfile, waiting_msg, flags)
 			} else {
 				WriteMsg(fmt.Sprintf("%s: chown('%s', -1, %d)\n", err, lockfilename, gid), -1, nil)
 				WriteMsg(fmt.Sprintf("Cannot chown a lockfile: '%s'\n", lockfilename), -1, nil)

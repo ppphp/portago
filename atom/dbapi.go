@@ -661,7 +661,7 @@ func (v *vardbapi) _fs_lock() {
 		if v._fs_lock_obj != nil {
 			panic("already locked")
 		}
-		a, b, c, d, _ := lockfile(v._conf_mem_file, false, false, "", 0)
+		a, b, c, d, _ := Lockfile(v._conf_mem_file, false, false, "", 0)
 		v._fs_lock_obj = &struct {
 			string
 			int
@@ -693,7 +693,7 @@ func (v *vardbapi) _slot_lock(slot_atom *Atom) {
 	if lock == nil {
 		lock_path := v.getpath(fmt.Sprintf("%s:%s", slot_atom.cp, slot_atom.slot), "")
 		ensureDirs(path.Dir(lock_path), -1, -1, -1, -1, nil, true)
-		a, b, c, d, _ := lockfile(lock_path, true, false, "", 0)
+		a, b, c, d, _ := Lockfile(lock_path, true, false, "", 0)
 		lock = &struct {
 			string
 			int
@@ -1574,7 +1574,7 @@ func (b *BinaryTree) Populate(getbinpkg_refresh bool, add_repos []string) {
 	if update_pkgindex and self.dbapi.writable:
 	pkgindex_lock = None
 	try:
-	pkgindex_lock = lockfile(self._pkgindex_file,
+	pkgindex_lock = Lockfile(self._pkgindex_file,
 	wantnewlockfile=True)
 	update_pkgindex = self._populate_local()
 	if update_pkgindex:
@@ -1630,236 +1630,246 @@ func (b *BinaryTree) _populate_local(reindex bool) {
 	}
 
 	pkgindex := b.LoadPkgIndex()
-	if not self._pkgindex_version_supported(pkgindex):
-	pkgindex = self._new_pkgindex()
-	metadata = {}
-	basename_index = {}
-	for d in pkgindex.packages:
-	cpv = _pkg_str(d["CPV"], metadata=d,
-		settings=self.settings, db=self.dbapi)
-	d["CPV"] = cpv
-	metadata[_instance_key(cpv)] = d
-	path = d.get("PATH")
-	if not path:
-	path = cpv + ".tbz2"
+	if ! b._pkgindex_version_supported(pkgindex){
+		pkgindex = b._new_pkgindex()
+	}
+	metadata := map[string]map[string]string{}
+	basename_index := map[string]{}
+	for _, d := range pkgindex.packages{
+		cpv := NewPkgStr(d["CPV"], d, b.settings, "", "", "", 0, "", "", 0, b.dbapi.dbapi)
+		d["CPV"] = cpv.string
+		metadata[_instance_key(cpv, false).string] = d
+		path := d["PATH"]
+		if  path==""{
+			path = cpv.string + ".tbz2"
+		}
 
-	if reindex:
-	basename = os.path.basename(path)
-	basename_index.setdefault(basename, []).append(d)
-	else:
-	instance_key = _instance_key(cpv)
-	pkg_paths[instance_key] = path
-	self.dbapi.cpv_inject(cpv)
+		if reindex{
+			basename := filepath.Base(path)
+			basename_index.setdefault(basename, []).append(d)
+		} else{
+			instance_key := _instance_key(cpv, false)
+			pkg_paths[instance_key.string] = path
+			b.dbapi.cpv_inject(cpv)
+		}
+	}
 
-	update_pkgindex = False
-	for mydir, file_names in dir_files.items():
-try:
-	mydir = _unicode_decode(mydir,
-		encoding=_encodings["fs"], errors="strict")
-	except UnicodeDecodeError:
-	continue
-	for myfile in file_names:
-try:
-	myfile = _unicode_decode(myfile,
-		encoding=_encodings["fs"], errors="strict")
-	except UnicodeDecodeError:
-	continue
-	if not myfile.endswith(SUPPORTED_XPAK_EXTENSIONS):
-	continue
-	mypath = os.path.join(mydir, myfile)
-	full_path = os.path.join(self.pkgdir, mypath)
-	s = os.lstat(full_path)
+	update_pkgindex := false
+	for mydir, file_names := range dir_files {
+		for _, myfile := range file_names{
+			has := false
+			for k := range SUPPORTED_XPAK_EXTENSIONS {
+				if ! strings.HasSuffix(myfile,k) {
+					has = true
+					break
+				}
+			}
+			if !has{
+				continue
+			}
+			mypath := filepath.Join(mydir, myfile)
+			full_path := filepath.Join(b.pkgdir, mypath)
+			stat, _ := os.Lstat(full_path)
 
-	if not stat.S_ISREG(s.st_mode):
-	continue
+			if stat== nil||stat.IsDir(){
+				continue
+			}
+				possibilities := basename_index[myfile]
+			if len(possibilities)!= 0 {
+				match := map[string]string{}
+				for _, d := range possibilities{
+					if long(d["_mtime_"]) != stat.ModTime().Nanosecond(){
+						continue
+					}
+					if d["_mtime_"] == nil {
+						continue
+					}
+					if long(d["SIZE"]) != long(s.st_size) {
+						continue
+					}
+					if d["_mtime_"]== nil{
+						continue
+					}
+					if len( minimum_keys.difference(d))==0 {
+						match = d
+						break
+					}
+				}
+				if len(match)>0 {
+					mycpv = match["CPV"]
+					instance_key = _instance_key(mycpv)
+					pkg_paths[instance_key] = mypath
+					oldpath = d.get("PATH")
+					if oldpath and oldpath != mypath:
+					update_pkgindex = True
+					if mypath != mycpv + ".tbz2":
+					d["PATH"] = mypath
+					if not oldpath:
+					update_pkgindex = True
+					else:
+					d.pop("PATH", None)
+					if oldpath:
+					update_pkgindex = True
+					self.dbapi.cpv_inject(mycpv)
+					continue
+				}
+			}
+			if not os.access(full_path, os.R_OK){
+				WriteMsg(fmt.Sprintf("!!! Permission denied to read binary package: '%s'\n", full_path), -1, nil)
+				b.invalids= append(b.invalids, myfile[:len(myfile)-5])
+				continue
+			}
+			pkg_metadata = b._read_metadata(full_path, s,
+				keys=chain(self.dbapi._aux_cache_keys,
+				("PF", "CATEGORY")))
+			mycat := pkg_metadata["CATEGORY"]
+			mypf := pkg_metadata["PF"]
+			slot := pkg_metadata["SLOT"]
+			mypkg := myfile[:-5]
+			if not mycat or not mypf or not slot{
+				writemsg(_("\n!!! Invalid binary package: '%s'\n") % full_path,
+					noiselevel=-1)
+				missing_keys = []
+				if not mycat:
+				missing_keys.append("CATEGORY")
+				if not mypf:
+				missing_keys.append("PF")
+				if not slot:
+				missing_keys.append("SLOT")
+				msg = []
+				if missing_keys:
+				missing_keys.sort()
+				msg.append(_("Missing metadata key(s): %s.") % \
+				", ".join(missing_keys))
+				msg.append(_(" This binary package is not " \
+				"recoverable and should be deleted."))
+				for line in textwrap.wrap("".join(msg), 72):
+				writemsg("!!! %s\n" % line, noiselevel=-1)
+				self.invalids.append(mypkg)
+				continue
+			}
 
-	# Validate data from the package index and try to avoid
-	# reading the xpak if possible.
-		possibilities = basename_index.get(myfile)
-	if possibilities:
-	match = None
-	for d in possibilities:
-try:
-	if long(d["_mtime_"]) != s[stat.ST_MTIME]:
-	continue
-	except (KeyError, ValueError):
-	continue
-try:
-	if long(d["SIZE"]) != long(s.st_size):
-	continue
-	except (KeyError, ValueError):
-	continue
-	if not minimum_keys.difference(d):
-	match = d
-	break
-	if match:
-	mycpv = match["CPV"]
-	instance_key = _instance_key(mycpv)
-	pkg_paths[instance_key] = mypath
-	oldpath = d.get("PATH")
-	if oldpath and oldpath != mypath:
-	update_pkgindex = True
-	if mypath != mycpv + ".tbz2":
-	d["PATH"] = mypath
-	if not oldpath:
-	update_pkgindex = True
-	else:
-	d.pop("PATH", None)
-	if oldpath:
-	update_pkgindex = True
-	self.dbapi.cpv_inject(mycpv)
-	continue
-	if not os.access(full_path, os.R_OK):
-	writemsg(_("!!! Permission denied to read " \
-	"binary package: '%s'\n") % full_path,
-	noiselevel=-1)
-	self.invalids.append(myfile[:-5])
-	continue
-	pkg_metadata = self._read_metadata(full_path, s,
-	keys=chain(self.dbapi._aux_cache_keys,
-	("PF", "CATEGORY")))
-	mycat = pkg_metadata.get("CATEGORY", "")
-	mypf = pkg_metadata.get("PF", "")
-	slot = pkg_metadata.get("SLOT", "")
-	mypkg = myfile[:-5]
-	if not mycat or not mypf or not slot:
-	writemsg(_("\n!!! Invalid binary package: '%s'\n") % full_path,
-	noiselevel=-1)
-	missing_keys = []
-	if not mycat:
-	missing_keys.append("CATEGORY")
-	if not mypf:
-	missing_keys.append("PF")
-	if not slot:
-	missing_keys.append("SLOT")
-	msg = []
-	if missing_keys:
-	missing_keys.sort()
-	msg.append(_("Missing metadata key(s): %s.") % \
-	", ".join(missing_keys))
-	msg.append(_(" This binary package is not " \
-	"recoverable and should be deleted."))
-	for line in textwrap.wrap("".join(msg), 72):
-	writemsg("!!! %s\n" % line, noiselevel=-1)
-	self.invalids.append(mypkg)
-	continue
+			multi_instance := false
+			invalid_name := false
+			build_id = None
+			if strings.HasSuffix(myfile, ".xpak"){
+				multi_instance = true
+				build_id = b._parse_build_id(myfile)
+				if build_id < 1:
+				invalid_name = True
+				elif myfile != "%s-%s.xpak" % (
+					mypf, build_id):
+				invalid_name = True
+				else:
+				mypkg = mypkg[:-len(str(build_id))-1]
+			}else if myfile != mypf + ".tbz2"{
+				invalid_name = True
+			}
 
-	multi_instance = False
-	invalid_name = False
-	build_id = None
-	if myfile.endswith(".xpak"):
-	multi_instance = True
-	build_id = self._parse_build_id(myfile)
-	if build_id < 1:
-	invalid_name = True
-	elif myfile != "%s-%s.xpak" % (
-	mypf, build_id):
-	invalid_name = True
-	else:
-	mypkg = mypkg[:-len(str(build_id))-1]
-	elif myfile != mypf + ".tbz2":
-	invalid_name = True
+			if invalid_name{
+				WriteMsg(fmt.Sprintf("\n!!! Binary package name is invalid: '%s'\n", full_path), -1,nil)
+				continue
+			}
 
-	if invalid_name:
-	writemsg(_("\n!!! Binary package name is "
-	"invalid: '%s'\n") % full_path,
-	noiselevel=-1)
-	continue
+			if pkg_metadata.get("BUILD_ID"){
+			try:
+				build_id = long(pkg_metadata["BUILD_ID"])
+				except ValueError:
+				WriteMsg(fmt.Sprintf("!!! Binary package has invalid BUILD_ID: '%s'\n",full_path), -1,nil)
+				continue
+			} else{
+				build_id = None
+			}
 
-	if pkg_metadata.get("BUILD_ID"):
-	try:
-	build_id = long(pkg_metadata["BUILD_ID"])
-	except ValueError:
-	writemsg(_("!!! Binary package has "
-	"invalid BUILD_ID: '%s'\n") %
-	full_path, noiselevel=-1)
-	continue
-	else:
-	build_id = None
+			if multi_instance{
+				name_split := catPkgSplit(mycat + "/"+ mypf,1, "")
+				if name_split == [4]string{} || catsplit(mydir)[0] != name_split[0]||catsplit(mydir)[1] != name_split[1]{
+					continue
+				}
+			}else if mycat != mydir && mydir != "All"{
+				continue
+			}
+			if mypkg != strings.TrimSpace(mypf) {
+				continue
+			}
+			mycpv := mycat + "/" + mypkg
+			if !b.dbapi._category_re.MatchString(mycat){
+				WriteMsg(fmt.Sprintf("!!! Binary package has an unrecognized category: '%s'\n", full_path), -1, nil)
+				WriteMsg(fmt.Sprintf("!!! '%s' has a category that is not listed in %setc/portage/categories\n", mycpv, b.settings.ValueDict["PORTAGE_CONFIGROOT"]), -1, nil)
+				continue
+			}
+			if build_id is not None:
+			pkg_metadata["BUILD_ID"] = _unicode(build_id)
+			pkg_metadata["SIZE"] = _unicode(s.st_size)
+			# Discard items used only for validation above.
+				pkg_metadata.pop("CATEGORY")
+			pkg_metadata.pop("PF")
+			mycpv = _pkg_str(mycpv,
+				metadata=self.dbapi._aux_cache_slot_dict(pkg_metadata),
+				db=self.dbapi)
+			pkg_paths[_instance_key(mycpv)] = mypath
+			self.dbapi.cpv_inject(mycpv)
+			update_pkgindex = True
+			d = metadata.get(_instance_key(mycpv),
+				pkgindex._pkg_slot_dict())
+			if d:
+		try:
+			if long(d["_mtime_"]) != s[stat.ST_MTIME]:
+			d.clear()
+			except (KeyError, ValueError):
+			d.clear()
+			if d:
+		try:
+			if long(d["SIZE"]) != long(s.st_size):
+			d.clear()
+			except (KeyError, ValueError):
+			d.clear()
 
-	if multi_instance:
-	name_split = catpkgsplit("%s/%s" %
-	(mycat, mypf))
-	if (name_split is None or
-	tuple(catsplit(mydir)) != name_split[:2]):
-	continue
-	elif mycat != mydir and mydir != "All":
-	continue
-	if mypkg != mypf.strip():
-	continue
-	mycpv = mycat + "/" + mypkg
-	if not self.dbapi._category_re.match(mycat):
-	writemsg(_("!!! Binary package has an " \
-	"unrecognized category: '%s'\n") % full_path,
-	noiselevel=-1)
-	writemsg(_("!!! '%s' has a category that is not" \
-	" listed in %setc/portage/categories\n") % \
-	(mycpv, self.settings["PORTAGE_CONFIGROOT"]),
-	noiselevel=-1)
-	continue
-	if build_id is not None:
-	pkg_metadata["BUILD_ID"] = _unicode(build_id)
-	pkg_metadata["SIZE"] = _unicode(s.st_size)
-	# Discard items used only for validation above.
-	pkg_metadata.pop("CATEGORY")
-	pkg_metadata.pop("PF")
-	mycpv = _pkg_str(mycpv,
-	metadata=self.dbapi._aux_cache_slot_dict(pkg_metadata),
-	db=self.dbapi)
-	pkg_paths[_instance_key(mycpv)] = mypath
-	self.dbapi.cpv_inject(mycpv)
-	update_pkgindex = True
-	d = metadata.get(_instance_key(mycpv),
-	pkgindex._pkg_slot_dict())
-	if d:
-	try:
-	if long(d["_mtime_"]) != s[stat.ST_MTIME]:
-	d.clear()
-	except (KeyError, ValueError):
-	d.clear()
-	if d:
-	try:
-	if long(d["SIZE"]) != long(s.st_size):
-	d.clear()
-	except (KeyError, ValueError):
-	d.clear()
+			for k in self._pkgindex_allowed_pkg_keys:
+			v = pkg_metadata.get(k)
+			if v:
+			d[k] = v
+			d["CPV"] = mycpv
 
-	for k in self._pkgindex_allowed_pkg_keys:
-	v = pkg_metadata.get(k)
-	if v:
-	d[k] = v
-	d["CPV"] = mycpv
+		try:
+			self._eval_use_flags(mycpv, d)
+			except portage.exception.InvalidDependString:
+			WriteMsg(fmt.Sprintf("!!! Invalid binary package: '%s'\n") % \
+			self.getname(mycpv), noiselevel=-1)
+			self.dbapi.cpv_remove(mycpv)
+			del pkg_paths[_instance_key(mycpv)]
 
-	try:
-	self._eval_use_flags(mycpv, d)
-	except portage.exception.InvalidDependString:
-	writemsg(_("!!! Invalid binary package: '%s'\n") % \
-	self.getname(mycpv), noiselevel=-1)
-	self.dbapi.cpv_remove(mycpv)
-	del pkg_paths[_instance_key(mycpv)]
+			# record location if it's non-default
+			if mypath != mycpv + ".tbz2":
+			d["PATH"] = mypath
+			else:
+			d.pop("PATH", None)
+			metadata[_instance_key(mycpv)] = d
+		}
+	}
 
-	# record location if it's non-default
-	if mypath != mycpv + ".tbz2":
-	d["PATH"] = mypath
-	else:
-	d.pop("PATH", None)
-	metadata[_instance_key(mycpv)] = d
+	if reindex{
+		for instance_key := range metadata{
+			if  _, ok := pkg_paths[instance_key];!ok{
+				delete(metadata,instance_key)
+			}
+		}
+	}
 
-	if reindex:
-	for instance_key in list(metadata):
-	if instance_key not in pkg_paths:
-	del metadata[instance_key]
+	if update_pkgindex{
+		pkgindex.packages = []
+		pkgindex.packages.extend(iter(metadata.values()))
+		b._update_pkgindex_header(pkgindex.header)
+	}
 
-	if update_pkgindex:
-	del pkgindex.packages[:]
-	pkgindex.packages.extend(iter(metadata.values()))
-	self._update_pkgindex_header(pkgindex.header)
+	b._pkgindex_header = {}
+	b._merge_pkgindex_header(pkgindex.header, b._pkgindex_header)
 
-	self._pkgindex_header = {}
-	self._merge_pkgindex_header(pkgindex.header,
-	self._pkgindex_header)
-
-	return pkgindex if update_pkgindex else None
+	 if update_pkgindex {
+		 return pkgindex
+	 }else {
+		 return nil
+	 }
 
 }
 
@@ -1875,7 +1885,13 @@ func (b *BinaryTree) _pkgindex_write() {}
 
 func (b *BinaryTree) _pkgindex_entry() {}
 
-func (b *BinaryTree) _new_pkgindex() {}
+func (b *BinaryTree) _new_pkgindex() *PackageIndex{
+	return NewPackageIndex(b._pkgindex_allowed_pkg_keys,
+		b._pkgindex_default_header_data,
+		b._pkgindex_default_pkg_data,
+		b._pkgindex_inherited_keys,
+		b._pkgindex_translated_keys)
+}
 
 func (b *BinaryTree) _merge_pkgindex_header() {}
 
@@ -1912,7 +1928,7 @@ func (b *BinaryTree) get_pkgindex_uri() {}
 
 func (b *BinaryTree) gettbz2() {}
 
-func (b *BinaryTree) LoadPkgIndex() interface{} { return nil }
+func (b *BinaryTree) LoadPkgIndex() *PackageIndex { return nil }
 
 func (b *BinaryTree) _get_digests() {}
 

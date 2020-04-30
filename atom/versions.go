@@ -351,7 +351,8 @@ var (
 	missingCat = "null"
 )
 
-func catPkgSplit(mydata string, silent int, eapi string) [4]string { // 1n
+// 1, ""
+func catPkgSplit(mydata string, silent int, eapi string) [4]string {
 	// return mydata.cpv_split // if can
 	mySplit := strings.SplitN(mydata, "/", 2)
 	var cat string
