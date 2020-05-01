@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 )
 
 //nil,1,nil
@@ -800,7 +801,7 @@ func (v *vardbapi) move_ent(mylist []*Atom, repo_match func(string)bool) int{
 	}
 	for _, mycpv := range origmatches{
 		mycpv = v._pkg_str(mycpv, "")
-		mycpv_cp := cpvGetKey(mycpv, "")
+		mycpv_cp := cpvGetKey(mycpv.string, "")
 		if mycpv_cp != origcp.value{
 			continue
 		}
@@ -814,7 +815,7 @@ func (v *vardbapi) move_ent(mylist []*Atom, repo_match func(string)bool) int{
 
 		mynewcpv := strings.Replace(mycpv.string, mycpv_cp, newcp.value, 1)
 		mynewcat := catsplit(newcp.value)[0]
-		origpath := v.getpath(mycpv,"")
+		origpath := v.getpath(mycpv.string,"")
 		if _, err := os.Stat(origpath); err != nil {
 			continue
 		}
@@ -1219,8 +1220,70 @@ type varTree struct {
 	dbapi     *vardbapi
 }
 
+func (v *varTree) root() string{
+	return v.settings.ValueDict["ROOT"]
+}
+
+// ""
+func (v *varTree) getpath(mykey, filname string) string {
+	return v.dbapi.getpath(mykey, filname)
+}
+
+func (v *varTree)zap() {}
+
+func (v *varTree)inject() {}
+
+func (v *varTree)getprovide() []string {
+	return []string{}
+}
+
 func (v *varTree) get_all_provides() map[string][]*pkgStr {
 	return map[string][]*pkgStr{}
+}
+
+// 1
+func (v *varTree)dep_bestmatch(mydep *Atom, use_cache int) string{
+	s := []string{}
+	for _, p := range v.dbapi.match(dep_expand(mydep, v.dbapi.dbapi,1, v.settings), use_cache){
+		s = append(s, p.string)
+	}
+	mymatch := best(s, "")
+	if mymatch == "" {
+		return ""
+	}else {
+		return mymatch
+	}
+}
+
+// 1
+func (v *varTree)dep_match (mydep *Atom, use_cache int)  []*pkgStr{
+	mymatch := v.dbapi.match(mydep, use_cache)
+	if mymatch == nil {
+		return []*pkgStr{}
+	}else {
+		return mymatch
+	}
+
+}
+
+func (v *varTree) exists_specific(cpv){
+	return v.dbapi.cpv_exists(cpv)
+}
+
+func (v *varTree) getallcpv(){
+	return v.dbapi.cpv_all()
+}
+
+func (v *varTree) getallnodes(){
+	return v.dbapi.cp_all()
+}
+
+func (v *varTree) getebuildpath(){}
+
+func (v *varTree) getslot(){}
+
+func (v *varTree)populate (){
+	v.populated = 1
 }
 
 func NewVarTree(categories map[string]bool, settings *Config) *varTree {
@@ -1229,6 +1292,8 @@ func NewVarTree(categories map[string]bool, settings *Config) *varTree {
 		settings = Settings()
 	}
 	v.settings = settings
+	v.dbapi = NewVarDbApi(settings, v)
+	v.populated = 1
 
 	return v
 }
@@ -1634,7 +1699,7 @@ func (b *BinaryTree) _populate_local(reindex bool) {
 		pkgindex = b._new_pkgindex()
 	}
 	metadata := map[string]map[string]string{}
-	basename_index := map[string]{}
+	basename_index := map[string][]map[string]string{}
 	for _, d := range pkgindex.packages{
 		cpv := NewPkgStr(d["CPV"], d, b.settings, "", "", "", 0, "", "", 0, b.dbapi.dbapi)
 		d["CPV"] = cpv.string
@@ -1646,7 +1711,9 @@ func (b *BinaryTree) _populate_local(reindex bool) {
 
 		if reindex{
 			basename := filepath.Base(path)
-			basename_index.setdefault(basename, []).append(d)
+			if _, ok := basename_index[basename]; !ok {
+				basename_index[basename] = []map[string]string{d}
+			}
 		} else{
 			instance_key := _instance_key(cpv, false)
 			pkg_paths[instance_key.string] = path

@@ -13,12 +13,14 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/noaway/dateparse"
+	"github.com/pkg/xattr"
 	"github.com/ppphp/configparser"
 	"github.com/ppphp/shlex"
 )
@@ -1238,11 +1240,11 @@ func httpToTimestamp(httpDatetimeString string) string {
 
 // nil, nil, nil, nil
 func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *Config, hardlink_candidates []string) int64 {
-	if mysettings == nil{
+	if mysettings == nil {
 		mysettings = Settings()
 	}
 
-	xattr_enabled :=mysettings.Features.Features[ "xattr"]
+	xattr_enabled := mysettings.Features.Features["xattr"]
 
 	selinux_enabled := mysettings.selinux_enabled()
 	//// TODO: selinux
@@ -1251,8 +1253,8 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 	//	_copyfile = selinux.copyfile
 	//	_rename = selinux.rename
 	//} else{
-	//	_copyfile = copyfile
-	//	_rename = _os.rename
+	_copyfile := copyfile
+	_rename := os.Rename
 	//}
 
 	if sstat == nil {
@@ -1265,7 +1267,7 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 	destexists := 1
 	dstat, err := os.Lstat(dest)
 	if err != nil {
-		dstat, _  = os.Lstat(filepath.Dir(dest))
+		dstat, _ = os.Lstat(filepath.Dir(dest))
 	}
 	destexists = 0
 
@@ -1280,7 +1282,7 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 	//	}
 	//}
 
-	if destexists != 0{
+	if destexists != 0 {
 		if dstat.Mode()&os.ModeSymlink != 0 {
 			if err := syscall.Unlink(dest); err == nil {
 				destexists = 0
@@ -1293,15 +1295,15 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 		}
 	}
 
-	if sstat.Mode()&os.ModeSymlink != 0{
+	if sstat.Mode()&os.ModeSymlink != 0 {
 		target, err := os.Readlink(src)
-		if err == nil{
-			if mysettings != nil{
+		if err == nil {
+			if mysettings != nil {
 				if _, ok := mysettings.ValueDict["D"]; ok && strings.HasPrefix(target, mysettings.ValueDict["D"]) {
 					target = target[len(mysettings.ValueDict["D"])-1:]
 				}
 			}
-			if destexists!= 0 && !dstat.IsDir(){
+			if destexists != 0 && !dstat.IsDir() {
 				err = syscall.Unlink(dest)
 			}
 		}
@@ -1310,7 +1312,7 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 			//if selinux_enabled{
 			//	selinux.symlink(target, dest, src)
 			//}else{
-				err1 = os.Symlink(target, dest)
+			err1 = os.Symlink(target, dest)
 			//}
 			if err != syscall.ENOENT && err != syscall.EEXIST {
 				err = err1
@@ -1318,14 +1320,14 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 				r, err2 := os.Readlink(dest)
 				if err2 != nil {
 					err = err2
-				} else if r != target{
+				} else if r != target {
 					err = err1
 				}
 			}
 		}
 		err = os.Lchown(dest, int(sstat.Sys().(*syscall.Stat_t).Uid), int(sstat.Sys().(*syscall.Stat_t).Gid))
 
-		if err == nil{
+		if err == nil {
 			if err := syscall.Unlink(src); err != nil {
 				//except OSError:
 				//pass
@@ -1335,7 +1337,7 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 		if err := syscall.Utime(dest, &syscall.Utimbuf{sstat.Sys().(*syscall.Stat_t).Mtim.Nsec, sstat.Sys().(*syscall.Stat_t).Mtim.Nsec}); err != nil { //follow_symlinks = False
 			//except NotImplementedError:
 			//return os.stat(dest, follow_symlinks = False).st_mtime_ns else:
-		} else{
+		} else {
 			return sstat.Sys().(*syscall.Stat_t).Mtim.Nsec
 		}
 		//return os.lstat(dest)[stat.ST_MTIME]
@@ -1343,148 +1345,272 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 			//except SystemExit as e:
 			//raise
 			//except Exception as e:
-			WriteMsg(fmt.Sprintf("!!! failed to properly create symlink:"), -1,nil)
-			WriteMsg(fmt.Sprintf("!!! %s -> %s\n" ,dest, target), -1,nil)
-			WriteMsg(fmt.Sprintf("!!! %s\n" ,err ), -1,nil)
+			WriteMsg(fmt.Sprintf("!!! failed to properly create symlink:"), -1, nil)
+			WriteMsg(fmt.Sprintf("!!! %s -> %s\n", dest, target), -1, nil)
+			WriteMsg(fmt.Sprintf("!!! %s\n", err), -1, nil)
 			return 0
 		}
 	}
 
-hardlinked := false
-if len(hardlink_candidates) > 0{
-	head, tail := filepath.Split(dest)
-	hardlink_tmp := filepath.Join(head, fmt.Sprintf(".%s._portage_merge_.%s" , tail, os.Getpid()))
+	hardlinked := false
+	if len(hardlink_candidates) > 0 {
+		head, tail := filepath.Split(dest)
+		hardlink_tmp := filepath.Join(head, fmt.Sprintf(".%s._portage_merge_.%s", tail, os.Getpid()))
 
-	if err := syscall.Unlink(hardlink_tmp); err != nil {
-		if err != syscall.ENOENT{
-			WriteMsg(fmt.Sprintf("!!! Failed to remove hardlink temp file: %s\n",hardlink_tmp ), -1,nil)
-			WriteMsg(fmt.Sprintf("!!! %s\n" ,err ), -1,nil)
-			return 0
-		}
-		//del e
-	}
-	for _, hardlink_src := range hardlink_candidates{
-		if err := os.Link(hardlink_src, hardlink_tmp); err != nil {
-			continue
-		}else {
-			if err := os.Rename(hardlink_tmp, dest); err != nil {
-				WriteMsg(fmt.Sprintf("!!! Failed to rename %s to %s\n",hardlink_tmp, dest), -1,nil)
-				WriteMsg(fmt.Sprintf("!!! %s\n" ,err ), -1,nil)
+		if err := syscall.Unlink(hardlink_tmp); err != nil {
+			if err != syscall.ENOENT {
+				WriteMsg(fmt.Sprintf("!!! Failed to remove hardlink temp file: %s\n", hardlink_tmp), -1, nil)
+				WriteMsg(fmt.Sprintf("!!! %s\n", err), -1, nil)
 				return 0
 			}
-			hardlinked = true
-			if err := syscall.Unlink(src); err != nil {
-				//pass
+			//del e
+		}
+		for _, hardlink_src := range hardlink_candidates {
+			if err := os.Link(hardlink_src, hardlink_tmp); err != nil {
+				continue
+			} else {
+				if err := os.Rename(hardlink_tmp, dest); err != nil {
+					WriteMsg(fmt.Sprintf("!!! Failed to rename %s to %s\n", hardlink_tmp, dest), -1, nil)
+					WriteMsg(fmt.Sprintf("!!! %s\n", err), -1, nil)
+					return 0
+				}
+				hardlinked = true
+				if err := syscall.Unlink(src); err != nil {
+					//pass
+				}
+				break
 			}
-			break
 		}
 	}
-}
 
-renamefailed := 1
-if hardlinked{
-	renamefailed = 0
-}
-if ! hardlinked && (selinux_enabled || sstat.Sys().(*syscall.Stat_t).Dev == dstat.Sys().(*syscall.Stat_t).Dev){
+	renamefailed := 1
+	if hardlinked {
+		renamefailed = 0
+	}
+	if !hardlinked && (selinux_enabled || sstat.Sys().(*syscall.Stat_t).Dev == dstat.Sys().(*syscall.Stat_t).Dev) {
 
 		var err error
 		// TODO: SELINUX
 		//if selinux_enabled{
 		//	selinux.rename(src, dest)
 		//}else {
-			err = os.Rename(src, dest)
+		err = os.Rename(src, dest)
 		//}
 		if err == nil {
 			renamefailed = 0
 		}
 		if err != nil {
-			if err != syscall.EXDEV{
-				WriteMsg(fmt.Sprintf("!!! Failed to move %s to %s\n",	src,dest),  -1, nil)
-				WriteMsg(fmt.Sprintf("!!! %s\n" ,err ), -1, nil)
+			if err != syscall.EXDEV {
+				WriteMsg(fmt.Sprintf("!!! Failed to move %s to %s\n", src, dest), -1, nil)
+				WriteMsg(fmt.Sprintf("!!! %s\n", err), -1, nil)
 				return 0
 			}
 		}
 	}
-if renamefailed != 0{
-	if stat.S_ISREG(sstat[stat.ST_MODE]){
-
-		dest_tmp = dest + "#new"
-		dest_tmp_bytes = _unicode_encode(dest_tmp, encoding =encoding,
-			errors = 'strict')
-	try:
-		_copyfile(src_bytes, dest_tmp_bytes)
-		_apply_stat(sstat, dest_tmp_bytes)
-		if xattr_enabled:
-	try:
-		_copyxattr(src_bytes, dest_tmp_bytes,
-			exclude = mysettings.get("PORTAGE_XATTR_EXCLUDE", ""))
-		except SystemExit:
-		raise
-	except:
-		msg = _("Failed to copy extended attributes. "
-		"In order to avoid this error, set "
-		"FEATURES=\"-xattr\" in make.conf.")
-		msg = textwrap.wrap(msg, 65)
-		for line in msg:
-		writemsg("!!! %s\n" % (line, ), noiselevel =-1)
-		raise
-		_rename(dest_tmp_bytes, dest_bytes)
-		_os.unlink(src_bytes)
-		except SystemExit as e:
-		raise
-		except Exception as e:
-		writemsg("!!! %s\n" % _('copy %(src)s -> %(dest)s failed.') %
-		{"src": src, "dest": dest}, noiselevel = -1)
-		writemsg("!!! %s\n" % (e, ), noiselevel = -1)
-		return None
-	} else{
-
-		a = spawn([]string{MOVE_BINARY, '-f', src, dest}, env = os.environ)
-		if a != os.EX_OK:
-		writemsg(_("!!! Failed to move special file:\n"), noiselevel = -1)
-		writemsg(_("!!! '%(src)s' to '%(dest)s'\n") % \
-		{"src": _unicode_decode(src, encoding = encoding),
-			"dest": _unicode_decode(dest, encoding = encoding)}, noiselevel = -1)
-		writemsg("!!! %s\n" % a, noiselevel = -1)
-		return None
+	if renamefailed != 0 {
+		if sstat.Mode()&0100000 != 0 {
+			dest_tmp := dest + "#new"
+			err := _copyfile(src, dest_tmp)
+			if err == nil {
+				err = _apply_stat(sstat, dest_tmp)
+			}
+			if err == nil {
+				if xattr_enabled {
+					if err := _copyxattr(src, dest_tmp, mysettings.ValueDict["PORTAGE_XATTR_EXCLUDE"]); err != nil {
+						//except SystemExit:
+						//raise
+						//except:
+						msg := "Failed to copy extended attributes. " +
+							"In order to avoid this error, set " +
+							"FEATURES=\"-xattr\" in make.conf."
+						for _, line := range TextWrap(msg, 65) {
+							WriteMsg(fmt.Sprintf("!!! %s\n", line), -1, nil)
+						}
+					}
+				}
+			}
+			if err == nil {
+				err = _rename(dest_tmp, dest)
+			}
+			if err == nil {
+				err = syscall.Unlink(src)
+			}
+			if err != nil {
+				//except SystemExit as e:
+				//raise
+				//except Exception as e:
+				//writemsg("!!! %s\n" % _('copy %(src)s -> %(dest)s failed.') %
+				//{"src": src, "dest": dest}, noiselevel = -1)
+				//writemsg("!!! %s\n" % (e, ), noiselevel = -1)
+				return 0
+			}
+		} else {
+			a, _ := spawn([]string{MoveBinary, "-f", src, dest}, ExpandEnv(), "", nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
+			if len(a) != 0 && a[0] != syscall.F_OK {
+				WriteMsg(fmt.Sprintf("!!! Failed to move special file:\n"), -1, nil)
+				WriteMsg(fmt.Sprintf("!!! '%s' to '%s'\n", src, dest), -1, nil)
+				WriteMsg(fmt.Sprintf("!!! %s\n", a), -1, nil)
+				return 0
+			}
+		}
 	}
-}
 
-var err error
-if hardlinked{
-st, err1 := os.stat(dest)
-if err1 == nil {
-	newmtime = st.Modtime().UnixNano()
-}
-err = err1
-}else{
-if newmtime != 0{
-	err = syscall.Utime(dest, &syscall.Utimbuf{newmtime, newmtime})
-}else{
-	newmtime = sstat[stat.ST_MTIME]
-	if renamefailed{
-		os.utime(dest, ns = (newmtime, newmtime))
+	if hardlinked {
+		st, err1 := os.Stat(dest)
+		if err1 == nil {
+			newmtime = st.ModTime().UnixNano()
+		}
+		err = err1
+	} else {
+		if newmtime != 0 {
+			err = syscall.Utime(dest, &syscall.Utimbuf{newmtime, newmtime})
+		} else {
+			newmtime = sstat.ModTime().UnixNano()
+			if renamefailed != 0 {
+				err = syscall.Utime(dest, &syscall.Utimbuf{newmtime, newmtime})
+			}
+		}
 	}
-}
-}
 	if err != nil {
 		st, err := os.Stat(dest)
 		if err == nil {
 			newmtime = st.ModTime().UnixNano()
 		} else {
-			WriteMsg(fmt.Sprintf("!!! Failed to stat in movefile()\n"),  -1, nil)
-			WriteMsg(fmt.Sprintf("!!! %s\n" , dest), -1, nil)
-			WriteMsg(fmt.Sprintf("!!! %s\n" , err), -1, nil)
+			WriteMsg(fmt.Sprintf("!!! Failed to stat in movefile()\n"), -1, nil)
+			WriteMsg(fmt.Sprintf("!!! %s\n", dest), -1, nil)
+			WriteMsg(fmt.Sprintf("!!! %s\n", err), -1, nil)
 			return 0
 		}
 	}
 
-// TODO: bsd
-//if bsd_chflags{
-//if pflags{
-//bsd_chflags.chflags(path.Dir(dest), pflags)
-//}
-//}
+	// TODO: bsd
+	//if bsd_chflags{
+	//if pflags{
+	//bsd_chflags.chflags(path.Dir(dest), pflags)
+	//}
+	//}
 
-return newmtime
+	return newmtime
+}
+
+func copyfile(src, dest string) error {
+	a, err := ioutil.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(dest, a, 0644)
+}
+
+func _apply_stat(src_stat os.FileInfo, dest string) error {
+	err := os.Chown(dest, int(src_stat.Sys().(*syscall.Stat_t).Uid), int(src_stat.Sys().(*syscall.Stat_t).Gid))
+	if err != nil {
+		return err
+	}
+	return os.Chmod(dest, os.FileMode(src_stat.Sys().(*syscall.Stat_t).Mode))
+}
+
+func TextWrap(s string, n int) []string {
+	sub := ""
+	subs := []string{}
+
+	runes := bytes.Runes([]byte(s))
+	l := len(runes)
+	for i, r := range runes {
+		sub = sub + string(r)
+		if (i+1)%n == 0 {
+			subs = append(subs, sub)
+			sub = ""
+		} else if (i + 1) == l {
+			subs = append(subs, sub)
+		}
+	}
+
+	return subs
+}
+
+var _xattr_excluder_cache = map[string]*_xattr_excluder{}
+
+func _get_xattr_excluder(pattern string) *_xattr_excluder {
+	value, ok := _xattr_excluder_cache[pattern]
+	if !ok {
+		value = New_xattr_excluder(pattern)
+		_xattr_excluder_cache[pattern] = value
+	}
+
+	return value
+}
+
+type _xattr_excluder struct {
+	_pattern_split []string
+}
+
+func New_xattr_excluder(pattern string) *_xattr_excluder {
+	x := &_xattr_excluder{}
+	if pattern == "" {
+		x._pattern_split = nil
+	} else {
+		patterns := strings.Fields(pattern)
+		if len(patterns) == 0 {
+			x._pattern_split = nil
+		} else {
+			sort.Strings(patterns)
+			x._pattern_split = patterns
+		}
+	}
+	return x
+}
+
+func (x *_xattr_excluder) __call__(attr string) bool {
+	if x._pattern_split == nil {
+		return false
+	}
+
+	for _, x := range x._pattern_split {
+		if m, _ := filepath.Match(attr, x); m {
+			return true
+		}
+	}
+
+	return false
+}
+
+// nil
+func _copyxattr(src, dest, excludeS string) error {
+	attrs, err := xattr.List(src)
+	if err != nil {
+		//if e.errno != OperationNotSupported.errno:
+		//raise
+		attrs = []string{}
+	}
+
+	var exclude *_xattr_excluder
+	if len(attrs) > 0 {
+		exclude = _get_xattr_excluder(excludeS)
+	}
+
+	for _, attr := range attrs {
+		if exclude.__call__(attr) {
+			continue
+		}
+		raise_exception := false
+		as, err := xattr.Get(src, attr)
+		if err == nil {
+			err = xattr.Set(dest, attr, as)
+			raise_exception = false
+		}
+		if err != nil {
+			//except(OSError, IOError):
+			raise_exception = true
+		}
+
+		if raise_exception {
+			//raise
+			//OperationNotSupported(_("Filesystem containing file '%s' "
+			//"does not support extended attribute '%s'") %
+			//(_unicode_decode(dest), _unicode_decode(attr)))
+
+			return fmt.Errorf("Filesystem containing file '%s' does not support extended attribute '%s'", dest, attr)
+		}
+	}
+	return nil
 }
