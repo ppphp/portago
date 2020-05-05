@@ -1100,7 +1100,8 @@ func (a *Atom) match(pkg *pkgStr) bool {
 	return len(matchFromList(a, []*pkgStr{pkg})) > 0
 }
 
-func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *bool, _use *useDep, eapi string, isValidFlag func(string) bool, allowBuildId *bool) (*Atom, error) { //s, nil, false, nil, nil, "", nil, nil
+//s, nil, false, nil, nil, "", nil, nil
+func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *bool, _use *useDep, eapi string, isValidFlag func(string) bool, allowBuildId *bool) (*Atom, error) {
 	a := &Atom{value: s, ispackage: true, soname: false}
 	eapiAttrs := getEapiAttrs(eapi)
 	atomRe := getAtomRe(eapiAttrs)

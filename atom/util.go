@@ -957,39 +957,39 @@ type slotObject struct {
 	weakRef string
 }
 
-func applyPermissions(filename string, uid, gid, mode, mask int, statCached os.FileInfo, followLinks bool) bool { // -1,-1,-1,-1,nil,true
+func applyPermissions(filename string, uid, gid, mode, mask uint32, statCached os.FileInfo, followLinks bool) bool { // -1,-1,-1,-1,nil,true
 	modified := false
 	if statCached == nil {
 		statCached, _ = doStat(filename, followLinks)
 	}
-	if (uid != -1 && uid != int(statCached.Sys().(*syscall.Stat_t).Uid)) || (gid != -1 && gid != int(statCached.Sys().(*syscall.Stat_t).Gid)) {
+	if (int(uid) != -1 && uid != statCached.Sys().(*syscall.Stat_t).Uid) || (int(gid) != -1 && gid != statCached.Sys().(*syscall.Stat_t).Gid) {
 		if followLinks {
-			syscall.Chown(filename, uid, gid)
+			os.Chown(filename, int(uid), int(gid))
 		} else {
-			os.Lchown(filename, uid, gid)
+			os.Lchown(filename, int(uid), int(gid))
 		}
 		modified = true
 	} // TODO check errno
-	newMode := -1
-	stMode := int(uint32(statCached.Mode()) & 07777)
+	newMode := uint32(0) // uint32(-1)
+	stMode := uint32(statCached.Mode()) & 07777
 	if mask >= 0 {
-		if mode == -1 {
+		if int(mode) == -1 {
 			mode = 0
 		} else {
 			mode = mode & 07777
 		}
-		if (stMode&mask != mode) || ((mask^int(uint32(stMode)))&stMode != stMode) {
-			newMode = mode | int(uint32(stMode))
+		if (stMode&mask != mode) || ((mask^stMode)&stMode != stMode) {
+			newMode = mode | stMode
 			newMode = (mask ^ newMode) & newMode
 		}
-	} else if mode != -1 {
+	} else if int(mode) != -1 {
 		mode = mode & 07777
-		if mode != int(uint32(stMode)) {
+		if mode != stMode {
 			newMode = mode
 		}
 	}
-	if modified && int(uint32(stMode)) == -1 && (int(uint32(stMode))&syscall.S_ISUID != 0 || int(uint32(stMode))&syscall.S_ISGID != 0) {
-		if mode == -1 {
+	if modified && int(stMode) == -1 && (int(stMode)&syscall.S_ISUID != 0 || int(stMode)&syscall.S_ISGID != 0) {
+		if int(mode) == -1 {
 			newMode = stMode
 		} else {
 			mode = mode & 0777
@@ -1004,20 +1004,143 @@ func applyPermissions(filename string, uid, gid, mode, mask int, statCached os.F
 	if !followLinks && statCached.Mode()&os.ModeSymlink != 0 {
 		newMode = -1
 	}
-	if newMode != -1 {
+	if int(newMode) != -1 {
 		os.Chmod(filename, os.FileMode(newMode))
 	}
 	return modified
 }
 
+// -1, nil, true
+func apply_stat_permissions(filename string, newstat os.FileInfo, mask uint32, stat_cached os.FileInfo, follow_links bool) bool {
+	st := newstat.Sys().(*syscall.Stat_t)
+	return apply_secpass_permissions(filename, st.Uid, st.Gid, st.Mode, mask, stat_cached, follow_links)
+}
+
+// -1, -1, -1, -1, nil, true
+func apply_secpass_permissions(filename string, uid, gid, mode, mask uint32, stat_cached os.FileInfo, follow_links bool) bool {
+
+	if stat_cached == nil {
+		stat_cached, _ = doStat(filename, follow_links)
+	}
+
+	all_applied := true
+
+	if (int(uid) != -1 || int(gid) != -1) && secpass != nil && *secpass < 2 {
+		if int(uid) != -1 && uid != stat_cached.Sys().(*syscall.Stat_t).Uid {
+			all_applied = false
+			uid = -1
+		}
+		gs, _ := os.Getgroups()
+		in := false
+		for _, g := range gs {
+			if g == int(gid) {
+				in = true
+				break
+			}
+		}
+		if int(uid) != -1 && gid != stat_cached.Sys().(*syscall.Stat_t).Gid && !in {
+			all_applied = false
+			gid = -1
+		}
+	}
+
+	applyPermissions(filename, uid, gid, mode, mask,
+		stat_cached, follow_links)
+	return all_applied
+}
+
+type atomic_ofstream struct {
+	_aborted   bool
+	_real_name string
+	_file      *os.File
+}
+
+func (a *atomic_ofstream) _get_target() *os.File {
+	return a._file
+}
+
+func (a *atomic_ofstream) write(s string) {
+	f := a._file
+	f.Write([]byte(s))
+}
+
+func (a *atomic_ofstream) close() {
+	f := a._file
+	real_name := a._real_name
+	f.Close()
+	if !a._aborted {
+		st, _ := os.Stat(real_name)
+		apply_stat_permissions(f.Name(), st, -1, nil, true)
+		os.Rename(f.Name(), real_name)
+	}
+	syscall.Unlink(f.Name())
+
+}
+
+func (a *atomic_ofstream) abort() {
+	if !a._aborted {
+		a._aborted = true
+		a.close()
+	}
+}
+
+func (a *atomic_ofstream) __del__() {}
+
+// "w", true
+func NewAtomic_ofstream(filename string, mode int, follow_links bool) *atomic_ofstream {
+	a := &atomic_ofstream{}
+
+	if follow_links {
+		canonical_path, _ := filepath.EvalSymlinks(filename)
+		a._real_name = canonical_path
+		tmp_name := fmt.Sprintf("%s.%i", canonical_path, os.Getpid())
+		var err error
+		a._file, err = os.OpenFile(tmp_name, mode, 0644)
+		if err == nil {
+			return a
+		}
+		if err != nil {
+			if canonical_path == filename {
+				//raise
+			}
+		}
+	}
+	a._real_name = filename
+	tmp_name := fmt.Sprintf("%s.%i", filename, os.Getpid())
+
+	a._file, _ = os.OpenFile(tmp_name, mode, 0644)
+	return a
+}
+
+// 0 (i dont know), true
+func write_atomic(file_path, content string, mode int, follow_links bool) {
+	f := NewAtomic_ofstream(file_path, mode, follow_links)
+	f.write(content)
+	f.close()
+	//except (IOError, OSError) as e:
+	//if f:
+	//f.abort()
+	//func_call = "write_atomic('%s')" % file_path
+	//if e.errno == errno.EPERM:
+	//raise OperationNotPermitted(func_call)
+	//elif e.errno == errno.EACCES:
+	//raise PermissionDenied(func_call)
+	//elif e.errno == errno.EROFS:
+	//raise ReadOnlyFileSystem(func_call)
+	//elif e.errno == errno.ENOENT:
+	//raise FileNotFound(file_path)
+	//else:
+	//raise
+}
+
 // -1,-1,-1,-1,nil,true
-func ensureDirs(dirpath string, uid, gid, mode, mask int, statCached os.FileInfo, followLinks bool) bool {
+func ensureDirs(dirpath string, uid, gid, mode, mask uint32, statCached os.FileInfo, followLinks bool) bool {
 	createdDir := false
 	if err := os.MkdirAll(dirpath, 0755); err == nil {
 		createdDir = true
 	} // TODO check errno
 	permsModified := false
-	if uid != -1 || gid != -1 || mode != -1 || mask != -1 || statCached != nil || followLinks {
+	if int(uid) != -1 || int(gid) != -1 || int(mode) != -1 || int(mask) != -1 || statCached != nil || followLinks {
 		permsModified = applyPermissions(dirpath, uid, gid, mode, mask, statCached, followLinks)
 	} else {
 		permsModified = false

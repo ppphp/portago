@@ -77,7 +77,7 @@ func lockdir(mydir string, flags int) (string, int, bool, func(int, int) error, 
 }
 
 func unlockdir(mylock string) bool {
-	return unlockfile(mylock, 0, false, nil)
+	return Unlockfile(mylock, 0, false, nil)
 }
 
 // false, false, "", 0
@@ -322,7 +322,7 @@ func _fstat_nlink(fd int) (int, error) {
 	}
 }
 
-func unlockfile(lockfilename string, myfd int, unlinkfile bool, locking_method func(int, int) error) bool {
+func Unlockfile(lockfilename string, myfd int, unlinkfile bool, locking_method func(int, int) error) bool {
 
 	if myfd == HARDLINK_FD {
 		unhardlink_lockfile(lockfilename, unlinkfile)

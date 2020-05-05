@@ -682,7 +682,7 @@ func (v *vardbapi) _fs_unlock() {
 		if v._fs_lock_obj == nil {
 			panic("not locked")
 		}
-		unlockfile(v._fs_lock_obj.string, v._fs_lock_obj.int, v._fs_lock_obj.bool, v._fs_lock_obj.method)
+		Unlockfile(v._fs_lock_obj.string, v._fs_lock_obj.int, v._fs_lock_obj.bool, v._fs_lock_obj.method)
 		v._fs_lock_obj = nil
 	}
 	v._fs_lock_count -= 1
@@ -721,7 +721,7 @@ func (v *vardbapi) _slot_unlock(slot_atom *Atom) {
 	}
 	counter -= 1
 	if counter == 0 {
-		unlockfile(lock.string, lock.int, lock.bool, lock.method)
+		Unlockfile(lock.string, lock.int, lock.bool, lock.method)
 		delete(v._slot_locks, slot_atom)
 	} else {
 		v._slot_locks[slot_atom] = &struct {
@@ -769,7 +769,7 @@ func (v *vardbapi) cpv_counter(mycpv *pkgStr) int {
 func (v *vardbapi) cpv_inject(mycpv *pkgStr) {
 	ensureDirs(v.getpath(mycpv.string, ""),  -1,-1,-1,-1,nil,true)
 	counter := v.counter_tick(mycpv)
-	write_atomic(v.getpath(mycpv.string, "COUNTER"), string(counter))
+	write_atomic(v.getpath(mycpv.string, "COUNTER"), string(counter), 0 ,true)
 }
 
 func (v *vardbapi) isInjected(mycpv string)bool {
@@ -831,18 +831,20 @@ func (v *vardbapi) move_ent(mylist []*Atom, repo_match func(string)bool) int{
 		v._clear_pkg_cache(v._dblink(mycpv))
 		v._clear_pkg_cache(v._dblink(mynewcpv))
 
-			old_pf = catsplit(mycpv)[1]
-		new_pf = catsplit(mynewcpv)[1]
-		if new_pf != old_pf:
-	try:
-		os.rename(os.path.join(newpath, old_pf + ".ebuild"),
-			os.path.join(newpath, new_pf + ".ebuild"))
-		except EnvironmentError as e:
-		if e.errno != errno.ENOENT:
-		raise
-		del e
-		write_atomic(path.Join(newpath, "PF"), new_pf+"\n")
-		write_atomic(path.Join(newpath, "CATEGORY"), mynewcat+"\n")
+			old_pf := catsplit(mycpv.string)[1]
+		new_pf := catsplit(mynewcpv)[1]
+		if new_pf != old_pf{
+			err := os.Rename(path.Join(newpath, old_pf + ".ebuild"),
+				path.Join(newpath, new_pf + ".ebuild"))
+			if err != nil {
+				if err != syscall.ENOENT {
+					//raise
+				}
+				//del e
+			}
+		}
+		write_atomic(path.Join(newpath, "PF"), new_pf+"\n", 0, true)
+		write_atomic(path.Join(newpath, "CATEGORY"), mynewcat+"\n", 0, true)
 	}
 	return moves
 }
@@ -955,12 +957,17 @@ func (v *vardbapi) findname(mycpv string) string {
 
 func (v *vardbapi) flush_cache() {}
 
-func (v *vardbapi) _aux_cache() {}
+func (v *vardbapi) _aux_cache() interface{} {
+	if v._aux_cache_obj == nil {
+		v._aux_cache_init()
+	}
+	return v._aux_cache_obj
+}
 
 func (v *vardbapi) _aux_cache_init() {}
 
 // nil
-func (v *vardbapi) aux_get(mycpv string, wants map[string] bool, myrepo = None) {
+func (v *vardbapi) aux_get(mycpv string, wants map[string] bool, myrepo = None) []string{
 	cache_these_wants := map[string]bool{}
 	for k := range v._aux_cache_keys {
 		if wants[k] {
@@ -974,7 +981,7 @@ func (v *vardbapi) aux_get(mycpv string, wants map[string] bool, myrepo = None) 
 	}
 
 	if len(cache_these_wants)==0{
-		mydata := v._aux_get(mycpv, wants)
+		mydata := v._aux_get(mycpv, wants, nil)
 		ret := []string{		}
 		for x := range wants{
 			ret = append(ret, mydata[x])
@@ -991,131 +998,151 @@ func (v *vardbapi) aux_get(mycpv string, wants map[string] bool, myrepo = None) 
 	}
 
 	mydir := v.getpath(mycpv, "")
-	mydir_stat = None
-	try:
-	mydir_stat = os.stat(mydir)
-	except OSError as e:
-	if e.errno != errno.ENOENT:
-	raise
-	raise KeyError(mycpv)
-	# Use float mtime when available.
-	mydir_mtime = mydir_stat.st_mtime
-	pkg_data = self._aux_cache["packages"].get(mycpv)
-	pull_me = cache_these.union(wants)
-	mydata = {"_mtime_" : mydir_mtime}
-	cache_valid = False
-	cache_incomplete = False
+	mydir_stat, err := os.Stat(mydir)
+	if err != nil {
+		//except OSError as e:
+		if err != syscall.ENOENT {
+			//raise
+		}
+		//raise KeyError(mycpv)
+	}
+	mydir_mtime := mydir_stat.ModTime().UnixNano()
+	pkg_data := v._aux_cache["packages"][mycpv]
+	pull_me := map[string]bool{}
+	for k := range cache_these{
+		pull_me[k]=true
+	}
+	for k := range wants{
+		pull_me [k] = true
+	}
+	mydata := map[string]{"_mtime_" : mydir_mtime}
+	cache_valid := false
+	cache_incomplete := false
 	cache_mtime = None
 	metadata = None
-	if pkg_data is not None:
-	if not isinstance(pkg_data, tuple) or len(pkg_data) != 2:
-	pkg_data = None
-	else:
-	cache_mtime, metadata = pkg_data
-	if not isinstance(cache_mtime, (float, long, int)) or \
-	not isinstance(metadata, dict):
-	pkg_data = None
+	if pkg_data != nil {
+		if len(pkg_data) != 2{
+			pkg_data = nil
+		} else{
+			cache_mtime, metadata := pkg_data[0], pkg_data[1]
+			if not isinstance(cache_mtime, (float, long, int)) or \
+			not isinstance(metadata, dict):
+			pkg_data = None
+		}
+	}
 
-	if pkg_data:
-	cache_mtime, metadata = pkg_data
-	if isinstance(cache_mtime, float):
-	if cache_mtime == mydir_stat.st_mtime:
-	cache_valid = True
+	if pkg_data{
+		cache_mtime, metadata = pkg_data
+		if isinstance(cache_mtime, float):
+		if cache_mtime == mydir_stat.st_mtime:
+		cache_valid = True
 
-	# Handle truncated mtime in order to avoid cache
-	# invalidation for livecd squashfs (bug 564222).
-	elif long(cache_mtime) == mydir_stat.st_mtime:
-	cache_valid = True
-	else:
-	# Cache may contain integer mtime.
-	cache_valid = cache_mtime == mydir_stat[stat.ST_MTIME]
+		elif long(cache_mtime) == mydir_stat.st_mtime:
+		cache_valid = True
+		else:
+			cache_valid = cache_mtime == mydir_stat[stat.ST_MTIME]
+	}
+	if cache_valid{
+		for k,v := range metadata {
+			mydata[k] = v
+		}
+		pull_me.difference_update(mydata)
+	}
 
-	if cache_valid:
-	# Migrate old metadata to unicode.
-	for k, v in metadata.items():
-	metadata[k] = _unicode_decode(v,
-	encoding=_encodings['repo.content'], errors='replace')
+	if len(pull_me) > 0 {
+		aux_keys := CopyMapSB(pull_me)
+		for k,v := range v._aux_get(mycpv, aux_keys, mydir_stat){
+			mydata[k]=v
+		}
+		if ! cache_valid || cache_these.difference(metadata){
+			cache_data := map[string]string{}
+			if cache_valid && metadata{
+				for k,v := range metadata{
+					cache_data[k]=v
+				}
+			}
+			for aux_key :=range  cache_these{
+				cache_data[aux_key] = mydata[aux_key]
+			}
+			v._aux_cache["packages"][_unicode(mycpv)] = (mydir_mtime, cache_data)
+			v._aux_cache["modified"].add(mycpv)
+		}
+	}
 
-	mydata.update(metadata)
-	pull_me.difference_update(mydata)
+	eapi_attrs := getEapiAttrs(mydata["EAPI"])
+	if !getSlotRe(eapi_attrs).MatchString(mydata["SLOT"]) {
+		mydata["SLOT"] = "0"
+	}
 
-	if pull_me:
-	# pull any needed data and cache it
-	aux_keys = list(pull_me)
-	mydata.update(self._aux_get(mycpv, aux_keys, st=mydir_stat))
-	if not cache_valid or cache_these.difference(metadata):
-	cache_data = {}
-	if cache_valid and metadata:
-	cache_data.update(metadata)
-	for aux_key in cache_these:
-	cache_data[aux_key] = mydata[aux_key]
-	self._aux_cache["packages"][_unicode(mycpv)] = \
-	(mydir_mtime, cache_data)
-	self._aux_cache["modified"].add(mycpv)
+	ret := []string{}
+	for x := range wants {
+		ret = append(ret, mydata[x])
+	}
 
-	eapi_attrs = _get_eapi_attrs(mydata['EAPI'])
-	if _get_slot_re(eapi_attrs).match(mydata['SLOT']) is None:
-	# Empty or invalid slot triggers InvalidAtom exceptions when
-	# generating slot atoms for packages, so translate it to '0' here.
-	mydata['SLOT'] = '0'
-
-	return [mydata[x] for x in wants]
+	return ret
 }
 
 // nil
-func (v *vardbapi) _aux_get(mycpv, wants, st=None) {
-	mydir = self.getpath(mycpv)
-	if st is None:
-try:
-	st = os.stat(mydir)
-	except OSError as e:
-	if e.errno == errno.ENOENT:
-	raise KeyError(mycpv)
-	elif e.errno == PermissionDenied.errno:
-	raise PermissionDenied(mydir)
-	else:
-	raise
-	if not stat.S_ISDIR(st.st_mode):
-	raise KeyError(mycpv)
-	results = {}
-	env_keys = []
-	for x in wants:
-	if x == "_mtime_":
-	results[x] = st[stat.ST_MTIME]
-	continue
-try:
-	with io.open(
-		_unicode_encode(os.path.join(mydir, x),
-			encoding=_encodings['fs'], errors='strict'),
-	mode='r', encoding=_encodings['repo.content'],
-		errors='replace') as f:
-	myd = f.read()
-	except IOError:
-	if x not in self._aux_cache_keys and \
-	self._aux_cache_keys_re.match(x) is None:
-	env_keys.append(x)
-	continue
-	myd = ''
+func (v *vardbapi) _aux_get(mycpv string, wants map[string]bool, st os.FileInfo) map[string]string{
+	mydir := v.getpath(mycpv, "")
+	if st == nil {
+	var err error
+		st, err = os.Stat(mydir)
+		if err != nil {
+			//except OSError as e:
+			if err == syscall.ENOENT{
+				//raise KeyError(mycpv)
+			}
+			//elif e.errno == PermissionDenied.errno:
+			//raise PermissionDenied(mydir)
+			//else:
+			//raise
+		}
+	}
+	if ! st.IsDir() {
+		//raise KeyError(mycpv)
+	}
+	results := map[string]string{}
+	env_keys := []string{}
+	for x := range wants{
+		if x == "_mtime_"{
+			results[x] = fmt.Sprint(st.ModTime().UnixNano())
+			continue
+		}
+		myd, err := ioutil.ReadFile(path.Join(mydir, x))
+		if err != nil {
+			//except IOError:
+			if ! v._aux_cache_keys[x] && !v._aux_cache_keys_re.MatchString(x){
+				env_keys = append(env_keys, x)
+				continue
+			}
+			myd = []byte("")
+		}
 
-	# Preserve \n for metadata that is known to
-	# contain multiple lines.
-	if self._aux_multi_line_re.match(x) is None:
-	myd = " ".join(myd.split())
+		if ! v._aux_multi_line_re.MatchString(x) {
+			myd = []byte(strings.Join(strings.Fields(string(myd))," "))
+		}
 
-	results[x] = myd
+		results[x] = string(myd)
+	}
 
-	if env_keys:
-	env_results = self._aux_env_search(mycpv, env_keys)
-	for k in env_keys:
-	v = env_results.get(k)
-	if v is None:
-	v = ''
-	if self._aux_multi_line_re.match(k) is None:
-	v = " ".join(v.split())
-	results[k] = v
+	if len(env_keys) > 0 {
+		env_results := v._aux_env_search(mycpv, env_keys)
+		for _, k := range env_keys{
+			va := env_results[k]
+			if va == "" {
+				va = ""
+			}
+			if !v._aux_multi_line_re.MatchString(k) {
+				va = strings.Join(strings.Fields(va)," ")
+			}
+			results[k] = va
+		}
+	}
 
-	if results.get("EAPI") == "":
-	results["EAPI"] = '0'
+	if results["EAPI"] == "" {
+		results["EAPI"] = "0"
+	}
 
 	return results
 }
@@ -1124,11 +1151,71 @@ func (v *vardbapi) _aux_env_search() {}
 
 func (v *vardbapi) aux_update() {}
 
-func (v *vardbapi) counter_tick() {}
+func (v *vardbapi) counter_tick() int {
+	return v.counter_tick_core(1)
+}
 
-func (v *vardbapi) get_counter_tick_core() {}
+// ignored, ignored
+func (v *vardbapi) get_counter_tick_core() int{
 
-func (v *vardbapi) counter_tick_core() {}
+	counter := -1
+	c, err := ioutil.ReadFile(v._counter_path)
+	if err == nil {
+		lines := strings.Split(string(c), "\n")
+		var err2 error
+		if len(lines) ==0 {
+			err2=fmt.Errorf("no line")
+		}else {
+			counter, err2 = strconv.Atoi(lines[0])
+		}
+		if err2 != nil {
+			//except (OverflowError, ValueError) as e:
+			WriteMsg(fmt.Sprintf("!!! COUNTER file is corrupt: '%s'\n", v._counter_path), -1, nil)
+			WriteMsg(fmt.Sprintf("!!! %s\n", err2), -1, nil)
+		}
+	}
+	if err != nil {
+		//except EnvironmentError as e:
+		if err != syscall.ENOENT{
+			WriteMsg(fmt.Sprintf("!!! Unable to read COUNTER file: '%s'\n",v._counter_path), -1, nil)
+			WriteMsg(fmt.Sprintf("!!! %s\n" ,err),-1, nil)
+		}
+	}
+
+
+	max_counter := counter
+	if v._cached_counter != counter {
+		for _, cpv := range v.cpv_all() {
+		try:
+			pkg_counter = int(v.aux_get(cpv, ["COUNTER"])[0])
+			except(KeyError, OverflowError, ValueError):
+			continue
+			if pkg_counter > max_counter:
+			max_counter = pkg_counter
+		}
+	}
+
+	return max_counter + 1
+
+}
+
+// ignnored, 1, ignored
+func (v *vardbapi) counter_tick_core(incrementing int) int{
+	v.lock()
+	counter := v.get_counter_tick_core() - 1
+	if incrementing != 0 {
+		counter += 1
+		// try:
+		write_atomic(v._counter_path, fmt.Sprint(counter), 0, true)
+		//except InvalidLocation:
+		//self.settings._init_dirs()
+		//write_atomic(self._counter_path, str(counter))
+	}
+	v._cached_counter = counter
+	v.flush_cache()
+	v.unlock()
+	return counter
+}
 
 func (v *vardbapi) _dblink() {}
 
@@ -1298,13 +1385,238 @@ func NewVarTree(categories map[string]bool, settings *Config) *varTree {
 	return v
 }
 
+type dblink struct {
+	_ignored_rmdir_errnos  , _ignored_unlink_errnos                                                         []error
+	_infodir_cleanup       map[string]bool
+	_contents_re  , _normalize_needed         *regexp.Regexp
+
+	_eroot, cat, pkg, treetype, dbroot, dbcatdir, dbtmpdir, dbpkgdir, dbdir, myroot string
+	mycpv                                                                           *pkgStr
+	mysplit                                                                         []string
+	vartree                                                                         *varTree
+	settings                                                                        *Config
+	_verbose, _linkmap_broken, _postinst_failure, _preserve_libs                    bool
+}
+
+func (d*dblink) __hash__() {}
+
+func (d*dblink) __eq__() {}
+
+func (d*dblink) _get_protect_obj() {}
+
+func (d*dblink) isprotected() {}
+
+func (d*dblink) updateprotect() {}
+
+func (d*dblink) lockdb() {}
+
+func (d*dblink) unlockdb() {}
+
+func (d*dblink) _slot_locked() {}
+
+func (d*dblink) _acquire_slot_locks() {}
+
+func (d*dblink) _release_slot_locks() {}
+
+func (d*dblink) getpath() string{
+	return d.dbdir
+}
+
+func (d*dblink) exists() bool{
+	_, err := os.Stat(d.dbdir)
+	if err  == nil {
+		return true
+	} else {
+		return false
+	}
+}
+
+func (d*dblink) delete() {}
+
+func (d*dblink) clearcontents() {}
+
+func (d*dblink) _clear_contents_cache() {
+	d.contentscache = None
+	d._contents_inodes = None
+	d._contents_basenames = None
+	d._contents.clear_cache()
+}
+
+func (d*dblink) getcontents() {}
+
+func (d*dblink) quickpkg() {}
+
+func (d*dblink) _prune_plib_registry() {}
+
+// @_slot_locked
+
+func (d*dblink) unmerge(pkgfiles=None, trimworld=None, cleanup=True,
+	ldpath_mtimes=None, others_in_slot=None, needed=None,
+	preserve_paths=None) {}
+
+func (d*dblink) _display_merge() {}
+
+func (d*dblink) _show_unmerge() {}
+
+func (d*dblink) _unmerge_pkgfiles() {}
+
+func (d*dblink) _unmerge_protected_symlinks() {}
+
+func (d*dblink) _unmerge_dirs() {}
+
+func (d*dblink) isowner() {}
+
+func (d*dblink) _match_contents() {}
+
+func (d*dblink) _linkmap_rebuild() {}
+
+func (d*dblink) _find_libs_to_preserve() {}
+
+func (d*dblink) _add_preserve_libs_to_contents() {}
+
+func (d*dblink) _find_unused_preserved_libs() {}
+
+func (d*dblink) _remove_preserved_libs() {}
+
+func (d*dblink) _collision_protect() {}
+
+func (d*dblink) _lstat_inode_map() {}
+
+func (d*dblink) _security_check() {}
+
+func (d*dblink) _eqawarn() {}
+
+func (d*dblink) _eerror() {}
+
+func (d*dblink) _elog() {}
+
+func (d*dblink) _elog_process() {}
+
+func (d*dblink) _emerge_log() {}
+
+func (d*dblink) treewalk() {}
+
+func (d*dblink) _new_backup_path() {}
+
+func (d*dblink) _merge_contents() {}
+
+func (d*dblink) mergeme() {}
+
+func (d*dblink) _protect() {}
+
+func (d*dblink)_merged_path () {}
+
+func (d*dblink) _post_merge_sync() {}
+
+func (d*dblink) merge() {}
+
+func (d*dblink) getstring() {}
+
+func (d*dblink) copyfile() {}
+
+func (d*dblink) getfile() {}
+
+func (d*dblink) setfile() {}
+
+func (d*dblink) getelements() {}
+
+func (d*dblink) setelements() {}
+
+func (d*dblink) isregular() {}
+
+func (d*dblink) _pre_merge_backup() {}
+
+func (d*dblink) _pre_unmerge_backup() {}
+
+func (d*dblink) _quickpkg_dblink() {}
+
+// "", nil, "", nil, nil, nil, nil
+func NewDblink(cat, pkg, myroot string, settings *Config, treetype string,
+	vartree *varTree, blockers=None, scheduler=None, pipe=None)*dblink{
+	d := &dblink{}
+
+
+	d._normalize_needed = regexp.MustCompile("//|^[^/]|./$|(^|/)\\.\\.?(/|$)")
+
+	d._contents_re = regexp.MustCompile("^((?P<dir>(dev|dir|fif) (.+))|(?P<obj>(obj) (.+) (\\S+) (\\d+))|(?P<sym>(sym) (.+) -> (.+) ((\\d+)|(?P<oldsym>(\\(\\d+, \\d+L, \\d+L, \\d+, \\d+, \\d+, \\d+L, \\d+, (\\d+), \\d+\\))))))$")
+
+d._infodir_cleanup = map[string]bool{"dir":true, "dir.old":true}
+
+	d._ignored_unlink_errnos = []error{
+	syscall.EBUSY, syscall.ENOENT,
+	syscall.ENOTDIR, syscall.EISDIR}
+
+	d._ignored_rmdir_errnos = []error{
+	syscall.EEXIST, syscall.ENOTEMPTY,
+	syscall.EBUSY, syscall.ENOENT,
+	syscall.ENOTDIR, syscall.EISDIR,
+	syscall.EPERM}
+
+	if settings == nil {
+		//raise TypeError("settings argument is required")
+	}
+
+	mysettings := settings
+	d._eroot = mysettings.ValueDict["EROOT"]
+	d.cat = cat
+	d.pkg = pkg
+	mycpv := d.cat + "/" + d.pkg
+	//if d.mycpv == settings.mycpv &&	isinstance(settings.mycpv, _pkg_str):
+	//d.mycpv = settings.mycpv
+	//else:
+	d.mycpv = NewPkgStr(mycpv,nil, nil, "", "", "", 0, "", "", 0, nil)
+	d.mysplit = d.mycpv.cpvSplit[1:]
+	d.mysplit[0] = d.mycpv.cp
+	d.treetype = treetype
+	if vartree == nil{
+		vartree = Db().valueDict[d._eroot].VarTree()
+	}
+	d.vartree = vartree
+	d._blockers = blockers
+	d._scheduler = scheduler
+	d.dbroot = NormalizePath(filepath.Join(d._eroot, VdbPath))
+	d.dbcatdir = d.dbroot+"/"+cat
+	d.dbpkgdir = d.dbcatdir+"/"+pkg
+	d.dbtmpdir = d.dbcatdir+"/"+MergingIdentifier+pkg
+	d.dbdir = d.dbpkgdir
+	d.settings = mysettings
+	d._verbose = d.settings.ValueDict["PORTAGE_VERBOSE"] == "1"
+
+	d.myroot = d.settings.ValueDict["ROOT"]
+	d._installed_instance = None
+	d.contentscache = None
+	d._contents_inodes = None
+	d._contents_basenames = None
+	d._linkmap_broken = false
+	d._device_path_map = {}
+	d._hardlink_merge_map = {}
+	d._hash_key = (d._eroot, d.mycpv)
+	d._protect_obj = None
+	d._pipe = pipe
+	d._postinst_failure = false
+
+	d._preserve_libs =  mysettings.Features.Features["preserve-libs"]
+	d._contents = ContentsCaseSensitivityManager(d)
+	d._slot_locks = []
+
+	return d
+}
+
+func merge(){}
+
+func unmerge(){}
+
+func write_contents(){}
+
+func tar_contents(){}
+
 type fakedbapi struct {
 	*dbapi
 	_exclusive_slots bool
 	cpvdict          map[string]map[string]string
 	cpdict           map[string][]*pkgStr
 	_match_cache     map[[2]string][]*pkgStr
-	_instance_key    func(cpv *pkgStr, support_string bool) *pkgStr
+	_instance_key    func(*pkgStr, bool) *pkgStr
 	_multi_instance  bool
 }
 
@@ -1620,8 +1932,8 @@ func (b *BinaryTree) _ensure_dir() {}
 
 func (b *BinaryTree) _file_permissions() {}
 
-// true, []string{}
-func (b *BinaryTree) Populate(getbinpkg_refresh bool, add_repos []string) {
+// false, true, []string{}
+func (b *BinaryTree) Populate(getbinpkgs, getbinpkg_refresh bool, add_repos []string) {
 	if b._populating{
 		return
 	}
@@ -1633,37 +1945,41 @@ func (b *BinaryTree) Populate(getbinpkg_refresh bool, add_repos []string) {
 
 	b._populating = true
 	defer func() {b._populating = false}()
-	update_pkgindex := b._populate_local(
-		reindex='pkgdir-index-trusted' not in self.settings.features)
+	update_pkgindex := b._populate_local(!b.settings.Features.Features["pkgdir-index-trusted"])
 
-	if update_pkgindex and self.dbapi.writable:
-	pkgindex_lock = None
+	if update_pkgindex && b.dbapi.writable{
+		pkgindex_lock = None
 	try:
-	pkgindex_lock = Lockfile(self._pkgindex_file,
-	wantnewlockfile=True)
-	update_pkgindex = self._populate_local()
-	if update_pkgindex:
-	self._pkgindex_write(update_pkgindex)
+		pkgindex_lock = Lockfile(b._pkgindex_file,
+			wantnewlockfile=True)
+		update_pkgindex = self._populate_local()
+		if update_pkgindex:
+		self._pkgindex_write(update_pkgindex)
 	finally:
-	if pkgindex_lock:
-	unlockfile(pkgindex_lock)
+		if pkgindex_lock:
+		Unlockfile(pkgindex_lock)
+	}
 
-	if add_repos:
-	self._populate_additional(add_repos)
+	if len(add_repos) > 0{
+		b._populate_additional(add_repos)
+	}
 
-	if getbinpkgs:
-	if not self.settings.get("PORTAGE_BINHOST"):
-	writemsg(_("!!! PORTAGE_BINHOST unset, but use is requested.\n"),
-	noiselevel=-1)
-	else:
-	self._populate_remote(getbinpkg_refresh=getbinpkg_refresh)
+	if getbinpkgs{
+		if b.settings.ValueDict["PORTAGE_BINHOST"] == "" {
+
+			writemsg(_("!!! PORTAGE_BINHOST unset, but use is requested.\n"),
+				noiselevel=-1)
+		}		else{
+			b._populate_remote(getbinpkg_refresh=getbinpkg_refresh)
+		}
+	}
 
 	b.populated = true
 
 }
 
 // true
-func (b *BinaryTree) _populate_local(reindex bool) {
+func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 	b.dbapi.clear()
 
 	_instance_key := b.dbapi._instance_key
@@ -1868,7 +2184,6 @@ func (b *BinaryTree) _populate_local(reindex bool) {
 			if build_id is not None:
 			pkg_metadata["BUILD_ID"] = _unicode(build_id)
 			pkg_metadata["SIZE"] = _unicode(s.st_size)
-			# Discard items used only for validation above.
 				pkg_metadata.pop("CATEGORY")
 			pkg_metadata.pop("PF")
 			mycpv = _pkg_str(mycpv,
@@ -1901,8 +2216,7 @@ func (b *BinaryTree) _populate_local(reindex bool) {
 		try:
 			self._eval_use_flags(mycpv, d)
 			except portage.exception.InvalidDependString:
-			WriteMsg(fmt.Sprintf("!!! Invalid binary package: '%s'\n") % \
-			self.getname(mycpv), noiselevel=-1)
+			WriteMsg(fmt.Sprintf("!!! Invalid binary package: '%s'\n", b.getname(mycpv)), -1, nil)
 			self.dbapi.cpv_remove(mycpv)
 			del pkg_paths[_instance_key(mycpv)]
 

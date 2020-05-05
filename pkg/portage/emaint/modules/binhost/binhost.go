@@ -5,6 +5,7 @@ import (
 	"github.com/ppphp/portago/atom"
 	"os"
 	"sort"
+	"syscall"
 )
 
 const doc = "Scan and generate metadata indexes for binary packages."
@@ -37,7 +38,7 @@ func (b *BinhostHandler) name()string{
 	return "binhost"
 }
 
-func(b *BinhostHandler) _need_update(cpv, data)bool{
+func(b *BinhostHandler) _need_update(cpv string, data map[string]string)bool{
 	if _, ok := data["MD5"] ; ok{
 		return true
 	}
@@ -53,21 +54,24 @@ func(b *BinhostHandler) _need_update(cpv, data)bool{
 
 	pkg_path := b._bintree.getname(cpv, "")
 try:
-	s = os.lstat(pkg_path)
-	except OSError as e:
-	if e.errno not in (errno.ENOENT, errno.ESTALE):
-	raise
-	return False
+	s, err  := os.lstat(pkg_path)
+	if err != nil {
+		except OSError as e:
+		if err != syscall.ENOENT && err != syscall.ESTALE{
+		//raise
+		}
+		return false
+	}
 
 try:
-	if long(mtime) != s[stat.ST_MTIME]:
+	if long(mtime) != stat s[stat.ST_MTIME]:
 	return True
 	if long(size) != long(s.st_size):
 	return True
 	except ValueError:
 	return True
 
-	return False
+	return false
 }
 
 
@@ -152,8 +156,8 @@ func(b *BinhostHandler) fix( onProgress func(int, int)) (bool, []string){
 	if len(missing)!= 0 || len(stale)!= 0 {
 		a, b, c, d, _ := atom.Lockfile(b._pkgindex_file, true, false, "", 0)
 	try:
-		b._pkgindex = pkgindex = (bintree._populate_local() or
-		bintree._load_pkgindex())
+
+		b._pkgindex = pkgindex = (bintree._populate_local(true) || bintree.LoadPkgIndex())
 		cpv_all = b._bintree.dbapi.cpv_all()
 		cpv_all.sort()
 
@@ -200,7 +204,7 @@ func(b *BinhostHandler) fix( onProgress func(int, int)) (bool, []string){
 		bintree._update_pkgindex_header(b._pkgindex.header)
 		bintree._pkgindex_write(b._pkgindex)
 
-		atom.unlockfile(a,b,c,d)
+		atom.Unlockfile(a,b,c,d)
 	}
 
 	if onProgress!= nil {
