@@ -185,7 +185,8 @@ func matchSlot(atom *Atom, pkg *pkgStr) bool {
 	return false
 }
 
-func useReduce(depstr string, uselist map[string]bool, masklist []string, matchall bool, excludeall []string, isSrcUri bool, eapi string, opconvert, flat bool, isValidFlag func(string) bool, tokenClass func(string) *Atom, matchnone bool) []string { // map[string]bool{}, []string{}, false, []string{}, false, "", false, false, nil, nil, false
+// map[string]bool{}, []string{}, false, []string{}, false, "", false, false, nil, nil, false
+func useReduce(depstr string, uselist map[string]bool, masklist []string, matchall bool, excludeall []string, isSrcUri bool, eapi string, opconvert, flat bool, isValidFlag func(string) bool, tokenClass func(string) *Atom, matchnone bool) []string {
 	if opconvert && flat {
 		// ValueError("portage.dep.use_reduce: 'opconvert' and 'flat' are mutually exclusive")
 	}

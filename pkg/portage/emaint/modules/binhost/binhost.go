@@ -54,9 +54,9 @@ func(b *BinhostHandler) _need_update(cpv string, data map[string]string)bool{
 
 	pkg_path := b._bintree.getname(cpv, "")
 try:
-	s, err  := os.lstat(pkg_path)
+	s, err  := os.Lstat(pkg_path)
 	if err != nil {
-		except OSError as e:
+		//except OSError as e:
 		if err != syscall.ENOENT && err != syscall.ESTALE{
 		//raise
 		}
@@ -134,15 +134,15 @@ func(b *BinhostHandler) fix( onProgress func(int, int)) (bool, []string){
 		onProgress(maxval, 0)
 	}
 	pkgindex := b._pkgindex
-	missing := []string{}
-	stale := []string{}
+	missing := []*atom.pkgStr{}
+	stale := []*atom.pkgStr{}
 	metadata := map[string]map[string]string{}
 	for _, d := range pkgindex.packages{
 		cpv := atom.NewPkgStr(d["CPV"], d, bintree.settings, "", "", "", 0, "", "", 0, nil)
 		d["CPV"] = cpv.string
 		metadata[_instance_key(cpv, false).string] = d
 		if ! bintree.dbapi.cpv_exists(cpv) {
-			stale=append(stale, cpv.string)
+			stale=append(stale, cpv)
 		}
 	}
 
@@ -154,57 +154,64 @@ func(b *BinhostHandler) fix( onProgress func(int, int)) (bool, []string){
 	}
 
 	if len(missing)!= 0 || len(stale)!= 0 {
-		a, b, c, d, _ := atom.Lockfile(b._pkgindex_file, true, false, "", 0)
-	try:
+		a, f, c, d, _ := atom.Lockfile(b._pkgindex_file, true, false, "", 0)
 
-		b._pkgindex = pkgindex = (bintree._populate_local(true) || bintree.LoadPkgIndex())
+		pkgindex := bintree._populate_local(true)
+		if pkgindex == nil {
+			pkgindex = bintree.LoadPkgIndex()
+		}
+		b._pkgindex = pkgindex
 		cpv_all = b._bintree.dbapi.cpv_all()
 		cpv_all.sort()
 
-		missing = []string{}
-		stale = []string{}
+		missing = []*atom.pkgStr{}
+		stale = []*atom.pkgStr{}
 		metadata = map[string]string{}
-		for d in pkgindex.packages:
-		cpv = _pkg_str(d["CPV"], metadata=d,
-			settings=bintree.settings)
-		d["CPV"] = cpv
-		metadata[_instance_key(cpv)] = d
-		if not bintree.dbapi.cpv_exists(cpv):
-		stale.append(cpv)
+		for _ ,d := range  pkgindex.packages{
+			cpv := atom.NewPkgStr(d["CPV"], d, bintree.settings,  "", "", "", 0, "", "", 0, nil)
+			d["CPV"] = cpv.string
+			metadata[_instance_key(cpv.string).string] = d
+			if ! bintree.dbapi.cpv_exists(cpv){
+				stale=append(stale, cpv)
+			}
+		}
 
-		for cpv in cpv_all:
-		d = metadata.get(_instance_key(cpv))
-		if not d or self._need_update(cpv, d):
-		missing.append(cpv)
+		for _, cpv:= range cpv_all{
+			d := metadata[_instance_key(cpv.string).string]
+			if  len(d)==0 || b._need_update(cpv.string, d){
+				missing =append(missing, cpv)
+			}
+		}
 
 		maxval = len(missing)
-		for i, cpv in enumerate(missing):
-		d = bintree._pkgindex_entry(cpv)
-	try:
-		bintree._eval_use_flags(cpv, d)
-		except portage.exception.InvalidDependString:
-		writemsg("!!! Invalid binary package: "%s"\n" % \
-		bintree.getname(cpv), noiselevel=-1)
-		else:
-		metadata[_instance_key(cpv)] = d
+		for i, cpv := range missing{
+			d := bintree._pkgindex_entry(cpv)
+			if err := bintree._eval_use_flags(cpv, d); err != nil {
+				//except portage.exception.InvalidDependString:
+				atom.WriteMsg(fmt.Sprintf("!!! Invalid binary package: \"%s\"\n" , bintree.getname(cpv)), -1, nil)
+			}else {
+				metadata[_instance_key(cpv).string] = d
+			}
 
-		if onProgress!= nil {
-			onProgress(maxval, i+1)
+			if onProgress!= nil {
+				onProgress(maxval, i+1)
+			}
 		}
 
 		for _, cpv := range stale{
-
 			delete(metadata,_instance_key(cpv, false).string)
 		}
 
 		bintree.populated = false
 
-		delete(pkgindex.packages[:])
-		pkgindex.packages.extend(metadata.values())
+		pkgindex.packages = []map[string]string{}
+		for _,  v := range metadata{
+			pkgindex.packages = append(pkgindex.packages, v)
+		}
 		bintree._update_pkgindex_header(b._pkgindex.header)
 		bintree._pkgindex_write(b._pkgindex)
 
-		atom.Unlockfile(a,b,c,d)
+		atom.Unlockfile(a,f,c,d)
 	}
 
 	if onProgress!= nil {
@@ -221,7 +228,7 @@ func NewBinhostHandler() *BinhostHandler {
 	b.short_desc= "Generate a metadata index for binary packages"
 	eroot := atom.Settings().ValueDict["EROOT"]
 	b._bintree = atom.Db().Values()[eroot].BinTree()
-	b._bintree.Populate(true, []string{})
+	b._bintree.Populate(false, true, []string{})
 	b._pkgindex_file = b._bintree.PkgIndexFile
 	b._pkgindex = b._bintree.LoadPkgIndex()
 	return b

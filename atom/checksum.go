@@ -309,6 +309,7 @@ func performChecksum(fname, hashname string, calcPrelink int) ([]byte, int) {
 	return hashFuncMap[hashname].checksumFile(myFileName)
 }
 
+// []string{"MD5"}, 0
 func performMultipleChecksums(fname string, hashes []string, calcPrelink int) map[string][]byte {
 	rVal := map[string][]byte{}
 

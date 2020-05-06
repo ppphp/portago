@@ -2,6 +2,7 @@ package atom
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/portage/emaint"
 	"io/ioutil"
 	"os"
 	"path"
@@ -12,8 +13,57 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"unicode"
 )
+
+//nil,1,nil
+func dep_expandS(mydep string, mydb *dbapi, use_cache int, settings *Config) *Atom {
+	orig_dep := mydep
+	if mydep== "" {
+		return nil
+	}
+	if mydep[0] == '*'{
+		mydep = mydep[1:]
+		orig_dep = mydep
+	}
+	has_cat := strings.Contains(strings.Split(orig_dep, ":")[0],"/")
+	if ! has_cat {
+		re := regexp.MustCompile("\\w")
+		alphanum := re.FindStringSubmatchIndex(orig_dep)
+		if len(alphanum)>0 {
+			mydep = orig_dep[:alphanum[0]] + "null/" + orig_dep[alphanum[0]:]
+		}
+	}
+	allow_repo:=true
+	mydepA, err := NewAtom(mydep,nil, false, &allow_repo, nil, "", nil, nil )
+	if err != nil {
+		//except InvalidAtom:
+		if !isValidAtom("="+mydep, false, false, true, "", false) {
+			//raise
+		}
+		mydepA, _ = NewAtom("="+mydep, nil, false, &allow_repo, nil, "", nil, nil)
+		orig_dep ="=" + orig_dep
+	}
+
+	if ! has_cat {
+		mydep = catsplit(mydepA.cp)[1]
+	}
+
+	if has_cat{
+
+		if strings.HasPrefix( mydepA.cp,"virtual/"){
+			return mydepA
+		}
+		if len(mydb.cp_list(mydepA.cp, 1))>0 {
+			return mydepA
+		}
+		mydep = mydepA.cp
+	}
+
+	expanded := cpv_expand(mydep, mydb, use_cache, settings)
+	r := true
+	a, _ := NewAtom(strings.Replace(mydep, orig_dep, expanded, 1), nil, false, &r, nil, "", nil, nil)
+	return a
+}
 
 //nil,1,nil
 func dep_expand(mydep *Atom, mydb *dbapi, use_cache int, settings *Config) *Atom {
@@ -132,7 +182,8 @@ func (d *dbapi) categories() []string {
 
 func (d *dbapi) close_caches() {}
 
-func (d *dbapi) cp_list(cp string, useCache int) []*pkgStr { //1
+//1
+func (d *dbapi) cp_list(cp string, useCache int) []*pkgStr {
 	panic("")
 	return nil
 }
@@ -827,7 +878,7 @@ func (v *vardbapi) move_ent(mylist []*Atom, repo_match func(string)bool) int{
 		if _, err := os.Stat(newpath); err == nil{
 			continue
 		}
-		_movefile(origpath, newpath, nil, nil, v.settings, nil)
+		_movefile(origpath, newpath, 0, nil, v.settings, nil)
 		v._clear_pkg_cache(v._dblink(mycpv))
 		v._clear_pkg_cache(v._dblink(mynewcpv))
 
@@ -1386,9 +1437,9 @@ func NewVarTree(categories map[string]bool, settings *Config) *varTree {
 }
 
 type dblink struct {
-	_ignored_rmdir_errnos  , _ignored_unlink_errnos                                                         []error
-	_infodir_cleanup       map[string]bool
-	_contents_re  , _normalize_needed         *regexp.Regexp
+	_ignored_rmdir_errnos, _ignored_unlink_errnos []error
+	_infodir_cleanup                              map[string]bool
+	_contents_re, _normalize_needed               *regexp.Regexp
 
 	_eroot, cat, pkg, treetype, dbroot, dbcatdir, dbtmpdir, dbpkgdir, dbdir, myroot string
 	mycpv                                                                           *pkgStr
@@ -1396,6 +1447,7 @@ type dblink struct {
 	vartree                                                                         *varTree
 	settings                                                                        *Config
 	_verbose, _linkmap_broken, _postinst_failure, _preserve_libs                    bool
+	_contents                                                                       *ContentsCaseSensitivityManager
 }
 
 func (d*dblink) __hash__() {}
@@ -1596,7 +1648,7 @@ d._infodir_cleanup = map[string]bool{"dir":true, "dir.old":true}
 	d._postinst_failure = false
 
 	d._preserve_libs =  mysettings.Features.Features["preserve-libs"]
-	d._contents = ContentsCaseSensitivityManager(d)
+	d._contents = NewContentsCaseSensitivityManager(d)
 	d._slot_locks = []
 
 	return d
@@ -1868,8 +1920,12 @@ func (b *bindbapi) writable() bool {
 	}
 }
 
-func (b *bindbapi) match() {
-
+// 1
+func (b *bindbapi) match(origdep *Atom, use_cache int) []*pkgStr{
+	if b.bintree!= nil && !b.bintree.populated {
+		b.bintree.Populate(false, true, []string{})
+	}
+	return b.fakedbapi.match(origdep, use_cache)
 }
 
 func (b *bindbapi) cpv_exists(cpv, myrepo string) {}
@@ -1913,9 +1969,9 @@ type BinaryTree struct {
 	dbapi *bindbapi
 	update_ents func(updates map[string][][]*Atom, onProgress, onUpdate func(int, int))
 	move_slot_ent func(mylist []*Atom, repo_match func(string) bool) int
-	tree, _additional_pkgs, _pkg_paths map[string]interface{}
+	tree, _additional_pkgs map[string]interface{}
 	_pkgindex_header_keys, _pkgindex_allowed_pkg_keys map[string]bool
-	_pkgindex_default_pkg_data, _pkgindex_default_header_data map[string]string
+	_pkgindex_default_pkg_data, _pkgindex_default_header_data, _pkg_paths map[string]string
 	_pkgindex_translated_keys [][2]string
 	invalids []string
 }
@@ -1947,17 +2003,14 @@ func (b *BinaryTree) Populate(getbinpkgs, getbinpkg_refresh bool, add_repos []st
 	defer func() {b._populating = false}()
 	update_pkgindex := b._populate_local(!b.settings.Features.Features["pkgdir-index-trusted"])
 
-	if update_pkgindex && b.dbapi.writable{
-		pkgindex_lock = None
-	try:
-		pkgindex_lock = Lockfile(b._pkgindex_file,
-			wantnewlockfile=True)
-		update_pkgindex = self._populate_local()
-		if update_pkgindex:
-		self._pkgindex_write(update_pkgindex)
-	finally:
-		if pkgindex_lock:
-		Unlockfile(pkgindex_lock)
+	if update_pkgindex!=nil && b.dbapi.writable(){
+		a, f, c,d,_ := Lockfile(b._pkgindex_file, true, false , "", 0)
+		update_pkgindex = b._populate_local(true)
+		if update_pkgindex!= nil {
+			b._pkgindex_write(update_pkgindex)
+		}
+		//if pkgindex_lock:
+		Unlockfile(a,f,c,d)
 	}
 
 	if len(add_repos) > 0{
@@ -1997,7 +2050,7 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 			minimum_keys = append(minimum_keys, k)
 		}
 	}
-	pkg_paths := map[string]interface{}{}
+	pkg_paths := map[string]string{}
 	b._pkg_paths = pkg_paths
 	dir_files := map[string][]string{}
 	if reindex {
@@ -2060,7 +2113,8 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 				possibilities := basename_index[myfile]
 			if len(possibilities)!= 0 {
 				match := map[string]string{}
-				for _, d := range possibilities{
+				var d map[string]string
+				for _, d = range possibilities{
 					if long(d["_mtime_"]) != stat.ModTime().Nanosecond(){
 						continue
 					}
@@ -2073,62 +2127,76 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 					if d["_mtime_"]== nil{
 						continue
 					}
-					if len( minimum_keys.difference(d))==0 {
+					in := true
+					for _, k := range minimum_keys{
+						if _, ok:=d[k];!ok {
+							in = false
+							break
+						}
+					}
+					if in {
 						match = d
 						break
 					}
 				}
 				if len(match)>0 {
-					mycpv = match["CPV"]
-					instance_key = _instance_key(mycpv)
-					pkg_paths[instance_key] = mypath
-					oldpath = d.get("PATH")
-					if oldpath and oldpath != mypath:
-					update_pkgindex = True
-					if mypath != mycpv + ".tbz2":
-					d["PATH"] = mypath
-					if not oldpath:
-					update_pkgindex = True
-					else:
-					d.pop("PATH", None)
-					if oldpath:
-					update_pkgindex = True
-					self.dbapi.cpv_inject(mycpv)
+					mycpv := match["CPV"]
+					instance_key := _instance_key(mycpv, false)
+					pkg_paths[instance_key.string] = mypath
+					oldpath := d["PATH"]
+					if oldpath != "" && oldpath != mypath {
+						update_pkgindex = true
+					}
+					if mypath != mycpv + ".tbz2"{
+						d["PATH"] = mypath
+						if oldpath=="" {
+							update_pkgindex = true
+						}
+					} else{
+						delete(d,"PATH")
+						if oldpath!= "" {
+							update_pkgindex = true
+						}
+					}
+					b.dbapi.cpv_inject(mycpv)
 					continue
 				}
 			}
-			if not os.access(full_path, os.R_OK){
+			if _, err := os.Stat(full_path); err != nil{
 				WriteMsg(fmt.Sprintf("!!! Permission denied to read binary package: '%s'\n", full_path), -1, nil)
 				b.invalids= append(b.invalids, myfile[:len(myfile)-5])
 				continue
 			}
-			pkg_metadata = b._read_metadata(full_path, s,
+			pkg_metadata := b._read_metadata(full_path, s,
 				keys=chain(self.dbapi._aux_cache_keys,
 				("PF", "CATEGORY")))
 			mycat := pkg_metadata["CATEGORY"]
 			mypf := pkg_metadata["PF"]
 			slot := pkg_metadata["SLOT"]
-			mypkg := myfile[:-5]
-			if not mycat or not mypf or not slot{
-				writemsg(_("\n!!! Invalid binary package: '%s'\n") % full_path,
-					noiselevel=-1)
-				missing_keys = []
-				if not mycat:
-				missing_keys.append("CATEGORY")
-				if not mypf:
-				missing_keys.append("PF")
-				if not slot:
-				missing_keys.append("SLOT")
-				msg = []
-				if missing_keys:
-				missing_keys.sort()
-				msg.append(_("Missing metadata key(s): %s.") % \
-				", ".join(missing_keys))
-				msg.append(_(" This binary package is not " \
-				"recoverable and should be deleted."))
-				for line in textwrap.wrap("".join(msg), 72):
-				writemsg("!!! %s\n" % line, noiselevel=-1)
-				self.invalids.append(mypkg)
+			mypkg := myfile[:len(myfile)-5]
+			if ! mycat || mypf == "" || slot == ""{
+				WriteMsg(fmt.Sprintf("\n!!! Invalid binary package: '%s'\n", full_path), -1,nil)
+				missing_keys := []string{}
+				if ! mycat{
+					missing_keys=append(missing_keys, "CATEGORY")
+				}
+				if mypf=="" {
+					missing_keys=append(missing_keys, "PF")
+				}
+				if slot == "" {
+					missing_keys=append(missing_keys, "SLOT")
+				}
+				msg := []string{}
+				if len(missing_keys)> 0{
+					sort.Strings(missing_keys)
+					msg = append(msg, fmt.Sprintf("Missing metadata key(s): %s.",
+					strings.Join(missing_keys,", ")))
+				}
+				msg=append(msg, fmt.Sprintf(" This binary package is not recoverable and should be deleted."))
+				for _, line := range emaint.SplitSubN(strings.Join(msg, ""), 72){
+					WriteMsg(fmt.Sprintf("!!! %s\n" , line), -1, nil)
+				}
+				b.invalids=append(b.invalids, mypkg)
 				continue
 			}
 
@@ -2138,15 +2206,15 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 			if strings.HasSuffix(myfile, ".xpak"){
 				multi_instance = true
 				build_id = b._parse_build_id(myfile)
-				if build_id < 1:
-				invalid_name = True
-				elif myfile != "%s-%s.xpak" % (
-					mypf, build_id):
-				invalid_name = True
-				else:
-				mypkg = mypkg[:-len(str(build_id))-1]
+				if build_id < 1{
+					invalid_name = true
+				}else if myfile != fmt.Sprintf("%s-%s.xpak" , mypf, build_id) {
+					invalid_name = true
+				}else {
+					mypkg = mypkg[:len(mypkg)-len(fmt.Sprint(build_id))-1]
+				}
 			}else if myfile != mypf + ".tbz2"{
-				invalid_name = True
+				invalid_name = true
 			}
 
 			if invalid_name{
@@ -2181,8 +2249,9 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 				WriteMsg(fmt.Sprintf("!!! '%s' has a category that is not listed in %setc/portage/categories\n", mycpv, b.settings.ValueDict["PORTAGE_CONFIGROOT"]), -1, nil)
 				continue
 			}
-			if build_id is not None:
-			pkg_metadata["BUILD_ID"] = _unicode(build_id)
+			if build_id is not None{
+				pkg_metadata["BUILD_ID"] = _unicode(build_id)
+			}
 			pkg_metadata["SIZE"] = _unicode(s.st_size)
 				pkg_metadata.pop("CATEGORY")
 			pkg_metadata.pop("PF")
@@ -2194,37 +2263,41 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 			update_pkgindex = True
 			d = metadata.get(_instance_key(mycpv),
 				pkgindex._pkg_slot_dict())
-			if d:
-		try:
-			if long(d["_mtime_"]) != s[stat.ST_MTIME]:
-			d.clear()
-			except (KeyError, ValueError):
-			d.clear()
-			if d:
-		try:
-			if long(d["SIZE"]) != long(s.st_size):
-			d.clear()
-			except (KeyError, ValueError):
-			d.clear()
+			if d {
+			try:
+				if long(d["_mtime_"]) != s[stat.ST_MTIME]:
+				d.clear()
+				except(KeyError, ValueError):
+				d.clear()
+			}
+			if d {
+			try:
+				if long(d["SIZE"]) != long(s.st_size):
+				d.clear()
+				except(KeyError, ValueError):
+				d.clear()
+			}
 
-			for k in self._pkgindex_allowed_pkg_keys:
-			v = pkg_metadata.get(k)
-			if v:
-			d[k] = v
-			d["CPV"] = mycpv
+			for k := range b._pkgindex_allowed_pkg_keys{
+				v := pkg_metadata[k]
+				if v {
+					d[k] = v
+				}
+				d["CPV"] = mycpv
+			}
 
-		try:
-			self._eval_use_flags(mycpv, d)
-			except portage.exception.InvalidDependString:
-			WriteMsg(fmt.Sprintf("!!! Invalid binary package: '%s'\n", b.getname(mycpv)), -1, nil)
-			self.dbapi.cpv_remove(mycpv)
-			del pkg_paths[_instance_key(mycpv)]
+		//try:
+			b._eval_use_flags(d)
+			//except portage.exception.InvalidDependString:
+			//WriteMsg(fmt.Sprintf("!!! Invalid binary package: '%s'\n", b.getname(mycpv)), -1, nil)
+			//self.dbapi.cpv_remove(mycpv)
+			//del pkg_paths[_instance_key(mycpv)]
 
-			# record location if it's non-default
-			if mypath != mycpv + ".tbz2":
-			d["PATH"] = mypath
-			else:
-			d.pop("PATH", None)
+			if mypath != mycpv + ".tbz2"{
+				d["PATH"] = mypath
+			} else {
+				delete(d,"PATH")
+			}
 			metadata[_instance_key(mycpv)] = d
 		}
 	}
@@ -2238,8 +2311,10 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 	}
 
 	if update_pkgindex{
-		pkgindex.packages = []
-		pkgindex.packages.extend(iter(metadata.values()))
+		pkgindex.packages = []map[string]string{}
+		for _, v := range metadata {
+			pkgindex.packages =append(pkgindex.packages, v)
+		}
 		b._update_pkgindex_header(pkgindex.header)
 	}
 
@@ -2256,6 +2331,8 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 
 func (b *BinaryTree) _populate_remote() {}
 
+func (b *BinaryTree) _populate_additional() {}
+
 func (b *BinaryTree) inject() {}
 
 func (b *BinaryTree) _read_metadata() {}
@@ -2264,7 +2341,27 @@ func (b *BinaryTree) _inject_file() {}
 
 func (b *BinaryTree) _pkgindex_write() {}
 
-func (b *BinaryTree) _pkgindex_entry() {}
+func (b *BinaryTree) _pkgindex_entry(cpv *pkgStr) map[string]string{
+
+	pkg_path := b.getname(cpv.string, "")
+
+	d := CopyMapSS(cpv.metadata)
+	for k, v := range performMultipleChecksums(pkg_path, b._pkgindex_hashes, 0){
+		d[k]=string(v)
+	}
+
+	d["CPV"] = cpv.string
+	st, _ := os.Lstat(pkg_path)
+	d["_mtime_"] = fmt.Sprint(st.ModTime().UnixNano())
+	d["SIZE"] = fmt.Sprint(st.Size())
+
+	rel_path := pkg_path[len(b.pkgdir)+1:]
+	if rel_path != cpv.string + ".tbz2"{
+		d["PATH"] = rel_path
+	}
+
+	return d
+}
 
 func (b *BinaryTree) _new_pkgindex() *PackageIndex{
 	return NewPackageIndex(b._pkgindex_allowed_pkg_keys,
@@ -2280,17 +2377,103 @@ func (b *BinaryTree) _propagate_config() {}
 
 func (b *BinaryTree) _update_pkgindex_header() {}
 
-func (b *BinaryTree) _pkgindex_version_supported() {}
+func (b *BinaryTree) _pkgindex_version_supported(pkgindex *PackageIndex) bool{
+	version := pkgindex.header["VERSION"]
+	if version!= "" {
+		v, err := strconv.Atoi(version)
+		if err == nil {
+			if v < b._pkgindex_version {
+				return true
+			}
+		}
+		if err != nil {
+			//except ValueError:
+			//pass
+		}
+	}
+	return false
+}
 
-func (b *BinaryTree) _eval_use_flags() {}
+//
+func (b *BinaryTree) _eval_use_flags(metadata map[string]string) {
+	use :=map[string]bool {}
+	for _, v:= range strings.Fields(metadata["USE"]) {
+		use[v] =true
+	}
+	for _, k :=range b._pkgindex_use_evaluated_keys{
+		token_class := func(s string) *Atom{NewAtom(s, nil, false, nil, nil, "", nil, nil)}
+		if !strings.HasSuffix(k,"DEPEND"){
+			token_class = nil
+		}
 
-func (b *BinaryTree) exists_specific() {}
+		deps := metadata[k]
+		if deps == "" {
+			continue
+		}
+	//try:
+		deps1 := useReduce(deps, use, []string{}, false, []string{}, false, "", false, false, nil, token_class, false)
+		deps2 := parenEncloses(deps1, false, false)
+		//except portage.exception.InvalidDependString as e:
+		//writemsg("%s: %s\n" % (k, e), noiselevel=-1)
+		//raise
+		metadata[k] = deps2
+	}
+}
+
+// deprecated ?
+func (b *BinaryTree) exists_specific(cpv string) []*pkgStr{
+	if ! b.populated {
+		b.Populate(false , true , []string{})
+	}
+	return b.dbapi.match(dep_expandS("="+cpv, b.dbapi.dbapi,1, b.settings), 1)
+}
 
 func (b *BinaryTree) dep_bestmatch() {}
 
 // nil
-func (b *BinaryTree) getname(cpv, allocate_new string) {
+func (b *BinaryTree) getname(cpvS string, allocate_new bool) string {
 
+	if ! b.populated {
+		b.Populate(false, true, []string{})
+	}
+
+	cpv := NewPkgStr(cpvS,nil, nil, "", "", "", 0, "", "", 0, nil)
+
+	filename := ""
+	if allocate_new{
+		filename = b._allocate_filename(cpv)
+	} else if b._is_specific_instance(cpv){
+		instance_key := b.dbapi._instance_key(cpv, false)
+		path := b._pkg_paths[instance_key.string]
+		if path != ""{
+			filename = filepath.Join(b.pkgdir, path)
+		}
+	}
+
+	if filename == ""&&! allocate_new{
+		//try:
+		instance_key := b.dbapi._instance_key(cpv, true)
+		//except KeyError:
+		//pass
+		//else:
+		filename = b._pkg_paths[instance_key.string]
+		if filename != ""{
+			filename = filepath.Join(b.pkgdir, filename)
+		} else if  _, ok :=  b._additional_pkgs[instance_key.string]; ok {
+			return ""
+		}
+	}
+
+	if filename == "" {
+		if b._multi_instance{
+			pf := catsplit(cpv.string)[1]
+			filename = fmt.Sprintf("%s-%s.xpak", filepath.Join(b.pkgdir, cpv.cp, pf), "1")
+		} else{
+			filename = filepath.Join(b.pkgdir, cpv.string + ".tbz2")
+		}
+	}
+
+	return filename
 }
 
 func (b *BinaryTree) _is_specific_instance() {}
@@ -2341,7 +2524,7 @@ func NewBinaryTree(pkgDir string, settings *Config) *BinaryTree {
 	b._additional_pkgs = map[string]interface{}{}
 	b.invalids = []string{}
 	b.settings = settings
-	b._pkg_paths = map[string]interface{}{}
+	b._pkg_paths = map[string]string{}
 	b._populating = false
 	st, err := os.Stat(path.Join(b.pkgdir, "All"))
 	b._all_directory = err != nil && st.IsDir()
@@ -2357,7 +2540,6 @@ func NewBinaryTree(pkgDir string, settings *Config) *BinaryTree {
 	"PKGINDEX_URI", "PROPERTIES", "PROVIDES",
 	"RDEPEND", "repository", "REQUIRES", "RESTRICT",
 	"SIZE", "SLOT", "USE"}
-	b._pkgindex_aux_keys = list(b._pkgindex_aux_keys)
 	b._pkgindex_use_evaluated_keys = []string{"BDEPEND", "DEPEND", "LICENSE", "RDEPEND",
 	"PDEPEND", "PROPERTIES", "RESTRICT"}
 	b._pkgindex_header = ""

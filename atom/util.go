@@ -1361,7 +1361,7 @@ func httpToTimestamp(httpDatetimeString string) string {
 	return string(t.Unix())
 }
 
-// nil, nil, nil, nil
+// nil, nil, 0, nil
 func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *Config, hardlink_candidates []string) int64 {
 	if mysettings == nil {
 		mysettings = Settings()
