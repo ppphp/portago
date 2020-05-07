@@ -633,7 +633,8 @@ func NewVdbMetadataDelta(vardb *vardbapi) *vdbMetadataDelta {
 type vardbapi struct {
 	*dbapi
 	_excluded_dirs, _aux_cache_keys_re, _aux_multi_line_re *regexp.Regexp
-	_aux_cache_version, _owners_cache_version, _lock       string
+	_aux_cache_version, _owners_cache_version int
+	 _lock       string
 	_aux_cache_threshold                                   int
 
 	_pkgs_changed, _flush_cache_enabled                                                        bool
@@ -655,7 +656,8 @@ type vardbapi struct {
 		}
 		int
 	}
-	_aux_cache_obj, _cached_counter interface{}
+	_aux_cache_obj *struct{version int; packages map[string]string;owners *struct{base_names map[string]string;version int} ;modified map[string]bool}
+	_cached_counter interface{}
 	_lock_count, _fs_lock_count     int
 	vartree                         *varTree
 	_aux_cache_keys                 map[string]bool
@@ -913,7 +915,7 @@ func (v *vardbapi) cp_list(mycp *pkgStr, use_cache int) []*pkgStr{
 	}
 	if cpc, ok := v.cpcache[mycp.string]; use_cache!= 0 && ok {
 		if cpc[0] == mystat {
-			return cpc[1][:]
+			return cpc[1]
 		}
 	}
 	cat_dir := v.getpath(mysplit[0], "")
@@ -949,7 +951,8 @@ func (v *vardbapi) cp_list(mycp *pkgStr, use_cache int) []*pkgStr{
 	}
 	v._cpv_sort_ascending(returnme)
 	if use_cache!= 0 {
-		v.cpcache[mycp.string] = []string{mystat, returnme[:]}
+		v.cpcache[mycp.string] = append([]string{mystat}, returnme...)
+
 }else if _, ok := v.cpcache[mycp.string];ok{
 delete(v.cpcache,mycp.string)
 }
@@ -1008,17 +1011,66 @@ func (v *vardbapi) findname(mycpv string) string {
 
 func (v *vardbapi) flush_cache() {}
 
-func (v *vardbapi) _aux_cache() interface{} {
+func (v *vardbapi) _aux_cache()*struct {version  int;packages map[string]string;owners   *struct {base_names map[string]string;version int; }; modified map[string]bool} {
 	if v._aux_cache_obj == nil {
 		v._aux_cache_init()
 	}
 	return v._aux_cache_obj
 }
 
-func (v *vardbapi) _aux_cache_init() {}
+func (v *vardbapi) _aux_cache_init() {
+
+		//TODO: pickle
+		//aux_cache := None
+		//open_kwargs := {}
+		//try:
+		//	with open(_unicode_encode(self._aux_cache_filename,
+		//		encoding=_encodings['fs'], errors='strict'),
+		//		mode='rb', **open_kwargs) as f:
+		//		mypickle = pickle.Unpickler(f)
+		//		try:
+		//			mypickle.find_global = None
+		//		except AttributeError:
+		//			# TODO: If py3k, override Unpickler.find_class().
+		//			pass
+		//		aux_cache = mypickle.load()
+		//except (SystemExit, KeyboardInterrupt):
+		//	raise
+		//except Exception as e:
+		//	if isinstance(e, EnvironmentError) and \
+		//		getattr(e, 'errno', None) in (errno.ENOENT, errno.EACCES):
+		//		pass
+		//	else:
+		//		writemsg(_("!!! Error loading '%s': %s\n") % \
+		//			(self._aux_cache_filename, e), noiselevel=-1)
+		//	del e
+
+			aux_cache := &struct{version int; packages map[string]string;owners *struct{base_names map[string]string;version int} ;modified map[string]bool}{version: v._aux_cache_version}
+			aux_cache.packages = map[string]string{}
+
+		owners := aux_cache.owners
+		if owners != nil {
+			if owners== nil {
+				owners = nil
+			}else if owners.version == 0 {
+				owners = nil
+			}else if owners.version != v._owners_cache_version {
+				owners = nil
+			}else if len(owners.base_names)==0 {
+				owners = nil
+			}
+		}
+
+		if owners == nil {
+			owners = &struct{ base_names map[string]string; version int }{base_names: map[string]string{}, version: v._owners_cache_version}
+			aux_cache.owners = owners
+		}
+		aux_cache.modified = map[string]bool {}
+		v._aux_cache_obj = aux_cache
+}
 
 // nil
-func (v *vardbapi) aux_get(mycpv string, wants map[string] bool, myrepo = None) []string{
+func (v *vardbapi) aux_get(mycpv string, wants map[string] bool, myrepo string) []string{
 	cache_these_wants := map[string]bool{}
 	for k := range v._aux_cache_keys {
 		if wants[k] {
@@ -1058,7 +1110,7 @@ func (v *vardbapi) aux_get(mycpv string, wants map[string] bool, myrepo = None) 
 		//raise KeyError(mycpv)
 	}
 	mydir_mtime := mydir_stat.ModTime().UnixNano()
-	pkg_data := v._aux_cache["packages"][mycpv]
+	pkg_data := v._aux_cache().packages[mycpv]
 	pull_me := map[string]bool{}
 	for k := range cache_these{
 		pull_me[k]=true
@@ -1076,9 +1128,9 @@ func (v *vardbapi) aux_get(mycpv string, wants map[string] bool, myrepo = None) 
 			pkg_data = nil
 		} else{
 			cache_mtime, metadata := pkg_data[0], pkg_data[1]
-			if not isinstance(cache_mtime, (float, long, int)) or \
-			not isinstance(metadata, dict):
-			pkg_data = None
+			if ! isinstance(cache_mtime, (float, long, int)) || ! isinstance(metadata, dict) {
+				pkg_data = None
+			}
 		}
 	}
 
@@ -1562,9 +1614,18 @@ func (d*dblink) _post_merge_sync() {}
 
 func (d*dblink) merge() {}
 
-func (d*dblink) getstring() {}
+func (d*dblink) getstring(name string)string {
+	if _, err :=os.Stat(d.dbdir+"/"+name); err != nil {
+	return ""
+	}
+	f, _ := ioutil.ReadFile(filepath.Join(d.dbdir, name))
+	mydata := strings.Fields(string(f))
+	return strings.Join(mydata, " ")
+}
 
-func (d*dblink) copyfile() {}
+func (d*dblink) copyfile(fname string) {
+	copyfile(fname, d.dbdir+"/"+path.Base(fname))
+}
 
 func (d*dblink) getfile() {}
 
@@ -1959,21 +2020,22 @@ func NewBinDbApi(mybintree *BinaryTree, settings *Config, exclusive_slots, multi
 }
 
 type BinaryTree struct {
-	pkgdir,  _pkgindex_file , _pkgindex_header     string
-	PkgIndexFile interface{}
-	settings *Config
-	populated, _populating, _multi_instance, _remote_has_index, _all_directory  bool
-	 _pkgindex_version int
-	_pkgindex_hashes , _pkgindex_keys, _pkgindex_aux_keys, _pkgindex_use_evaluated_keys, _pkgindex_inherited_keys []string
-	_remotepkgs interface{}
-	dbapi *bindbapi
-	update_ents func(updates map[string][][]*Atom, onProgress, onUpdate func(int, int))
-	move_slot_ent func(mylist []*Atom, repo_match func(string) bool) int
-	tree, _additional_pkgs map[string]interface{}
-	_pkgindex_header_keys, _pkgindex_allowed_pkg_keys map[string]bool
-	_pkgindex_default_pkg_data, _pkgindex_default_header_data, _pkg_paths map[string]string
-	_pkgindex_translated_keys [][2]string
-	invalids []string
+	pkgdir, _pkgindex_file, _pkgindex_header                                                                     string
+	PkgIndexFile                                                                                                 interface{}
+	settings                                                                                                     *Config
+	populated, _populating, _multi_instance, _remote_has_index, _all_directory                                   bool
+	_pkgindex_version                                                                                            int
+	_pkgindex_hashes, _pkgindex_keys, _pkgindex_aux_keys, _pkgindex_use_evaluated_keys, _pkgindex_inherited_keys []string
+	_remotepkgs                                                                                                  interface{}
+	dbapi                                                                                                        *bindbapi
+	update_ents                                                                                                  func(updates map[string][][]*Atom, onProgress, onUpdate func(int, int))
+	move_slot_ent                                                                                                func(mylist []*Atom, repo_match func(string) bool) int
+	tree, _additional_pkgs                                                                                       map[string]interface{}
+	_pkgindex_header_keys, _pkgindex_allowed_pkg_keys                                                            map[string]bool
+	_pkgindex_default_pkg_data, _pkgindex_default_header_data, _pkg_paths                                        map[string]string
+	_pkgindex_translated_keys                                                                                    [][2]string
+	invalids                                                                                                     []string
+	_allocate_filename                                                                                           func(cpv *pkgStr) string
 }
 
 func (b *BinaryTree) root() string{
@@ -2019,9 +2081,7 @@ func (b *BinaryTree) Populate(getbinpkgs, getbinpkg_refresh bool, add_repos []st
 
 	if getbinpkgs{
 		if b.settings.ValueDict["PORTAGE_BINHOST"] == "" {
-
-			writemsg(_("!!! PORTAGE_BINHOST unset, but use is requested.\n"),
-				noiselevel=-1)
+			WriteMsg(fmt.Sprintf("!!! PORTAGE_BINHOST unset, but use is requested.\n"),-1, nil)
 		}		else{
 			b._populate_remote(getbinpkg_refresh=getbinpkg_refresh)
 		}
@@ -2243,7 +2303,7 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 			if mypkg != strings.TrimSpace(mypf) {
 				continue
 			}
-			mycpv := mycat + "/" + mypkg
+			mycpvS := mycat + "/" + mypkg
 			if !b.dbapi._category_re.MatchString(mycat){
 				WriteMsg(fmt.Sprintf("!!! Binary package has an unrecognized category: '%s'\n", full_path), -1, nil)
 				WriteMsg(fmt.Sprintf("!!! '%s' has a category that is not listed in %setc/portage/categories\n", mycpv, b.settings.ValueDict["PORTAGE_CONFIGROOT"]), -1, nil)
@@ -2253,24 +2313,24 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 				pkg_metadata["BUILD_ID"] = _unicode(build_id)
 			}
 			pkg_metadata["SIZE"] = _unicode(s.st_size)
-				pkg_metadata.pop("CATEGORY")
-			pkg_metadata.pop("PF")
-			mycpv = _pkg_str(mycpv,
-				metadata=self.dbapi._aux_cache_slot_dict(pkg_metadata),
-				db=self.dbapi)
-			pkg_paths[_instance_key(mycpv)] = mypath
-			self.dbapi.cpv_inject(mycpv)
-			update_pkgindex = True
-			d = metadata.get(_instance_key(mycpv),
-				pkgindex._pkg_slot_dict())
-			if d {
+				delete(pkg_metadata,"CATEGORY")
+			delete(pkg_metadata,"PF")
+			mycpv := NewPkgStr(mycpvS, b.dbapi._aux_cache_slot_dict(pkg_metadata), b.dbapi.dbapi, "", "", "", 0, "", "", 0, nil)
+			pkg_paths[_instance_key(mycpv, false).string] = mypath
+			b.dbapi.cpv_inject(mycpv)
+			update_pkgindex = true
+			d, ok := metadata[_instance_key(mycpv, false).string]
+			if !ok {
+				d=				pkgindex._pkg_slot_dict()
+			}
+			if len(d)>0 {
 			try:
 				if long(d["_mtime_"]) != s[stat.ST_MTIME]:
 				d.clear()
 				except(KeyError, ValueError):
 				d.clear()
 			}
-			if d {
+			if len(d)>0 {
 			try:
 				if long(d["SIZE"]) != long(s.st_size):
 				d.clear()
@@ -2283,7 +2343,7 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 				if v {
 					d[k] = v
 				}
-				d["CPV"] = mycpv
+				d["CPV"] = mycpv.string
 			}
 
 		//try:
@@ -2293,12 +2353,12 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 			//self.dbapi.cpv_remove(mycpv)
 			//del pkg_paths[_instance_key(mycpv)]
 
-			if mypath != mycpv + ".tbz2"{
+			if mypath != mycpv.string + ".tbz2"{
 				d["PATH"] = mypath
 			} else {
 				delete(d,"PATH")
 			}
-			metadata[_instance_key(mycpv)] = d
+			metadata[_instance_key(mycpv, false).string] = d
 		}
 	}
 
@@ -2343,7 +2403,7 @@ func (b *BinaryTree) _pkgindex_write() {}
 
 func (b *BinaryTree) _pkgindex_entry(cpv *pkgStr) map[string]string{
 
-	pkg_path := b.getname(cpv.string, "")
+	pkg_path := b.getname(cpv.string, false)
 
 	d := CopyMapSS(cpv.metadata)
 	for k, v := range performMultipleChecksums(pkg_path, b._pkgindex_hashes, 0){
@@ -2375,7 +2435,48 @@ func (b *BinaryTree) _merge_pkgindex_header() {}
 
 func (b *BinaryTree) _propagate_config() {}
 
-func (b *BinaryTree) _update_pkgindex_header() {}
+func (b *BinaryTree) _update_pkgindex_header(header map[string]string) {
+
+	if _, ok := b.settings.ValueDict["IUSE_IMPLICIT"];!(b.settings.profilePath!= "" &&ok) {
+		if _, ok := header["VERSION"]; !ok {
+			header["VERSION"]= fmt.Sprint(b._pkgindex_version)
+		}
+		return
+	}
+rp, _ := filepath.EvalSymlinks(b.settings.ValueDict["PORTDIR"])
+	portdir := NormalizePath(rp)
+	profiles_base := filepath.Join(portdir, "profiles") + string(filepath.Separator)
+	profile_path := ""
+	if b.settings.profilePath!= "" {
+		rp, _ := filepath.EvalSymlinks(b.settings.ValueDict["PORTDIR"])
+		profile_path = NormalizePath(rp)
+	}
+	if strings.HasPrefix(profile_path,profiles_base) {
+		profile_path = profile_path[len(profiles_base):]
+	}
+	header["PROFILE"] = profile_path
+	header["VERSION"] = fmt.Sprint(b._pkgindex_version)
+	base_uri := b.settings.ValueDict["PORTAGE_BINHOST_HEADER_URI"]
+	if base_uri!="" {
+		header["URI"] = base_uri
+	}else {
+		delete(header,"URI")
+	}
+	phk := []string{}
+	for k := range b._pkgindex_header_keys{
+		phk = append(phk, k)
+	}
+	for _, k := range append(append(append([]string{}, phk...) ,
+	strings.Fields(b.settings.ValueDict["USE_EXPAND_IMPLICIT"])...) ,
+	strings.Fields(b.settings.ValueDict["USE_EXPAND_UNPREFIXED"])...){
+		v := b.settings.ValueDict[k]
+		if v!= "" {
+			header[k] = v
+		}		else {
+			delete(header,k)
+		}
+	}
+}
 
 func (b *BinaryTree) _pkgindex_version_supported(pkgindex *PackageIndex) bool{
 	version := pkgindex.header["VERSION"]
@@ -2428,7 +2529,28 @@ func (b *BinaryTree) exists_specific(cpv string) []*pkgStr{
 	return b.dbapi.match(dep_expandS("="+cpv, b.dbapi.dbapi,1, b.settings), 1)
 }
 
-func (b *BinaryTree) dep_bestmatch() {}
+func (b *BinaryTree) dep_bestmatch(mydep *Atom)string {
+	if ! b.populated {
+		b.Populate(false, true, []string{})
+	}
+	WriteMsg("\n\n", 1,nil)
+	WriteMsg(fmt.Sprintf("mydep: %s\n", mydep), 1, nil)
+	mydep = dep_expand(mydep, b.dbapi.dbapi,1 ,b.settings)
+	WriteMsg(fmt.Sprintf("mydep: %s\n" , mydep), 1, nil)
+	mykey := depGetKey(mydep.value)
+	WriteMsg(fmt.Sprintf("mykey: %s\n" , mykey), 1, nil)
+	ml := []string{}
+	for _, p := range matchFromList(mydep,b.dbapi.cp_list(mykey)) {
+		ml = append(ml, p.string)
+	}
+	mymatch := best(ml, "")
+	WriteMsg(fmt.Sprintf("mymatch: %s\n" , mymatch), 1, nil)
+	if mymatch == ""{
+		return ""
+	}
+	return mymatch
+
+}
 
 // nil
 func (b *BinaryTree) getname(cpvS string, allocate_new bool) string {
@@ -2480,9 +2602,22 @@ func (b *BinaryTree) _is_specific_instance() {}
 
 func (b *BinaryTree) _max_build_id() {}
 
-func (b *BinaryTree) _allocate_filename() {}
+func (b *BinaryTree) _allocate_filename_multi(cpv *pkgStr)string {
+	max_build_id := b._max_build_id(cpv)
 
-func (b *BinaryTree) _allocate_filename_multi() {}
+		pf := catsplit(cpv.string)[1]
+	build_id := max_build_id + 1
+
+	for {
+		filename := fmt.Sprintf("%s-%s.xpak" ,
+			filepath.Join(b.pkgdir, cpv.cp, pf), build_id)
+		if _, err :=os.Stat(filename); err == nil {
+			build_id += 1
+		}else {
+			return filename
+		}
+	}
+}
 
 func (b *BinaryTree) _parse_build_id() {}
 
@@ -2513,6 +2648,10 @@ func NewBinaryTree(pkgDir string, settings *Config) *BinaryTree {
 	b._multi_instance = settings.Features.Features["binpkg-multi-instance"]
 	if b._multi_instance{
 		b._allocate_filename = b._allocate_filename_multi
+	} else {
+		b._allocate_filename = func(cpv *pkgStr) string {
+			return filepath.Join(b.pkgdir, cpv.string + ".tbz2")
+		}
 	}
 	b.dbapi = NewBinDbApi(b, settings, true, false)
 	b.update_ents = b.dbapi.update_ents
