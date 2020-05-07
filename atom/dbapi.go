@@ -821,7 +821,7 @@ func (v *vardbapi) cpv_counter(mycpv *pkgStr) int {
 
 func (v *vardbapi) cpv_inject(mycpv *pkgStr) {
 	ensureDirs(v.getpath(mycpv.string, ""),  -1,-1,-1,-1,nil,true)
-	counter := v.counter_tick(mycpv)
+	counter := v.counter_tick()
 	write_atomic(v.getpath(mycpv.string, "COUNTER"), string(counter), 0 ,true)
 }
 
@@ -942,7 +942,7 @@ func (v *vardbapi) cp_list(mycp *pkgStr, use_cache int) []*pkgStr{
 				cpv := fmt.Sprintf("%s/%s" ,mysplit[0], x)
 				metadata := map[string]string{}
 				for i := range v._aux_cache_keys {
-					metadata[i]= v.aux_get(cpv, v._aux_cache_keys)
+					metadata[i]= v.aux_get(cpv, v._aux_cache_keys, "")
 				}
 				returnme = append(returnme, NewPkgStr(cpv, metadata,
 					v.settings, "", "", "", 0, "", "", 0, v.dbapi))
@@ -959,9 +959,19 @@ delete(v.cpcache,mycp.string)
 	return returnme
 }
 
-func (v *vardbapi) cpv_all() {}
+// 1
+func (v *vardbapi) cpv_all(use_cache int) {}
 
-func (v *vardbapi) _iter_cpv_all() {}
+func (v *vardbapi) _iter_cpv_all(use_cache, sort bool) {
+	basepath := filepath.Join(v._eroot,VdbPath) + string(filepath.Separator)
+	if use_cache {
+
+	}else {
+
+	}
+}
+
+func (v *vardbapi) cp_all(use_cache , sort bool) {}
 
 func (v *vardbapi) checkblockers() {}
 
@@ -2666,7 +2676,7 @@ func NewBinaryTree(pkgDir string, settings *Config) *BinaryTree {
 	b._pkg_paths = map[string]string{}
 	b._populating = false
 	st, err := os.Stat(path.Join(b.pkgdir, "All"))
-	b._all_directory = err != nil && st.IsDir()
+	b._all_directory = err != nil && st!=nil&&st.IsDir()
 	b._pkgindex_version = 0
 	b._pkgindex_hashes = []string{"MD5","SHA1"}
 	b._pkgindex_file = path.Join(b.pkgdir, "Packages")
