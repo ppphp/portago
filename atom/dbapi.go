@@ -526,7 +526,7 @@ func (d *dbapi) update_ents(updates map[string][][]*Atom, onProgress, onUpdate f
 		}
 		//except KeyError:
 		//continue
-		pkg := NewPkgStr(cpv.string, metadata, d.settings, "", "", "", 0, "", "", 0, nil)
+		pkg := NewPkgStr(cpv.string, metadata, d.settings, "", "", "", 0, 0, "", 0, nil)
 		//except InvalidData:
 		//continue
 		m := map[string]string{}
@@ -1813,8 +1813,7 @@ func (f *fakedbapi) match(origdep *Atom, use_cache int) []*pkgStr {
 	return result[:]
 }
 
-// nil
-func (f *fakedbapi) cpv_exists(mycpv *pkgStr, myrepo interface{}) bool {
+func (f *fakedbapi) cpv_exists(mycpv *pkgStr) bool {
 	_, ok := f.cpvdict[f._instance_key(mycpv,
 		true).string]
 	return ok
@@ -1999,17 +1998,109 @@ func (b *bindbapi) match(origdep *Atom, use_cache int) []*pkgStr{
 	return b.fakedbapi.match(origdep, use_cache)
 }
 
-func (b *bindbapi) cpv_exists(cpv, myrepo string) {}
+func (b *bindbapi) cpv_exists(cpv *pkgStr) bool {
+	if b.bintree!= nil && !b.bintree.populated {
+		b.bintree.Populate(false, true, []string{})
+	}
+	return b.fakedbapi.cpv_exists(cpv)
+}
 
-func (b *bindbapi) cpv_inject() {}
+func (b *bindbapi) cpv_inject(cpv *pkgStr) {
+	if b.bintree!= nil && !b.bintree.populated {
+		b.bintree.Populate(false, true, []string{})
+	}
+	b.fakedbapi.cpv_inject(cpv, cpv.metadata)
+}
 
-func (b *bindbapi) cpv_remove() {}
+func (b *bindbapi) cpv_remove(cpv *pkgStr) {
+	if b.bintree!= nil && !b.bintree.populated {
+		b.bintree.Populate(false, true, []string{})
+	}
+	b.fakedbapi.cpv_remove(cpv)
+}
 
-func (b *bindbapi) aux_get() {}
+func (b *bindbapi) aux_get(mycpv *pkgStr, wants map[string]string) []string {
+	if b.bintree!= nil && !b.bintree.populated {
+		b.bintree.Populate(false, true, []string{})
+	}
+	instance_key := b._instance_key(mycpv, true)
+	if !b._known_keys.intersection(
+		wants).difference(b._aux_cache_keys){
+		aux_cache := b.cpvdict[instance_key.string]
+		if aux_cache != nil{
+			ret := []string{}
+			for x := range wants{
+				ret = append(ret, aux_cache[x])
+			}
+			return ret
+		}
+	}
+	add_pkg := b.bintree._additional_pkgs[instance_key.string]
+	getitem := func(string)string{return ""}
+	if add_pkg != nil{
+		return add_pkg._db.aux_get(add_pkg, wants)
+	}else if !b.bintree._remotepkgs || !b.bintree.isremote(mycpv) {
+		tbz2_path, ok := b.bintree._pkg_paths[instance_key.string]
+		if !ok {
+			//except KeyError:
+			//raise KeyError(mycpv)
+		}
+		tbz2_path = filepath.Join(b.bintree.pkgdir, tbz2_path)
+		st, err := os.Lstat(tbz2_path)
+		if err != nil {
+			//except OSError:
+			//raise KeyError(mycpv)
+		}
+		metadata_bytes := portage.xpak.tbz2(tbz2_path).get_data()
+		getitem = func(k string) string {
+			if k == "_mtime_" {
+				return fmt.Sprint(st.ModTime().UnixNano())
+			}else if			k == "SIZE" {
+				return fmt.Sprint(st.Size())
+			}
+			v := metadata_bytes.get(_unicode_encode(k,
+				encoding = _encodings['repo.content'],
+				errors = 'backslashreplace'))
+			if v != nil {
+				v = _unicode_decode(v,
+					encoding = _encodings['repo.content'], errors = 'replace')
+			}
+			return v
+		}
+	}else {
+		getitem = func(s string) string {
+			return b.cpvdict[instance_key.string][s]
+		}
+	}
+	mydata := map[string]string{}
+	mykeys := wants
+	for x := range mykeys{
+		myval := getitem(x)
+		if myval!= ""{
+		mydata[x] = strings.Join(strings.Fields(myval), " ")
+	}
+	}
+
+	if mydata["EAPI"] == "" {
+		mydata["EAPI"] = "0"
+	}
+
+	ret := []string{}
+	for x := range wants{
+		ret = append(ret, mydata[x])
+	}
+	return ret
+}
 
 func (b *bindbapi) aux_update() {}
 
-func (b *bindbapi) cp_list() {}
+// 1
+func (b *bindbapi) cp_list(mycp string, use_cache int) []*pkgStr {
+	if !b.bintree.populated {
+		b.bintree.Populate(false, true, []string{})
+	}
+	return b.fakedbapi.cp_list(mycp, use_cache)
+}
 
 func (b *bindbapi) cp_all() {}
 
@@ -2272,7 +2363,7 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 
 			multi_instance := false
 			invalid_name := false
-			build_id = None
+			build_id := 0
 			if strings.HasSuffix(myfile, ".xpak"){
 				multi_instance = true
 				build_id = b._parse_build_id(myfile)
@@ -2292,14 +2383,16 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 				continue
 			}
 
-			if pkg_metadata.get("BUILD_ID"){
-			try:
-				build_id = long(pkg_metadata["BUILD_ID"])
-				except ValueError:
-				WriteMsg(fmt.Sprintf("!!! Binary package has invalid BUILD_ID: '%s'\n",full_path), -1,nil)
-				continue
+			if pkg_metadata["BUILD_ID"]!= ""{
+				var err error
+				build_id, err = strconv.Atoi(pkg_metadata["BUILD_ID"])
+				if err != nil {
+					//except ValueError:
+					WriteMsg(fmt.Sprintf("!!! Binary package has invalid BUILD_ID: '%s'\n", full_path), -1, nil)
+					continue
+				}
 			} else{
-				build_id = None
+				build_id = 0
 			}
 
 			if multi_instance{
@@ -2316,13 +2409,13 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 			mycpvS := mycat + "/" + mypkg
 			if !b.dbapi._category_re.MatchString(mycat){
 				WriteMsg(fmt.Sprintf("!!! Binary package has an unrecognized category: '%s'\n", full_path), -1, nil)
-				WriteMsg(fmt.Sprintf("!!! '%s' has a category that is not listed in %setc/portage/categories\n", mycpv, b.settings.ValueDict["PORTAGE_CONFIGROOT"]), -1, nil)
+				WriteMsg(fmt.Sprintf("!!! '%s' has a category that is not listed in %setc/portage/categories\n", mycpvS, b.settings.ValueDict["PORTAGE_CONFIGROOT"]), -1, nil)
 				continue
 			}
-			if build_id is not None{
-				pkg_metadata["BUILD_ID"] = _unicode(build_id)
+			if build_id != 0{
+				pkg_metadata["BUILD_ID"] = fmt.Sprint(build_id)
 			}
-			pkg_metadata["SIZE"] = _unicode(s.st_size)
+			pkg_metadata["SIZE"] = fmt.Sprint(s.st_size)
 				delete(pkg_metadata,"CATEGORY")
 			delete(pkg_metadata,"PF")
 			mycpv := NewPkgStr(mycpvS, b.dbapi._aux_cache_slot_dict(pkg_metadata), b.dbapi.dbapi, "", "", "", 0, "", "", 0, nil)
@@ -2550,7 +2643,7 @@ func (b *BinaryTree) dep_bestmatch(mydep *Atom)string {
 	mykey := depGetKey(mydep.value)
 	WriteMsg(fmt.Sprintf("mykey: %s\n" , mykey), 1, nil)
 	ml := []string{}
-	for _, p := range matchFromList(mydep,b.dbapi.cp_list(mykey)) {
+	for _, p := range matchFromList(mydep,b.dbapi.cp_list(mykey, 1)) {
 		ml = append(ml, p.string)
 	}
 	mymatch := best(ml, "")
@@ -2610,7 +2703,15 @@ func (b *BinaryTree) getname(cpvS string, allocate_new bool) string {
 
 func (b *BinaryTree) _is_specific_instance() {}
 
-func (b *BinaryTree) _max_build_id() {}
+func (b *BinaryTree) _max_build_id(cpv *pkgStr) int {
+	max_build_id := 0
+	for _, x := range b.dbapi.cp_list(cpv.cp, 1) {
+		if x.string == cpv.string &&		x.buildId != nil && x.buildId > max_build_id {
+			max_build_id = x.buildId
+		}
+	}
+	return max_build_id
+}
 
 func (b *BinaryTree) _allocate_filename_multi(cpv *pkgStr)string {
 	max_build_id := b._max_build_id(cpv)
@@ -2629,19 +2730,49 @@ func (b *BinaryTree) _allocate_filename_multi(cpv *pkgStr)string {
 	}
 }
 
-func (b *BinaryTree) _parse_build_id() {}
+func (b *BinaryTree) _parse_build_id(filename string) int {
+	build_id := -1
+	suffixlen := len(".xpak")
+	hyphen := strings.LastIndex(filename[0:len(filename)-(suffixlen + 1)], "-")
+	if hyphen != -1 {
+		build_idS := filename[hyphen+1 : -suffixlen]
+		var err error
+		build_id, err = strconv.Atoi(build_idS)
+		if err != nil {
+			//pass
+		}
+	}
+	return build_id
+}
 
-func (b *BinaryTree) isremote() {}
+func (b *BinaryTree) isremote(pkgname *pkgStr) bool{
+	if b._remotepkgs == nil{
+		return false
+	}
+	instance_key := b.dbapi._instance_key(pkgname, false)
+	if instance_key not in b._remotepkgs{
+		return false
+	}else if instance_key in b._additional_pkgs{
+		return false
+	}
+	return true
+}
 
 func (b *BinaryTree) get_pkgindex_uri() {}
 
 func (b *BinaryTree) gettbz2() {}
 
-func (b *BinaryTree) LoadPkgIndex() *PackageIndex { return nil }
-
-func (b *BinaryTree) _get_digests() {}
-
-func (b *BinaryTree) digestCheck() {}
+func (b *BinaryTree) LoadPkgIndex() *PackageIndex {
+	pkgindex := b._new_pkgindex()
+	f,err := os.Open(b._pkgindex_file)
+	if err == nil {
+	//try:
+		pkgindex.read(f)
+	//finally:
+	//	f.close()
+	}
+		return pkgindex
+}
 
 func (b *BinaryTree) getslot() {}
 
