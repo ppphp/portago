@@ -1141,7 +1141,7 @@ func write_atomic(file_path, content string, mode int, follow_links bool) {
 }
 
 // -1,-1,-1,-1,nil,true
-func ensureDirs(dirpath string, uid, gid, mode, mask uint32, statCached os.FileInfo, followLinks bool) bool {
+func ensureDirs(dirpath string, uid, gid uint32, mode os.FileMode, mask uint32, statCached os.FileInfo, followLinks bool) bool {
 	createdDir := false
 	if err := os.MkdirAll(dirpath, 0755); err == nil {
 		createdDir = true

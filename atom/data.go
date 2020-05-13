@@ -2,6 +2,7 @@ package atom
 
 import (
 	"os"
+	"syscall"
 )
 
 func TargetEprefix() string {
@@ -35,7 +36,8 @@ func portageGroupWarining() {
 }
 
 var userpriv_groups, _portage_grpname, _portage_username *string
-var portage_gid, portage_uid, secpass *int
+var portage_gid *uint32
+var  portage_uid, secpass *int
 var uid = os.Geteuid()
 
 func data_init(settings *Config) {
@@ -62,9 +64,9 @@ func data_init(settings *Config) {
 			v = 2
 		} else if settings.Features.Features["unprivileged"] {
 			v = 2
-		} else if i, err := os.Getgroups(); err != nil {
+		} else if i, err := syscall.Getgroups(); err != nil {
 			for _, x := range i {
-				if *portage_gid == x {
+				if *portage_gid == uint32(x) {
 					v = 1
 					break
 				}

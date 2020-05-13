@@ -171,9 +171,9 @@ func (c *Config) initDirs() {
 		return
 	}
 	dirModeMap := map[string]struct {
-		gid           int
-		mode          int
-		mask          int
+		gid           uint32
+		mode          os.FileMode
+		mask          uint32
 		preservePerms bool
 	}{
 		"tmp":       {-1, 01777, 0, true},
