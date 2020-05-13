@@ -989,7 +989,12 @@ func (v *vardbapi) _add(pkg_dblink) {
 
 func (v *vardbapi) _remove() {}
 
-func (v *vardbapi) _clear_pkg_cache() {}
+func (v *vardbapi) _clear_pkg_cache(pkg_dblink *dblink) {
+	delete(v.mtdircache,pkg_dblink.cat)
+	delete(v.matchcache,pkg_dblink.cat)
+	delete(v.cpcache,pkg_dblink.mysplit[0])
+	delete(dircache,pkg_dblink.dbcatdir)
+}
 
 // 1
 func (v *vardbapi) match(origdep *Atom, use_cache int) []*pkgStr {
@@ -1277,7 +1282,7 @@ func (v *vardbapi) counter_tick() int {
 }
 
 // ignored, ignored
-func (v *vardbapi) get_counter_tick_core() int{
+func (v *vardbapi) get_counter_tick_core() int {
 
 	counter := -1
 	c, err := ioutil.ReadFile(v._counter_path)
@@ -1307,17 +1312,18 @@ func (v *vardbapi) get_counter_tick_core() int{
 	max_counter := counter
 	if v._cached_counter != counter {
 		for _, cpv := range v.cpv_all() {
-		try:
-			pkg_counter = int(v.aux_get(cpv, ["COUNTER"])[0])
-			except(KeyError, OverflowError, ValueError):
-			continue
-			if pkg_counter > max_counter:
-			max_counter = pkg_counter
+		//try:
+			pkg_counter, err := strconv.Atoi(v.aux_get(cpv, map[string]bool{"COUNTER":true}, "")[0])
+			if err != nil{
+				//except(KeyError, OverflowError, ValueError):
+				continue
+			}
+			if pkg_counter > max_counter{
+				max_counter = pkg_counter
+			}
 		}
 	}
-
 	return max_counter + 1
-
 }
 
 // ignnored, 1, ignored
