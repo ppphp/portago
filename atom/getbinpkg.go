@@ -2,6 +2,7 @@ package atom
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"sort"
@@ -72,7 +73,7 @@ func (p *PackageIndex) _readpkgindex(pkgfile *os.File, pkg_entry bool) map[strin
 	return d
 }
 
-func (p *PackageIndex) _writepkgindex(pkgfile *os.File, items [][2]string) {
+func (p *PackageIndex) _writepkgindex(pkgfile io.Writer, items [][2]string) {
 	for _, x := range items {
 		k, v := x[0], x[1]
 		a, ok := p._write_translation_map[k]
@@ -126,7 +127,7 @@ func (p *PackageIndex) readBody(pkgfile *os.File) {
 	}
 }
 
-func (p *PackageIndex) write(pkgfile *os.File) {
+func (p *PackageIndex) write(pkgfile io.Writer) {
 	if p.modified {
 		p.header["TIMESTAMP"] = fmt.Sprint(time.Now().Unix())
 		p.header["PACKAGES"] = fmt.Sprint(len(p.packages))

@@ -1,8 +1,11 @@
 package atom
 
 import (
+	"bytes"
+	"compress/gzip"
 	"fmt"
 	"github.com/ppphp/portago/pkg/portage/emaint"
+	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -945,7 +948,7 @@ func (v *vardbapi) cp_list(mycp *pkgStr, use_cache int) []*pkgStr{
 					metadata[i]= v.aux_get(cpv, v._aux_cache_keys, "")
 				}
 				returnme = append(returnme, NewPkgStr(cpv, metadata,
-					v.settings, "", "", "", 0, "", "", 0, v.dbapi))
+					v.settings, "", "", "", 0, 0, "", 0, v.dbapi))
 			}
 		}
 	}
@@ -964,24 +967,35 @@ func (v *vardbapi) cpv_all(use_cache int) {}
 
 func (v *vardbapi) _iter_cpv_all(use_cache, sort bool) {
 	basepath := filepath.Join(v._eroot,VdbPath) + string(filepath.Separator)
+	subpaths := []{}
 	if use_cache {
 
 	}else {
 
 	}
+	return subpaths
 }
 
 func (v *vardbapi) cp_all(use_cache , sort bool) {}
 
-func (v *vardbapi) checkblockers() {}
+func (v *vardbapi) _clear_cache() {
+	v.mtdircache = map[string]int{}
+	v.matchcache = map[string]string{}
+	v.cpcache= map[string]string{}
+	v._aux_cache_obj = nil
+}
 
-func (v *vardbapi) _clear_cache() {}
+func (v *vardbapi) _add(pkg_dblink) {
+	v._pkgs_changed = true
+	v._clear_pkg_cache(pkg_dblink)
+}
 
-func (v *vardbapi) _add() {}
+func (v *vardbapi) _remove(pkg_dblink) {
+	v._pkgs_changed = true
+	v._clear_pkg_cache(pkg_dblink)
+}
 
-func (v *vardbapi) _remove() {}
-
-func (v *vardbapi) _clear_pkg_cache() {}
+func (v *vardbapi) _clear_pkg_cache(pkg_dblink) {}
 
 // 1
 func (v *vardbapi) match(origdep *Atom, use_cache int) []*pkgStr {
@@ -1330,7 +1344,10 @@ func (v *vardbapi) counter_tick_core(incrementing int) int{
 	return counter
 }
 
-func (v *vardbapi) _dblink() {}
+func (v *vardbapi) _dblink() {
+	category, pf := catsplit(cpv)[0],catsplit(cpv)[1]
+	return NewDblink()category, pf, settings=self.settings,
+		vartree=self.vartree, treetype="vartree")}
 
 func (v *vardbapi) removeFromContents() {}
 
@@ -1466,8 +1483,8 @@ func (v *varTree)dep_match (mydep *Atom, use_cache int)  []*pkgStr{
 
 }
 
-func (v *varTree) exists_specific(cpv){
-	return v.dbapi.cpv_exists(cpv)
+func (v *varTree) exists_specific(cpv string)bool{
+	return v.dbapi.cpv_exists(cpv, "")
 }
 
 func (v *varTree) getallcpv(){
@@ -1478,9 +1495,14 @@ func (v *varTree) getallnodes(){
 	return v.dbapi.cp_all()
 }
 
-func (v *varTree) getebuildpath(){}
+func (v *varTree) getebuildpath(fullpackage string)string {
+	packagee := catsplit(fullpackage)[1]
+	return v.getpath(fullpackage, packagee+".ebuild")
+}
 
-func (v *varTree) getslot(){}
+func (v *varTree) getslot(mycatpkg *pkgStr)string{
+	return v.dbapi._pkg_str(mycatpkg, "").slot
+}
 
 func (v *varTree)populate (){
 	v.populated = 1
@@ -2149,7 +2171,20 @@ func (b *BinaryTree) prevent_collision() {}
 
 func (b *BinaryTree) _ensure_dir() {}
 
-func (b *BinaryTree) _file_permissions() {}
+func (b *BinaryTree) _file_permissions(path string) {
+	pkgdir_st, err := os.Stat(b.pkgdir)
+	if err != nil {
+		//except OSError:
+		//pass
+	} else {
+		pkgdir_gid:=pkgdir_st.Sys().(*syscall.Stat_t).Gid
+		pkgdir_grp_mode := 0o0060 & pkgdir_st.Mode()
+	//try:
+		applyPermissions(path,-1 , pkgdir_gid,pkgdir_grp_mode, 0, nil, true)
+		//except PortageException:
+		//pass
+	}
+}
 
 // false, true, []string{}
 func (b *BinaryTree) Populate(getbinpkgs, getbinpkg_refresh bool, add_repos []string) {
@@ -2502,7 +2537,33 @@ func (b *BinaryTree) _read_metadata() {}
 
 func (b *BinaryTree) _inject_file() {}
 
-func (b *BinaryTree) _pkgindex_write() {}
+func (b *BinaryTree) _pkgindex_write(pkgindex * PackageIndex) {
+	contentsB := &bytes.Buffer{}
+	pkgindex.write(contentsB)
+	contents := contentsB.Bytes()
+	atime, _ := strconv.ParseInt(pkgindex.header["TIMESTAMP"], 10, 64)
+	mtime := atime
+
+	output_files := []struct{io.WriteCloser; string; io.Closer}{{NewAtomic_ofstream(b._pkgindex_file, os.O_RDWR, true), "", nil}}
+
+	if b.settings.Features.Features["compress-index"] {
+		gz_fname := b._pkgindex_file + ".gz"
+		fileobj := NewAtomic_ofstream(gz_fname, os.O_RDWR,true)
+		output_files = append(output_files, struct{io.WriteCloser; string; io.Closer}{gzip.NewWriter(fileobj), gz_fname, fileobj})
+	}
+
+	for _, o := range output_files{
+		f, fname, f_close:= o.WriteCloser, o.string, o.Closer
+		f.Write(contents)
+		f.Close()
+		if f_close!= nil {
+			f_close.Close()
+		}
+		b._file_permissions(fname)
+		syscall.Utime(fname, &syscall.Utimbuf{atime, mtime})
+	}
+
+}
 
 func (b *BinaryTree) _pkgindex_entry(cpv *pkgStr) map[string]string{
 

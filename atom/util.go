@@ -957,7 +957,8 @@ type slotObject struct {
 	weakRef string
 }
 
-func applyPermissions(filename string, uid, gid, mode, mask uint32, statCached os.FileInfo, followLinks bool) bool { // -1,-1,-1,-1,nil,true
+// -1,-1,-1,-1,nil,true
+func applyPermissions(filename string, uid, gid uint32, mode os.FileMode, mask uint32, statCached os.FileInfo, followLinks bool) bool {
 	modified := false
 	if statCached == nil {
 		statCached, _ = doStat(filename, followLinks)
@@ -1059,22 +1060,28 @@ func (a *atomic_ofstream) _get_target() *os.File {
 	return a._file
 }
 
-func (a *atomic_ofstream) write(s string) {
+func (a *atomic_ofstream) Write(s []byte) (int, error) {
 	f := a._file
-	f.Write([]byte(s))
+	return f.Write(s)
 }
 
-func (a *atomic_ofstream) close() {
+func (a *atomic_ofstream) Close() error {
 	f := a._file
 	real_name := a._real_name
-	f.Close()
+	if err := f.Close(); err != nil {
+		return err
+	}
 	if !a._aborted {
 		st, _ := os.Stat(real_name)
 		apply_stat_permissions(f.Name(), st, -1, nil, true)
-		os.Rename(f.Name(), real_name)
+		if err := os.Rename(f.Name(), real_name); err != nil {
+			return err
+		}
 	}
-	syscall.Unlink(f.Name())
-
+	if err := syscall.Unlink(f.Name()); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (a *atomic_ofstream) abort() {
