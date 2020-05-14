@@ -1,7 +1,14 @@
 package atom
 
 import (
+	"fmt"
+	"io/ioutil"
 	"os"
+	"path"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -19,7 +26,7 @@ func (a *AsynchronousTask) start() {
 
 func (a *AsynchronousTask)  async_wait(){
 waiter := a.scheduler.create_future()
-exit_listener := func(a *AsynchronousTask) { return waiter.cancelled() || waiter.set_result(self.returncode)}
+exit_listener := func(a *AsynchronousTask) { return waiter.cancelled() || waiter.set_result(a.returncode)}
 a.addExitListener(exit_listener)
 waiter.add_done_callback(func (waiter) {a.removeExitListener(exit_listener) if waiter.cancelled() else None}
 )
@@ -55,7 +62,7 @@ func (a *AsynchronousTask)  _poll() *int {
 func (a *AsynchronousTask)  wait() *int {
 	if a.returncode == nil {
 		if a.scheduler.is_running() {
-			raise asyncio.InvalidStateError('Result is not ready for %s' % (self, ))
+			raise asyncio.InvalidStateError('Result is not ready for %s' % (a, ))
 		}
 		a.scheduler.run_until_complete(a.async_wait())
 	}
@@ -134,7 +141,8 @@ try:
 
 }
 if a._exit_listener_handles != nil {
-	handle := a._exit_listener_handles.pop(f, None)
+	handle := a._exit_listener_handles[f]
+	delete(a._exit_listener_handles,f)
 	if handle != nil {
 		handle.cancel()
 	}
@@ -150,11 +158,11 @@ func (a *AsynchronousTask)  _wait_hook() {
 		listeners := a._exit_listeners
 		a._exit_listeners = nil
 		if a._exit_listener_handles == nil{
-		a._exit_listener_handles ={}
+		a._exit_listener_handles =map{}
 	}
 
 		for _, listener := range listeners{
-		if listener not in a._exit_listener_handles{
+		if  _, ok := a._exit_listener_handles[listener]; ! ok{
 		a._exit_listener_handles[listener] = a.scheduler.call_soon(a._exit_listener_cb, listener)
 	}
 	}
@@ -162,7 +170,7 @@ func (a *AsynchronousTask)  _wait_hook() {
 }
 
 func (a *AsynchronousTask)  _exit_listener_cb( listener) {
-	del a._exit_listener_handles[listener]
+	delete(a._exit_listener_handles,listener)
 	listener(a)
 }
 
@@ -174,7 +182,7 @@ func NewAsynchronousTask() *AsynchronousTask{
 
 type AbstractPollTask struct {
 	*AsynchronousTask
-	_registered string
+	_registered bool
 	_bufsize int
 }
 
@@ -206,7 +214,7 @@ return buf
 func (a *AbstractPollTask) _read_buf( fd){
 buf = None
 try:
-buf = os.read(fd, self._bufsize)
+buf = os.read(fd, a._bufsize)
 except OSError as e:
 if e.errno == errno.EIO:
 buf = b''
@@ -228,8 +236,8 @@ func (a *AbstractPollTask) _async_wait() {
 	}
 
 	func (a *AbstractPollTask)  _wait_loop( timeout=None){
-loop = self.scheduler
-tasks = [self.async_wait()]
+loop = a.scheduler
+tasks = [a.async_wait()]
 if timeout is not None:
 tasks.append(asyncio.ensure_future(
 asyncio.sleep(timeout, loop=loop), loop=loop))
@@ -251,7 +259,8 @@ func NewAbstractPollTask() *AbstractPollTask{
 
 type SubProcess struct {
 	*AbstractPollTask
-	pid,_dummy_pipe_fd,_files, _waitpid_id string
+	pid, _waitpid_id int
+	_dummy_pipe_fd,_files string
 	_cancel_timeout int
 }
 
@@ -260,71 +269,84 @@ func (s *SubProcess) _poll() *int{
 }
 
 func (s *SubProcess) _cancel(){
-if self.isAlive() and self.pid is not None:
-try:
-os.kill(self.pid, signal.SIGTERM)
-except OSError as e:
-if e.errno == errno.EPERM:
-writemsg_level(
-"!!! kill: (%i) - Operation not permitted\n" %
-(self.pid,), level=logging.ERROR,
-noiselevel=-1)
-elif e.errno != errno.ESRCH:
-raise
+if s.isAlive() && s.pid != 0{
+	err := syscall.Kill(s.pid, syscall.SIGTERM)
+	if err != nil {
+		//except OSError as e:
+		if err == syscall.EPERM {
+			writeMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n" , s.pid), 40, -1)
+		}else if err != syscall.ESRCH {
+			//raise
+		}
+	}
+}
 }
 
 func (s *SubProcess) _async_wait(){
-if self.returncode is None:
-raise asyncio.InvalidStateError('Result is not ready for %s' % (self,))
-else:
-super(SubProcess, self)._async_wait()
+if s.returncode == nil {
+	//raise asyncio.InvalidStateError('Result is not ready for %s' % (s,))
+}else{
+	s.AbstractPollTask._async_wait()
+	}
+}
 }
 
 func (s *SubProcess) _async_waitpid(){
-if self.returncode is not None:
-self._async_wait()
-elif self._waitpid_id is None:
-self._waitpid_id = self.pid
-self.scheduler._asyncio_child_watcher.\
-add_child_handler(self.pid, self._async_waitpid_cb)
+if s.returncode != nil {
+	s._async_wait()
+} else if s._waitpid_id == 0 {
+		s._waitpid_id = s.pid
+		s.scheduler._asyncio_child_watcher.add_child_handler(s.pid, s._async_waitpid_cb)
+
+	}
 }
 
-func (s *SubProcess) _async_waitpid_cb( pid, returncode){
-if pid != self.pid:
-raise AssertionError("expected pid %s, got %s" % (self.pid, pid))
-self.returncode = returncode
-self._async_wait()
+func (s *SubProcess) _async_waitpid_cb( pid, returncode int){
+if pid != s.pid{
+	//raise AssertionError("expected pid %s, got %s" % (s.pid, pid))
+}
+	s.returncode = new(int)
+	*s.returncode = returncode
+	s._async_wait()
 }
 
 func (s *SubProcess) _orphan_process_warn(){
 }
 
 func (s *SubProcess) _unregister(){
+s._registered = false
+if s._waitpid_id != 0 {
+	s.scheduler._asyncio_child_watcher.remove_child_handler(s._waitpid_id)
+	s._waitpid_id = 0
+}
 
-self._registered = False
-
-if self._waitpid_id is not None:
-self.scheduler._asyncio_child_watcher.\
-remove_child_handler(self._waitpid_id)
-self._waitpid_id = None
-
-if self._files is not None:
-for f in self._files.values():
-if isinstance(f, int):
-os.close(f)
-else:
-f.close()
-self._files = None
+if s._files != nil {
+	for f in s._files.values(){
+		if isinstance(f, int):
+		os.close(f)
+		else:
+		f.close()
+	}
+	s._files = None
+}
 }
 
 func NewSubProcess() *SubProcess {
 	s := &SubProcess{}
 	s._cancel_timeout = 1
+	s.AbstractPollTask = NewAbstractPollTask()
 	return s
 }
 
 type SpawnProcess struct {
 	*SubProcess
+	_CGROUP_CLEANUP_RETRY_MAX int
+
+	args, env, opt_name, fd_pipes,
+	uid, gid, groups, umask, logfile,
+	path_lookup, pre_exec, close_fds, cgroup,
+	unshare_ipc, unshare_mount, unshare_pid, unshare_net,
+	_pipe_logger, _selinux_type string
 }
 
 _spawn_kwarg_names = ("env", "opt_name", "fd_pipes",
@@ -335,179 +357,222 @@ _spawn_kwarg_names = ("env", "opt_name", "fd_pipes",
 __slots__ = ("args",) + \
 _spawn_kwarg_names + ("_pipe_logger", "_selinux_type",)
 
-_CGROUP_CLEANUP_RETRY_MAX = 8
+func(s *SpawnProcess) _start(){
+	if s.fd_pipes is None{
+		s.fd_pipes ={}
+	}else {
+		s.fd_pipes = s.fd_pipes.copy()
+	}
+	fd_pipes = s.fd_pipes
 
-func(s *SpawnProcess) _start(self):
+	master_fd, slave_fd = s._pipe(fd_pipes)
 
-if self.fd_pipes is None:
-self.fd_pipes = {}
-else:
-self.fd_pipes = self.fd_pipes.copy()
-fd_pipes = self.fd_pipes
+	can_log := s._can_log(slave_fd)
+	if can_log{
+		log_file_path = s.logfile
+	} else{
+		log_file_path = None
+	}
 
-master_fd, slave_fd = self._pipe(fd_pipes)
+	null_input = None
+	if not s.background or 0 in fd_pipes{
+		//pass
+	}else{
+		null_input = os.open('/dev/null', os.O_RDWR)
+		fd_pipes[0] = null_input
+	}
 
-can_log = self._can_log(slave_fd)
-if can_log:
-log_file_path = self.logfile
-else:
-log_file_path = None
+	fd_pipes.setdefault(0, portage._get_stdin().fileno())
+	fd_pipes.setdefault(1, sys.__stdout__.fileno())
+	fd_pipes.setdefault(2, sys.__stderr__.fileno())
 
-null_input = None
-if not self.background or 0 in fd_pipes:
-pass
-else:
-null_input = os.open('/dev/null', os.O_RDWR)
-fd_pipes[0] = null_input
+	stdout_filenos = (sys.__stdout__.fileno(), sys.__stderr__.fileno())
+	for fd in fd_pipes.values(){
+		if fd in stdout_filenos{
+			sys.__stdout__.flush()
+			sys.__stderr__.flush()
+			break
+		}
+	}
 
-fd_pipes.setdefault(0, portage._get_stdin().fileno())
-fd_pipes.setdefault(1, sys.__stdout__.fileno())
-fd_pipes.setdefault(2, sys.__stderr__.fileno())
+	fd_pipes_orig = fd_pipes.copy()
 
-stdout_filenos = (sys.__stdout__.fileno(), sys.__stderr__.fileno())
-for fd in fd_pipes.values():
-if fd in stdout_filenos:
-sys.__stdout__.flush()
-sys.__stderr__.flush()
-break
+	if log_file_path is not None or s.background{
+		fd_pipes[1] = slave_fd
+		fd_pipes[2] = slave_fd
+	}else{
+		s._dummy_pipe_fd = slave_fd
+		fd_pipes[slave_fd] = slave_fd
+	}
 
-fd_pipes_orig = fd_pipes.copy()
+	kwargs = {}
+	for k in s._spawn_kwarg_names{
+		v = getattr(s, k)
+		if v is not None{
+		kwargs[k] = v
+	}
+	}
 
-if log_file_path is not None or self.background:
-fd_pipes[1] = slave_fd
-fd_pipes[2] = slave_fd
+	kwargs["fd_pipes"] = fd_pipes
+	kwargs["returnpid"] = True
+	kwargs.pop("logfile", None)
 
-else:
-self._dummy_pipe_fd = slave_fd
-fd_pipes[slave_fd] = slave_fd
+	retval = s._spawn(s.args, **kwargs)
 
-kwargs = {}
-for k in self._spawn_kwarg_names:
-v = getattr(self, k)
-if v is not None:
-kwargs[k] = v
+	os.close(slave_fd)
+	if null_input is not None:
+	os.close(null_input)
 
-kwargs["fd_pipes"] = fd_pipes
-kwargs["returnpid"] = True
-kwargs.pop("logfile", None)
+	if isinstance(retval, int):
+	s.returncode = retval
+	s._async_wait()
+	return
 
-retval = self._spawn(self.args, **kwargs)
+	s.pid = retval[0]
 
-os.close(slave_fd)
-if null_input is not None:
-os.close(null_input)
-
-if isinstance(retval, int):
-self.returncode = retval
-self._async_wait()
-return
-
-self.pid = retval[0]
-
-stdout_fd = None
-if can_log and not self.background:
-stdout_fd = os.dup(fd_pipes_orig[1])
-if sys.hexversion < 0x3040000 and fcntl is not None:
+	stdout_fd = None
+	if can_log and not s.background:
+	stdout_fd = os.dup(fd_pipes_orig[1])
+	if sys.hexversion < 0x3040000 and fcntl is not None:
 try:
-fcntl.FD_CLOEXEC
-except AttributeError:
-pass
-else:
-fcntl.fcntl(stdout_fd, fcntl.F_SETFD,
-fcntl.fcntl(stdout_fd,
-fcntl.F_GETFD) | fcntl.FD_CLOEXEC)
+	fcntl.FD_CLOEXEC
+	except AttributeError:
+	pass
+	else:
+	fcntl.fcntl(stdout_fd, fcntl.F_SETFD,
+		fcntl.fcntl(stdout_fd,
+			fcntl.F_GETFD) | fcntl.FD_CLOEXEC)
 
-self._pipe_logger = PipeLogger(background=self.background,
-scheduler=self.scheduler, input_fd=master_fd,
-log_file_path=log_file_path,
-stdout_fd=stdout_fd)
-self._pipe_logger.addExitListener(self._pipe_logger_exit)
-self._pipe_logger.start()
-self._registered = True
+	s._pipe_logger = PipeLogger(background=s.background,
+		scheduler=s.scheduler, input_fd=master_fd,
+		log_file_path=log_file_path,
+		stdout_fd=stdout_fd)
+	s._pipe_logger.addExitListener(s._pipe_logger_exit)
+	s._pipe_logger.start()
+	s._registered = True
+}
 
-func(s *SpawnProcess) _can_log(self, slave_fd):
-return True
 
-func(s *SpawnProcess) _pipe(self, fd_pipes):
-return os.pipe()
+func(s *SpawnProcess) _can_log( slave_fd)bool{
+	return true
+}
 
-func(s *SpawnProcess) _spawn(self, args, **kwargs):
-spawn_func = portage.process.spawn
+func(s *SpawnProcess) _pipe( fd_pipes){
+	return os.pipe()
+}
 
-if self._selinux_type is not None:
-spawn_func = portage.selinux.spawn_wrapper(spawn_func,
-self._selinux_type)
-if args[0] != BASH_BINARY:
-args = [BASH_BINARY, "-c", "exec \"$@\"", args[0]] + args
+func(s *SpawnProcess) _spawn( args, **kwargs){
+	spawn_func = portage.process.spawn
 
-return spawn_func(args, **kwargs)
+	if s._selinux_type is not None{
+		spawn_func = portage.selinux.spawn_wrapper(spawn_func,
+		s._selinux_type)
+		if args[0] != BASH_BINARY{
+		args = [BASH_BINARY, "-c", "exec \"$@\"", args[0]] + args
+	}
+	}
 
-func(s *SpawnProcess) _pipe_logger_exit(self, pipe_logger):
-self._pipe_logger = None
-self._async_waitpid()
+	return spawn_func(args, **kwargs)
+}
 
-func(s *SpawnProcess) _unregister(self):
-SubProcess._unregister(self)
-if self.cgroup is not None:
-self._cgroup_cleanup()
-self.cgroup = None
-if self._pipe_logger is not None:
-self._pipe_logger.cancel()
-self._pipe_logger = None
+func(s *SpawnProcess) _pipe_logger_exit( pipe_logger){
+	s._pipe_logger = None
+	s._async_waitpid()
+}
 
-func(s *SpawnProcess) _cancel(self):
-SubProcess._cancel(self)
-self._cgroup_cleanup()
+func(s *SpawnProcess) _unregister(){
+	s.SubProcess._unregister()
+	if s.cgroup is not None:
+	s._cgroup_cleanup()
+	s.cgroup = None
+	if s._pipe_logger is not None:
+	s._pipe_logger.cancel()
+	s._pipe_logger = None
+}
 
-func(s *SpawnProcess) _cgroup_cleanup(self):
-if self.cgroup:
-def get_pids(cgroup):
-try:
-with open(os.path.join(cgroup, 'cgroup.procs'), 'r') as f:
-return [int(p) for p in f.read().split()]
-except EnvironmentError:
-return []
+func(s *SpawnProcess) _cancel(){
+	s.SubProcess._cancel()
+	s._cgroup_cleanup()
+}
 
-func(s *SpawnProcess) kill_all(pids, sig):
-for p in pids:
-try:
-os.kill(p, sig)
-except OSError as e:
-if e.errno == errno.EPERM:
-writemsg_level(
-"!!! kill: (%i) - Operation not permitted\n" %
-(p,), level=logging.ERROR,
-noiselevel=-1)
-elif e.errno != errno.ESRCH:
-raise
-
-remaining = self._CGROUP_CLEANUP_RETRY_MAX
-while remaining:
+func(s *SpawnProcess) _cgroup_cleanup(){
+	if s.cgroup{
+		get_pids:= func(cgroup string)[]int{
+			f, err := os.Open(filepath.Join(cgroup, "cgroup.procs"))
+			var b []byte
+			if err == nil {
+				b, err = ioutil.ReadAll(f)
+			}
+			if err != nil {
+				return []int{}
+			}
+			ps := []int{}
+			for _, p := range strings.Fields(string(b)){
+				pi, _ := strconv.Atoi(p)
+				ps =append(ps, pi)
+			}
+			return ps
+		}
+kill_all:= func(pids []int, sig syscall.Signal){
+	for _, p := range pids{
+		err := syscall.Kill(p, sig)
+		if err != nil {
+			//except OSError as e:
+			if err == syscall.EPERM{
+				writeMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n", p), 40,-1)
+			}else if err != syscall.ESRCH {
+				//raise
+			}
+		}
+	}
+	}
+remaining := s._CGROUP_CLEANUP_RETRY_MAX
+var pids []int
+for remaining> 0 {
 remaining -= 1
-pids = get_pids(self.cgroup)
-if pids:
-kill_all(pids, signal.SIGKILL)
-else:
+pids = get_pids(s.cgroup)
+if len(pids) != 0 {
+kill_all(pids, syscall.SIGKILL)
+}else{
 break
+}
+}
 
-if pids:
-msg = []
-msg.append(
-_("Failed to kill pid(s) in '%(cgroup)s': %(pids)s") % dict(
-cgroup=os.path.join(self.cgroup, 'cgroup.procs'),
-pids=' '.join(str(pid) for pid in pids)))
+if len(pids) > 0 {
+msg := []string{}
+pidss := []string{}
+for _, p := range pids {
+	pidss = append(pidss, fmt.Sprint(p))
+}
+msg = append(msg,
+fmt.Sprintf("Failed to kill pid(s) in '%(cgroup)s': %(pids)s",
+filepath.Join(s.cgroup, "cgroup.procs", strings.Join(pidss, " "))))
 
-self._elog('eerror', msg)
 
-try:
-os.rmdir(self.cgroup)
-except OSError:
-pass
+s._elog("eerror", msg)
+	}
 
-func(s *SpawnProcess) _elog(self, elog_funcname, lines):
-elog_func = getattr(EOutput(), elog_funcname)
-for line in lines:
-elog_func(line)
+err:= os.RemoveAll(s.cgroup)
+if err != nil {
+	//except OSError:
+	//pass
+		}
+	}
+}
+
+func(s *SpawnProcess) _elog(elog_funcname, lines){
+	elog_func = getattr(NewEOutput(), elog_funcname)
+	for _, line := range lines{
+		elog_func(line)
+	}
+}
+
+func NewSpawnProcess() *SpawnProcess {
+	s := &SpawnProcess{}
+	s._CGROUP_CLEANUP_RETRY_MAX = 8
+	s.SubProcess = NewSubProcess()
+	return s
+}
 
 type ForkProcess struct {
 	*SpawnProcess
@@ -515,250 +580,283 @@ type ForkProcess struct {
 
 __slots__ = ()
 
-func(f *ForkProcess) _spawn(self, args, fd_pipes=None, **kwargs):
-
-parent_pid = os.getpid()
-pid = None
+func(f *ForkProcess) _spawn( args, fd_pipes=None, **kwargs){
+	parent_pid := os.Getpid()
+	pid = None
 try:
-pid = os.fork()
+	pid = os.fork()
 
-if pid != 0:
-if not isinstance(pid, int):
-raise AssertionError(
-"fork returned non-integer: %s" % (repr(pid),))
-return [pid]
+	if pid != 0:
+	if not isinstance(pid, int):
+	raise AssertionError(
+		"fork returned non-integer: %s" % (repr(pid),))
+	return [pid]
 
-rval = 1
+	rval = 1
 try:
 
-signal.signal(signal.SIGINT, signal.SIG_DFL)
-signal.signal(signal.SIGTERM, signal.SIG_DFL)
+	signal.signal(signal.SIGINT, signal.SIG_DFL)
+	signal.signal(signal.SIGTERM, signal.SIG_DFL)
 
-signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+	signal.signal(signal.SIGCHLD, signal.SIG_DFL)
 try:
-wakeup_fd = signal.set_wakeup_fd(-1)
-if wakeup_fd > 0:
-os.close(wakeup_fd)
-except (ValueError, OSError):
-pass
+	wakeup_fd = signal.set_wakeup_fd(-1)
+	if wakeup_fd > 0:
+	os.close(wakeup_fd)
+	except (ValueError, OSError):
+	pass
 
-portage.locks._close_fds()
-portage.process._setup_pipes(fd_pipes, close_fds=False)
+	_close_fds()
+	portage.process._setup_pipes(fd_pipes, close_fds=False)
 
-rval = self._run()
-except SystemExit:
-raise
+	rval = f._run()
+	except SystemExit:
+	raise
 except:
-traceback.print_exc()
-sys.stderr.flush()
+	traceback.print_exc()
+	sys.stderr.flush()
 finally:
-os._exit(rval)
+	os._exit(rval)
 
 finally:
-if pid == 0 or (pid is None and os.getpid() != parent_pid):
-os._exit(1)
+	if pid == 0 or (pid is None and os.getpid() != parent_pid):
+	os._exit(1)
+}
 
-func(f *ForkProcess) _run(self):
-raise NotImplementedError(self)
+
+func(f *ForkProcess) _run(){
+	panic("not implemented")
+	//raise NotImplementedError(f)
+}
 
 type MergeProcess struct {
 	*ForkProcess
+	settings *Config
+	mydbapi *vardbapi
+	vartree *varTree
+	mycat, mypkg,  treetype, blockers, pkgloc, infloc, myebuild,
+	  prev_mtimes, unmerge, _elog_reader_fd, _buf   string
+	_elog_keys map[string]bool
+	postinst_failure, _locked_vdb bool
 }
 
-__slots__ = ('mycat', 'mypkg', 'settings', 'treetype',
-'vartree', 'blockers', 'pkgloc', 'infloc', 'myebuild',
-'mydbapi', 'postinst_failure', 'prev_mtimes', 'unmerge',
-'_elog_reader_fd',
-'_buf', '_elog_keys', '_locked_vdb')
+func(m *MergeProcess)  _start(){
+	cpv := fmt.Sprintf("%s/%s" ,m.mycat, m.mypkg)
+	settings := m.settings
+	if _, ok := settings.configDict["pkg"]["EAPI"]; cpv != settings.mycpv.string || !ok {
+		settings.reload()
+		settings.reset(0)
+		settings.SetCpv(NewPkgStr(cpv,nil, nil, "", "", "", 0, 0, "", 0, nil), m.mydbapi)
+	}
 
-func(m *MergeProcess)  _start(self):
-cpv = "%s/%s" % (self.mycat, self.mypkg)
-settings = self.settings
-if cpv != settings.mycpv or \
-"EAPI" not in settings.configdict["pkg"]:
-settings.reload()
-settings.reset()
-settings.setcpv(cpv, mydb=self.mydbapi)
+	if _, ok := settings.Features.Features["merge-sync"];runtime.GOOS == "Linux" && ok {
+		find_library("c")
+	}
 
-if platform.system() == "Linux" and \
-"merge-sync" in settings.features:
-find_library("c")
+	if m.fd_pipes is None{
+		m.fd_pipes = {}
+	}else{
+		m.fd_pipes = m.fd_pipes.copy()
+	}
+	m.fd_pipes.setdefault(0, getStdin().fileno())
 
-if self.fd_pipes is None:
-self.fd_pipes = {}
-else:
-self.fd_pipes = self.fd_pipes.copy()
-self.fd_pipes.setdefault(0, portage._get_stdin().fileno())
+	m.ForkProcess._start()
+}
 
-super(MergeProcess, self)._start()
+func(m *MergeProcess) _lock_vdb(){
 
-func(m *MergeProcess) _lock_vdb(self):
-if "parallel-install" not in self.settings.features:
-self.vartree.dbapi.lock()
-self._locked_vdb = True
+	if  _, ok :=  m.settings.Features.Features["parallel-install"]; !ok {
+		m.vartree.dbapi.lock()
+		m._locked_vdb = true
+	}
+}
 
-func(m *MergeProcess) _unlock_vdb(self):
-if self._locked_vdb:
-self.vartree.dbapi.unlock()
-self._locked_vdb = False
+func(m *MergeProcess) _unlock_vdb(){
+	if m._locked_vdb{
+		m.vartree.dbapi.unlock()
+		m._locked_vdb = false
+	}
+}
 
-func(m *MergeProcess) _elog_output_handler(self):
-output = self._read_buf(self._elog_reader_fd)
-if output:
-lines = _unicode_decode(output).split('\n')
-if len(lines) == 1:
-self._buf += lines[0]
-else:
-lines[0] = self._buf + lines[0]
-self._buf = lines.pop()
-out = io.StringIO()
-for line in lines:
-funcname, phase, key, msg = line.split(' ', 3)
-self._elog_keys.add(key)
-reporter = getattr(portage.elog.messages, funcname)
-reporter(msg, phase=phase, key=key, out=out)
+// true means none
+func(m *MergeProcess) _elog_output_handler(){
+output = m._read_buf(m._elog_reader_fd)
+if output{
+	lines = _unicode_decode(output).split('\n')
+	if len(lines) == 1{
+		m._buf += lines[0]
+	} else{
+		lines[0] = m._buf + lines[0]
+		m._buf = lines.pop()
+		out = io.StringIO()
+		for _, line := range lines{
+			funcname, phase, key, msg = line.split(' ', 3)
+			m._elog_keys.add(key)
+			reporter = getattr(portage.elog.messages, funcname)
+			reporter(msg, phase=phase, key=key, out=out)
+		}
+	}
+} else if output != nil {
+	m.scheduler.remove_reader(m._elog_reader_fd)
+	os.close(m._elog_reader_fd)
+	m._elog_reader_fd = None
+	return false
+}
+return true
+}
 
-elif output is not None:
-self.scheduler.remove_reader(self._elog_reader_fd)
-os.close(self._elog_reader_fd)
-self._elog_reader_fd = None
-return False
+func(m *MergeProcess) _spawn( args, fd_pipes, **kwargs){
+	elog_reader_fd, elog_writer_fd = os.pipe()
 
-func(m *MergeProcess) _spawn(self, args, fd_pipes, **kwargs):
+	fcntl.fcntl(elog_reader_fd, fcntl.F_SETFL,
+		fcntl.fcntl(elog_reader_fd, fcntl.F_GETFL) | os.O_NONBLOCK)
 
-elog_reader_fd, elog_writer_fd = os.pipe()
-
-fcntl.fcntl(elog_reader_fd, fcntl.F_SETFL,
-fcntl.fcntl(elog_reader_fd, fcntl.F_GETFL) | os.O_NONBLOCK)
-
-if sys.hexversion < 0x3040000:
+	if sys.hexversion < 0x3040000:
 try:
-fcntl.FD_CLOEXEC
-except AttributeError:
-pass
-else:
-fcntl.fcntl(elog_reader_fd, fcntl.F_SETFD,
-fcntl.fcntl(elog_reader_fd, fcntl.F_GETFD) | fcntl.FD_CLOEXEC)
+	fcntl.FD_CLOEXEC
+	except AttributeError:
+	pass
+	else:
+	fcntl.fcntl(elog_reader_fd, fcntl.F_SETFD,
+		fcntl.fcntl(elog_reader_fd, fcntl.F_GETFD) | fcntl.FD_CLOEXEC)
 
-blockers = None
-if self.blockers is not None:
-blockers = self.blockers()
-mylink = portage.dblink(self.mycat, self.mypkg, settings=self.settings,
-treetype=self.treetype, vartree=self.vartree,
-blockers=blockers, pipe=elog_writer_fd)
-fd_pipes[elog_writer_fd] = elog_writer_fd
-self.scheduler.add_reader(elog_reader_fd, self._elog_output_handler)
+	blockers = None
+	if m.blockers != nil {
+		blockers = m.blockers()
+	}
+	mylink := NewDblink(m.mycat, m.mypkg, settings=m.settings,
+		treetype=m.treetype, vartree=m.vartree,
+		blockers=blockers, pipe=elog_writer_fd)
+	fd_pipes[elog_writer_fd] = elog_writer_fd
+	m.scheduler.add_reader(elog_reader_fd, m._elog_output_handler)
 
-self._lock_vdb()
-counter = None
-if not self.unmerge:
-counter = self.vartree.dbapi.counter_tick()
+	m._lock_vdb()
+	counter = None
+	if ! m.unmerge{
+		counter = m.vartree.dbapi.counter_tick()
+	}
 
-parent_pid = os.getpid()
-pid = None
+	parent_pid := os.Getpid()
+	pid = None
 try:
-pid = os.fork()
+	pid = os.fork()
 
-if pid != 0:
-if not isinstance(pid, int):
-raise AssertionError(
-"fork returned non-integer: %s" % (repr(pid),))
+	if pid != 0:
+	if not isinstance(pid, int):
+	raise AssertionError(
+		"fork returned non-integer: %s" % (repr(pid),))
 
-os.close(elog_writer_fd)
-self._elog_reader_fd = elog_reader_fd
-self._buf = ""
-self._elog_keys = set()
-portage.elog.messages.collect_messages(key=mylink.mycpv)
+	os.close(elog_writer_fd)
+	m._elog_reader_fd = elog_reader_fd
+	m._buf = ""
+	m._elog_keys = map[string]bool{}
+	portage.elog.messages.collect_messages(key=mylink.mycpv)
 
-if self.vartree.dbapi._categories is not None:
-self.vartree.dbapi._categories = None
-self.vartree.dbapi._pkgs_changed = True
-self.vartree.dbapi._clear_pkg_cache(mylink)
+	if m.vartree.dbapi._categories != nil {
+		m.vartree.dbapi._categories = nil
+	}
+	m.vartree.dbapi._pkgs_changed = true
+	m.vartree.dbapi._clear_pkg_cache(mylink)
 
-return [pid]
+	return [pid]
 
-os.close(elog_reader_fd)
+	os.close(elog_reader_fd)
 
-signal.signal(signal.SIGINT, signal.SIG_DFL)
-signal.signal(signal.SIGTERM, signal.SIG_DFL)
+	signal.signal(signal.SIGINT, signal.SIG_DFL)
+	signal.signal(signal.SIGTERM, signal.SIG_DFL)
 
-signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+	signal.signal(signal.SIGCHLD, signal.SIG_DFL)
 try:
-wakeup_fd = signal.set_wakeup_fd(-1)
-if wakeup_fd > 0:
-os.close(wakeup_fd)
-except (ValueError, OSError):
-pass
+	wakeup_fd := signal.set_wakeup_fd(-1)
+	if wakeup_fd > 0{
+		os.close(wakeup_fd)
+	}
+	except (ValueError, OSError):
+	pass
 
-portage.locks._close_fds()
-portage.process._setup_pipes(fd_pipes, close_fds=False)
+	_close_fds()
+	portage.process._setup_pipes(fd_pipes, close_fds=False)
 
-portage.output.havecolor = self.settings.get('NOCOLOR') \
-not in ('yes', 'true')
+	havecolor := m.settings.ValueDict["NOCOLOR"]== "yes" ||  m.settings.ValueDict["NOCOLOR"]== "true"
 
-self.vartree.dbapi._flush_cache_enabled = False
+	m.vartree.dbapi._flush_cache_enabled = false
 
-if not self.unmerge:
-if self.settings.get("PORTAGE_BACKGROUND") == "1":
-self.settings["PORTAGE_BACKGROUND_UNMERGE"] = "1"
-else:
-self.settings["PORTAGE_BACKGROUND_UNMERGE"] = "0"
-self.settings.backup_changes("PORTAGE_BACKGROUND_UNMERGE")
-self.settings["PORTAGE_BACKGROUND"] = "subprocess"
-self.settings.backup_changes("PORTAGE_BACKGROUND")
+	if ! m.unmerge{
+		if m.settings.ValueDict["PORTAGE_BACKGROUND"] == "1" {
+			m.settings.ValueDict["PORTAGE_BACKGROUND_UNMERGE"] = "1"
+		}else {
+			m.settings.ValueDict["PORTAGE_BACKGROUND_UNMERGE"] = "0"
+		}
+		m.settings.backupChanges("PORTAGE_BACKGROUND_UNMERGE")
+	}
+	m.settings.ValueDict["PORTAGE_BACKGROUND"] = "subprocess"
+	m.settings.backupChanges("PORTAGE_BACKGROUND")
 
-rval = 1
+	rval := 1
 try:
-if self.unmerge:
-if not mylink.exists():
-rval = os.EX_OK
-elif mylink.unmerge(
-ldpath_mtimes=self.prev_mtimes) == os.EX_OK:
-mylink.lockdb()
-try:
-mylink.delete()
-finally:
-mylink.unlockdb()
-rval = os.EX_OK
-else:
-rval = mylink.merge(self.pkgloc, self.infloc,
-myebuild=self.myebuild, mydbapi=self.mydbapi,
-prev_mtimes=self.prev_mtimes, counter=counter)
-except SystemExit:
-raise
+	if m.unmerge{
+		if ! mylink.exists(){
+			rval = os.EX_OK
+		}
+		else if mylink.unmerge(
+			ldpath_mtimes=m.prev_mtimes) == syscall.F_OK{
+			mylink.lockdb()
+			try:
+			mylink.delete()
+			finally:
+			mylink.unlockdb()
+			rval = os.EX_OK
+		}
+	}else{
+		rval = mylink.merge(m.pkgloc, m.infloc,
+			myebuild=m.myebuild, mydbapi=m.mydbapi,
+			prev_mtimes=m.prev_mtimes, counter=counter)
+	}
+	except SystemExit:
+	raise
 except:
-traceback.print_exc()
-sys.stderr.flush()
+	traceback.print_exc()
+	sys.stderr.flush()
 finally:
-os._exit(rval)
+	os._exit(rval)
 
 finally:
-if pid == 0 or (pid is None and os.getpid() != parent_pid):
-os._exit(1)
+	if pid == 0 || (pid == 0 && os.Getpid() != parent_pid){
+		os._exit(1)
+	}
+}
 
-func(m *MergeProcess) _async_waitpid_cb(self, *args, **kwargs):
-ForkProcess._async_waitpid_cb(self, *args, **kwargs)
-if self.returncode == portage.const.RETURNCODE_POSTINST_FAILURE:
-self.postinst_failure = True
-self.returncode = os.EX_OK
 
-func(m *MergeProcess) _unregister(self):
+func(m *MergeProcess) _async_waitpid_cb( *args, **kwargs){
+	m.ForkProcess._async_waitpid_cb( *args, **kwargs)
+	if *m.returncode == ReturncodePostinstFailure{
+		m.postinst_failure = true
+		*m.returncode = syscall.F_OK
+	}
+}
 
-if not self.unmerge:
-try:
-self.vartree.dbapi.aux_get(self.settings.mycpv, ["EAPI"])
-except KeyError:
-pass
+func(m *MergeProcess) _unregister(){
+	if ! m.unmerge{
+	try:
+		m.vartree.dbapi.aux_get(m.settings.mycpv.string, map[string]bool{"EAPI":true}, "")
+		except KeyError:
+		pass
+	}
 
-self._unlock_vdb()
-if self._elog_reader_fd is not None:
-self.scheduler.remove_reader(self._elog_reader_fd)
-os.close(self._elog_reader_fd)
-self._elog_reader_fd = None
-if self._elog_keys is not None:
-for key in self._elog_keys:
-portage.elog.elog_process(key, self.settings,
-phasefilter=("prerm", "postrm"))
-self._elog_keys = None
+	m._unlock_vdb()
+	if m._elog_reader_fd is not None{
+		m.scheduler.remove_reader(m._elog_reader_fd)
+		os.close(m._elog_reader_fd)
+		m._elog_reader_fd = None
+	}
+	if m._elog_keys != nil{
+		for key := range m._elog_keys{
+			portage.elog.elog_process(key, m.settings,
+				phasefilter=("prerm", "postrm"))
+		}
+		m._elog_keys = nil
+	}
 
-super(MergeProcess, self)._unregister()
+	m.ForkProcess._unregister()
+
+}

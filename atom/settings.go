@@ -352,7 +352,8 @@ func (c *Config) backupChanges(key string) {
 	}
 }
 
-func (c *Config) reset(keeping_pkg int) { // 0
+// 0
+func (c *Config) reset(keeping_pkg int) {
 	c.modifying()
 	c.configDict["env"] = map[string]string{}
 	for k, v := range c.backupenv {
