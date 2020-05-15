@@ -2351,7 +2351,7 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 				continue
 			}
 			pkg_metadata := b._read_metadata(full_path, s,
-				keys=chain(self.dbapi._aux_cache_keys,
+				keys=chain(b.dbapi._aux_cache_keys,
 				("PF", "CATEGORY")))
 			mycat := pkg_metadata["CATEGORY"]
 			mypf := pkg_metadata["PF"]

@@ -1018,7 +1018,7 @@ func apply_stat_permissions(filename string, newstat os.FileInfo, mask uint32, s
 }
 
 // -1, -1, -1, -1, nil, true
-func apply_secpass_permissions(filename string, uid, gid, mode, mask uint32, stat_cached os.FileInfo, follow_links bool) bool {
+func apply_secpass_permissions(filename string, uid, gid uint32, mode os.FileMode, mask uint32, stat_cached os.FileInfo, follow_links bool) bool {
 
 	if stat_cached == nil {
 		stat_cached, _ = doStat(filename, follow_links)
@@ -1120,10 +1120,10 @@ func NewAtomic_ofstream(filename string, mode int, follow_links bool) *atomic_of
 }
 
 // 0 (i dont know), true
-func write_atomic(file_path, content string, mode int, follow_links bool) {
+func write_atomic(file_path string, content string, mode int, follow_links bool) {
 	f := NewAtomic_ofstream(file_path, mode, follow_links)
-	f.write(content)
-	f.close()
+	f.Write([]byte(content))
+	f.Close()
 	//except (IOError, OSError) as e:
 	//if f:
 	//f.abort()

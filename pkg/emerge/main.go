@@ -3,9 +3,10 @@ package emerge
 import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/portage/emaint"
+	"go/parser"
 	"os"
 	"runtime"
-	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -84,12 +85,176 @@ func multipleActions(action1, action2 string) {
 
 func insert_optional_args(args []string) []string {
 	var new_args, arg_stack []string
+
+	valid_integers := func(s string)bool{i, err := strconv.Atoi(s)
+	if err != nil {
+		return false
+	}
+	return i >=0
+	}
+	valid_floats := func(s string)bool{i, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return false
+		}
+		return i >=0
+	}
+	y_or_n := func(s string)bool {return s == "y"||s=="n"}
+
+	default_arg_opts := map[string]func(string)bool{
+		"--alert"                : y_or_n,
+			"--ask"                  : y_or_n,
+			"--autounmask"           : y_or_n,
+			"--autounmask-continue"  : y_or_n,
+			"--autounmask-only"      : y_or_n,
+			"--autounmask-keep-keywords" : y_or_n,
+			"--autounmask-keep-masks": y_or_n,
+			"--autounmask-unrestricted-atoms" : y_or_n,
+			"--autounmask-write"     : y_or_n,
+			"--binpkg-changed-deps"  : y_or_n,
+			"--buildpkg"             : y_or_n,
+			"--changed-deps"         : y_or_n,
+			"--changed-slot"         : y_or_n,
+			"--changed-deps-report"  : y_or_n,
+			"--complete-graph"       : y_or_n,
+			"--deep"       : valid_integers,
+			"--depclean-lib-check"   : y_or_n,
+			"--deselect"             : y_or_n,
+			"--binpkg-respect-use"   : y_or_n,
+			"--fail-clean"           : y_or_n,
+			"--fuzzy-search"         : y_or_n,
+			"--getbinpkg"            : y_or_n,
+			"--getbinpkgonly"        : y_or_n,
+			"--ignore-world"         : y_or_n,
+			"--jobs"       : valid_integers,
+			"--keep-going"           : y_or_n,
+			"--load-average"         : valid_floats,
+			"--onlydeps-with-rdeps"  : y_or_n,
+			"--package-moves"        : y_or_n,
+			"--quiet"                : y_or_n,
+			"--quiet-build"          : y_or_n,
+			"--quiet-fail"           : y_or_n,
+			"--read-news"            : y_or_n,
+			"--rebuild-if-new-slot": y_or_n,
+			"--rebuild-if-new-rev"   : y_or_n,
+			"--rebuild-if-new-ver"   : y_or_n,
+			"--rebuild-if-unbuilt"   : y_or_n,
+			"--rebuilt-binaries"     : y_or_n,
+			"--root-deps"  : func(s string) bool {return s=="rdeps"},
+		"--select"               : y_or_n,
+			"--selective"            : y_or_n,
+			"--use-ebuild-visibility": y_or_n,
+			"--usepkg"               : y_or_n,
+			"--usepkgonly"           : y_or_n,
+			"--verbose"              : y_or_n,
+			"--verbose-slot-rebuilds": y_or_n,
+			"--with-test-deps"       : y_or_n,
+	}
 	for _, v := range args {
 		arg_stack = append(arg_stack, v)
 	}
 	for len(arg_stack) > 0 {
 		arg := arg_stack[len(arg_stack)-1]
+		arg_stack = arg_stack[:len(arg_stack)-1]
 
+		default_arg_choices := default_arg_opts[arg]
+		if default_arg_choices != nil {
+			new_args=append(new_args, arg)
+			if len(arg_stack) > 0 &&  default_arg_choices(arg_stack[len(arg_stack)-1]){
+			new_args=append(new_args, arg_stack[len(arg_stack)-1])
+				arg_stack = arg_stack[:len(arg_stack)-1]
+		}else{
+			new_args=append(new_args, "True")
+		}
+			continue
+		}
+
+		if arg[:1] != "-" || arg[:2] == "--"{
+			new_args = append(new_args, arg)
+			continue
+		}
+
+		short_arg_opts := map[string]func(string)bool{
+			"D" : valid_integers,
+				"j" : valid_integers,
+		}
+		match := ""
+		var arg_choices func(string)bool
+		for k ,v:= range short_arg_opts{
+			if strings.Contains(arg, k){
+			match = k
+			arg_choices=v
+			break
+		}
+		}
+
+		short_arg_opts_n := map[string]func(string)bool{
+			"a" : y_or_n,
+				"A" : y_or_n,
+				"b" : y_or_n,
+				"g" : y_or_n,
+				"G" : y_or_n,
+				"k" : y_or_n,
+				"K" : y_or_n,
+				"q" : y_or_n,
+				"v" : y_or_n,
+				"w" : y_or_n,
+		}
+		if match == ""{
+			for k,v := range short_arg_opts_n{
+			if strings.Contains(arg, k){
+			match = k
+			arg_choices=v
+			break
+		}
+		}
+		}
+
+		if match == "" {
+			new_args=append(new_args,arg)
+			continue
+		}
+
+		if len(arg) == 2 {
+			new_args = append( new_args, arg)
+			if len(arg_stack) > 0 &&  arg_choices(arg_stack[len(arg_stack)-1]){
+				new_args=append(new_args, arg_stack[len(arg_stack)-1])
+				arg_stack = arg_stack[:len(arg_stack)-1]
+			}else {
+				new_args =append(new_args, "True")
+			}
+			continue
+		}
+
+		new_args =append(new_args, "-" + match)
+		opt_arg := ""
+		saved_opts := ""
+
+		if arg[1:2] == match{
+		if  _,ok := short_arg_opts_n[match]; !ok&&  arg_choices(arg[2:]){
+				opt_arg = arg[2:]
+			}else {
+				saved_opts = arg[2:]
+				opt_arg = "True"
+			}
+		}else {
+			saved_opts = strings.ReplaceAll(arg[1:],match, "")
+			opt_arg = "True"
+		}
+
+		if opt_arg == "" && len(arg_stack)>0 && arg_choices(arg_stack[len(arg_stack)-1]){
+			opt_arg = arg_stack[len(arg_stack) - 1]
+			arg_stack=arg_stack[:len(arg_stack) - 1]
+		}
+
+		if opt_arg == ""{
+			new_args=append(new_args, "True")
+		}else {
+			new_args=append(new_args, opt_arg)
+		}
+
+		if saved_opts != ""{
+arg_stack = append(arg_stack, "-" + saved_opts)
+}
 	}
 
 	return new_args
@@ -660,7 +825,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 			myaction = action_opt
 		}
 	}
-	if myaction == "" && myoptions.deselect {
+	if myaction == "" && *bm["deselect"] {
 		myaction = "deselect"
 	}
 
@@ -687,7 +852,7 @@ func profile_check(trees *atom.Tree, myaction string) int {
 		for _, l :=range  emaint.SplitSubN(msg, 70){
 			m += fmt.Sprintf("!!! %s\n" % l)
 		}
-		writemsg_level(m, 40, nil)
+		atom.writeMsgLevel(m, 40, -1)
 		return 1
 	}
 	return syscall.F_OK

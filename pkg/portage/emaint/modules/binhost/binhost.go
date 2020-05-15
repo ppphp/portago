@@ -166,7 +166,7 @@ func(b *BinhostHandler) fix( onProgress func(int, int)) (bool, []string){
 
 		missing = []*atom.pkgStr{}
 		stale = []*atom.pkgStr{}
-		metadata = map[string]string{}
+		metadata = map[string]map[string]string{}
 		for _ ,d := range  pkgindex.packages{
 			cpv := atom.NewPkgStr(d["CPV"], d, bintree.settings,  "", "", "", 0, "", "", 0, nil)
 			d["CPV"] = cpv.string
@@ -190,7 +190,7 @@ func(b *BinhostHandler) fix( onProgress func(int, int)) (bool, []string){
 				//except portage.exception.InvalidDependString:
 				atom.WriteMsg(fmt.Sprintf("!!! Invalid binary package: \"%s\"\n" , bintree.getname(cpv)), -1, nil)
 			}else {
-				metadata[_instance_key(cpv).string] = d
+				metadata[_instance_key(cpv, false).string] = d
 			}
 
 			if onProgress!= nil {

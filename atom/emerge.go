@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -108,7 +107,13 @@ func (a *AsynchronousTask)  removeStartListener( f) {
 	if a._start_listeners == nil {
 		return
 	}
-	a._start_listeners.remove(f)
+	sls := a._start_listeners
+	a._exit_listener_handles = []{}
+	for _,sl:=range sla {
+		if sl != f {
+			a._exit_listener_handles = append(a._exit_listener_handles, f)
+		}
+	}
 }
 
 func (a *AsynchronousTask)  _start_hook(){
@@ -158,7 +163,7 @@ func (a *AsynchronousTask)  _wait_hook() {
 		listeners := a._exit_listeners
 		a._exit_listeners = nil
 		if a._exit_listener_handles == nil{
-		a._exit_listener_handles =map{}
+		a._exit_listener_handles =map[]{}
 	}
 
 		for _, listener := range listeners{
@@ -236,18 +241,20 @@ func (a *AbstractPollTask) _async_wait() {
 	}
 
 	func (a *AbstractPollTask)  _wait_loop( timeout=None){
-loop = a.scheduler
-tasks = [a.async_wait()]
-if timeout is not None:
-tasks.append(asyncio.ensure_future(
-asyncio.sleep(timeout, loop=loop), loop=loop))
+loop := a.scheduler
+tasks := []{a.async_wait()}
+if timeout is not None{
+			tasks= append(asyncio.ensure_future(
+			asyncio.sleep(timeout, loop=loop), loop=loop))
+		}
 try:
 loop.run_until_complete(asyncio.ensure_future(
 asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED,
 loop=loop), loop=loop))
 finally:
-for task in tasks:
-task.cancel()
+for _, task := range  tasks{
+	task.cancel()
+		}
 }
 
 func NewAbstractPollTask() *AbstractPollTask{
@@ -342,11 +349,12 @@ type SpawnProcess struct {
 	*SubProcess
 	_CGROUP_CLEANUP_RETRY_MAX int
 
-	args, env, opt_name, fd_pipes,
+	args, env, opt_name,
 	uid, gid, groups, umask, logfile,
 	path_lookup, pre_exec, close_fds, cgroup,
 	unshare_ipc, unshare_mount, unshare_pid, unshare_net,
 	_pipe_logger, _selinux_type string
+	fd_pipes map[int]string
 }
 
 _spawn_kwarg_names = ("env", "opt_name", "fd_pipes",
@@ -358,36 +366,41 @@ __slots__ = ("args",) + \
 _spawn_kwarg_names + ("_pipe_logger", "_selinux_type",)
 
 func(s *SpawnProcess) _start(){
-	if s.fd_pipes is None{
+	if s.fd_pipes == nil{
 		s.fd_pipes ={}
 	}else {
 		s.fd_pipes = s.fd_pipes.copy()
 	}
-	fd_pipes = s.fd_pipes
+	fd_pipes := s.fd_pipes
 
-	master_fd, slave_fd = s._pipe(fd_pipes)
+	master_fd, slave_fd := s._pipe(fd_pipes)
 
 	can_log := s._can_log(slave_fd)
-	if can_log{
-		log_file_path = s.logfile
-	} else{
-		log_file_path = None
+	log_file_path := s.logfile
+	if !can_log{
+		log_file_path = ""
 	}
 
 	null_input = None
-	if not s.background or 0 in fd_pipes{
+	if _, ok := fd_pipes[0]; ! s.background|| ok {
 		//pass
 	}else{
-		null_input = os.open('/dev/null', os.O_RDWR)
+		null_input, _ := os.Open("/dev/null", os.O_RDWR)
 		fd_pipes[0] = null_input
 	}
 
-	fd_pipes.setdefault(0, portage._get_stdin().fileno())
-	fd_pipes.setdefault(1, sys.__stdout__.fileno())
-	fd_pipes.setdefault(2, sys.__stderr__.fileno())
+	if _, ok := fd_pipes[0]; !ok {
+		fd_pipes[0] = getStdin().Fd()
+	}
+	if _, ok := fd_pipes[1]; !ok {
+		fd_pipes[1] = os.Stdout.Fd()
+	}
+	if _, ok := fd_pipes[2]; !ok {
+		fd_pipes[2] = os.Stderr.Fd()
+	}
 
 	stdout_filenos = (sys.__stdout__.fileno(), sys.__stderr__.fileno())
-	for fd in fd_pipes.values(){
+	for _, fd := range fd_pipes{
 		if fd in stdout_filenos{
 			sys.__stdout__.flush()
 			sys.__stderr__.flush()
@@ -397,7 +410,7 @@ func(s *SpawnProcess) _start(){
 
 	fd_pipes_orig = fd_pipes.copy()
 
-	if log_file_path is not None or s.background{
+	if log_file_path != "" || s.background{
 		fd_pipes[1] = slave_fd
 		fd_pipes[2] = slave_fd
 	}else{
@@ -461,14 +474,14 @@ func(s *SpawnProcess) _pipe( fd_pipes){
 	return os.pipe()
 }
 
-func(s *SpawnProcess) _spawn( args, **kwargs){
-	spawn_func = portage.process.spawn
+func(s *SpawnProcess) _spawn( args []string, **kwargs){
+	spawn_func := spawn
 
-	if s._selinux_type is not None{
+	if s._selinux_type != nil{
 		spawn_func = portage.selinux.spawn_wrapper(spawn_func,
 		s._selinux_type)
-		if args[0] != BASH_BINARY{
-		args = [BASH_BINARY, "-c", "exec \"$@\"", args[0]] + args
+		if args[0] != BashBinary{
+		args = append([]string{BashBinary, "-c", "exec \"$@\"", args[0]}, args...)
 	}
 	}
 
@@ -653,7 +666,7 @@ func(m *MergeProcess)  _start(){
 		find_library("c")
 	}
 
-	if m.fd_pipes is None{
+	if m.fd_pipes == nil{
 		m.fd_pipes = {}
 	}else{
 		m.fd_pipes = m.fd_pipes.copy()
@@ -680,9 +693,9 @@ func(m *MergeProcess) _unlock_vdb(){
 
 // true means none
 func(m *MergeProcess) _elog_output_handler(){
-output = m._read_buf(m._elog_reader_fd)
-if output{
-	lines = _unicode_decode(output).split('\n')
+output := m._read_buf(m._elog_reader_fd)
+if len(output) > 0 {
+	lines := strings.Split(output, "\n")
 	if len(lines) == 1{
 		m._buf += lines[0]
 	} else{
@@ -690,8 +703,9 @@ if output{
 		m._buf = lines.pop()
 		out = io.StringIO()
 		for _, line := range lines{
-			funcname, phase, key, msg = line.split(' ', 3)
-			m._elog_keys.add(key)
+			s4 := strings.SplitN(line," ", 4)
+			funcname, phase, key, msg := s4[0], s4[1],s4[2],s4[3]
+			m._elog_keys[key]=true
 			reporter = getattr(portage.elog.messages, funcname)
 			reporter(msg, phase=phase, key=key, out=out)
 		}
@@ -741,24 +755,25 @@ try:
 try:
 	pid = os.fork()
 
-	if pid != 0:
-	if not isinstance(pid, int):
-	raise AssertionError(
-		"fork returned non-integer: %s" % (repr(pid),))
+	if pid != 0{
+		if not isinstance(pid, int):
+		raise AssertionError(
+			"fork returned non-integer: %s" % (repr(pid),))
 
-	os.close(elog_writer_fd)
-	m._elog_reader_fd = elog_reader_fd
-	m._buf = ""
-	m._elog_keys = map[string]bool{}
-	portage.elog.messages.collect_messages(key=mylink.mycpv)
+		os.close(elog_writer_fd)
+		m._elog_reader_fd = elog_reader_fd
+		m._buf = ""
+		m._elog_keys = map[string]bool{}
+		portage.elog.messages.collect_messages(key=mylink.mycpv)
 
-	if m.vartree.dbapi._categories != nil {
-		m.vartree.dbapi._categories = nil
+		if m.vartree.dbapi._categories != nil {
+			m.vartree.dbapi._categories = nil
+		}
+		m.vartree.dbapi._pkgs_changed = true
+		m.vartree.dbapi._clear_pkg_cache(mylink)
+
+		return []int{pid}
 	}
-	m.vartree.dbapi._pkgs_changed = true
-	m.vartree.dbapi._clear_pkg_cache(mylink)
-
-	return [pid]
 
 	os.close(elog_reader_fd)
 
@@ -797,8 +812,7 @@ try:
 	if m.unmerge{
 		if ! mylink.exists(){
 			rval = os.EX_OK
-		}
-		else if mylink.unmerge(
+		} else if mylink.unmerge(
 			ldpath_mtimes=m.prev_mtimes) == syscall.F_OK{
 			mylink.lockdb()
 			try:
@@ -837,10 +851,10 @@ func(m *MergeProcess) _async_waitpid_cb( *args, **kwargs){
 
 func(m *MergeProcess) _unregister(){
 	if ! m.unmerge{
-	try:
+	//try:
 		m.vartree.dbapi.aux_get(m.settings.mycpv.string, map[string]bool{"EAPI":true}, "")
-		except KeyError:
-		pass
+		//except KeyError:
+		//pass
 	}
 
 	m._unlock_vdb()
@@ -856,7 +870,5 @@ func(m *MergeProcess) _unregister(){
 		}
 		m._elog_keys = nil
 	}
-
 	m.ForkProcess._unregister()
-
 }
