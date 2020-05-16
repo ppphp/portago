@@ -281,7 +281,7 @@ if s.isAlive() && s.pid != 0{
 	if err != nil {
 		//except OSError as e:
 		if err == syscall.EPERM {
-			writeMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n" , s.pid), 40, -1)
+			WriteMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n" , s.pid), 40, -1)
 		}else if err != syscall.ESRCH {
 			//raise
 		}
@@ -532,7 +532,7 @@ kill_all:= func(pids []int, sig syscall.Signal){
 		if err != nil {
 			//except OSError as e:
 			if err == syscall.EPERM{
-				writeMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n", p), 40,-1)
+				WriteMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n", p), 40,-1)
 			}else if err != syscall.ESRCH {
 				//raise
 			}

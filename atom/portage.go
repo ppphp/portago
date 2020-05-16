@@ -422,7 +422,7 @@ func update_dbentry(updateCmd []*Atom, mycontent string, eapi string, parent *pk
 					continue
 				}
 				newAtom, _ := NewAtom(strings.Replace(token, oldValue.value, newValue.value, 1), nil, false, nil, nil, eapi, nil, nil)
-				if newAtom.blocker != nil && parent != nil && parent.cp == newAtom.cp && len(matchFromList(newAtom, []*pkgStr{parent})) > 0 {
+				if newAtom.Blocker != nil && parent != nil && parent.cp == newAtom.cp && len(matchFromList(newAtom, []*pkgStr{parent})) > 0 {
 					continue
 				}
 				splitContent[i] = newAtom.value
@@ -433,7 +433,7 @@ func update_dbentry(updateCmd []*Atom, mycontent string, eapi string, parent *pk
 				mycontent = strings.Join(splitContent, "")
 			}
 		}
-	} else if updateCmd[0].value == "slotmove" && updateCmd[1].operator == "" {
+	} else if updateCmd[0].value == "slotmove" && updateCmd[1].Operator == "" {
 		origAtom, origslot, newslot := updateCmd[1], updateCmd[2], updateCmd[3]
 		origCp := origAtom.cp
 		if origAtom.version == "" && strings.Contains(mycontent, origCp) {

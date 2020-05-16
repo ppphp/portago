@@ -40,7 +40,7 @@ func writeMsgStdout(mystr string, noiseLevel int) { //0
 	WriteMsg(mystr, noiseLevel, os.Stdout)
 }
 
-func writeMsgLevel(msg string, level, noiselevel int) { //00
+func WriteMsgLevel(msg string, level, noiselevel int) { //00
 	var fd *os.File
 	if level >= 30 {
 		fd = os.Stderr
@@ -410,7 +410,7 @@ func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, a
 			if err != nil {
 				WriteMsg(fmt.Sprintf("--- Invalid Atom in %s: %s\n", filename, err), -1, nil)
 			} else {
-				if !allowUse && a.use != nil {
+				if !allowUse && a.Use != nil {
 					WriteMsg(fmt.Sprintf("--- Atom is not allowed to have USE flag(s) in %s: %s\n", filename, k), -1, nil)
 					continue
 				}

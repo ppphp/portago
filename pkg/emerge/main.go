@@ -3,7 +3,6 @@ package emerge
 import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/portage/emaint"
-	"go/parser"
 	"os"
 	"runtime"
 	"strconv"
@@ -232,7 +231,7 @@ func _find_bad_atoms(atoms []string, less_strict bool) []string {
 			bad_atom = true
 		}
 
-		if bad_atom || (atom.operator != "" && !less_strict) || atom.blocker != nil || atom.use != nil {
+		if bad_atom || (atom.Operator != "" && !less_strict) || atom.Blocker != nil || atom.Use != nil {
 			bad_atoms = append(bad_atoms, x)
 		}
 	}
@@ -242,7 +241,7 @@ func _find_bad_atoms(atoms []string, less_strict bool) []string {
 func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []string) { // false
 
 	actions := map[string]bool{
-		"clean": true, "check-news": true, "config": true, "depclean": true, help: true,
+		"clean": true, "check-news": true, "config": true, "depclean": true, "help": true,
 		"info": true, "list-sets": true, "metadata": true, "moo": true,
 		"prune": true, "rage-clean": true, "regen": true, "search": true,
 		"sync": true, "unmerge": true, "version": true,
@@ -400,6 +399,9 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 
 	pf.Parse(tmpcmdline)
 
+	myopt := map[string]string{}
+
+
 	myaction := ""
 	for action_opt := range actions {
 		v := *bm[action_opt]
@@ -411,11 +413,11 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 			myaction = action_opt
 		}
 	}
-	if myaction == "" && *bm["deselect"] {
+	if myaction == "" && myoptions.deselect!= "" {
 		myaction = "deselect"
 	}
 
-	return myaction, nil, pf.Args()
+	return myaction, myopt, pf.Args()
 }
 
 func profile_check(trees *atom.Tree, myaction string) int {
@@ -439,7 +441,7 @@ func profile_check(trees *atom.Tree, myaction string) int {
 		for _, l := range emaint.SplitSubN(msg, 70) {
 			m += fmt.Sprintf("!!! %s\n" % l)
 		}
-		atom.writeMsgLevel(m, 40, -1)
+		atom.WriteMsgLevel(m, 40, -1)
 		return 1
 	}
 	return syscall.F_OK
@@ -476,7 +478,7 @@ func EmergeMain(args []string) int { // nil
 	}
 
 	switch myAction {
-	case help:
+	case "help":
 		emergeHelp()
 		return 0
 	case "moo":

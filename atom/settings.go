@@ -141,7 +141,7 @@ func (c *Config) _validateCommands() {
 			valid, vSplit := validateCmdVar(v)
 			if !valid {
 				if len(vSplit) > 0 {
-					writeMsgLevel(fmt.Sprintf("%s setting is invalid: '%s'\n", k, v), 40, -1)
+					WriteMsgLevel(fmt.Sprintf("%s setting is invalid: '%s'\n", k, v), 40, -1)
 				}
 
 				v = c.configDict["globals"][k]
@@ -149,7 +149,7 @@ func (c *Config) _validateCommands() {
 					defaultValid, vSplit := validateCmdVar(v)
 					if !defaultValid {
 						if len(vSplit) > 0 {
-							writeMsgLevel(fmt.Sprintf("%s setting from make.globals is invalid: '%s'\n", k, v), 40, -1)
+							WriteMsgLevel(fmt.Sprintf("%s setting from make.globals is invalid: '%s'\n", k, v), 40, -1)
 						}
 						v = c.defaultGlobals[k]
 					}
@@ -269,7 +269,7 @@ func (c *Config) validate() {
 	} else {
 		in := true
 		for _, x := range []string{"make.defaults", "parent",
-			"packages", "use.force", "use.mask"} {
+			"packages", "Use.force", "Use.mask"} {
 			if existsRaiseEaccess(path.Join(c.profilePath, x)) {
 				in = false
 				break
@@ -2486,7 +2486,7 @@ func (f *featuresSet) validate() {
 				for _, u := range unknownFeatures2 {
 					f.settings.unknownFeatures[u] = true
 				}
-				writeMsgLevel(colorize("BAD", fmt.Sprintf("FEATURES variable contains unknown value(s): %s", strings.Join(unknownFeatures2, ", "))+"\n"), 30, -1)
+				WriteMsgLevel(colorize("BAD", fmt.Sprintf("FEATURES variable contains unknown value(s): %s", strings.Join(unknownFeatures2, ", "))+"\n"), 30, -1)
 			}
 		}
 	}
@@ -4201,7 +4201,7 @@ func (v *virtualManager) read_dirVirtuals(profiles []string) {
 			if err != nil {
 				virtAtom = nil
 			} else {
-				if virtAtom.blocker != nil || virtAtom.value != virtAtom.cp {
+				if virtAtom.Blocker != nil || virtAtom.value != virtAtom.cp {
 					virtAtom = nil
 				}
 			}
@@ -4219,7 +4219,7 @@ func (v *virtualManager) read_dirVirtuals(profiles []string) {
 				if err != nil {
 					atomA = nil
 				} else {
-					if atomA.blocker != nil {
+					if atomA.Blocker != nil {
 						atomA = nil
 					}
 				}

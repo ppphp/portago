@@ -248,7 +248,7 @@ func (d *dbapi) _iter_match(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
 	if atom.slot != "" {
 		cpvIter = d._iter_match_slot(atom, cpvIter)
 	}
-	if atom.unevaluatedAtom.use != nil {
+	if atom.unevaluatedAtom.Use != nil {
 		cpvIter = d._iter_match_use(atom, cpvIter)
 	}
 	return cpvIter
@@ -356,13 +356,13 @@ func (d *dbapi) _match_use(atom *Atom, pkg *pkgStr, metadata map[string]string, 
 	useAliases := d.settings.useManager.getUseAliases(pkg)
 	iuse := NewIUse("", strings.Fields(metadata["IUSE"]), iuseImplicitMatch, useAliases, metadata["EAPI"])
 
-	for x := range atom.unevaluatedAtom.use.required {
+	for x := range atom.unevaluatedAtom.Use.required {
 		if iuse.getRealFlag(x) == "" {
 			return false
 		}
 	}
 
-	if atom.use == nil {
+	if atom.Use == nil {
 	} else if !d._use_mutable {
 		use := map[string]bool{}
 		for _, x := range strings.Fields(metadata["USE"]) {
@@ -371,19 +371,19 @@ func (d *dbapi) _match_use(atom *Atom, pkg *pkgStr, metadata map[string]string, 
 			}
 		}
 		missingEnabled := map[string]bool{}
-		for x := range atom.use.missingEnabled {
+		for x := range atom.Use.missingEnabled {
 			if iuse.getRealFlag(x) == "" {
 				missingEnabled[x] = true
 			}
 		}
 		missingDisabled := map[string]bool{}
-		for x := range atom.use.missingDisabled {
+		for x := range atom.Use.missingDisabled {
 			if iuse.getRealFlag(x) == "" {
 				missingDisabled[x] = true
 			}
 		}
 		enabled := map[string]bool{}
-		for x := range atom.use.enabled {
+		for x := range atom.Use.enabled {
 			if iuse.getRealFlag(x) != "" {
 				enabled[iuse.getRealFlag(x)] = true
 			} else {
@@ -391,7 +391,7 @@ func (d *dbapi) _match_use(atom *Atom, pkg *pkgStr, metadata map[string]string, 
 			}
 		}
 		disabled := map[string]bool{}
-		for x := range atom.use.disabled {
+		for x := range atom.Use.disabled {
 			if iuse.getRealFlag(x) != "" {
 				disabled[iuse.getRealFlag(x)] = true
 			} else {
@@ -441,7 +441,7 @@ func (d *dbapi) _match_use(atom *Atom, pkg *pkgStr, metadata map[string]string, 
 	} else if !d.settings.localConfig {
 		if !ignore_profile {
 			useMask := d.settings._getUseMask(pkg, d.settings.parentStable)
-			for x := range atom.use.enabled {
+			for x := range atom.Use.enabled {
 				for y := range useMask {
 					if x == y.value {
 						return false
@@ -449,7 +449,7 @@ func (d *dbapi) _match_use(atom *Atom, pkg *pkgStr, metadata map[string]string, 
 				}
 			}
 			useForce := d.settings._getUseForce(pkg, d.settings.parentStable)
-			for x := range atom.use.disabled {
+			for x := range atom.Use.disabled {
 				for y := range useForce {
 					if x == y.value {
 						in := false
@@ -467,19 +467,19 @@ func (d *dbapi) _match_use(atom *Atom, pkg *pkgStr, metadata map[string]string, 
 			}
 		}
 
-		if len(atom.use.enabled) > 0 {
-			for x := range atom.use.missingDisabled {
+		if len(atom.Use.enabled) > 0 {
+			for x := range atom.Use.missingDisabled {
 				if iuse.getRealFlag(x) == "" {
-					if atom.use.enabled[x] {
+					if atom.Use.enabled[x] {
 						return false
 					}
 				}
 			}
 		}
-		if len(atom.use.disabled) > 0 {
-			for x := range atom.use.missingEnabled {
+		if len(atom.Use.disabled) > 0 {
+			for x := range atom.Use.missingEnabled {
 				if iuse.getRealFlag(x) == "" {
-					if atom.use.disabled[x] {
+					if atom.Use.disabled[x] {
 						return false
 					}
 				}
@@ -813,7 +813,7 @@ func (v *vardbapi) cpv_exists(mykey, myrepo string) bool {
 func (v *vardbapi) cpv_counter(mycpv *pkgStr) int {
 	s, err := strconv.Atoi(v.auxGet(mycpv, []string{"COUNTER"}, "")[0])
 	if err != nil {
-		writeMsgLevel(fmt.Sprintf("portage: COUNTER for %s was corrupted; resetting to value of 0\n",mycpv.string), 40, -1)
+		WriteMsgLevel(fmt.Sprintf("portage: COUNTER for %s was corrupted; resetting to value of 0\n",mycpv.string), 40, -1)
 		return 0
 	}
 	return s
@@ -2204,7 +2204,7 @@ func (b *BinaryTree) Populate(getbinpkgs, getbinpkg_refresh bool, add_repos []st
 
 	if getbinpkgs{
 		if b.settings.ValueDict["PORTAGE_BINHOST"] == "" {
-			WriteMsg(fmt.Sprintf("!!! PORTAGE_BINHOST unset, but use is requested.\n"),-1, nil)
+			WriteMsg(fmt.Sprintf("!!! PORTAGE_BINHOST unset, but Use is requested.\n"),-1, nil)
 		}		else{
 			b._populate_remote(getbinpkg_refresh=getbinpkg_refresh)
 		}

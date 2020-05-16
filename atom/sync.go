@@ -15,7 +15,7 @@ func (s *syncBase) hasBin() bool {
 		msg := []string{fmt.Sprintf("Command not found: %s", s.binCommand),
 			fmt.Sprintf("Type \"emerge %s\" to enable %s support.", s.binPkg, s.binCommand)}
 		for _, l := range msg {
-			writeMsgLevel(fmt.Sprintf("!!! %s", l), -40, -1)
+			WriteMsgLevel(fmt.Sprintf("!!! %s", l), -40, -1)
 		}
 		return false
 	}

@@ -790,7 +790,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 		if repo.location == "" {
 			if repoName != "DEFAULT" {
 				if settings.localConfig && len(paths) > 0 {
-					writeMsgLevel(fmt.Sprintf("!!! %s\n", fmt.Sprintf("Section '%s' in repos.conf is missing location attribute", repo.Name)), 40, -1)
+					WriteMsgLevel(fmt.Sprintf("!!! %s\n", fmt.Sprintf("Section '%s' in repos.conf is missing location attribute", repo.Name)), 40, -1)
 				}
 				delete(prepos, repoName)
 				continue
@@ -798,19 +798,19 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 		} else {
 			if !SyncMode {
 				if !isdirRaiseEaccess(repo.location) {
-					writeMsgLevel(fmt.Sprintf("!!! %s\n", fmt.Sprintf("Section '%s' in repos.conf has location attribute set to nonexistent directory: '%s'", repoName, repo.location)), 40, -1)
+					WriteMsgLevel(fmt.Sprintf("!!! %s\n", fmt.Sprintf("Section '%s' in repos.conf has location attribute set to nonexistent directory: '%s'", repoName, repo.location)), 40, -1)
 					if repo.Name != "gentoo" {
 						delete(prepos, repoName)
 						continue
 					}
 				}
 				if repo.missingRepoName && repo.Name != repoName {
-					writeMsgLevel(fmt.Sprintf("!!! Section '%s' in repos.conf refers to repository without repository name set in '%s'\n", repoName, path.Join(repo.location, RepoNameLoc)), 40, -1)
+					WriteMsgLevel(fmt.Sprintf("!!! Section '%s' in repos.conf refers to repository without repository name set in '%s'\n", repoName, path.Join(repo.location, RepoNameLoc)), 40, -1)
 					delete(prepos, repoName)
 					continue
 				}
 				if repo.Name != repoName {
-					writeMsgLevel(fmt.Sprintf("!!! Section '%s' in repos.conf has name different from repository name '%s' set inside repository\n", repoName, repo.Name), 40, -1)
+					WriteMsgLevel(fmt.Sprintf("!!! Section '%s' in repos.conf has name different from repository name '%s' set inside repository\n", repoName, repo.Name), 40, -1)
 					delete(prepos, repoName)
 					continue
 				}
@@ -837,7 +837,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 				if name == repoName {
 					continue
 				}
-				writeMsgLevel(fmt.Sprintf("!!! Repository name or alias '%s', defined for repository '%s', overrides existing alias or repository.\n", name, repoName), 40, -1)
+				WriteMsgLevel(fmt.Sprintf("!!! Repository name or alias '%s', defined for repository '%s', overrides existing alias or repository.\n", name, repoName), 40, -1)
 				continue
 			}
 			prepos[name] = repo
@@ -911,7 +911,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 			for _, masterName := range repo.mastersRepo {
 				if _, ok := prepos[masterName.Name]; !ok {
 					layoutFilename := path.Join(repo.location, "metadata", "layout.conf")
-					writeMsgLevel(fmt.Sprintf("Unavailable repository '%s' referenced by masters entry in '%s'\n", masterName.Name, layoutFilename), 40, -1)
+					WriteMsgLevel(fmt.Sprintf("Unavailable repository '%s' referenced by masters entry in '%s'\n", masterName.Name, layoutFilename), 40, -1)
 				} else {
 					masterRepos = append(masterRepos, prepos[masterName.Name])
 				}
@@ -942,7 +942,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 				if _, ok := r.treeMap[otherRepoName]; ok {
 					eclassLocations = append(eclassLocations, r.getLocationForName(otherRepoName))
 				} else {
-					writeMsgLevel(fmt.Sprintf("Unavailable repository '%s' referenced by eclass-overrides entry for '%s'\n", otherRepoName, repoName), 40, -1)
+					WriteMsgLevel(fmt.Sprintf("Unavailable repository '%s' referenced by eclass-overrides entry for '%s'\n", otherRepoName, repoName), 40, -1)
 				}
 			}
 		}
@@ -974,7 +974,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 			continue
 		}
 		if repo.mastersOrig == nil && r.mainRepo() != nil && repo.Name != r.mainRepo().Name && !SyncMode {
-			writeMsgLevel(fmt.Sprintf("!!! Repository '%s' is missing masters attribute in '%s'\n", repo.Name, path.Join(repo.location, "metadata", "layout.conf"))+fmt.Sprintf("!!! Set 'masters = %s' in this file for future compatibility\n", r.mainRepo().Name), 30, -1)
+			WriteMsgLevel(fmt.Sprintf("!!! Repository '%s' is missing masters attribute in '%s'\n", repo.Name, path.Join(repo.location, "metadata", "layout.conf"))+fmt.Sprintf("!!! Set 'masters = %s' in this file for future compatibility\n", r.mainRepo().Name), 30, -1)
 		}
 	}
 	r.preposChanged = true
@@ -1054,7 +1054,7 @@ func parseLayoutConf(repoLocation, repoName string) (map[string][]string, map[st
 		data["repo-name"] = []string{genValidRepo("")}
 	}
 
-	if v, ok := layoutData["use-manifests"]; ok && strings.ToLower(v[0]) != "strict" {
+	if v, ok := layoutData["Use-manifests"]; ok && strings.ToLower(v[0]) != "strict" {
 		mp := strings.ToLower(v[0])
 		if mp == "false" {
 			data["allow-missing-manifest"] = []string{"true"}

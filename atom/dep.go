@@ -933,10 +933,10 @@ type Atom struct {
 	value                                                          string
 	ispackage, soname, extendedSyntax                              bool
 	buildId                                                        int
-	blocker                                                        *blocker
-	slotOperator, subSlot, repo, slot, eapi, cp, version, operator string
+	Blocker                                                        *blocker
+	slotOperator, subSlot, repo, slot, eapi, cp, version, Operator string
 	cpv                                                            *pkgStr
-	use                                                            *useDep
+	Use                                                            *useDep
 	withoutUse, unevaluatedAtom                                    *Atom
 }
 
@@ -948,8 +948,8 @@ func (a *Atom) withoutSlot() *Atom {
 	if a.repo != "" {
 		atom += repoSeparator + a.repo
 	}
-	if a.use != nil {
-		atom += a.use.str()
+	if a.Use != nil {
+		atom += a.Use.str()
 	}
 	m := true
 	b, _ := NewAtom(atom, nil, true, &m, nil, "", nil, nil)
@@ -971,8 +971,8 @@ func (a *Atom) withRepo(repo string) *Atom {
 		}
 	}
 	atom += repoSeparator + repo
-	if a.use != nil {
-		atom += a.use.str()
+	if a.Use != nil {
+		atom += a.Use.str()
 	}
 	m := true
 	b, _ := NewAtom(atom, nil, true, &m, nil, "", nil, nil)
@@ -984,8 +984,8 @@ func (a *Atom) withSlot(slot string) *Atom {
 	if a.repo != "" {
 		atom += repoSeparator + a.repo
 	}
-	if a.use != nil {
-		atom += a.use.str()
+	if a.Use != nil {
+		atom += a.Use.str()
 	}
 	m := true
 	b, _ := NewAtom(atom, nil, true, &m, nil, "", nil, nil)
@@ -993,7 +993,7 @@ func (a *Atom) withSlot(slot string) *Atom {
 }
 
 func (a *Atom) EvaluateConditionals(use map[string]bool) *Atom {
-	if !(a.use != nil && a.use.conditional != nil) {
+	if !(a.Use != nil && a.Use.conditional != nil) {
 		return a
 	}
 	atom := removeSlot(a.value)
@@ -1009,7 +1009,7 @@ func (a *Atom) EvaluateConditionals(use map[string]bool) *Atom {
 			atom += a.slotOperator
 		}
 	}
-	useDep := a.use.evaluateConditionals(use)
+	useDep := a.Use.evaluateConditionals(use)
 	atom += useDep.str()
 	m := true
 	b, _ := NewAtom(atom, nil, true, &m, nil, "", nil, nil)
@@ -1017,7 +1017,7 @@ func (a *Atom) EvaluateConditionals(use map[string]bool) *Atom {
 }
 
 func (a *Atom) violatedConditionals(otherUse map[string]bool, isValidFlag func(string) bool, parentUse map[string]bool) *Atom { // none
-	if a.use == nil {
+	if a.Use == nil {
 		return a
 	}
 	atom := removeSlot(a.value)
@@ -1033,7 +1033,7 @@ func (a *Atom) violatedConditionals(otherUse map[string]bool, isValidFlag func(s
 			atom += a.slotOperator
 		}
 	}
-	useDep := a.use.violatedConditionals(otherUse, isValidFlag, parentUse)
+	useDep := a.Use.violatedConditionals(otherUse, isValidFlag, parentUse)
 	atom += useDep.str()
 	m := true
 	b, _ := NewAtom(atom, nil, true, &m, nil, "", nil, nil)
@@ -1041,7 +1041,7 @@ func (a *Atom) violatedConditionals(otherUse map[string]bool, isValidFlag func(s
 }
 
 func (a *Atom) evalQaConditionals(useMask, useForce map[string]bool) *Atom {
-	if a.use == nil || a.use.conditional == nil {
+	if a.Use == nil || a.Use.conditional == nil {
 		return a
 	}
 	atom := removeSlot(a.value)
@@ -1057,7 +1057,7 @@ func (a *Atom) evalQaConditionals(useMask, useForce map[string]bool) *Atom {
 			atom += a.slotOperator
 		}
 	}
-	useDep := a.use.evalQaConditionals(useMask, useForce)
+	useDep := a.Use.evalQaConditionals(useMask, useForce)
 	atom += useDep.str()
 	m := true
 	b, _ := NewAtom(atom, nil, true, &m, nil, "", nil, nil)
@@ -1080,7 +1080,7 @@ func (a *Atom) intersects(other *Atom) bool {
 	if a == other {
 		return true
 	}
-	if a.cp != other.cp || a.use != other.use || a.operator != other.operator || a.cpv != other.cpv {
+	if a.cp != other.cp || a.Use != other.Use || a.Operator != other.Operator || a.cpv != other.cpv {
 		return false
 	}
 	if a.slot == "" || other.slot == "" || a.slot == other.slot {
@@ -1134,7 +1134,7 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 	} else {
 		blocker = nil
 	}
-	a.blocker = blocker
+	a.Blocker = blocker
 	buildId := 0
 	extendedSyntax := false
 	extendedVersion := ""
@@ -1292,7 +1292,7 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 		}
 	}
 
-	a.operator = op
+	a.Operator = op
 	a.extendedSyntax = extendedSyntax
 	a.buildId = buildId
 	if !(repo == "" || *allowRepo) {
@@ -1309,13 +1309,13 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 		withoutUse, _ = NewAtom(blockerPrefix+getNamedRegexp(atomRe, s, "without_use"), nil, false, allowRepo, nil, "", nil, nil)
 	} else {
 		use = nil
-		if unevaluatedAtom != nil && unevaluatedAtom.use != nil {
+		if unevaluatedAtom != nil && unevaluatedAtom.Use != nil {
 			withoutUse, _ = NewAtom(blockerPrefix+getNamedRegexp(atomRe, s, "without_use"), nil, false, allowRepo, nil, "", nil, nil)
 		} else {
 			withoutUse = a
 		}
 	}
-	a.use = use
+	a.Use = use
 	a.withoutUse = withoutUse
 
 	if unevaluatedAtom != nil {
@@ -1330,19 +1330,19 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 			//	_("Slot deps are not allowed in EAPI %s: '%s'") \
 			//% (eapi, self), category='EAPI.incompatible')
 		}
-		if a.use != nil {
+		if a.Use != nil {
 			if !eapiAttrs.useDeps {
 				//raise InvalidAtom(
 				//	_("Use deps are not allowed in EAPI %s: '%s'") \
 				//% (eapi, self), category='EAPI.incompatible')
-			} else if !eapiAttrs.useDepDefaults && (len(a.use.missingEnabled) != 0 || len(a.use.missingDisabled) != 0) {
+			} else if !eapiAttrs.useDepDefaults && (len(a.Use.missingEnabled) != 0 || len(a.Use.missingDisabled) != 0) {
 				//raise InvalidAtom(
 				//	_("Use dep defaults are not allowed in EAPI %s: '%s'") \
 				//% (eapi, self), category='EAPI.incompatible')
 			}
-			if isValidFlag != nil && a.use.conditional != nil {
+			if isValidFlag != nil && a.Use.conditional != nil {
 				var invalidFlag *SMSB = nil
-				for _, v := range a.use.conditional.items() {
+				for _, v := range a.Use.conditional.items() {
 					flags := v.MSB
 					for flag := range flags {
 						if !isValidFlag(flag) {
@@ -1364,7 +1364,7 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 				}
 			}
 		}
-		if a.blocker != nil && a.blocker.overlap.forbid && !eapiAttrs.strongBlocks {
+		if a.Blocker != nil && a.Blocker.overlap.forbid && !eapiAttrs.strongBlocks {
 			//raise InvalidAtom(
 			//	_("Strong blocks are not allowed in EAPI %s: '%s'") \
 			//% (eapi, self), category='EAPI.incompatible')
@@ -1390,7 +1390,7 @@ func extractAffectingUse(mystr string, atom *Atom, eapi string) map[string]bool 
 		}
 		if !useflagRe.MatchString(flag) {
 			//raise InvalidDependString(
-			//	_("invalid use flag '%s' in conditional '%s'") % \
+			//	_("invalid Use flag '%s' in conditional '%s'") % \
 			//(flag, conditional))
 		}
 		return flag
@@ -1526,7 +1526,7 @@ func isValidAtom(atom string, allowBlockers, allowWildcard, allowRepo bool, eapi
 	if err != nil {
 		return false
 	}
-	if !allowBlockers && a.blocker != nil {
+	if !allowBlockers && a.Blocker != nil {
 		return false
 	}
 	return true
@@ -1558,7 +1558,7 @@ func removeSlot(mydep string) string {
 
 func getOperator(mydep string) string {
 	a, _ := NewAtom(mydep, nil, false, nil, nil, "", nil, nil)
-	return a.operator
+	return a.Operator
 }
 
 func depGetcpv(mydep string) *pkgStr {
@@ -1611,7 +1611,7 @@ func depGetUseDeps(depend string) []string {
 		use := depend[openBracket+1 : closeBracket+openBracket]
 		if len(use) == 0 {
 			//raise InvalidAtom(_("USE Dependency with "
-			//"no use flag ([]): %s") % depend )
+			//"no Use flag ([]): %s") % depend )
 		}
 		if !commaSeparated {
 			commaSeparated = strings.Contains(use, ",")
@@ -1626,7 +1626,7 @@ func depGetUseDeps(depend string) []string {
 				if x != "" {
 					useList = append(useList, x)
 				} else {
-					//raise InvalidAtom(_("USE Dependency with no use "
+					//raise InvalidAtom(_("USE Dependency with no Use "
 					//"flag next to comma: %s") % depend )
 				}
 			}
@@ -1685,7 +1685,7 @@ func bestMatchToList(mypkg *pkgStr, mylist []*Atom) *Atom {
 	var mypkgCpv *pkgStr = nil
 	for _, x := range matchToList(mypkg, mylist) {
 		if x.extendedSyntax {
-			if x.operator == "=*" {
+			if x.Operator == "=*" {
 				if maxvalue < 0 {
 					maxvalue = 0
 					bestm = x
@@ -1709,7 +1709,7 @@ func bestMatchToList(mypkg *pkgStr, mylist []*Atom) *Atom {
 				bestm = x
 			}
 		}
-		opVal := operatorValues[x.operator]
+		opVal := operatorValues[x.Operator]
 		if opVal > maxvalue {
 			maxvalue = opVal
 			bestm = x
@@ -1780,7 +1780,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 
 	operator := ""
 	if ver != "" && rev != "" {
-		operator = mydepA.operator
+		operator = mydepA.Operator
 		if operator == "" {
 			WriteMsg(fmt.Sprintf("!!! Invalid Atom: %s\n", mydep.value), -1, nil)
 		}
@@ -1805,7 +1805,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 				mylist = append(mylist, x)
 			}
 		}
-		if len(mylist) > 0 && mydepA.operator == "=*" {
+		if len(mylist) > 0 && mydepA.Operator == "=*" {
 			candidateList = mylist
 			mylist = []*pkgStr{}
 			ver = mydepA.version[1 : len(mydepA.version)-1]
@@ -1971,36 +1971,36 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 		}
 	}
 
-	if mydepA.unevaluatedAtom.use != nil {
+	if mydepA.unevaluatedAtom.Use != nil {
 		candidateList = mylist
 		mylist = []*pkgStr{}
 		for _, x := range candidateList {
-			//use = getattr(x, "use", None)
-			//if use is not None:
-			//if mydep.unevaluated_atom.use and \
+			//Use = getattr(x, "Use", None)
+			//if Use is not None:
+			//if mydep.unevaluated_atom.Use and \
 			//not x.iuse.is_valid_flag(
-			//	mydep.unevaluated_atom.use.required):
+			//	mydep.unevaluated_atom.Use.required):
 			//continue
 			//
-			//if mydep.use:
+			//if mydep.Use:
 			//is_valid_flag = x.iuse.is_valid_flag
 			//missing_enabled = frozenset(flag for flag in
-			//mydep.use.missing_enabled if not is_valid_flag(flag))
+			//mydep.Use.missing_enabled if not is_valid_flag(flag))
 			//missing_disabled = frozenset(flag for flag in
-			//mydep.use.missing_disabled if not is_valid_flag(flag))
+			//mydep.Use.missing_disabled if not is_valid_flag(flag))
 			//
-			//if mydep.use.enabled:
-			//if any(f in mydep.use.enabled for f in missing_disabled):
+			//if mydep.Use.enabled:
+			//if any(f in mydep.Use.enabled for f in missing_disabled):
 			//continue
-			//need_enabled = mydep.use.enabled.difference(use.enabled)
+			//need_enabled = mydep.Use.enabled.difference(Use.enabled)
 			//if need_enabled:
 			//if any(f not in missing_enabled for f in need_enabled):
 			//continue
 			//
-			//if mydep.use.disabled:
-			//if any(f in mydep.use.disabled for f in missing_enabled):
+			//if mydep.Use.disabled:
+			//if any(f in mydep.Use.disabled for f in missing_enabled):
 			//continue
-			//need_disabled = mydep.use.disabled.intersection(use.enabled)
+			//need_disabled = mydep.Use.disabled.intersection(Use.enabled)
 			//if need_disabled:
 			//if any(f not in missing_disabled for f in need_disabled):
 			//continue

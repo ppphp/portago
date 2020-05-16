@@ -151,8 +151,8 @@ func TestAtom(t *testing.T) {
 		if err != nil {
 			t.Errorf("%v\n", err)
 		}
-		if a.operator != "=" || a.cp != "sys-apps/portage" || a.version != "2.1-r1" || a.slot != "0" || a.use.str() != "[doc,a=,!b=,c?,!d?,-e]" || a.repo != "" {
-			t.Errorf("not match %v %v %v %v %v %v", a.operator, a.cp, a.version, a.slot, a.use.str(), a.repo)
+		if a.Operator != "=" || a.cp != "sys-apps/portage" || a.version != "2.1-r1" || a.slot != "0" || a.Use.str() != "[doc,a=,!b=,c?,!d?,-e]" || a.repo != "" {
+			t.Errorf("not match %v %v %v %v %v %v", a.Operator, a.cp, a.version, a.slot, a.Use.str(), a.repo)
 		}
 	}
 	/*
@@ -180,7 +180,7 @@ func TestAtom(t *testing.T) {
 	//		("sys-apps/*", False, False),
 	//		("*/portage", False, False),
 	//		("*/**", True, False),
-	//		("*/portage[use]", True, False),
+	//		("*/portage[Use]", True, False),
 	/*("cat/pkg[a()]", False, False),
 	("cat/pkg[a(]", False, False),
 	("cat/pkg[a)]", False, False),
