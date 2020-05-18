@@ -982,7 +982,7 @@ func (v *vardbapi) _clear_cache() {
 		v._aux_cache_obj = nil
 }
 
-func (v *vardbapi) _add(pkg_dblink) {
+func (v *vardbapi) _add(pkg_dblink *dblink) {
 	v._pkgs_changed = true
 	v._clear_pkg_cache(pkg_dblink)
 }
@@ -993,7 +993,8 @@ func (v *vardbapi) _clear_pkg_cache(pkg_dblink *dblink) {
 	delete(v.mtdircache,pkg_dblink.cat)
 	delete(v.matchcache,pkg_dblink.cat)
 	delete(v.cpcache,pkg_dblink.mysplit[0])
-	delete(dircache,pkg_dblink.dbcatdir)
+	// TODO: already deprecated?
+	//delete(dircache,pkg_dblink.dbcatdir)
 }
 
 // 1
