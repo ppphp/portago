@@ -247,7 +247,9 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 		"sync": true, "unmerge": true, "version": true,
 	}
 
-	true_y := map[string]bool{"True": true, "y": true}
+	true_y := func(s string) bool {
+		return s == "True" || s == "y"
+	}
 	pf := pflag.NewFlagSet("emerge", pflag.ExitOnError)
 
 	var myoptions struct {
@@ -256,7 +258,8 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 		// options
 		alphabetical, ask_enter_invalid, buildpkgonly, changed_use, changelog, columns, debug, digest, emptytree, verbose_conflicts, fetchonly, fetch_all_uri, ignore_default_opts, noconfmem, newrepo, newuse, nodeps, noreplace, nospinner, oneshot, onlydeps, pretend, quiet_repo_display, quiet_unmerge_warn, resume, searchdesc, skipfirst, tree, unordered_display, update bool
 		// argument
-		alert, ask, autounmask, autounmask_backtrack, autounmask_continue, autounmask_only, autounmask_license, autounmask_unrestricted_atoms, autounmask_use, autounmask_keep_keywords, autounmask_keep_masks, autounmask_write, accept_properties, accept_restrict, backtrack, binpkg_changed_deps, buildpkg, buildpkg_exclude, changed_deps, changed_deps_report, changed_slot, config_root, color, complete_graph, complete_graph_if_new_use, complete_graph_if_new_ver, deep, depclean_lib_check, deselect, dynamic_deps, exclude, fail_clean, fuzzy_search, ignore_built_slot_operator_deps, ignore_soname_deps, ignore_world, implicit_system_deps, jobs, keep_going, load_average, misspell_suggestions, with_bdeps, with_bdeps_auto, reinstall, reinstall_atoms, binpkg_respect_use, getbinpkg, getbinpkgonly, usepkg_exclude, onlydeps_with_rdeps, rebuild_exclude, rebuild_ignore, package_moves, prefix, pkg_format, quickpkg_direct, quiet, quiet_build, quiet_fail, read_news, rebuild_if_new_slot, rebuild_if_new_rev, rebuild_if_new_ver, rebuild_if_unbuilt, rebuilt_binaries, rebuilt_binaries_timestamp, root, root_deps, search_index, search_similarity, selectt, selective, sync_submodule, sysroot, use_ebuild_visibility, useoldpkg_atoms, usepkg, usepkgonly, verbose, verbose_slot_rebuilds, with_test_deps string
+		alert, ask, autounmask, autounmask_backtrack, autounmask_continue, autounmask_only, autounmask_license, autounmask_unrestricted_atoms, autounmask_use, autounmask_keep_keywords, autounmask_keep_masks, autounmask_write, accept_properties, accept_restrict, backtrack, binpkg_changed_deps, buildpkg, changed_deps, changed_deps_report, changed_slot, config_root, color, complete_graph, complete_graph_if_new_use, complete_graph_if_new_ver, deep, depclean_lib_check, deselect, dynamic_deps, fail_clean, fuzzy_search, ignore_built_slot_operator_deps, ignore_soname_deps, ignore_world, implicit_system_deps, jobs, keep_going, load_average, misspell_suggestions, with_bdeps, with_bdeps_auto, reinstall, binpkg_respect_use, getbinpkg, getbinpkgonly, usepkg_exclude, onlydeps_with_rdeps, rebuild_exclude, rebuild_ignore, package_moves, prefix, pkg_format, quickpkg_direct, quiet, quiet_build, quiet_fail, read_news, rebuild_if_new_slot, rebuild_if_new_rev, rebuild_if_new_ver, rebuild_if_unbuilt, rebuilt_binaries, rebuilt_binaries_timestamp, root, root_deps, search_index, search_similarity, selectt, selective, sysroot, use_ebuild_visibility, usepkg, usepkgonly, verbose, verbose_slot_rebuilds, with_test_deps string
+		buildpkg_exclude, exclude, reinstall_atoms, sync_submodule, useoldpkg_atoms                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       []string
 	}
 	// actions
 	pf.BoolVarP(&myoptions.clean, "clean", "", false, "")
@@ -330,7 +333,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 	pf.StringVarP(&myoptions.backtrack, "backtrack", "", "", "Specifies how many times to backtrack if dependency calculation fails")
 	pf.StringVarP(&myoptions.binpkg_changed_deps, "binpkg-changed-deps", "", "", "reject binary packages with outdated dependencies")
 	pf.StringVarP(&myoptions.buildpkg, "buildpkg", "b", "", "build binary packages")
-	pf.StringVarP(&myoptions.buildpkg_exclude, "buildpkg-exclude", "", "", "A space separated list of package atoms for which no binary packages should be built. This option overrides all possible ways to enable building of binary packages.")
+	pf.StringArrayVarP(&myoptions.buildpkg_exclude, "buildpkg-exclude", "", nil, "A space separated list of package atoms for which no binary packages should be built. This option overrides all possible ways to enable building of binary packages.")
 	pf.StringVarP(&myoptions.changed_deps, "changed-deps", "", "", "replace installed packages with outdated dependencies")
 	pf.StringVarP(&myoptions.changed_deps_report, "changed-deps-report", "", "", "report installed packages with outdated dependencies")
 	pf.StringVarP(&myoptions.changed_slot, "changed-slot", "", "", "replace installed packages with outdated SLOT metadata")
@@ -343,7 +346,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 	pf.StringVarP(&myoptions.depclean_lib_check, "depclean-lib-check", "", "", "check for consumers of libraries before removing them")
 	pf.StringVarP(&myoptions.deselect, "deselect", "", "", "deselect")
 	pf.StringVarP(&myoptions.dynamic_deps, "dynamic-deps", "", "", "substitute the dependencies of installed packages with the dependencies of unbuilt ebuilds")
-	pf.StringVarP(&myoptions.exclude, "exclude", "", "", "A space separated list of package names or slot atoms. Emerge won't install any ebuild or binary package that matches any of the given package atoms.")
+	pf.StringArrayVarP(&myoptions.exclude, "exclude", "", nil, "A space separated list of package names or slot atoms. Emerge won't install any ebuild or binary package that matches any of the given package atoms.")
 	pf.StringVarP(&myoptions.fail_clean, "fail-clean", "", "", "clean temp files after build failure")
 	pf.StringVarP(&myoptions.fuzzy_search, "fuzzy-search", "", "", "Enable or disable fuzzy search")
 	pf.StringVarP(&myoptions.ignore_built_slot_operator_deps, "ignore-built-slot-operator-deps", "", "", "Ignore the slot/sub-slot := operator parts of dependencies that have been recorded when packages where built. This option is intended only for debugging purposes, and it only affects built packages that specify slot/sub-slot := operator dependencies using the experimental \"4-slot-abi\" EAPI.")
@@ -357,7 +360,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 	pf.StringVarP(&myoptions.with_bdeps, "with-bdeps", "", "", "include unnecessary build time dependencies")
 	pf.StringVarP(&myoptions.with_bdeps_auto, "with-bdeps-auto", "", "", "automatically enable --with-bdeps for installation actions, unless --usepkg is enabled")
 	pf.StringVarP(&myoptions.reinstall, "reinstall", "", "", "specify conditions to trigger package reinstallation")
-	pf.StringVarP(&myoptions.reinstall_atoms, "reinstall-atoms", "", "", "A space separated list of package names or slot atoms. Emerge will treat matching packages as if they are not installed, and reinstall them if necessary. Implies --deep.")
+	pf.StringArrayVarP(&myoptions.reinstall_atoms, "reinstall-atoms", "", nil, "A space separated list of package names or slot atoms. Emerge will treat matching packages as if they are not installed, and reinstall them if necessary. Implies --deep.")
 	pf.StringVarP(&myoptions.binpkg_respect_use, "binpkg-respect-use", "", "", "discard binary packages if their use flags don't match the current configuration")
 	pf.StringVarP(&myoptions.getbinpkg, "getbinpkg", "g", "", "fetch binary packages")
 	pf.StringVarP(&myoptions.getbinpkgonly, "getbinpkgonly", "G", "", "fetch binary packages only")
@@ -385,10 +388,10 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 	pf.StringVarP(&myoptions.search_similarity, "search-similarity", "", "", "Set minimum similarity percentage for fuzzy seach (a floating-point number between 0 and 100)")
 	pf.StringVarP(&myoptions.selectt, "select", "w", "", "add specified packages to the world set (inverse of --oneshot)")
 	pf.StringVarP(&myoptions.selective, "selective", "", "", "identical to --noreplace")
-	pf.StringVarP(&myoptions.sync_submodule, "sync-submodule", "", "", "Restrict sync to the specified submodule(s). (--sync action only)")
+	pf.StringArrayVarP(&myoptions.sync_submodule, "sync-submodule", "", nil, "Restrict sync to the specified submodule(s). (--sync action only)")
 	pf.StringVarP(&myoptions.sysroot, "sysroot", "", "", "specify the location for build dependencies specified in DEPEND")
 	pf.StringVarP(&myoptions.use_ebuild_visibility, "use-ebuild-visibility", "", "", "use unbuilt ebuild metadata for visibility checks on built packages")
-	pf.StringVarP(&myoptions.useoldpkg_atoms, "useoldpkg-atoms", "", "", "A space separated list of package names or slot atoms. Emerge will prefer matching binary packages over newer unbuilt packages.")
+	pf.StringArrayVarP(&myoptions.useoldpkg_atoms, "useoldpkg-atoms", "", nil, "A space separated list of package names or slot atoms. Emerge will prefer matching binary packages over newer unbuilt packages.")
 	pf.StringVarP(&myoptions.usepkg, "usepkg", "k", "", "use binary packages")
 	pf.StringVarP(&myoptions.usepkgonly, "usepkgonly", "K", "", "use only binary packages")
 	pf.StringVarP(&myoptions.verbose, "verbose", "v", "", "verbose output")
@@ -401,6 +404,88 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 
 	myopt := map[string]string{}
 
+	if true_y(myoptions.alert) {
+		myopt["alert"] = "true"
+	}
+	if true_y(myoptions.ask) {
+		myopt["ask"] = "true"
+	}
+	if true_y(myoptions.autounmask) {
+		myopt["autounmask"] = "true"
+	} else {
+		myopt["autounmask"] = "false"
+	}
+	if true_y(myoptions.autounmask_continue) {
+		myopt["autounmask_continue"] = "true"
+	} else {
+		myopt["autounmask_continue"] = "false"
+	}
+	if true_y(myoptions.autounmask_only) {
+		myopt["autounmask_only"] = "true"
+	}
+	if true_y(myoptions.autounmask_unrestricted_atoms) {
+		myopt["autounmask_unrestricted_atoms"] = "true"
+	} else {
+		myopt["autounmask_unrestricted_atoms"] = "false"
+	}
+	if true_y(myoptions.autounmask_keep_keywords) {
+		myopt["autounmask_keep_keywords"] = "true"
+	} else {
+		myopt["autounmask_keep_keywords"] = "false"
+	}
+	if true_y(myoptions.autounmask_keep_masks) {
+		myopt["autounmask_keep_masks"] = "true"
+	} else {
+		myopt["autounmask_keep_masks"] = "false"
+	}
+	if true_y(myoptions.autounmask_write) {
+		myopt["autounmask_write"] = "true"
+	} else {
+		myopt["autounmask_write"] = "false"
+	}
+	if myoptions.binpkg_changed_deps != "" {
+		if true_y(myoptions.binpkg_changed_deps) {
+			myopt["binpkg_changed_deps"] = "y"
+		} else {
+			myopt["binpkg_changed_deps"] = "n"
+		}
+	}
+	if true_y(myoptions.buildpkg) {
+		myopt["buildpkg"] = "true"
+	} else {
+		myopt["buildpkg"] = "false"
+	}
+
+	if len(myoptions.buildpkg_exclude) > 0 {
+		bad_atoms := _find_bad_atoms(myoptions.buildpkg_exclude, true)
+		if len(bad_atoms) > 0 && !silent {
+			//parser.error("Invalid Atom(s) in --buildpkg-exclude parameter: '%s'\n" % \
+			//(",".join(bad_atoms),))
+		}
+	}
+
+	if true_y(myoptions.changed_deps) {
+		myopt["changed_deps"] = "y"
+	} else if myoptions.changed_deps != "" {
+		myopt["changed_deps"] = "n"
+	}
+	if true_y(myoptions.changed_deps_report) {
+		myopt["changed_deps_report"] = "y"
+	} else if myoptions.changed_deps_report != "" {
+		myopt["changed_deps_report"] = "n"
+	}
+	if true_y(myoptions.changed_slot) {
+		myopt["changed_slot"] = "y"
+	} else if myoptions.changed_slot != "" {
+		myopt["changed_slot"] = "n"
+	}
+	if myoptions.changed_use {
+		myopt["reinstall"] = "changed-use"
+		myopt["changed_use"] = "false"
+	}
+	if true_y(myoptions.deselect) {
+		myopt["deselect"] = "true"
+	}
 
 	myaction := ""
 	for action_opt := range actions {
@@ -413,7 +498,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 			myaction = action_opt
 		}
 	}
-	if myaction == "" && myoptions.deselect!= "" {
+	if myaction == "" && myoptions.deselect != "" {
 		myaction = "deselect"
 	}
 
