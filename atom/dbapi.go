@@ -2074,20 +2074,14 @@ func (b *bindbapi) aux_get(mycpv *pkgStr, wants map[string]string) []string {
 			//except OSError:
 			//raise KeyError(mycpv)
 		}
-		metadata_bytes := portage.xpak.tbz2(tbz2_path).get_data()
+		metadata_bytes := NewTbz2(tbz2_path).get_data()
 		getitem = func(k string) string {
 			if k == "_mtime_" {
 				return fmt.Sprint(st.ModTime().UnixNano())
 			}else if			k == "SIZE" {
 				return fmt.Sprint(st.Size())
 			}
-			v := metadata_bytes.get(_unicode_encode(k,
-				encoding = _encodings['repo.content'],
-				errors = 'backslashreplace'))
-			if v != nil {
-				v = _unicode_decode(v,
-					encoding = _encodings['repo.content'], errors = 'replace')
-			}
+			v := metadata_bytes[k]
 			return v
 		}
 	}else {
