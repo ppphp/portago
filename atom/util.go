@@ -1130,11 +1130,11 @@ func write_atomic(file_path string, content string, mode int, follow_links bool)
 	//func_call = "write_atomic('%s')" % file_path
 	//if e.errno == errno.EPERM:
 	//raise OperationNotPermitted(func_call)
-	//elif e.errno == errno.EACCES:
+	//else if e.errno == errno.EACCES:
 	//raise PermissionDenied(func_call)
-	//elif e.errno == errno.EROFS:
+	//else if e.errno == errno.EROFS:
 	//raise ReadOnlyFileSystem(func_call)
-	//elif e.errno == errno.ENOENT:
+	//else if e.errno == errno.ENOENT:
 	//raise FileNotFound(file_path)
 	//else:
 	//raise
@@ -1743,4 +1743,164 @@ func _copyxattr(src, dest, excludeS string) error {
 		}
 	}
 	return nil
+}
+
+// true
+func cacheddir(my_original_path string, ignorecvs bool, ignorelist []string, EmptyOnError, followSymlinks bool) ([]string, []int) {
+	mypath := NormalizePath(my_original_path)
+	pathstat, err := os.Stat(mypath)
+	if err != nil {
+		//except EnvironmentError as e:
+		//if e.errno == PermissionDenied.errno:
+		//raise PermissionDenied(mypath)
+		//del e
+		//return [], []
+		//except PortageException:
+		return []string{}, []int{}
+	}
+	if !pathstat.IsDir() {
+		//raise DirectoryNotFound(mypath)
+	}
+	d, err := os.Open(mypath)
+	var fpaths []os.FileInfo
+	if err == nil {
+		fpaths, err = d.Readdir(-1)
+	}
+	if err != nil {
+		//except EnvironmentError as e:
+		//if e.errno != errno.EACCES:
+		//raise
+		//del e
+		//raise PermissionDenied(mypath)
+	}
+	ftype := []int{}
+	for _, x := range fpaths {
+		var pathstat os.FileInfo
+		var err error
+		if followSymlinks {
+			pathstat, err = os.Stat(mypath + "/" + x.Name())
+		} else {
+			pathstat, err = os.Lstat(mypath + "/" + x.Name())
+		}
+		if err == nil {
+			if pathstat.Mode()&syscall.S_IFREG != 0 { // is reg
+				ftype = append(ftype, 0)
+			} else if pathstat.IsDir() {
+				ftype = append(ftype, 1)
+			} else if pathstat.Mode()&syscall.S_IFLNK != 0 {
+				ftype = append(ftype, 2)
+			} else {
+				ftype = append(ftype, 3)
+			}
+		}
+
+		if err != nil {
+			//except (IOError, OSError){
+			ftype = append(ftype, 3)
+		}
+	}
+
+	ret_list := []string{}
+	ret_ftype := []int{}
+	if len(ignorelist) > 0 || ignorecvs {
+		for i, file_path := range fpaths {
+			file_type := ftype[i]
+
+			in := false
+			for _, i := range ignorelist {
+				if file_path.Name() == i {
+					in = true
+					break
+				}
+			}
+
+			if in {
+			} else if ignorecvs {
+				if file_path.Name()[:2] != ".#" && !(file_type == 1 && VcsDirs[file_path.Name()]) {
+					ret_list = append(ret_list, file_path.Name())
+					ret_ftype = append(ret_ftype, file_type)
+				}
+			}
+		}
+	} else {
+		for _, f := range fpaths {
+			ret_list = append(ret_list, f.Name())
+		}
+		ret_ftype = ftype
+	}
+	return ret_list, ret_ftype
+}
+
+// false, false, false, []string{}, true, false, false
+func listdir(mypath string, recursive, filesonly, ignorecvs bool, ignorelist []string, followSymlinks, EmptyOnError, dirsonly bool) []string {
+	fpaths, ftype := cacheddir(mypath, ignorecvs, ignorelist, EmptyOnError, followSymlinks)
+	if fpaths == nil {
+		fpaths = []string{}
+	}
+	if ftype == nil {
+		ftype = []int{}
+	}
+
+	if !(filesonly || dirsonly || recursive) {
+		return fpaths
+	}
+
+	if recursive {
+		stack := []struct {
+			string
+			int
+		}{}
+		for i := range fpaths {
+			stack = append(stack, struct {
+				string
+				int
+			}{string: fpaths[i], int: ftype[i]})
+		}
+		fpaths = []string{}
+		ftype = []int{}
+		for len(stack) > 0 {
+			f := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			file_path, file_type := f.string, f.int
+			fpaths = append(fpaths, file_path)
+			ftype = append(ftype, file_type)
+			if file_type == 1 {
+				subdir_list, subdir_types := cacheddir(
+					filepath.Join(mypath, file_path), ignorecvs,
+					ignorelist, EmptyOnError, followSymlinks)
+				for i := range subdir_list {
+					x := subdir_list[i]
+					x_type := subdir_types[i]
+					stack = append(stack, struct {
+						string
+						int
+					}{filepath.Join(file_path, x), x_type})
+				}
+			}
+		}
+	}
+
+	if filesonly {
+		f := []string{}
+		for i := range fpaths {
+			x := fpaths[i]
+			x_type := ftype[i]
+			if x_type == 0 {
+				f = append(f, x)
+			}
+		}
+		fpaths = f
+	} else if dirsonly {
+		f := []string{}
+		for i := range fpaths {
+			x := fpaths[i]
+			x_type := ftype[i]
+			if x_type == 1 {
+				f = append(f, x)
+			}
+		}
+		fpaths = f
+	}
+
+	return fpaths
 }

@@ -509,42 +509,42 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 	if len(myoptions.exclude) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.exclude, false)
 		if len(bad_atoms) > 0 && !silent {
-			parser.error(fmt.Sprintf("Invalid Atom(s) in --exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+			/*parser.error*/panic(fmt.Sprintf("Invalid Atom(s) in --exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
 		}
 	}
 
 	if len(myoptions.reinstall_atoms) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.reinstall_atoms, false)
 		if len(bad_atoms) > 0 && !silent {
-			parser.error(fmt.Sprintf("Invalid Atom(s) in --reinstall-atoms parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+			/*parser.error*/panic(fmt.Sprintf("Invalid Atom(s) in --reinstall-atoms parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
 		}
 	}
 
 	if len(myoptions.rebuild_exclude) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.rebuild_exclude, false)
 		if len(bad_atoms) > 0 && !silent {
-			parser.error(fmt.Sprintf("Invalid Atom(s) in --rebuild-exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+			/*parser.error*/panic(fmt.Sprintf("Invalid Atom(s) in --rebuild-exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
 		}
 	}
 
 	if len(myoptions.rebuild_ignore) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.rebuild_ignore, false)
 		if len(bad_atoms) > 0 && !silent {
-			parser.error(fmt.Sprintf("Invalid Atom(s) in --rebuild-ignore parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+			/*parser.error*/panic(fmt.Sprintf("Invalid Atom(s) in --rebuild-ignore parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
 		}
 	}
 
 	if len(myoptions.usepkg_exclude) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.usepkg_exclude, false)
 		if len(bad_atoms) > 0 && !silent {
-			parser.error(fmt.Sprintf("Invalid Atom(s) in --usepkg-exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+			/*parser.error*/panic(fmt.Sprintf("Invalid Atom(s) in --usepkg-exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
 		}
 	}
 
 	if len(myoptions.useoldpkg_atoms) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.useoldpkg_atoms, false)
 		if len(bad_atoms) > 0 && !silent {
-			parser.error(fmt.Sprintf("Invalid Atom(s) in --useoldpkg-atoms parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+			/*parser.error*/panic(fmt.Sprintf("Invalid Atom(s) in --useoldpkg-atoms parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
 		}
 	}
 
@@ -658,7 +658,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 		}
 		if backtrack < 0 {
 			if !silent {
-				parser.error(fmt.Sprintf("Invalid --backtrack parameter: '%s'\n", myoptions.backtrack))
+				/*parser.error*/panic(fmt.Sprintf("Invalid --backtrack parameter: '%s'\n", myoptions.backtrack))
 			}
 		} else {
 			myopt["backtrack"] = fmt.Sprint(backtrack)
@@ -681,7 +681,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 
 		if !db && di < 0 {
 			if !silent {
-				parser.error(fmt.Sprintf("Invalid --deep parameter: '%s'\n", myoptions.deep))
+				/*parser.error*/panic(fmt.Sprintf("Invalid --deep parameter: '%s'\n", myoptions.deep))
 			}
 		} else {
 			if db {
@@ -708,7 +708,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 
 		if !jb && ji < 1 {
 			if !silent {
-				parser.error(fmt.Sprintf("Invalid --jobs parameter: '%s'\n", myoptions.jobs))
+				/*parser.error*/panic(fmt.Sprintf("Invalid --jobs parameter: '%s'\n", myoptions.jobs))
 			}
 		} else {
 			if jb {
@@ -732,7 +732,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 
 		if load_average <= 0.0 {
 			if !silent {
-				parser.error(fmt.Sprintf("Invalid --load-average parameter: '%s'\n", myoptions.load_average))
+				/*parser.error*/panic(fmt.Sprintf("Invalid --load-average parameter: '%s'\n", myoptions.load_average))
 			}
 		} else {
 			myopt["load_average"] = fmt.Sprint(load_average)
@@ -748,7 +748,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 		if rebuilt_binaries_timestamp < 0 {
 			rebuilt_binaries_timestamp = 0
 			if !silent {
-				parser.error(fmt.Sprintf("Invalid --rebuilt-binaries-timestamp parameter: '%s'\n", myoptions.rebuilt_binaries_timestamp))
+				/*parser.error*/panic(fmt.Sprintf("Invalid --rebuilt-binaries-timestamp parameter: '%s'\n", myoptions.rebuilt_binaries_timestamp))
 			}
 		} else {
 			myopt["rebuilt_binaries_timestamp"] = fmt.Sprint(rebuilt_binaries_timestamp)
@@ -759,11 +759,11 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 		search_similarity, err := strconv.ParseFloat(myoptions.search_similarity, 64)
 		if err != nil {
 			//except ValueError{
-			parser.error(fmt.Sprintf("Invalid --search-similarity parameter (not a number): '%v'\n", myoptions.search_similarity))
+			/*parser.error*/panic(fmt.Sprintf("Invalid --search-similarity parameter (not a number): '%v'\n", myoptions.search_similarity))
 		}
 
 		if search_similarity < 0 || search_similarity > 100 {
-			parser.error(fmt.Sprintf("Invalid --search-similarity parameter (not between 0 and 100): '%v'\n", myoptions.search_similarity))
+			/*parser.error*/panic(fmt.Sprintf("Invalid --search-similarity parameter (not between 0 and 100): '%v'\n", myoptions.search_similarity))
 		} else {
 			myopt["search_similarity"] = fmt.Sprint(search_similarity)
 		}

@@ -3,6 +3,7 @@ package emaint
 import (
 	"bytes"
 	"fmt"
+	"github.com/ppphp/portago/atom"
 	"os"
 	"strings"
 
@@ -131,7 +132,7 @@ type TaskHandler struct {
 	show_progress_bar, verbose, isatty bool
 	callback                           func()
 	module_output                      interface{}
-	progress_bar                       *ProgressBar2
+	progress_bar                       *atom.ProgressBar2
 }
 
 func NewTaskHandler(show_progress_bar, verbose bool, callback func(), module_output interface{}) *TaskHandler { // true, true, nil, nil

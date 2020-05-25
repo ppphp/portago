@@ -1,8 +1,8 @@
 package atom
 
 import (
+	"bytes"
 	"fmt"
-	"github.com/ppphp/portago/pkg/portage/emaint"
 	"io/ioutil"
 	"os"
 	"path"
@@ -881,7 +881,7 @@ func (v *vardbapi) move_ent(mylist []*Atom, repo_match func(string)bool) int{
 			continue
 		}
 		_movefile(origpath, newpath, 0, nil, v.settings, nil)
-		v._clear_pkg_cache(v._dblink(mycpv))
+		v._clear_pkg_cache(v._dblink(mycpv.string))
 		v._clear_pkg_cache(v._dblink(mynewcpv))
 
 			old_pf := catsplit(mycpv.string)[1]
@@ -960,8 +960,11 @@ delete(v.cpcache,mycp.string)
 }
 
 // 1
-func (v *vardbapi) cpv_all(use_cache int) {}
+func (v *vardbapi) cpv_all(use_cache int) {
+	return v._iter_cpv_all(use_cache != 0, false)
+}
 
+// true, true
 func (v *vardbapi) _iter_cpv_all(use_cache, sort bool) {
 	basepath := filepath.Join(v._eroot,VdbPath) + string(filepath.Separator)
 	if use_cache {
@@ -2371,7 +2374,7 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 					strings.Join(missing_keys,", ")))
 				}
 				msg=append(msg, fmt.Sprintf(" This binary package is not recoverable and should be deleted."))
-				for _, line := range emaint.SplitSubN(strings.Join(msg, ""), 72){
+				for _, line := range SplitSubN(strings.Join(msg, ""), 72){
 					WriteMsg(fmt.Sprintf("!!! %s\n" , line), -1, nil)
 				}
 				b.invalids=append(b.invalids, mypkg)
@@ -2926,4 +2929,23 @@ type PortageTree struct {
 func NewPortageTree(setting *Config) *PortageTree {
 	p := &PortageTree{}
 	return p
+}
+
+func SplitSubN(s string, n int) []string {
+	sub := ""
+	subs := []string{}
+
+	runes := bytes.Runes([]byte(s))
+	l := len(runes)
+	for i, r := range runes {
+		sub = sub + string(r)
+		if (i+1)%n == 0 {
+			subs = append(subs, sub)
+			sub = ""
+		} else if (i + 1) == l {
+			subs = append(subs, sub)
+		}
+	}
+
+	return subs
 }
