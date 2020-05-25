@@ -173,7 +173,7 @@ func (c *Config) initDirs() {
 	dirModeMap := map[string]struct {
 		gid           uint32
 		mode          os.FileMode
-		mask          uint32
+		mask          os.FileMode
 		preservePerms bool
 	}{
 		"tmp":       {-1, 01777, 0, true},
@@ -459,7 +459,7 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 		}
 		iUse = pkgConfigDict["IUSE"]
 		if pkg == nil {
-			c.mycpv = NewPkgStr(c.mycpv.string, pkgConfigDict, c, "", "", "", 0, "", "", 0, "")
+			c.mycpv = NewPkgStr(c.mycpv.string, pkgConfigDict, c, "", "", "", 0, 0, "", 0, nil)
 			cpvSlot = c.mycpv
 		} else {
 			cpvSlot = pkg
@@ -3332,7 +3332,7 @@ func (u *useManager) getUseAliases(pkg *pkgStr) map[string][]string {
 	if cp == "" {
 		slot := depGetslot(pkg.string)
 		repo := depGetrepo(pkg.string)
-		pkg := NewPkgStr(removeSlot(pkg.string), nil, nil, "", repo, slot, 0, "", "", 0, "")
+		pkg := NewPkgStr(removeSlot(pkg.string), nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 		cp = pkg.cp
 	}
 	useAliases := map[string][]string{}
@@ -3420,7 +3420,7 @@ func (u *useManager) getPUSE(pkg *pkgStr) string {
 	if cp == "" {
 		slot := depGetslot(pkg.string)
 		repo := depGetrepo(pkg.string)
-		pkg := NewPkgStr(removeSlot(pkg.string), nil, nil, "", repo, slot, 0, "", "", 0, "")
+		pkg := NewPkgStr(removeSlot(pkg.string), nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 		cp = pkg.cp
 	}
 	ret := ""
@@ -3504,7 +3504,7 @@ type maskManager struct {
 func (m *maskManager) _getMaskAtom(cpv *pkgStr, slot, repo string, unmask_atoms []*Atom) *Atom { // nil
 	var pkg *pkgStr = nil
 	if cpv.slot == "" {
-		pkg = NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, "", "", 0, "")
+		pkg = NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 	} else {
 		pkg = cpv
 	}
@@ -3531,7 +3531,7 @@ func (m *maskManager) _getMaskAtom(cpv *pkgStr, slot, repo string, unmask_atoms 
 func (m *maskManager) getMaskAtom(cpv *pkgStr, slot, repo string) *Atom {
 	var pkg *pkgStr = nil
 	if cpv.slot == "" {
-		pkg = NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, "", "", 0, "")
+		pkg = NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 	} else {
 		pkg = cpv
 	}
@@ -4062,7 +4062,7 @@ func (l *licenseManager) _getPkgAcceptLicense(cpv *pkgStr, slot, repo string) []
 	cpdict := l._plicensedict[cp]
 	if len(cpdict) > 0 {
 		if cpv.slot == "" {
-			cpv = NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, "", "", 0, "")
+			cpv = NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 		}
 		plicenceList := orderedByAtomSpecificity(cpdict, cpv, "")
 		if len(plicenceList) > 0 {

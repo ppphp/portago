@@ -2,6 +2,7 @@ package atom
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -216,19 +217,19 @@ buf = buf.tostring()
 return buf
 }
 
-func (a *AbstractPollTask) _read_buf( fd){
-buf = None
-try:
-buf = os.read(fd, a._bufsize)
-except OSError as e:
-if e.errno == errno.EIO:
-buf = b''
-elif e.errno == errno.EAGAIN:
-buf = None
-else:
-raise
-
-return buf
+func (a *AbstractPollTask) _read_buf( fd io.Reader)[]byte{
+	buf := make([]byte, a._bufsize)
+	_, err := fd.Read(buf)
+	if err != nil {
+		if err == syscall.EIO {
+			buf = []byte{}
+		} else if err == syscall.EAGAIN {
+			buf = nil
+		} else {
+			//raise
+		}
+	}
+	return buf
 }
 
 func (a *AbstractPollTask) _async_wait() {
@@ -357,12 +358,12 @@ type SpawnProcess struct {
 	fd_pipes map[int]string
 }
 
-_spawn_kwarg_names = ("env", "opt_name", "fd_pipes",
+var _spawn_kwarg_names = []string{"env", "opt_name", "fd_pipes",
 "uid", "gid", "groups", "umask", "logfile",
 "path_lookup", "pre_exec", "close_fds", "cgroup",
-"unshare_ipc", "unshare_mount", "unshare_pid", "unshare_net")
+"unshare_ipc", "unshare_mount", "unshare_pid", "unshare_net"}
 
-__slots__ = ("args",) + \
+__slots__ = ("args",) +
 _spawn_kwarg_names + ("_pipe_logger", "_selinux_type",)
 
 func(s *SpawnProcess) _start(){
@@ -462,7 +463,7 @@ try:
 		stdout_fd=stdout_fd)
 	s._pipe_logger.addExitListener(s._pipe_logger_exit)
 	s._pipe_logger.start()
-	s._registered = True
+	s._registered = true
 }
 
 

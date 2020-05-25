@@ -945,7 +945,7 @@ func (v *vardbapi) cp_list(mycp *pkgStr, use_cache int) []*pkgStr{
 					metadata[i]= v.aux_get(cpv, v._aux_cache_keys, "")
 				}
 				returnme = append(returnme, NewPkgStr(cpv, metadata,
-					v.settings, "", "", "", 0, "", "", 0, v.dbapi))
+					v.settings, "", "", "", 0, 0, "", 0, v.dbapi))
 			}
 		}
 	}
@@ -1361,8 +1361,8 @@ func NewVarDbApi(settings *Config, vartree *varTree) *vardbapi { // nil, nil
 		e = append(e, regexp.QuoteMeta(v))
 	}
 	v._excluded_dirs = regexp.MustCompile("^(\\..*|" + MergingIdentifier + ".*|" + strings.Join(e, "|") + ")$")
-	v._aux_cache_version = "1"
-	v._owners_cache_version = "1"
+	v._aux_cache_version = 1
+	v._owners_cache_version = 1
 	v._aux_cache_threshold = 5
 	v._aux_cache_keys_re = regexp.MustCompile("^NEEDED\\..*$")
 	v._aux_multi_line_re = regexp.MustCompile("^(CONTENTS|NEEDED\\..*)$")
@@ -1710,7 +1710,7 @@ d._infodir_cleanup = map[string]bool{"dir":true, "dir.old":true}
 	//if d.mycpv == settings.mycpv &&	isinstance(settings.mycpv, _pkg_str):
 	//d.mycpv = settings.mycpv
 	//else:
-	d.mycpv = NewPkgStr(mycpv,nil, nil, "", "", "", 0, "", "", 0, nil)
+	d.mycpv = NewPkgStr(mycpv,nil, nil, "", "", "", 0, 0, "", 0, nil)
 	d.mysplit = d.mycpv.cpvSplit[1:]
 	d.mysplit[0] = d.mycpv.cp
 	d.treetype = treetype
@@ -1894,9 +1894,9 @@ func (f *fakedbapi) cpv_inject(mycpv *pkgStr, metadata map[string]string) {
 	if myCp == "" || (mySlot == "" && metadata != nil && metadata["SLOT"] != "") {
 
 		if metadata == nil {
-			mycpv = NewPkgStr(mycpv.string, nil, nil, "", "", "", 0, "", "", 0, f.dbapi)
+			mycpv = NewPkgStr(mycpv.string, nil, nil, "", "", "", 0, 0, "", 0, f.dbapi)
 		} else {
-			mycpv = NewPkgStr(mycpv.string, metadata, f.settings, "", "", "", 0, "", "", 0, f.dbapi)
+			mycpv = NewPkgStr(mycpv.string, metadata, f.settings, "", "", "", 0, 0, "", 0, f.dbapi)
 		}
 		myCp = mycpv.cp
 		mySlot = mycpv.slot
@@ -2248,7 +2248,7 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 	metadata := map[string]map[string]string{}
 	basename_index := map[string][]map[string]string{}
 	for _, d := range pkgindex.packages{
-		cpv := NewPkgStr(d["CPV"], d, b.settings, "", "", "", 0, "", "", 0, b.dbapi.dbapi)
+		cpv := NewPkgStr(d["CPV"], d, b.settings, "", "", "", 0, 0, "", 0, b.dbapi.dbapi)
 		d["CPV"] = cpv.string
 		metadata[_instance_key(cpv, false).string] = d
 		path := d["PATH"]
@@ -2435,7 +2435,7 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 			pkg_metadata["SIZE"] = fmt.Sprint(s.st_size)
 				delete(pkg_metadata,"CATEGORY")
 			delete(pkg_metadata,"PF")
-			mycpv := NewPkgStr(mycpvS, b.dbapi._aux_cache_slot_dict(pkg_metadata), b.dbapi.dbapi, "", "", "", 0, "", "", 0, nil)
+			mycpv := NewPkgStr(mycpvS, b.dbapi._aux_cache_slot_dict(pkg_metadata), b.dbapi.dbapi, "", "", "", 0, 0, "", 0, nil)
 			pkg_paths[_instance_key(mycpv, false).string] = mypath
 			b.dbapi.cpv_inject(mycpv)
 			update_pkgindex = true
@@ -2679,7 +2679,7 @@ func (b *BinaryTree) getname(cpvS string, allocate_new bool) string {
 		b.Populate(false, true, []string{})
 	}
 
-	cpv := NewPkgStr(cpvS,nil, nil, "", "", "", 0, "", "", 0, nil)
+	cpv := NewPkgStr(cpvS,nil, nil, "", "", "", 0, 0, "", 0, nil)
 
 	filename := ""
 	if allocate_new{
