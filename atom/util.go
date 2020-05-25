@@ -958,7 +958,7 @@ type slotObject struct {
 }
 
 // -1,-1,-1,-1,nil,true
-func applyPermissions(filename string, uid, gid uint32, mode os.FileMode, mask uint32, statCached os.FileInfo, followLinks bool) bool {
+func applyPermissions(filename string, uid, gid uint32, mode, mask os.FileMode, statCached os.FileInfo, followLinks bool) bool {
 	modified := false
 	if statCached == nil {
 		statCached, _ = doStat(filename, followLinks)
@@ -971,8 +971,8 @@ func applyPermissions(filename string, uid, gid uint32, mode os.FileMode, mask u
 		}
 		modified = true
 	} // TODO check errno
-	newMode := uint32(0) // uint32(-1)
-	stMode := uint32(statCached.Mode()) & 07777
+	newMode := os.FileMode(0) // uint32(-1)
+	stMode := statCached.Mode() & 07777
 	if mask >= 0 {
 		if int(mode) == -1 {
 			mode = 0
@@ -1012,13 +1012,13 @@ func applyPermissions(filename string, uid, gid uint32, mode os.FileMode, mask u
 }
 
 // -1, nil, true
-func apply_stat_permissions(filename string, newstat os.FileInfo, mask uint32, stat_cached os.FileInfo, follow_links bool) bool {
+func apply_stat_permissions(filename string, newstat os.FileInfo, mask os.FileMode, stat_cached os.FileInfo, follow_links bool) bool {
 	st := newstat.Sys().(*syscall.Stat_t)
-	return apply_secpass_permissions(filename, st.Uid, st.Gid, st.Mode, mask, stat_cached, follow_links)
+	return apply_secpass_permissions(filename, st.Uid, st.Gid, newstat.Mode(), mask, stat_cached, follow_links)
 }
 
 // -1, -1, -1, -1, nil, true
-func apply_secpass_permissions(filename string, uid, gid uint32, mode os.FileMode, mask uint32, stat_cached os.FileInfo, follow_links bool) bool {
+func apply_secpass_permissions(filename string, uid, gid uint32, mode, mask os.FileMode, stat_cached os.FileInfo, follow_links bool) bool {
 
 	if stat_cached == nil {
 		stat_cached, _ = doStat(filename, follow_links)
@@ -1087,7 +1087,7 @@ func (a *atomic_ofstream) Close() error {
 func (a *atomic_ofstream) abort() {
 	if !a._aborted {
 		a._aborted = true
-		a.close()
+		a.Close()
 	}
 }
 
@@ -1141,7 +1141,7 @@ func write_atomic(file_path string, content string, mode int, follow_links bool)
 }
 
 // -1,-1,-1,-1,nil,true
-func ensureDirs(dirpath string, uid, gid uint32, mode os.FileMode, mask uint32, statCached os.FileInfo, followLinks bool) bool {
+func ensureDirs(dirpath string, uid, gid uint32, mode, mask os.FileMode, statCached os.FileInfo, followLinks bool) bool {
 	createdDir := false
 	if err := os.MkdirAll(dirpath, 0755); err == nil {
 		createdDir = true

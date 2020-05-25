@@ -3,6 +3,7 @@ package emerge
 import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/portage/emaint"
+	"go/parser"
 	"os"
 	"runtime"
 	"strconv"
@@ -258,8 +259,8 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 		// options
 		alphabetical, ask_enter_invalid, buildpkgonly, changed_use, changelog, columns, debug, digest, emptytree, verbose_conflicts, fetchonly, fetch_all_uri, ignore_default_opts, noconfmem, newrepo, newuse, nodeps, noreplace, nospinner, oneshot, onlydeps, pretend, quiet_repo_display, quiet_unmerge_warn, resume, searchdesc, skipfirst, tree, unordered_display, update bool
 		// argument
-		alert, ask, autounmask, autounmask_backtrack, autounmask_continue, autounmask_only, autounmask_license, autounmask_unrestricted_atoms, autounmask_use, autounmask_keep_keywords, autounmask_keep_masks, autounmask_write, accept_properties, accept_restrict, backtrack, binpkg_changed_deps, buildpkg, changed_deps, changed_deps_report, changed_slot, config_root, color, complete_graph, complete_graph_if_new_use, complete_graph_if_new_ver, deep, depclean_lib_check, deselect, dynamic_deps, fail_clean, fuzzy_search, ignore_built_slot_operator_deps, ignore_soname_deps, ignore_world, implicit_system_deps, jobs, keep_going, load_average, misspell_suggestions, with_bdeps, with_bdeps_auto, reinstall, binpkg_respect_use, getbinpkg, getbinpkgonly, usepkg_exclude, onlydeps_with_rdeps, rebuild_exclude, rebuild_ignore, package_moves, prefix, pkg_format, quickpkg_direct, quiet, quiet_build, quiet_fail, read_news, rebuild_if_new_slot, rebuild_if_new_rev, rebuild_if_new_ver, rebuild_if_unbuilt, rebuilt_binaries, rebuilt_binaries_timestamp, root, root_deps, search_index, search_similarity, selectt, selective, sysroot, use_ebuild_visibility, usepkg, usepkgonly, verbose, verbose_slot_rebuilds, with_test_deps string
-		buildpkg_exclude, exclude, reinstall_atoms, sync_submodule, useoldpkg_atoms                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       []string
+		alert, ask, autounmask, autounmask_backtrack, autounmask_continue, autounmask_only, autounmask_license, autounmask_unrestricted_atoms, autounmask_use, autounmask_keep_keywords, autounmask_keep_masks, autounmask_write, accept_properties, accept_restrict, backtrack, binpkg_changed_deps, buildpkg, changed_deps, changed_deps_report, changed_slot, config_root, color, complete_graph, complete_graph_if_new_use, complete_graph_if_new_ver, deep, depclean_lib_check, deselect, dynamic_deps, fail_clean, fuzzy_search, ignore_built_slot_operator_deps, ignore_soname_deps, ignore_world, implicit_system_deps, jobs, keep_going, load_average, misspell_suggestions, with_bdeps, with_bdeps_auto, reinstall, binpkg_respect_use, getbinpkg, getbinpkgonly, onlydeps_with_rdeps, package_moves, prefix, pkg_format, quickpkg_direct, quiet, quiet_build, quiet_fail, read_news, rebuild_if_new_slot, rebuild_if_new_rev, rebuild_if_new_ver, rebuild_if_unbuilt, rebuilt_binaries, rebuilt_binaries_timestamp, root, root_deps, search_index, search_similarity, selectt, selective, sysroot, use_ebuild_visibility, usepkg, usepkgonly, verbose, verbose_slot_rebuilds, with_test_deps string
+		buildpkg_exclude, exclude, reinstall_atoms, sync_submodule, useoldpkg_atoms, rebuild_exclude, rebuild_ignore, usepkg_exclude                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    []string
 	}
 	// actions
 	pf.BoolVarP(&myoptions.clean, "clean", "", false, "")
@@ -364,10 +365,10 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 	pf.StringVarP(&myoptions.binpkg_respect_use, "binpkg-respect-use", "", "", "discard binary packages if their use flags don't match the current configuration")
 	pf.StringVarP(&myoptions.getbinpkg, "getbinpkg", "g", "", "fetch binary packages")
 	pf.StringVarP(&myoptions.getbinpkgonly, "getbinpkgonly", "G", "", "fetch binary packages only")
-	pf.StringVarP(&myoptions.usepkg_exclude, "usepkg-exclude", "", "", "A space separated list of package names or slot atoms. Emerge will ignore matching binary packages.")
+	pf.StringArrayVarP(&myoptions.usepkg_exclude, "usepkg-exclude", "", nil, "A space separated list of package names or slot atoms. Emerge will ignore matching binary packages.")
 	pf.StringVarP(&myoptions.onlydeps_with_rdeps, "onlydeps-with-rdeps", "", "", "modify interpretation of depedencies")
-	pf.StringVarP(&myoptions.rebuild_exclude, "rebuild-exclude", "", "", "A space separated list of package names or slot atoms. Emerge will not rebuild these packages due to the --rebuild flag.")
-	pf.StringVarP(&myoptions.rebuild_ignore, "rebuild-ignore", "", "", "A space separated list of package names or slot atoms. Emerge will not rebuild packages that depend on matching packages due to the --rebuild flag.")
+	pf.StringArrayVarP(&myoptions.rebuild_exclude, "rebuild-exclude", "", nil, "A space separated list of package names or slot atoms. Emerge will not rebuild these packages due to the --rebuild flag.")
+	pf.StringArrayVarP(&myoptions.rebuild_ignore, "rebuild-ignore", "", nil, "A space separated list of package names or slot atoms. Emerge will not rebuild packages that depend on matching packages due to the --rebuild flag.")
 	pf.StringVarP(&myoptions.package_moves, "package-moves", "", "", "perform package moves when necessary")
 	pf.StringVarP(&myoptions.prefix, "prefix", "", "", "specify the installation prefix")
 	pf.StringVarP(&myoptions.pkg_format, "pkg-format", "", "", "format of result binary package")
@@ -487,6 +488,304 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 		myopt["deselect"] = "true"
 	}
 
+	if myoptions.binpkg_respect_use != "" {
+		if true_y(myoptions.binpkg_respect_use) {
+			myopt["binpkg_respect_use"] = "y"
+		} else {
+			myopt["binpkg_respect_use"] = "n"
+		}
+	}
+
+	if true_y(myoptions.complete_graph) {
+		myopt["complete_graph"] = "true"
+	}
+
+	if true_y(myoptions.depclean_lib_check) {
+		myopt["depclean_lib_check"] = "true"
+	} else {
+		myopt["depclean_lib_check"] = "false"
+	}
+
+	if len(myoptions.exclude) > 0 {
+		bad_atoms := _find_bad_atoms(myoptions.exclude, false)
+		if len(bad_atoms) > 0 && !silent {
+			parser.error(fmt.Sprintf("Invalid Atom(s) in --exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+		}
+	}
+
+	if len(myoptions.reinstall_atoms) > 0 {
+		bad_atoms := _find_bad_atoms(myoptions.reinstall_atoms, false)
+		if len(bad_atoms) > 0 && !silent {
+			parser.error(fmt.Sprintf("Invalid Atom(s) in --reinstall-atoms parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+		}
+	}
+
+	if len(myoptions.rebuild_exclude) > 0 {
+		bad_atoms := _find_bad_atoms(myoptions.rebuild_exclude, false)
+		if len(bad_atoms) > 0 && !silent {
+			parser.error(fmt.Sprintf("Invalid Atom(s) in --rebuild-exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+		}
+	}
+
+	if len(myoptions.rebuild_ignore) > 0 {
+		bad_atoms := _find_bad_atoms(myoptions.rebuild_ignore, false)
+		if len(bad_atoms) > 0 && !silent {
+			parser.error(fmt.Sprintf("Invalid Atom(s) in --rebuild-ignore parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+		}
+	}
+
+	if len(myoptions.usepkg_exclude) > 0 {
+		bad_atoms := _find_bad_atoms(myoptions.usepkg_exclude, false)
+		if len(bad_atoms) > 0 && !silent {
+			parser.error(fmt.Sprintf("Invalid Atom(s) in --usepkg-exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+		}
+	}
+
+	if len(myoptions.useoldpkg_atoms) > 0 {
+		bad_atoms := _find_bad_atoms(myoptions.useoldpkg_atoms, false)
+		if len(bad_atoms) > 0 && !silent {
+			parser.error(fmt.Sprintf("Invalid Atom(s) in --useoldpkg-atoms parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+		}
+	}
+
+	if true_y(myoptions.fail_clean) {
+		myopt["fail_clean"] = "true"
+	} else {
+		myopt["fail_clean"] = "false"
+	}
+
+	if true_y(myoptions.fuzzy_search) {
+		myopt["fuzzy_search"] = "true"
+	} else {
+		myopt["fuzzy_search"] = "false"
+	}
+
+	if true_y(myoptions.getbinpkg) {
+		myopt["getbinpkg"] = "true"
+	}
+
+	if true_y(myoptions.getbinpkgonly) {
+		myopt["getbinpkgonly"] = "true"
+	}
+
+	if true_y(myoptions.ignore_world) {
+		myopt["ignore_world"] = "true"
+	} else {
+		myopt["ignore_world"] = "false"
+	}
+
+	if true_y(myoptions.keep_going) {
+		myopt["keep_going"] = "true"
+	}
+
+	if true_y(myoptions.package_moves) {
+		myopt["package_moves"] = "true"
+	} else {
+		myopt["package_moves"] = "false"
+	}
+
+	if true_y(myoptions.quiet) {
+		myopt["quiet"] = "true"
+	}
+
+	if true_y(myoptions.quiet_build) {
+		myopt["quiet_build"] = "y"
+	} else {
+		myopt["quiet_build"] = "n"
+	}
+
+	if true_y(myoptions.quiet_fail) {
+		myopt["quiet_fail"] = "y"
+	} else {
+		myopt["quiet_fail"] = "n"
+	}
+
+	if true_y(myoptions.read_news) {
+		myopt["read_news"] = "true"
+	}
+
+	if true_y(myoptions.rebuild_if_new_slot) {
+		myopt["rebuild_if_new_slot"] = "y"
+	} else {
+		myopt["rebuild_if_new_slot"] = "n"
+	}
+
+	if true_y(myoptions.rebuild_if_new_ver) {
+		myopt["rebuild_if_new_ver"] = "true"
+	}
+
+	if true_y(myoptions.rebuild_if_new_rev) {
+		myopt["rebuild_if_new_rev"] = "true"
+		delete(myopt, "rebuild_if_new_ver")
+	}
+
+	if true_y(myoptions.rebuild_if_unbuilt) {
+		myopt["rebuild_if_unbuilt"] = "true"
+		delete(myopt, "rebuild_if_new_rev")
+		delete(myopt, "rebuild_if_new_ver")
+	}
+
+	if true_y(myoptions.rebuilt_binaries) {
+		myopt["rebuilt_binaries"] = "true"
+	} else {
+		myopt["rebuilt_binaries"] = "false"
+	}
+
+	if true_y(myoptions.root_deps) {
+		myopt["root_deps"] = "true"
+	} else {
+		myopt["root_deps"] = "false"
+	}
+
+	if true_y(myoptions.selectt) {
+		myopt["select"] = "true"
+		myopt["oneshot"] = "false"
+	} else if myopt["select"] == "n" {
+		myopt["oneshot"] = "true"
+	}
+
+	if true_y(myoptions.selective) {
+		myopt["selective"] = "true"
+	} else {
+		myopt["selective"] = "false"
+	}
+
+	if myoptions.backtrack != "" {
+		backtrack, err := strconv.Atoi(myoptions.backtrack)
+		if err != nil {
+			//except(OverflowError, ValueError):
+			backtrack = -1
+		}
+		if backtrack < 0 {
+			if !silent {
+				parser.error(fmt.Sprintf("Invalid --backtrack parameter: '%s'\n", myoptions.backtrack))
+			}
+		} else {
+			myopt["backtrack"] = fmt.Sprint(backtrack)
+		}
+	}
+
+	if myoptions.deep != "" {
+		db := false
+		di := 0
+		if myoptions.deep == "true" {
+			db = true
+		} else {
+			deep, err := strconv.Atoi(myoptions.deep)
+			di = deep
+			if err != nil {
+				//except (OverflowError, ValueError){
+				di = -1
+			}
+		}
+
+		if !db && di < 0 {
+			if !silent {
+				parser.error(fmt.Sprintf("Invalid --deep parameter: '%s'\n", myoptions.deep))
+			}
+		} else {
+			if db {
+				myopt["deep"] = fmt.Sprint(db)
+			} else {
+				myopt["deep"] = fmt.Sprint(di)
+			}
+		}
+	}
+
+	if myoptions.jobs != "" {
+		ji := 0
+		jb := false
+		if myoptions.jobs == "true" {
+			jb = true
+		} else {
+			jobs, err := strconv.Atoi(myoptions.jobs)
+			ji = jobs
+			if err != nil {
+				//except ValueError{
+				ji = -1
+			}
+		}
+
+		if !jb && ji < 1 {
+			if !silent {
+				parser.error(fmt.Sprintf("Invalid --jobs parameter: '%s'\n", myoptions.jobs))
+			}
+		} else {
+			if jb {
+				myopt["jobs"] = fmt.Sprint(jb)
+			} else {
+				myopt["jobs"] = fmt.Sprint(ji)
+			}
+		}
+	}
+
+	if myoptions.load_average == "true" {
+		delete(myopt, "load_average")
+	}
+
+	if myoptions.load_average != "" {
+		load_average, err := strconv.ParseFloat(myoptions.load_average, 64)
+		if err != nil {
+			//except ValueError{
+			load_average = 0.0
+		}
+
+		if load_average <= 0.0 {
+			if !silent {
+				parser.error(fmt.Sprintf("Invalid --load-average parameter: '%s'\n", myoptions.load_average))
+			}
+		} else {
+			myopt["load_average"] = fmt.Sprint(load_average)
+		}
+	}
+
+	if myoptions.rebuilt_binaries_timestamp != "" {
+		rebuilt_binaries_timestamp, err := strconv.Atoi(myoptions.rebuilt_binaries_timestamp)
+		if err != nil {
+			//except ValueError{
+			rebuilt_binaries_timestamp = -1
+		}
+		if rebuilt_binaries_timestamp < 0 {
+			rebuilt_binaries_timestamp = 0
+			if !silent {
+				parser.error(fmt.Sprintf("Invalid --rebuilt-binaries-timestamp parameter: '%s'\n", myoptions.rebuilt_binaries_timestamp))
+			}
+		} else {
+			myopt["rebuilt_binaries_timestamp"] = fmt.Sprint(rebuilt_binaries_timestamp)
+		}
+	}
+
+	if myoptions.search_similarity != "" {
+		search_similarity, err := strconv.ParseFloat(myoptions.search_similarity, 64)
+		if err != nil {
+			//except ValueError{
+			parser.error(fmt.Sprintf("Invalid --search-similarity parameter (not a number): '%v'\n", myoptions.search_similarity))
+		}
+
+		if search_similarity < 0 || search_similarity > 100 {
+			parser.error(fmt.Sprintf("Invalid --search-similarity parameter (not between 0 and 100): '%v'\n", myoptions.search_similarity))
+		} else {
+			myopt["search_similarity"] = fmt.Sprint(search_similarity)
+		}
+	}
+
+	if true_y(myoptions.use_ebuild_visibility) {
+		myopt["use_ebuild_visibility"] = "true"
+	} else {
+		myopt["use_ebuild_visibility"] = "false"
+	}
+	if true_y(myoptions.usepkg) {
+		myopt["usepkg"] = "true"
+	}
+	if true_y(myoptions.usepkgonly) {
+		myopt["usepkgonly"] = "true"
+	}
+	if true_y(myoptions.verbose) {
+		myopt["verbose"] = "true"
+	}
+	if true_y(myoptions.with_test_deps) {
+		myopt["with_test_deps"] = "true"
+	}
 	myaction := ""
 	for action_opt := range actions {
 		v := *bm[action_opt]
@@ -505,15 +804,14 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 	return myaction, myopt, pf.Args()
 }
 
-func profile_check(trees *atom.Tree, myaction string) int {
+func profile_check(trees *atom.TreesDict, myaction string) int {
 	for _, v := range []string{"help", "info", "search", "sync", "version"} {
 		if myaction == v {
 			return syscall.F_OK
 		}
 	}
-	for root_trees := range trees.values() {
-		if (root_trees["root_config"].settings.profiles && 'ARCH' in
-		root_trees["root_config"].settings){
+	for _, root_trees := range trees.Values() {
+		if _, ok := root_trees["root_config"].settings.Value["ARCH"]; root_trees["root_config"].settings.profiles && ok {
 			continue
 		}
 		validate_ebuild_environment(trees)
@@ -524,7 +822,7 @@ func profile_check(trees *atom.Tree, myaction string) int {
 
 		m := ""
 		for _, l := range emaint.SplitSubN(msg, 70) {
-			m += fmt.Sprintf("!!! %s\n" % l)
+			m += fmt.Sprintf("!!! %s\n", l)
 		}
 		atom.WriteMsgLevel(m, 40, -1)
 		return 1
