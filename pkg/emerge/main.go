@@ -2,8 +2,6 @@ package emerge
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/pkg/portage/emaint"
-	"go/parser"
 	"os"
 	"runtime"
 	"strconv"
@@ -240,13 +238,6 @@ func _find_bad_atoms(atoms []string, less_strict bool) []string {
 }
 
 func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []string) { // false
-
-	actions := map[string]bool{
-		"clean": true, "check-news": true, "config": true, "depclean": true, "help": true,
-		"info": true, "list-sets": true, "metadata": true, "moo": true,
-		"prune": true, "rage-clean": true, "regen": true, "search": true,
-		"sync": true, "unmerge": true, "version": true,
-	}
 
 	true_y := func(s string) bool {
 		return s == "True" || s == "y"
@@ -787,15 +778,117 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 		myopt["with_test_deps"] = "true"
 	}
 	myaction := ""
-	for action_opt := range actions {
-		v := *bm[action_opt]
-		if v {
-			if myaction != "" {
-				multipleActions(myaction, action_opt)
-				os.Exit(1)
-			}
-			myaction = action_opt
+	if myoptions.clean {
+		if myaction != "" {
+			multipleActions(myaction, "clean")
+			os.Exit(1)
 		}
+		myaction = "clean"
+	}
+	if myoptions.check_news {
+		if myaction != "" {
+			multipleActions(myaction, "check-news")
+			os.Exit(1)
+		}
+		myaction = "check-news"
+	}
+	if myoptions.config {
+		if myaction != "" {
+			multipleActions(myaction, "config")
+			os.Exit(1)
+		}
+		myaction = "config"
+	}
+	if myoptions.depclean {
+		if myaction != "" {
+			multipleActions(myaction, "depclean")
+			os.Exit(1)
+		}
+		myaction = "depclean"
+	}
+	if myoptions.help {
+		if myaction != "" {
+			multipleActions(myaction, "help")
+			os.Exit(1)
+		}
+		myaction = "help"
+	}
+	if myoptions.info {
+		if myaction != "" {
+			multipleActions(myaction, "info")
+			os.Exit(1)
+		}
+		myaction = "info"
+	}
+	if myoptions.list_sets {
+		if myaction != "" {
+			multipleActions(myaction, "list-sets")
+			os.Exit(1)
+		}
+		myaction = "list-sets"
+	}
+	if myoptions.metadata {
+		if myaction != "" {
+			multipleActions(myaction, "metadata")
+			os.Exit(1)
+		}
+		myaction = "metadata"
+	}
+	if myoptions.moo {
+		if myaction != "" {
+			multipleActions(myaction, "moo")
+			os.Exit(1)
+		}
+		myaction = "moo"
+	}
+	if myoptions.prune {
+		if myaction != "" {
+			multipleActions(myaction, "prune")
+			os.Exit(1)
+		}
+		myaction = "prune"
+	}
+	if myoptions.rage_clean {
+		if myaction != "" {
+			multipleActions(myaction, "rage-clean")
+			os.Exit(1)
+		}
+		myaction = "rage-clean"
+	}
+	if myoptions.regen {
+		if myaction != "" {
+			multipleActions(myaction, "regen")
+			os.Exit(1)
+		}
+		myaction = "regen"
+	}
+	if myoptions.search {
+		if myaction != "" {
+			multipleActions(myaction, "search")
+			os.Exit(1)
+		}
+		myaction = "search"
+	}
+	if myoptions.sync {
+		if myaction != "" {
+			multipleActions(myaction, "sync")
+			os.Exit(1)
+		}
+		myaction = "sync"
+	}
+	if myoptions.unmerge {
+		if myaction != "" {
+			multipleActions(myaction, "unmerge")
+			os.Exit(1)
+		}
+		myaction = "unmerge"
+	}
+	if myoptions.version {
+		if myaction != "" {
+			multipleActions(myaction, "version")
+			os.Exit(1)
+		}
+		myaction = "version"
 	}
 	if myaction == "" && myoptions.deselect != "" {
 		myaction = "deselect"
@@ -804,31 +897,31 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 	return myaction, myopt, pf.Args()
 }
 
-func profile_check(trees *atom.TreesDict, myaction string) int {
-	for _, v := range []string{"help", "info", "search", "sync", "version"} {
-		if myaction == v {
-			return syscall.F_OK
-		}
-	}
-	for _, root_trees := range trees.Values() {
-		if _, ok := root_trees["root_config"].settings.Value["ARCH"]; root_trees["root_config"].settings.profiles && ok {
-			continue
-		}
-		validate_ebuild_environment(trees)
-		msg := "Your current profile is invalid. If you have just changed " +
-			"your profile configuration, you should revert back to the " +
-			"previous configuration. Allowed actions are limited to " +
-			"--help, --info, --search, --sync, and --version."
-
-		m := ""
-		for _, l := range emaint.SplitSubN(msg, 70) {
-			m += fmt.Sprintf("!!! %s\n", l)
-		}
-		atom.WriteMsgLevel(m, 40, -1)
-		return 1
-	}
-	return syscall.F_OK
-}
+//func profile_check(trees *atom.TreesDict, myaction string) int {
+//	for _, v := range []string{"help", "info", "search", "sync", "version"} {
+//		if myaction == v {
+//			return syscall.F_OK
+//		}
+//	}
+//	for _, root_trees := range trees.Values() {
+//		if _, ok := root_trees["root_config"].settings.Value["ARCH"]; root_trees["root_config"].settings.profiles && ok {
+//			continue
+//		}
+//		validate_ebuild_environment(trees)
+//		msg := "Your current profile is invalid. If you have just changed " +
+//			"your profile configuration, you should revert back to the " +
+//			"previous configuration. Allowed actions are limited to " +
+//			"--help, --info, --search, --sync, and --version."
+//
+//		m := ""
+//		for _, l := range emaint.SplitSubN(msg, 70) {
+//			m += fmt.Sprintf("!!! %s\n", l)
+//		}
+//		atom.WriteMsgLevel(m, 40, -1)
+//		return 1
+//	}
+//	return syscall.F_OK
+//}
 
 func EmergeMain(args []string) int { // nil
 	if args == nil {

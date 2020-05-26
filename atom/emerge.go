@@ -668,11 +668,13 @@ func(m *MergeProcess)  _start(){
 	}
 
 	if m.fd_pipes == nil{
-		m.fd_pipes = {}
+		m.fd_pipes = map[int]{}
 	}else{
 		m.fd_pipes = m.fd_pipes.copy()
 	}
-	m.fd_pipes.setdefault(0, getStdin().fileno())
+	if _, ok := m.fd_pipes[0]; !ok{
+		m.fd_pipes[0]=getStdin().fileno()
+	}
 
 	m.ForkProcess._start()
 }
@@ -693,10 +695,10 @@ func(m *MergeProcess) _unlock_vdb(){
 }
 
 // true means none
-func(m *MergeProcess) _elog_output_handler(){
+func(m *MergeProcess) _elog_output_handler() bool{
 output := m._read_buf(m._elog_reader_fd)
 if len(output) > 0 {
-	lines := strings.Split(output, "\n")
+	lines := strings.Split(string(output), "\n")
 	if len(lines) == 1{
 		m._buf += lines[0]
 	} else{

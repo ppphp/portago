@@ -478,7 +478,8 @@ func update_dbentry(updateCmd []*Atom, mycontent string, eapi string, parent *pk
 	return mycontent
 }
 
-func update_dbentries(updateIter [][]*Atom, mydata map[string]string, eapi string, parent *pkgStr) map[string]string { // "", nil
+// "", nil
+func update_dbentries(updateIter [][]*Atom, mydata map[string]string, eapi string, parent *pkgStr) map[string]string {
 	updatedItems := map[string]string{}
 	for k, mycontent := range mydata {
 		if !ignored_dbentries[k] {
