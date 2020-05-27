@@ -397,55 +397,55 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 	myopt := map[string]string{}
 
 	if true_y(myoptions.alert) {
-		myopt["alert"] = "true"
+		myopt["--alert"] = "true"
 	}
 	if true_y(myoptions.ask) {
-		myopt["ask"] = "true"
+		myopt["--ask"] = "true"
 	}
 	if true_y(myoptions.autounmask) {
-		myopt["autounmask"] = "true"
+		myopt["--autounmask"] = "true"
 	} else {
-		myopt["autounmask"] = "false"
+		myopt["--autounmask"] = "false"
 	}
 	if true_y(myoptions.autounmask_continue) {
-		myopt["autounmask_continue"] = "true"
+		myopt["--autounmask-continue"] = "true"
 	} else {
-		myopt["autounmask_continue"] = "false"
+		myopt["--autounmask-continue"] = "false"
 	}
 	if true_y(myoptions.autounmask_only) {
-		myopt["autounmask_only"] = "true"
+		myopt["--autounmask-only"] = "true"
 	}
 	if true_y(myoptions.autounmask_unrestricted_atoms) {
-		myopt["autounmask_unrestricted_atoms"] = "true"
+		myopt["--autounmask-unrestricted-atoms"] = "true"
 	} else {
-		myopt["autounmask_unrestricted_atoms"] = "false"
+		myopt["--autounmask-unrestricted-atoms"] = "false"
 	}
 	if true_y(myoptions.autounmask_keep_keywords) {
-		myopt["autounmask_keep_keywords"] = "true"
+		myopt["--autounmask-keep-keywords"] = "true"
 	} else {
-		myopt["autounmask_keep_keywords"] = "false"
+		myopt["--autounmask-keep-keywords"] = "false"
 	}
 	if true_y(myoptions.autounmask_keep_masks) {
-		myopt["autounmask_keep_masks"] = "true"
+		myopt["--autounmask-keep-masks"] = "true"
 	} else {
-		myopt["autounmask_keep_masks"] = "false"
+		myopt["--autounmask-keep-masks"] = "false"
 	}
 	if true_y(myoptions.autounmask_write) {
-		myopt["autounmask_write"] = "true"
+		myopt["--autounmask-write"] = "true"
 	} else {
-		myopt["autounmask_write"] = "false"
+		myopt["--autounmask-write"] = "false"
 	}
 	if myoptions.binpkg_changed_deps != "" {
 		if true_y(myoptions.binpkg_changed_deps) {
-			myopt["binpkg_changed_deps"] = "y"
+			myopt["--binpkg-changed-deps"] = "y"
 		} else {
-			myopt["binpkg_changed_deps"] = "n"
+			myopt["--binpkg-changed-deps"] = "n"
 		}
 	}
 	if true_y(myoptions.buildpkg) {
-		myopt["buildpkg"] = "true"
+		myopt["--buildpkg"] = "true"
 	} else {
-		myopt["buildpkg"] = "false"
+		myopt["--buildpkg"] = "false"
 	}
 
 	if len(myoptions.buildpkg_exclude) > 0 {
@@ -457,188 +457,194 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 	}
 
 	if true_y(myoptions.changed_deps) {
-		myopt["changed_deps"] = "y"
+		myopt["--changed-deps"] = "y"
 	} else if myoptions.changed_deps != "" {
-		myopt["changed_deps"] = "n"
+		myopt["--changed-deps"] = "n"
 	}
 	if true_y(myoptions.changed_deps_report) {
-		myopt["changed_deps_report"] = "y"
+		myopt["--changed-deps-report"] = "y"
 	} else if myoptions.changed_deps_report != "" {
-		myopt["changed_deps_report"] = "n"
+		myopt["--changed-deps-report"] = "n"
 	}
 	if true_y(myoptions.changed_slot) {
-		myopt["changed_slot"] = "y"
+		myopt["--changed-slot"] = "y"
 	} else if myoptions.changed_slot != "" {
-		myopt["changed_slot"] = "n"
+		myopt["--changed-slot"] = "n"
 	}
 	if myoptions.changed_use {
-		myopt["reinstall"] = "changed-use"
-		myopt["changed_use"] = "false"
+		myopt["--reinstall"] = "changed-use"
+		myopt["--changed-use"] = "false"
 	}
 	if true_y(myoptions.deselect) {
-		myopt["deselect"] = "true"
+		myopt["--deselect"] = "true"
 	}
 
 	if myoptions.binpkg_respect_use != "" {
 		if true_y(myoptions.binpkg_respect_use) {
-			myopt["binpkg_respect_use"] = "y"
+			myopt["--binpkg-respect-use"] = "y"
 		} else {
-			myopt["binpkg_respect_use"] = "n"
+			myopt["--binpkg-respect-use"] = "n"
 		}
 	}
 
 	if true_y(myoptions.complete_graph) {
-		myopt["complete_graph"] = "true"
+		myopt["--complete-graph"] = "true"
 	}
 
 	if true_y(myoptions.depclean_lib_check) {
-		myopt["depclean_lib_check"] = "true"
+		myopt["--depclean-lib-check"] = "true"
 	} else {
-		myopt["depclean_lib_check"] = "false"
+		myopt["--depclean-lib-check"] = "false"
 	}
 
 	if len(myoptions.exclude) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.exclude, false)
 		if len(bad_atoms) > 0 && !silent {
-			/*parser.error*/panic(fmt.Sprintf("Invalid Atom(s) in --exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid Atom(s) in --exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
+			os.Exit(2)
 		}
 	}
 
 	if len(myoptions.reinstall_atoms) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.reinstall_atoms, false)
 		if len(bad_atoms) > 0 && !silent {
-			/*parser.error*/panic(fmt.Sprintf("Invalid Atom(s) in --reinstall-atoms parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid Atom(s) in --reinstall-atoms parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
+			os.Exit(2)
 		}
 	}
 
 	if len(myoptions.rebuild_exclude) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.rebuild_exclude, false)
 		if len(bad_atoms) > 0 && !silent {
-			/*parser.error*/panic(fmt.Sprintf("Invalid Atom(s) in --rebuild-exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid Atom(s) in --rebuild-exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
+			os.Exit(2)
 		}
 	}
 
 	if len(myoptions.rebuild_ignore) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.rebuild_ignore, false)
 		if len(bad_atoms) > 0 && !silent {
-			/*parser.error*/panic(fmt.Sprintf("Invalid Atom(s) in --rebuild-ignore parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid Atom(s) in --rebuild-ignore parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
+			os.Exit(2)
 		}
 	}
 
 	if len(myoptions.usepkg_exclude) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.usepkg_exclude, false)
 		if len(bad_atoms) > 0 && !silent {
-			/*parser.error*/panic(fmt.Sprintf("Invalid Atom(s) in --usepkg-exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid Atom(s) in --usepkg-exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
+			os.Exit(2)
 		}
 	}
 
 	if len(myoptions.useoldpkg_atoms) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.useoldpkg_atoms, false)
 		if len(bad_atoms) > 0 && !silent {
-			/*parser.error*/panic(fmt.Sprintf("Invalid Atom(s) in --useoldpkg-atoms parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))
+			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid Atom(s) in --useoldpkg-atoms parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
+			os.Exit(2)
 		}
 	}
 
 	if true_y(myoptions.fail_clean) {
-		myopt["fail_clean"] = "true"
+		myopt["--fail-clean"] = "true"
 	} else {
-		myopt["fail_clean"] = "false"
+		myopt["--fail-clean"] = "false"
 	}
 
 	if true_y(myoptions.fuzzy_search) {
-		myopt["fuzzy_search"] = "true"
+		myopt["--fuzzy-search"] = "true"
 	} else {
-		myopt["fuzzy_search"] = "false"
+		myopt["--fuzzy-search"] = "false"
 	}
 
 	if true_y(myoptions.getbinpkg) {
-		myopt["getbinpkg"] = "true"
+		myopt["--getbinpkg"] = "true"
 	}
 
 	if true_y(myoptions.getbinpkgonly) {
-		myopt["getbinpkgonly"] = "true"
+		myopt["--getbinpkgonly"] = "true"
 	}
 
 	if true_y(myoptions.ignore_world) {
-		myopt["ignore_world"] = "true"
+		myopt["--ignore-world"] = "true"
 	} else {
-		myopt["ignore_world"] = "false"
+		myopt["--ignore-world"] = "false"
 	}
 
 	if true_y(myoptions.keep_going) {
-		myopt["keep_going"] = "true"
+		myopt["--keep-going"] = "true"
 	}
 
 	if true_y(myoptions.package_moves) {
-		myopt["package_moves"] = "true"
+		myopt["--package-moves"] = "true"
 	} else {
-		myopt["package_moves"] = "false"
+		myopt["--package-moves"] = "false"
 	}
 
 	if true_y(myoptions.quiet) {
-		myopt["quiet"] = "true"
+		myopt["--quiet"] = "true"
 	}
 
 	if true_y(myoptions.quiet_build) {
-		myopt["quiet_build"] = "y"
+		myopt["--quiet-build"] = "y"
 	} else {
-		myopt["quiet_build"] = "n"
+		myopt["--quiet-build"] = "n"
 	}
 
 	if true_y(myoptions.quiet_fail) {
-		myopt["quiet_fail"] = "y"
+		myopt["--quiet-fail"] = "y"
 	} else {
-		myopt["quiet_fail"] = "n"
+		myopt["--quiet-fail"] = "n"
 	}
 
 	if true_y(myoptions.read_news) {
-		myopt["read_news"] = "true"
+		myopt["--read-news"] = "true"
 	}
 
 	if true_y(myoptions.rebuild_if_new_slot) {
-		myopt["rebuild_if_new_slot"] = "y"
+		myopt["--rebuild-if-new-slot"] = "y"
 	} else {
-		myopt["rebuild_if_new_slot"] = "n"
+		myopt["--rebuild-if-new-slot"] = "n"
 	}
 
 	if true_y(myoptions.rebuild_if_new_ver) {
-		myopt["rebuild_if_new_ver"] = "true"
+		myopt["--rebuild-if-new-ver"] = "true"
 	}
 
 	if true_y(myoptions.rebuild_if_new_rev) {
-		myopt["rebuild_if_new_rev"] = "true"
-		delete(myopt, "rebuild_if_new_ver")
+		myopt["--rebuild-if-new-rev"] = "true"
+		delete(myopt, "rebuild-if-new-ver")
 	}
 
 	if true_y(myoptions.rebuild_if_unbuilt) {
-		myopt["rebuild_if_unbuilt"] = "true"
-		delete(myopt, "rebuild_if_new_rev")
-		delete(myopt, "rebuild_if_new_ver")
+		myopt["--rebuild-if-unbuilt"] = "true"
+		delete(myopt, "rebuild-if-new-rev")
+		delete(myopt, "rebuild-if-new-ver")
 	}
 
 	if true_y(myoptions.rebuilt_binaries) {
-		myopt["rebuilt_binaries"] = "true"
+		myopt["--rebuilt-binaries"] = "true"
 	} else {
-		myopt["rebuilt_binaries"] = "false"
+		myopt["--rebuilt-binaries"] = "false"
 	}
 
 	if true_y(myoptions.root_deps) {
-		myopt["root_deps"] = "true"
+		myopt["--root-deps"] = "true"
 	} else {
-		myopt["root_deps"] = "false"
+		myopt["--root-deps"] = "false"
 	}
 
 	if true_y(myoptions.selectt) {
-		myopt["select"] = "true"
-		myopt["oneshot"] = "false"
-	} else if myopt["select"] == "n" {
-		myopt["oneshot"] = "true"
+		myopt["--select"] = "true"
+		myopt["--oneshot"] = "false"
+	} else if myopt["--select"] == "n" {
+		myopt["--oneshot"] = "true"
 	}
 
 	if true_y(myoptions.selective) {
-		myopt["selective"] = "true"
+		myopt["--selective"] = "true"
 	} else {
-		myopt["selective"] = "false"
+		myopt["--selective"] = "false"
 	}
 
 	if myoptions.backtrack != "" {
@@ -649,10 +655,11 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 		}
 		if backtrack < 0 {
 			if !silent {
-				/*parser.error*/panic(fmt.Sprintf("Invalid --backtrack parameter: '%s'\n", myoptions.backtrack))
+				os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid --backtrack parameter: '%s'\n", myoptions.backtrack))))
+				os.Exit(2)
 			}
 		} else {
-			myopt["backtrack"] = fmt.Sprint(backtrack)
+			myopt["--backtrack"] = fmt.Sprint(backtrack)
 		}
 	}
 
@@ -672,13 +679,14 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 
 		if !db && di < 0 {
 			if !silent {
-				/*parser.error*/panic(fmt.Sprintf("Invalid --deep parameter: '%s'\n", myoptions.deep))
+				os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid --deep parameter: '%s'\n", myoptions.deep))))
+				os.Exit(2)
 			}
 		} else {
 			if db {
-				myopt["deep"] = fmt.Sprint(db)
+				myopt["--deep"] = fmt.Sprint(db)
 			} else {
-				myopt["deep"] = fmt.Sprint(di)
+				myopt["--deep"] = fmt.Sprint(di)
 			}
 		}
 	}
@@ -699,19 +707,20 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 
 		if !jb && ji < 1 {
 			if !silent {
-				/*parser.error*/panic(fmt.Sprintf("Invalid --jobs parameter: '%s'\n", myoptions.jobs))
+				os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid --jobs parameter: '%s'\n", myoptions.jobs))))
+				os.Exit(2)
 			}
 		} else {
 			if jb {
-				myopt["jobs"] = fmt.Sprint(jb)
+				myopt["--jobs"] = fmt.Sprint(jb)
 			} else {
-				myopt["jobs"] = fmt.Sprint(ji)
+				myopt["--jobs"] = fmt.Sprint(ji)
 			}
 		}
 	}
 
 	if myoptions.load_average == "true" {
-		delete(myopt, "load_average")
+		delete(myopt, "load-average")
 	}
 
 	if myoptions.load_average != "" {
@@ -723,10 +732,11 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 
 		if load_average <= 0.0 {
 			if !silent {
-				/*parser.error*/panic(fmt.Sprintf("Invalid --load-average parameter: '%s'\n", myoptions.load_average))
+				os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid --load-average parameter: '%s'\n", myoptions.load_average))))
+				os.Exit(2)
 			}
 		} else {
-			myopt["load_average"] = fmt.Sprint(load_average)
+			myopt["--load-average"] = fmt.Sprint(load_average)
 		}
 	}
 
@@ -739,10 +749,11 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 		if rebuilt_binaries_timestamp < 0 {
 			rebuilt_binaries_timestamp = 0
 			if !silent {
-				/*parser.error*/panic(fmt.Sprintf("Invalid --rebuilt-binaries-timestamp parameter: '%s'\n", myoptions.rebuilt_binaries_timestamp))
+				os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid --rebuilt-binaries-timestamp parameter: '%s'\n", myoptions.rebuilt_binaries_timestamp))))
+				os.Exit(2)
 			}
 		} else {
-			myopt["rebuilt_binaries_timestamp"] = fmt.Sprint(rebuilt_binaries_timestamp)
+			myopt["--rebuilt-binaries-timestamp"] = fmt.Sprint(rebuilt_binaries_timestamp)
 		}
 	}
 
@@ -750,32 +761,34 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 		search_similarity, err := strconv.ParseFloat(myoptions.search_similarity, 64)
 		if err != nil {
 			//except ValueError{
-			/*parser.error*/panic(fmt.Sprintf("Invalid --search-similarity parameter (not a number): '%v'\n", myoptions.search_similarity))
+			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid --search-similarity parameter (not a number): '%v'\n", myoptions.search_similarity))))
+			os.Exit(2)
 		}
 
 		if search_similarity < 0 || search_similarity > 100 {
-			/*parser.error*/panic(fmt.Sprintf("Invalid --search-similarity parameter (not between 0 and 100): '%v'\n", myoptions.search_similarity))
+			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid --search-similarity parameter (not between 0 and 100): '%v'\n", myoptions.search_similarity))))
+			os.Exit(2)
 		} else {
-			myopt["search_similarity"] = fmt.Sprint(search_similarity)
+			myopt["--search-similarity"] = fmt.Sprint(search_similarity)
 		}
 	}
 
 	if true_y(myoptions.use_ebuild_visibility) {
-		myopt["use_ebuild_visibility"] = "true"
+		myopt["--use-ebuild-visibility"] = "true"
 	} else {
-		myopt["use_ebuild_visibility"] = "false"
+		myopt["--use-ebuild-visibility"] = "false"
 	}
 	if true_y(myoptions.usepkg) {
-		myopt["usepkg"] = "true"
+		myopt["--usepkg"] = "true"
 	}
 	if true_y(myoptions.usepkgonly) {
-		myopt["usepkgonly"] = "true"
+		myopt["--usepkgonly"] = "true"
 	}
 	if true_y(myoptions.verbose) {
-		myopt["verbose"] = "true"
+		myopt["--verbose"] = "true"
 	}
 	if true_y(myoptions.with_test_deps) {
-		myopt["with_test_deps"] = "true"
+		myopt["--with-test-deps"] = "true"
 	}
 	myaction := ""
 	if myoptions.clean {
@@ -963,7 +976,20 @@ func EmergeMain(args []string) int { // nil
 	case "sync":
 		atom.SyncMode = true
 	}
-	devNull, _ := os.Open(os.DevNull)
+	dnst, err := os.Stat(os.DevNull)
+	if err != nil {
+		atom.WriteMsgLevel("Failed to validate a sane '/dev'.\n"+
+		"'/dev/null' does not exist.\n",
+			40,-1)
+		return 1
+	}
+	if dnst.Sys().(syscall.Stat_t).Rdev == 0 {
+		atom.WriteMsgLevel("Failed to validate a sane '/dev'.\n"+
+		"'/dev/null' is not a device file.\n",
+			40,-1)
+		return 1
+	}
+	devNull, err := os.Open(os.DevNull)
 	if devNull != nil {
 		devNull.Close()
 	}
