@@ -128,12 +128,10 @@ var (
 		"prerm": true, "setup": true,
 	}
 
-
 _ipc_phases = map[string]bool{
 	"setup": true, "pretend": true, "config": true, "info": true,
 	"preinst": true, "postinst": true, "prerm": true, "postrm": true,
 }
-
 
 _global_pid_phases = map[string]bool{
 "config":true, "depend":true, "preinst":true, "prerm":true, "postinst":true, "postrm":true,}
@@ -219,9 +217,6 @@ logfile=None, **kwargs) {
 
 func _doebuild_path(settings, eapi=None){
 
-
-
-
 portage_bin_path = [settings.ValueDict["PORTAGE_BIN_PATH"]]
 if portage_bin_path[0] != portage.const.PORTAGE_BIN_PATH{
 
@@ -273,7 +268,6 @@ settings.ValueDict["PATH"] = ":".join(path)
 func doebuild_environment(myebuild, mydo, myroot=None, settings=None,
 debug=false, use_cache=None, db=None){
 
-
 if settings is None{
 raise TypeError("settings argument is required")
 
@@ -295,13 +289,6 @@ if mysettings.mycpv is ! None &&
 mysettings.configdict["pkg"].get("PF") == mypv &&
 "CATEGORY" in mysettings.configdict["pkg"]{
 
-
-
-
-
-
-
-
 cat = mysettings.configdict["pkg"]["CATEGORY"]
 mycpv = mysettings.mycpv
 }else if filepath.Base(pkg_dir) in (mysplit[0], mypv){
@@ -311,19 +298,13 @@ mycpv = cat + "/" + mypv
 }else{
 raise AssertionError("unable to determine CATEGORY")
 
-
-
 tmpdir = mysettings.ValueDict["PORTAGE_TMPDIR"]
 
 if mydo == "depend"{
 if mycpv != mysettings.mycpv{
 
-
 mysettings.setcpv(mycpv)
 }else{
-
-
-
 
 if mycpv != mysettings.mycpv ||
 "EAPI" ! in mysettings.configdict["pkg"]{
@@ -332,27 +313,18 @@ mysettings.reload()
 mysettings.reset()
 mysettings.setcpv(mycpv, mydb=mydbapi)
 
-
-
-
 mysettings.ValueDict["PORTAGE_TMPDIR"] = os.path.realpath(tmpdir)
 
 mysettings.pop("EBUILD_PHASE", None)
 mysettings.ValueDict["EBUILD_PHASE"] = mydo
 
-
 mysettings.ValueDict["PORTAGE_PYTHON"] = portage._python_interpreter
 
-
-
-
 mysettings.ValueDict["PORTAGE_SIGPIPE_STATUS"] = str(128 + signal.SIGPIPE)
-
 
 mysettings.ValueDict["BASH_ENV"] = INVALID_ENV_FILE
 
 if debug:
-
 
 mysettings.ValueDict["PORTAGE_DEBUG"] = "1"
 
@@ -389,13 +361,8 @@ mysettings.ValueDict["PVR"]=mysplit[1]
 }else:
 mysettings.ValueDict["PVR"]=mysplit[1]+"-"+mysplit[2]
 
-
-
-
 mysettings.ValueDict["BUILD_PREFIX"] = mysettings.ValueDict["PORTAGE_TMPDIR"]+"/portage"
 mysettings.ValueDict["PKG_TMPDIR"]   = mysettings.ValueDict["BUILD_PREFIX"]+"/._unmerge_"
-
-
 
 if mydo in ("unmerge", "prerm", "postrm", "cleanrm"){
 mysettings.ValueDict["PORTAGE_BUILDDIR"] = filepath.Join(
@@ -413,7 +380,6 @@ mysettings.ValueDict["T"] = filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR
 mysettings.ValueDict["SANDBOX_LOG"] = filepath.Join(mysettings.ValueDict["T"], "sandbox.log")
 mysettings.ValueDict["FILESDIR"] = filepath.Join(settings.ValueDict["PORTAGE_BUILDDIR"], "files")
 
-
 eprefix_lstrip = mysettings.ValueDict["EPREFIX"].lstrip(os.sep)
 mysettings.ValueDict["ED"] = filepath.Join(
 mysettings.ValueDict["D"], eprefix_lstrip).rstrip(os.sep) + os.sep
@@ -423,34 +389,22 @@ mysettings.ValueDict["PORTAGE_CONFIGROOT"], EBUILD_SH_ENV_FILE)
 mysettings.ValueDict["PM_EBUILD_HOOK_DIR"] = filepath.Join(
 mysettings.ValueDict["PORTAGE_CONFIGROOT"], EBUILD_SH_ENV_DIR)
 
-
 mysettings.ValueDict["PORTAGE_COLORMAP"] = colormap()
 
 if "COLUMNS" ! in mysettings{
-
-
-
-
 
 columns = os.environ.get("COLUMNS")
 if columns is None{
 rows, columns = portage.output.get_term_size()
 if columns < 1{
 
-
 columns = 80
 columns = str(columns)
 os.environ["COLUMNS"] = columns
 mysettings.ValueDict["COLUMNS"] = columns
 
-
-
 eapi = mysettings.configdict["pkg"]["EAPI"]
 _doebuild_path(mysettings, eapi=eapi)
-
-
-
-
 
 if ! eapi_is_supported(eapi){
 raise UnsupportedAPIException(mycpv, eapi)
@@ -489,12 +443,6 @@ ccache = "ccache" in mysettings.Features.Features[]
 distcc = "distcc" in mysettings.Features.Features[]
 icecream = "icecream" in mysettings.Features.Features[]
 
-
-
-
-
-
-
 if (ccache || distcc || icecream) && mydo in ("unpack",
 "prepare", "configure", "test", "install"){
 libdir = None
@@ -503,8 +451,6 @@ if default_abi{
 libdir = mysettings.ValueDict["LIBDIR_" + default_abi)
 if ! libdir{
 libdir = "lib"
-
-
 
 possible_libexecdirs = (libdir, "lib", "libexec")
 masquerades = []
@@ -533,7 +479,6 @@ if nproc{
 mysettings.ValueDict["MAKEOPTS"] = fmt.Sprintf("-j%d" % (nproc)
 
 if ! eapi_exports_KV(eapi){
-
 
 mysettings.pop("KV", None)
 }else if "KV" ! in mysettings &&
@@ -605,8 +550,6 @@ if ! tree{
 writemsg("Warning: tree not specified to doebuild\n")
 tree = "porttree"
 
-
-
 actionmap_deps={
 "pretend"  : [],
 "setup":  ["pretend"],
@@ -651,8 +594,6 @@ return 1
 
 if returnpid && mydo != "depend"{
 
-
-
 warnings.warn("portage.doebuild() called "
 "with returnpid parameter enabled. This usage will "
 "not be supported in the future.",
@@ -689,8 +630,6 @@ global _doebuild_broken_ebuilds
 
 if myebuild in _doebuild_broken_ebuilds{
 return 1
-
-
 
 if _doebuild_manifest_cache is None ||
 _doebuild_manifest_cache.getFullname() != manifest_path{
@@ -735,8 +674,6 @@ return 1
 
 if mf is ! _doebuild_manifest_cache && ! mf.allow_missing{
 
-
-
 for f in os.listdir(pkgdir){
 pf = None
 if f[-7:] == ".ebuild"{
@@ -750,7 +687,6 @@ out.eerror(fmt.Sprintf(("A file is not listed in the "
 _doebuild_broken_manifests.add(manifest_path)
 return 1
 
-
 _doebuild_manifest_cache = mf
 
 logfile=None
@@ -761,12 +697,7 @@ tmpdir_orig = None
 try{
 if mydo in ("digest", "manifest", "help"){
 
-
 portage._doebuild_manifest_exempt_depend += 1
-
-
-
-
 
 if ! returnpid && mydo in ("info",){
 tmpdir = tempfile.mkdtemp()
@@ -792,7 +723,6 @@ finally{
 if builddir_lock is ! None{
 builddir_lock.scheduler.run_until_complete(
 builddir_lock.async_unlock())
-
 
 if mydo == "depend":
 writemsg(fmt.Sprintf("!!! DEBUG: dbkey: %s\n" % str(dbkey), 2)
@@ -822,20 +752,14 @@ if tree == "porttree"{
 
 if ! returnpid{
 
-
-
 rval = _validate_deps(mysettings, myroot, mydo, mydbapi)
 if rval != os.EX_OK{
 return rval
 
 }else{
 
-
-
 if "noauto" in mysettings.Features.Features[]{
 mysettings.Features.Features[].discard("noauto")
-
-
 
 if tmpdir is None &&
 mydo ! in _doebuild_commands_without_builddir{
@@ -922,10 +846,6 @@ builddir_lock = None
 writemsg_stdout(_(">>> WORKDIR is up-to-date, keeping...\n"))
 unpacked = true
 
-
-
-
-
 have_build_dirs = false
 if mydo ! in ("digest", "fetch", "help", "manifest"){
 if ! returnpid &&
@@ -940,9 +860,7 @@ if mystatus{
 return mystatus
 have_build_dirs = true
 
-
 if ! returnpid{
-
 
 logfile = mysettings.ValueDict["PORTAGE_LOG_FILE")
 
@@ -963,11 +881,6 @@ mysettings.configdict["pkg"]["EMERGE_FROM"] = "ebuild"
 }else if tree == "bintree"{
 mysettings.configdict["pkg"]["EMERGE_FROM"] = "binary"
 
-
-
-
-
-
 if eapi_exports_replace_vars(mysettings.ValueDict["EAPI"]) &&
 (mydo in ("postinst", "preinst", "pretend", "setup") ||
 ("noauto" ! in features && ! returnpid &&
@@ -985,8 +898,6 @@ set(portage.versions.cpv_getversion(match)
 for match in vardb.match(cpv_slot) +
 vardb.match("="+cpv)))
 
-
-
 if mydo in ("config", "help", "info", "postinst",
 "preinst", "pretend", "postrm", "prerm"){
 if mydo in ("preinst", "postinst"){
@@ -1001,9 +912,6 @@ finally{
 mysettings.pop("PORTAGE_UPDATE_ENV", None)
 
 mycpv = "/".join((mysettings.ValueDict["CATEGORY"], mysettings.ValueDict["PF"]))
-
-
-
 
 need_distfiles = tree == "porttree" && ! unpacked &&
 (mydo in ("fetch", "unpack") ||
@@ -1041,7 +949,6 @@ dist_digests = mf.getTypeDigests("DIST")
 
 func _fetch_subprocess(fetchme, mysettings, listonly, dist_digests){
 
-
 if _want_userfetch(mysettings){
 _drop_privs_userfetch(mysettings)
 
@@ -1061,9 +968,6 @@ loop.run_in_executor(ForkExecutor(loop=loop),
 _fetch_subprocess, fetchme, mysettings, listonly, dist_digests))
 if ! success{
 
-
-
-
 if ! listonly{
 spawn_nofetch(mydbapi, myebuild, settings=mysettings,
 fd_pipes=fd_pipes)
@@ -1071,10 +975,8 @@ return 1
 
 if need_distfiles{
 
-
 checkme = []
 }else if unpacked{
-
 
 checkme = []
 }else{
@@ -1103,25 +1005,18 @@ return 1
 
 if mydo == "fetch"{
 
-
-
 return 0
-
 
 if tree == "porttree" &&
 ! digestcheck(checkme, mysettings, "strict" in features, mf=mf){
 return 1
-
 
 if tree == "porttree" &&
 ((mydo != "setup" && "noauto" ! in features)
 or mydo in ("install", "unpack")){
 _prepare_fake_distdir(mysettings, alist)
 
-
 actionmap = _spawn_actionmap(mysettings)
-
-
 
 for x in actionmap{
 if len(actionmap_deps.get(x, [])){
@@ -1132,8 +1027,6 @@ regular_actionmap_phase = mydo in actionmap
 if regular_actionmap_phase{
 bintree = None
 if mydo == "package"{
-
-
 
 if hasattr(portage, "db"){
 bintree = portage.db[mysettings.ValueDict["EROOT"]]["bintree"]
@@ -1192,7 +1085,6 @@ if regular_actionmap_phase{
 pass
 }else if mydo == "qmerge"{
 
-
 if ! os.path.exists(
 filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"], ".installed")){
 writemsg(_("!!! mydo=qmerge, but the install phase has not been run\n"),
@@ -1214,8 +1106,6 @@ retval = spawnebuild("install", actionmap, mysettings, debug,
 alwaysdep=1, logfile=logfile, fd_pipes=fd_pipes,
 returnpid=returnpid)
 if retval != os.EX_OK{
-
-
 
 elog_process(mysettings.mycpv, mysettings)
 if retval == os.EX_OK{
@@ -1253,7 +1143,6 @@ pass
 
 if mydo in ("digest", "manifest", "help"){
 
-
 portage._doebuild_manifest_exempt_depend -= 1
 
 func _check_temp_dir(settings){
@@ -1265,9 +1154,6 @@ writemsg(fmt.Sprintf(("The directory specified in your "
 "correct your PORTAGE_TMPDIR setting.\n") %
 settings.ValueDict["PORTAGE_TMPDIR", ""), noiselevel=-1)
 return 1
-
-
-
 
 checkdir = first_existing(filepath.Join(settings.ValueDict["PORTAGE_TMPDIR"], "portage"))
 
@@ -1291,19 +1177,15 @@ return os.EX_OK
 
 func _prepare_env_file(settings){
 
-
 env_extractor = BinpkgEnvExtractor(background=false,
 scheduler=asyncio._safe_loop(),
 settings=settings)
 
 if env_extractor.dest_env_exists(){
 
-
-
 return os.EX_OK
 
 if ! env_extractor.saved_env_exists(){
-
 
 return os.EX_OK
 
@@ -1338,7 +1220,6 @@ misc_sh_binary = filepath.Join(portage_bin_path,
 filepath.Base(MISC_SH_BINARY))
 ebuild_sh = _shell_quote(ebuild_sh_binary) + " %s"
 misc_sh = _shell_quote(misc_sh_binary) + " __dyn_%s"
-
 
 actionmap = {
 "pretend":  {"cmd":ebuild_sh, "args":{"droppriv":0,        "free":1,         "sesandbox":0,         "fakeroot":0}},
@@ -1423,8 +1304,6 @@ return 1
 
 return os.EX_OK
 
-
-
 func spawn(mystring, mysettings, debug=false, free=false, droppriv=false,
 sesandbox=false, fakeroot=false, networked=true, ipc=true,
 mountns=false, pidns=false, **keywords){
@@ -1438,8 +1317,6 @@ fd_pipes = {
 2:sys.__stderr__.fileno(),
 }
 
-
-
 stdout_filenos = (sys.__stdout__.fileno(), sys.__stderr__.fileno())
 for fd in fd_pipes.values(){
 if fd in stdout_filenos{
@@ -1448,7 +1325,6 @@ sys.__stderr__.flush()
 break
 
 features = mysettings.Features.Features[]
-
 
 if uid == 0 && platform.system() == "Linux"{
 keywords["unshare_net"] = ! networked
@@ -1459,8 +1335,6 @@ keywords["unshare_pid"] = pidns
 if ! networked && mysettings.ValueDict["EBUILD_PHASE") != "nofetch" &&
 ("network-sandbox-proxy" in features || "distcc" in features){
 
-
-
 try{
 proxy = get_socks5_proxy(mysettings)
 except NotImplementedError{
@@ -1468,9 +1342,6 @@ pass
 }else{
 mysettings.ValueDict["PORTAGE_SOCKS5_PROXY"] = proxy
 mysettings.ValueDict["DISTCC_SOCKS_PROXY"] = proxy
-
-
-
 
 fakeroot = fakeroot && uid != 0 && portage.process.fakeroot_capable
 portage_build_uid = os.getuid()
@@ -1485,8 +1356,6 @@ keywords.update({
 "groups": userpriv_groups,
 "umask": 0o22
 })
-
-
 
 stdout_fd = fd_pipes.get(1)
 if stdout_fd is ! None{
@@ -1505,7 +1374,6 @@ _os.chown(subprocess_tty,
 int(portage_uid), int(portage_gid))
 
 if "userpriv" in features && "userpriv" ! in mysettings.ValueDict["PORTAGE_RESTRICT"].split() && secpass >= 2{
-
 
 portage_build_uid = int(portage_uid)
 portage_build_gid = int(portage_gid)
@@ -1592,7 +1460,6 @@ mysettings.configdict["env"].pop("LOGNAME", None)
 }else{
 mysettings.configdict["env"]["LOGNAME"] = logname_backup
 
-
 func spawnebuild(mydo, actionmap, mysettings, debug, alwaysdep=0,
 logfile=None, fd_pipes=None, returnpid=false){
 
@@ -1645,7 +1512,6 @@ _post_phase_cmds = {
 "preinst" : (
 (
 
-
 {
 "ld_preload_sandbox": false,
 "selinux_only": true,
@@ -1674,7 +1540,6 @@ for path in (mysettings.ValueDict["HOME"], mysettings.ValueDict["T"]){
 apply_recursive_permissions(path,
 uid=portage_uid, gid=portage_gid, dirmode=0o700, dirmask=0,
 filemode=0o600, filemask=0)
-
 
 func _check_build_log(mysettings, out=None){
 
@@ -1749,10 +1614,6 @@ qa_am_maintainer_mode = fmt.Sprintf("^(%s)$" % qa_am_maintainer_mode
 }else{
 qa_am_maintainer_mode =fmt.Sprintf(fmt.Sprintf( "^%s$" % qa_am_maintainer_mode[0]
 qa_am_maintainer_mode = re.compile(qa_am_maintainer_mode)
-
-
-
-
 
 am_maintainer_mode_re = re.compile(r"/missing --run ")
 am_maintainer_mode_exclude_re =
@@ -1850,7 +1711,6 @@ f_real.close()
 
 func _post_src_install_write_metadata(settings){
 
-
 eapi_attrs = _get_eapi_attrs(settings.configdict["pkg"]["EAPI"])
 
 build_info_dir = filepath.Join(settings.ValueDict["PORTAGE_BUILDDIR"], "build-info")
@@ -1930,12 +1790,10 @@ os.system(fmt.Sprintf("mtree -c -p %s -k flags > %s" %
 (_shell_quote(mysettings.ValueDict["D"]),
 _shell_quote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
 
-
 os.system(fmt.Sprintf("chflags -R noschg,nouchg,nosappnd,nouappnd %s" %
 (_shell_quote(mysettings.ValueDict["D"]),))
 os.system(fmt.Sprintf("chflags -R nosunlnk,nouunlnk %s 2>/dev/null" %
 (_shell_quote(mysettings.ValueDict["D"]),))
-
 
 func _postinst_bsdflags(mysettings){
 if bsd_chflags{
@@ -1945,7 +1803,6 @@ os.system(fmt.Sprintf("mtree -e -p %s -U -k flags < %s > /dev/null" %
 _shell_quote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
 
 func _post_src_install_uid_fix(mysettings, out){
-
 
 os = _os_merge
 
@@ -2060,10 +1917,6 @@ if ! fixlafiles_announced{
 fixlafiles_announced = true
 writemsg("Fixing .la files\n", fd=out)
 
-
-
-
-
 msg = fmt.Sprintf("   %s is not a valid libtool archive, skipping\n" % fpath[len(destdir):]
 qa_msg = fmt.Sprintf("QA Notice: invalid .la file found: %s, %s" % (fpath[len(destdir):], e)
 if has_lafile_header{
@@ -2075,8 +1928,6 @@ if ! fixlafiles_announced{
 fixlafiles_announced = true
 writemsg("Fixing .la files\n", fd=out)
 writemsg(fmt.Sprintf("   %s\n" % fpath[len(destdir):], fd=out)
-
-
 
 write_atomic(_unicode_encode(fpath,
 encoding=_encodings["merge"], errors="strict"),
@@ -2137,7 +1988,6 @@ os.system(fmt.Sprintf("mtree -e -p %s -U -k flags < %s > /dev/null" %
 _shell_quote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
 
 func _post_src_install_soname_symlinks(mysettings, out){
-
 
 image_dir = mysettings.ValueDict["D"]
 needed_filename = filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"],
@@ -2255,8 +2105,6 @@ unrecognized_elf_files = []
 soname_deps = SonameDepsProcessor(
 provides_exclude, requires_exclude)
 
-
-
 needed_file = portage.util.atomic_ofstream(needed_filename,
 encoding=_encodings["repo.content"], errors="strict")
 
@@ -2276,7 +2124,6 @@ entry.filename.lstrip(os.sep))
 with open(_unicode_encode(filename, encoding=_encodings["fs"],
 errors="strict"), "rb") as f{
 elf_header = ELFHeader.read(f)
-
 
 entry.multilib_category = compute_multilib_category(elf_header)
 needed_file.write(_unicode(entry))
@@ -2379,18 +2226,11 @@ return lines
 
 func _prepare_self_update(settings){
 
-
-
 if portage._bin_path != portage.const.PORTAGE_BIN_PATH{
 return
 
-
-
 _preload_elog_modules(settings)
 portage.proxy.lazyimport._preload_portage_submodules()
-
-
-
 
 build_prefix = filepath.Join(settings.ValueDict["PORTAGE_TMPDIR"], "portage")
 portage.util.ensure_dirs(build_prefix)
