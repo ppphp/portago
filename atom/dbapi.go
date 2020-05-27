@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -3246,17 +3247,178 @@ func NewBinaryTree(pkgDir string, settings *Config) *BinaryTree {
 
 type portdbapi struct {
 	*dbapi
+	_use_mutable bool
 }
+
+func (p *portdbapi) _categories() {}
+
+func (p *portdbapi) porttree_root() {}
+
+func (p *portdbapi) eclassdb() {}
+
+func (p *portdbapi) _set_porttrees() {}
+
+func (p *portdbapi) _get_porttrees() {}
+
+func (p *portdbapi) _event_loop() {}
+
+func (p *portdbapi) _create_pregen_cache() {}
+
+func (p *portdbapi) _init_cache_dirs() {}
+
+func (p *portdbapi) close_caches() {}
+
+func (p *portdbapi) flush_cache() {}
+
+func (p *portdbapi) findLicensePath() {}
+
+func (p *portdbapi) findname() {}
+
+func (p *portdbapi) getRepositoryPath() {}
+
+func (p *portdbapi) getRepositoryName() {}
+
+func (p *portdbapi) getRepositories() {}
+
+func (p *portdbapi) getMissingRepoNames() {}
+
+func (p *portdbapi) getIgnoredRepos() {}
+
+func (p *portdbapi) findname2() {}
+
+func (p *portdbapi) _write_cache() {}
+
+func (p *portdbapi) _pull_valid_cache() {}
+
+func (p *portdbapi) aux_get() {}
+
+func (p *portdbapi) async_aux_get() {}
+
+func (p *portdbapi) _aux_get_cancel() {}
+
+func (p *portdbapi) _aux_get_return() {}
+
+func (p *portdbapi) getFetchMap() {}
+
+func (p *portdbapi) async_fetch_map() {}
+
+func (p *portdbapi) getfetchsizes() {}
+
+func (p *portdbapi) fetch_check() {}
+
+func (p *portdbapi) cpv_exists() {}
+
+func (p *portdbapi) cp_all() {}
+
+func (p *portdbapi) cp_list() {}
+
+func (p *portdbapi) freeze() {}
+
+func (p *portdbapi) melt() {}
+
+func (p *portdbapi) xmatch() {}
+
+func (p *portdbapi) async_xmatch() {}
+
+func (p *portdbapi) match() {}
+
+func (p *portdbapi) gvisible() {}
+
+func (p *portdbapi) visible() {}
+
+func (p *portdbapi) _iter_visible() {}
+
+func (p *portdbapi) _visible() {}
 
 func NewPortDbApi() *portdbapi {
 	p := &portdbapi{}
+	p._use_mutable = true
 	return p
 }
 
 type PortageTree struct {
 }
 
+func (p *PortageTree) portroot() {}
+
+func (p *PortageTree) root() {}
+
+func (p *PortageTree) virtual() {}
+
+func (p *PortageTree) dep_bestmatch() {}
+
+func (p *PortageTree) dep_match() {}
+
+func (p *PortageTree) exists_specific() {}
+
+func (p *PortageTree) getallnodes() {}
+
+func (p *PortageTree) getname() {}
+
+func (p *PortageTree) getslot() {}
+
 func NewPortageTree(setting *Config) *PortageTree {
 	p := &PortageTree{}
 	return p
+}
+
+type FetchlistDict struct {
+}
+
+func (f *FetchlistDict) __getitem__() {}
+
+func (f *FetchlistDict) __contains__() {}
+
+func (f *FetchlistDict) has_key() {}
+
+func (f *FetchlistDict) __iter__() {}
+
+func (f *FetchlistDict) __len__() {}
+
+func (f *FetchlistDict) keys() {}
+
+func NewFetchlistDict(setting *Config) *FetchlistDict {
+	f := &FetchlistDict{}
+	return f
+}
+
+func _async_manifest_fetchlist() {}
+
+// ordered map
+// nil
+func _parse_uri_map(cpv, metadata map[string]string, use map[string]bool) map[string]map[string]bool {
+	myuris := useReduce(metadata["SRC_URI"], use, []string{}, use == nil, []string{}, true, metadata["EAPI"], false, false, nil, nil, false)
+
+	uri_map := map[string]map[string]bool{}
+
+	ReverseSlice(myuris)
+	var distfile string
+	for len(myuris) > 0 {
+		uri := myuris[len(myuris)-1]
+		myuris = myuris[:len(myuris)-1]
+		if len(myuris) > 0 && myuris[len(myuris)-1] == "->" {
+			myuris = myuris[:len(myuris)-1]
+			distfile = myuris[len(myuris)-1]
+			myuris = myuris[:len(myuris)-1]
+		} else {
+			distfile = filepath.Base(uri)
+			if distfile == "" {
+				//raise portage.exception.InvalidDependString(
+				//	("getFetchMap(): '%s' SRC_URI has no file " + \
+				//"name: '%s'") % (cpv, uri))
+			}
+		}
+
+		uri_set, ok := uri_map[distfile]
+		if !ok {
+			uri_set = map[string]bool{}
+		}
+		uri_map[distfile] = uri_set
+
+		if u, err := url.Parse(uri); err != nil && u.Scheme != "" {
+			uri_set[uri] = true
+		}
+	}
+
+	return uri_map
 }
