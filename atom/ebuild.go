@@ -198,11 +198,11 @@ func _doebuild_spawn(phase string, settings *Config, actionmap=None, **kwargs)([
 }
 
 // nil, false, nil,
-func _spawn_phase(phase, settings, actionmap=None, returnpid bool,
-logfile=None, **kwargs) {
+func _spawn_phase(phase string, settings *Config, actionmap=None, returnpid bool,
+logfile=None, **kwargs) ([]int, error){
 
 	if returnpid {
-		return _doebuild_spawn(phase, settings, actionmap = actionmap,
+		return _doebuild_spawn(phase, settings, actionmap,
 			returnpid = returnpid, logfile=logfile, **kwargs)
 	}
 
@@ -215,12 +215,13 @@ logfile=None, **kwargs) {
 	return ebuild_phase.returncode
 }
 
-func _doebuild_path(settings, eapi=None){
+// ""
+func _doebuild_path(settings *Config, eapi string){
 
-portage_bin_path = [settings.ValueDict["PORTAGE_BIN_PATH"]]
-if portage_bin_path[0] != portage.const.PORTAGE_BIN_PATH{
+portage_bin_path := []string{settings.ValueDict["PORTAGE_BIN_PATH"]}
+if portage_bin_path[0] != PORTAGE_BIN_PATH{
 
-portage_bin_path.append(portage.const.PORTAGE_BIN_PATH)
+portage_bin_path=append(portage_bin_path, PORTAGE_BIN_PATH)
 prerootpath = [x for x in settings.ValueDict["PREROOTPATH", "").split(":") if x]
 rootpath = [x for x in settings.ValueDict["ROOTPATH", "").split(":") if x]
 rootpath_set = frozenset(rootpath)
@@ -230,28 +231,28 @@ overrides = [x for x in settings.ValueDict[
 prefixes = []
 
 if portage.const.EPREFIX != settings.ValueDict["EPREFIX"] && settings.ValueDict["ROOT"] == os.sep{
-prefixes.append(settings.ValueDict["EPREFIX"])
-prefixes.append(portage.const.EPREFIX)
+prefixes=append(settings.ValueDict["EPREFIX"])
+prefixes=append(portage.const.EPREFIX)
 
 path = overrides
 
 if "xattr" in settings.Features.Features[]{
 for x in portage_bin_path{
-path.append(filepath.Join(x, "ebuild-helpers", "xattr"))
+path=append(filepath.Join(x, "ebuild-helpers", "xattr"))
 
 if uid != 0 &&
 "unprivileged" in settings.Features.Features[] &&
 "fakeroot" ! in settings.Features.Features[]{
 for x in portage_bin_path{
-path.append(filepath.Join(x,
+path=append(filepath.Join(x,
 "ebuild-helpers", "unprivileged"))
 
 if settings.ValueDict["USERLAND", "GNU") != "GNU"{
 for x in portage_bin_path{
-path.append(filepath.Join(x, "ebuild-helpers", "bsd"))
+path=append(filepath.Join(x, "ebuild-helpers", "bsd"))
 
 for x in portage_bin_path{
-path.append(filepath.Join(x, "ebuild-helpers"))
+path=append(filepath.Join(x, "ebuild-helpers"))
 path.extend(prerootpath)
 
 for prefix in prefixes{
@@ -260,7 +261,7 @@ for x in ("usr/local/sbin", "usr/local/bin", "usr/sbin", "usr/bin", "sbin", "bin
 
 x_abs = filepath.Join(prefix, x)
 if x_abs ! in rootpath_set{
-path.append(x_abs)
+path=append(x_abs)
 
 path.extend(rootpath)
 settings.ValueDict["PATH"] = ":".join(path)
@@ -455,11 +456,11 @@ libdir = "lib"
 possible_libexecdirs = (libdir, "lib", "libexec")
 masquerades = []
 if distcc{
-masquerades.append(("distcc", "distcc"))
+masquerades=append(("distcc", "distcc"))
 if icecream{
-masquerades.append(("icecream", "icecc"))
+masquerades=append(("icecream", "icecc"))
 if ccache{
-masquerades.append(("ccache", "ccache"))
+masquerades=append(("ccache", "ccache"))
 
 for feature, m in masquerades{
 for l in possible_libexecdirs{
@@ -469,7 +470,7 @@ if os.path.isdir(p){
 mysettings.ValueDict["PATH"] = p + ":" + mysettings.ValueDict["PATH"]
 break
 }else{
-writemsg(fmt.Sprintf(("Warning: %s requested but no masquerade dir "
+atom.WriteMsg(fmt.Sprintf(("Warning: %s requested but no masquerade dir "
 "can be found in /usr/lib*/%s/bin\n") % (m, m))
 mysettings.Features.Features[].remove(feature)
 
@@ -499,7 +500,7 @@ try{
 compression = _compressors[binpkg_compression]
 except KeyError as e{
 if binpkg_compression{
-writemsg(fmt.Sprintf("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
+atom.WriteMsg(fmt.Sprintf("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
 }else{
 
 mysettings.ValueDict["PORTAGE_COMPRESSION_COMMAND"] = "cat"
@@ -507,11 +508,11 @@ mysettings.ValueDict["PORTAGE_COMPRESSION_COMMAND"] = "cat"
 try{
 compression_binary = shlex_split(varexpand(compression["compress"], mydict=settings))[0]
 except IndexError as e{
-writemsg(fmt.Sprintf("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
+atom.WriteMsg(fmt.Sprintf("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
 }else{
 if find_binary(compression_binary) is None{
 missing_package = compression["package"]
-writemsg(fmt.Sprintf("Warning: File compression unsupported %s. Missing package: %s\n" % (binpkg_compression, missing_package))
+atom.WriteMsg(fmt.Sprintf("Warning: File compression unsupported %s. Missing package: %s\n" % (binpkg_compression, missing_package))
 }else{
 cmd = [varexpand(x, mydict=settings) for x in shlex_split(compression["compress"])]
 
@@ -547,7 +548,7 @@ warnings.warn("portage.doebuild() called "
 DeprecationWarning, stacklevel=2)
 
 if ! tree{
-writemsg("Warning: tree not specified to doebuild\n")
+atom.WriteMsg("Warning: tree not specified to doebuild\n")
 tree = "porttree"
 
 actionmap_deps={
@@ -583,13 +584,13 @@ validcommands = ["help","clean","prerm","postrm","cleanrm","preinst","postinst",
 
 if mydo ! in validcommands{
 validcommands.sort()
-writemsg(fmt.Sprintf("!!! doebuild: '%s' is not one of the following valid commands:" % mydo,
+atom.WriteMsg(fmt.Sprintf("!!! doebuild: '%s' is not one of the following valid commands:" % mydo,
 noiselevel=-1)
 for vcount in range(len(validcommands)){
 if vcount%6 == 0{
-writemsg("\n!!! ", noiselevel=-1)
-writemsg(validcommands[vcount].ljust(11), noiselevel=-1)
-writemsg("\n", noiselevel=-1)
+atom.WriteMsg("\n!!! ", noiselevel=-1)
+atom.WriteMsg(validcommands[vcount].ljust(11), noiselevel=-1)
+atom.WriteMsg("\n", noiselevel=-1)
 return 1
 
 if returnpid && mydo != "depend"{
@@ -604,7 +605,7 @@ fetchall = 1
 mydo = "fetch"
 
 if mydo ! in clean_phases && ! os.path.exists(myebuild){
-writemsg(fmt.Sprintf("!!! doebuild: %s not found for %s\n" % (myebuild, mydo),
+atom.WriteMsg(fmt.Sprintf("!!! doebuild: %s not found for %s\n" % (myebuild, mydo),
 noiselevel=-1)
 return 1
 
@@ -725,7 +726,7 @@ builddir_lock.scheduler.run_until_complete(
 builddir_lock.async_unlock())
 
 if mydo == "depend":
-writemsg(fmt.Sprintf("!!! DEBUG: dbkey: %s\n" % str(dbkey), 2)
+atom.WriteMsg(fmt.Sprintf("!!! DEBUG: dbkey: %s\n" % str(dbkey), 2)
 if returnpid{
 return _spawn_phase(mydo, mysettings,
 fd_pipes=fd_pipes, returnpid=returnpid)
@@ -741,7 +742,7 @@ fd_pipes=fd_pipes, returnpid=returnpid)
 }else if mydo == "nofetch"{
 
 if returnpid{
-writemsg(fmt.Sprintf("!!! doebuild: %s\n" %
+atom.WriteMsg(fmt.Sprintf("!!! doebuild: %s\n" %
 _("returnpid is not supported for phase '%s'\n" % mydo),
 noiselevel=-1)
 
@@ -769,7 +770,7 @@ return rval
 
 if mydo == "unmerge"{
 if returnpid{
-writemsg(fmt.Sprintf("!!! doebuild: %s\n" %
+atom.WriteMsg(fmt.Sprintf("!!! doebuild: %s\n" %
 _("returnpid is not supported for phase '%s'\n" % mydo),
 noiselevel=-1)
 return unmerge(mysettings.ValueDict["CATEGORY"],
@@ -886,7 +887,7 @@ if eapi_exports_replace_vars(mysettings.ValueDict["EAPI"]) &&
 ("noauto" ! in features && ! returnpid &&
 (mydo in actionmap_deps || mydo in ("merge", "package", "qmerge")))){
 if ! vartree{
-writemsg("Warning: vartree not given to doebuild. " +
+atom.WriteMsg("Warning: vartree not given to doebuild. " +
 "Cannot set REPLACING_VERSIONS in pkg_{pretend,setup}\n")
 }else{
 vardb = vartree.dbapi
@@ -932,8 +933,8 @@ try{
 alist = _parse_uri_map(mysettings.mycpv, metadata, use=use)
 aalist = _parse_uri_map(mysettings.mycpv, metadata)
 except InvalidDependString as e{
-writemsg(fmt.Sprintf("!!! %s\n" % str(e), noiselevel=-1)
-writemsg(fmt.Sprintf(("!!! Invalid SRC_URI for '%s'.\n") % mycpv,
+atom.WriteMsg(fmt.Sprintf("!!! %s\n" % str(e), noiselevel=-1)
+atom.WriteMsg(fmt.Sprintf(("!!! Invalid SRC_URI for '%s'.\n") % mycpv,
 noiselevel=-1)
 del e
 return 1
@@ -947,7 +948,7 @@ dist_digests = None
 if mf is ! None{
 dist_digests = mf.getTypeDigests("DIST")
 
-func _fetch_subprocess(fetchme, mysettings, listonly, dist_digests){
+func _fetch_subprocess(fetchme, mysettings *Config, listonly, dist_digests){
 
 if _want_userfetch(mysettings){
 _drop_privs_userfetch(mysettings)
@@ -999,7 +1000,7 @@ mf = None
 _doebuild_manifest_cache = None
 digestgen(mysettings=mysettings, myportdb=mydbapi)
 except PermissionDenied as e{
-writemsg(fmt.Sprintf(("!!! Permission Denied: %s\n") % (e,), noiselevel=-1)
+atom.WriteMsg(fmt.Sprintf(("!!! Permission Denied: %s\n") % (e,), noiselevel=-1)
 if mydo in ("digest", "manifest"):
 return 1
 
@@ -1076,7 +1077,7 @@ except OSError{
 pass
 
 }else if returnpid{
-writemsg(fmt.Sprintf("!!! doebuild: %s\n" %
+atom.WriteMsg(fmt.Sprintf("!!! doebuild: %s\n" %
 fmt.Sprintf(("returnpid is not supported for phase '%s'\n" % mydo),
 noiselevel=-1)
 
@@ -1087,7 +1088,7 @@ pass
 
 if ! os.path.exists(
 filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"], ".installed")){
-writemsg(_("!!! mydo=qmerge, but the install phase has not been run\n"),
+atom.WriteMsg(_("!!! mydo=qmerge, but the install phase has not been run\n"),
 noiselevel=-1)
 return 1
 
@@ -1145,10 +1146,10 @@ if mydo in ("digest", "manifest", "help"){
 
 portage._doebuild_manifest_exempt_depend -= 1
 
-func _check_temp_dir(settings){
+func _check_temp_dir(settings *Config){
 if "PORTAGE_TMPDIR" ! in settings ||
 ! os.path.isdir(settings.ValueDict["PORTAGE_TMPDIR"]){
-writemsg(fmt.Sprintf(("The directory specified in your "
+atom.WriteMsg(fmt.Sprintf(("The directory specified in your "
 "PORTAGE_TMPDIR variable, '%s',\n"
 "does not exist.  Please create this directory or "
 "correct your PORTAGE_TMPDIR setting.\n") %
@@ -1158,7 +1159,7 @@ return 1
 checkdir = first_existing(filepath.Join(settings.ValueDict["PORTAGE_TMPDIR"], "portage"))
 
 if ! os.access(checkdir, os.W_OK){
-writemsg(fmt.Sprintf(("%s is not writable.\n"
+atom.WriteMsg(fmt.Sprintf(("%s is not writable.\n"
 "Likely cause is that you've mounted it as readonly.\n") % checkdir,
 noiselevel=-1)
 return 1
@@ -1166,7 +1167,7 @@ return 1
 with tempfile.NamedTemporaryFile(prefix="exectest-", dir=checkdir) as fd{
 os.chmod(fd.name, 0o755)
 if ! os.access(fd.name, os.X_OK){
-writemsg(fmt.Sprintf(("Can not execute files in %s\n"
+atom.WriteMsg(fmt.Sprintf(("Can not execute files in %s\n"
 "Likely cause is that you've mounted it with one of the\n"
 "following mount options: 'noexec', 'user', 'users'\n\n"
 "Please make sure that portage can execute files in this directory.\n") % checkdir,
@@ -1175,7 +1176,7 @@ return 1
 
 return os.EX_OK
 
-func _prepare_env_file(settings){
+func _prepare_env_file(settings *Config){
 
 env_extractor = BinpkgEnvExtractor(background=false,
 scheduler=asyncio._safe_loop(),
@@ -1193,7 +1194,7 @@ env_extractor.start()
 env_extractor.wait()
 return env_extractor.returncode
 
-func _spawn_actionmap(settings){
+func _spawn_actionmap(settings *Config){
 features = settings.Features.Features[]
 restrict = settings.ValueDict["PORTAGE_RESTRICT"].split()
 nosandbox = (("userpriv" in features) &&
@@ -1237,7 +1238,7 @@ actionmap = {
 
 return actionmap
 
-func _validate_deps(mysettings, myroot, mydo, mydbapi){
+func _validate_deps(mysettings *Config, myroot, mydo, mydbapi){
 
 invalid_dep_exempt_phases =
 set(["clean", "cleanrm", "help", "prerm", "postrm"])
@@ -1267,7 +1268,7 @@ msgs = []
 if pkg.invalid{
 for k, v in pkg.invalid.items(){
 for msg in v{
-msgs.append(fmt.Sprintf("  %s\n" % (msg,))
+msgs=append(fmt.Sprintf("  %s\n" % (msg,))
 
 if msgs{
 portage.util.writemsg_level(fmt.Sprintf(("Error(s) in metadata for '%s':\n") %
@@ -1286,25 +1287,25 @@ result = check_required_use(pkg._metadata["REQUIRED_USE"],
 pkg.use.enabled, pkg.iuse.is_valid_flag, eapi=pkg.eapi)
 if ! result{
 reduced_noise = result.tounicode()
-writemsg(fmt.Sprintf("\n  %s\n" % _("The following REQUIRED_USE flag" +
+atom.WriteMsg(fmt.Sprintf("\n  %s\n" % _("The following REQUIRED_USE flag" +
 " constraints are unsatisfied:"), noiselevel=-1)
-writemsg(fmt.Sprintf("    %s\n" % reduced_noise,
+atom.WriteMsg(fmt.Sprintf("    %s\n" % reduced_noise,
 noiselevel=-1)
 normalized_required_use =
 " ".join(pkg._metadata["REQUIRED_USE"].split())
 if reduced_noise != normalized_required_use{
-writemsg(fmt.Sprintf("\n  %s\n" % _("The above constraints " +
+atom.WriteMsg(fmt.Sprintf("\n  %s\n" % _("The above constraints " +
 "are a subset of the following complete expression:"),
 noiselevel=-1)
-writemsg(fmt.Sprintf("    %s\n" %
+atom.WriteMsg(fmt.Sprintf("    %s\n" %
 human_readable_required_use(normalized_required_use),
 noiselevel=-1)
-writemsg("\n", noiselevel=-1)
+atom.WriteMsg("\n", noiselevel=-1)
 return 1
 
 return os.EX_OK
 
-func spawn(mystring, mysettings, debug=false, free=false, droppriv=false,
+func spawn(mystring string, mysettings  *Config, debug=false, free=false, droppriv=false,
 sesandbox=false, fakeroot=false, networked=true, ipc=true,
 mountns=false, pidns=false, **keywords){
 check_config_instance(mysettings)
@@ -1460,7 +1461,7 @@ mysettings.configdict["env"].pop("LOGNAME", None)
 }else{
 mysettings.configdict["env"]["LOGNAME"] = logname_backup
 
-func spawnebuild(mydo, actionmap, mysettings, debug, alwaysdep=0,
+func spawnebuild(mydo, actionmap, mysettings *Config, debug, alwaysdep=0,
 logfile=None, fd_pipes=None, returnpid=false){
 
 if returnpid{
@@ -1533,7 +1534,7 @@ _post_phase_cmds = {
 "postinst_qa_check"],
 }
 
-func _post_phase_userpriv_perms(mysettings){
+func _post_phase_userpriv_perms(mysettings *Config){
 if "userpriv" in mysettings.Features.Features[] && secpass >= 2{
 
 for path in (mysettings.ValueDict["HOME"], mysettings.ValueDict["T"]){
@@ -1541,7 +1542,7 @@ apply_recursive_permissions(path,
 uid=portage_uid, gid=portage_gid, dirmode=0o700, dirmask=0,
 filemode=0o600, filemask=0)
 
-func _check_build_log(mysettings, out=None){
+func _check_build_log(mysettings *Config, out=None){
 
 logfile = mysettings.ValueDict["PORTAGE_LOG_FILE")
 if logfile is None{
@@ -1634,23 +1635,23 @@ if am_maintainer_mode_re.search(line) is ! None &&
 am_maintainer_mode_exclude_re.search(line) is None &&
 (! qa_am_maintainer_mode or
 qa_am_maintainer_mode.search(line) is None){
-am_maintainer_mode.append(line.rstrip("\n"))
+am_maintainer_mode=append(line.rstrip("\n"))
 
 if bash_command_not_found_re.match(line) is ! None &&
 command_not_found_exclude_re.search(line) is None{
-bash_command_not_found.append(line.rstrip("\n"))
+bash_command_not_found=append(line.rstrip("\n"))
 
 if helper_missing_file_re.match(line) is ! None{
-helper_missing_file.append(line.rstrip("\n"))
+helper_missing_file=append(line.rstrip("\n"))
 
 m = configure_opts_warn_re.match(line)
 if m is ! None{
 for x in m.group(1).split(", "){
 if ! qa_configure_opts || qa_configure_opts.match(x) is None{
-configure_opts_warn.append(x)
+configure_opts_warn=append(x)
 
 if make_jobserver_re.match(line) is ! None{
-make_jobserver.append(line.rstrip("\n"))
+make_jobserver=append(line.rstrip("\n"))
 
 except (EOFError, zlib.error) as e{
 _eerror([fmt.Sprintf("portage encountered a zlib error: '%s'" % (e,),
@@ -1665,9 +1666,9 @@ wrap_width = 70
 
 if am_maintainer_mode{
 msg = [_("QA Notice: Automake \"maintainer mode\" detected:")]
-msg.append("")
+msg=append("")
 msg.extend("\t" + line for line in am_maintainer_mode)
-msg.append("")
+msg=append("")
 msg.extend(wrap(_(
 "If you patch Makefile.am, "
 "configure.in,  or configure.ac then you "
@@ -1683,25 +1684,25 @@ _eqawarn(msg)
 
 if bash_command_not_found{
 msg = [_("QA Notice: command not found:")]
-msg.append("")
+msg=append("")
 msg.extend("\t" + line for line in bash_command_not_found)
 _eqawarn(msg)
 
 if helper_missing_file{
 msg = [_("QA Notice: file does not exist:")]
-msg.append("")
+msg=append("")
 msg.extend("\t" + line[4:] for line in helper_missing_file)
 _eqawarn(msg)
 
 if configure_opts_warn{
 msg = [_("QA Notice: Unrecognized configure options:")]
-msg.append("")
+msg=append("")
 msg.extend(fmt.Sprintf("\t%s" % x for x in configure_opts_warn)
 _eqawarn(msg)
 
 if make_jobserver{
 msg = [_("QA Notice: make jobserver unavailable:")]
-msg.append("")
+msg=append("")
 msg.extend("\t" + line for line in make_jobserver)
 _eqawarn(msg)
 
@@ -1709,7 +1710,7 @@ f.close()
 if f_real is ! None{
 f_real.close()
 
-func _post_src_install_write_metadata(settings){
+func _post_src_install_write_metadata(settings *Config){
 
 eapi_attrs = _get_eapi_attrs(settings.configdict["pkg"]["EAPI"])
 
@@ -1717,7 +1718,7 @@ build_info_dir = filepath.Join(settings.ValueDict["PORTAGE_BUILDDIR"], "build-in
 
 metadata_keys = ["IUSE"]
 if eapi_attrs.iuse_effective{
-metadata_keys.append("IUSE_EFFECTIVE")
+metadata_keys=append("IUSE_EFFECTIVE")
 
 for k in metadata_keys{
 v = settings.configdict["pkg"].get(k)
@@ -1783,7 +1784,7 @@ mode="w", encoding=_encodings["repo.content"],
 errors="strict") as f{
 f.write(fmt.Sprintf("%s\n" % v)
 
-func _preinst_bsdflags(mysettings){
+func _preinst_bsdflags(mysettings *Config){
 if bsd_chflags{
 
 os.system(fmt.Sprintf("mtree -c -p %s -k flags > %s" %
@@ -1795,14 +1796,14 @@ os.system(fmt.Sprintf("chflags -R noschg,nouchg,nosappnd,nouappnd %s" %
 os.system(fmt.Sprintf("chflags -R nosunlnk,nouunlnk %s 2>/dev/null" %
 (_shell_quote(mysettings.ValueDict["D"]),))
 
-func _postinst_bsdflags(mysettings){
+func _postinst_bsdflags(mysettings *Config){
 if bsd_chflags{
 
 os.system(fmt.Sprintf("mtree -e -p %s -U -k flags < %s > /dev/null" %
 (_shell_quote(mysettings.ValueDict["ROOT"]),
 _shell_quote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
 
-func _post_src_install_uid_fix(mysettings, out){
+func _post_src_install_uid_fix(mysettings *Config, out){
 
 os = _os_merge
 
@@ -1864,7 +1865,7 @@ new_parent = _unicode_decode(new_parent,
 encoding=_encodings["merge"], errors="replace")
 os.rename(parent, new_parent)
 unicode_error = true
-unicode_errors.append(new_parent[ed_len:])
+unicode_errors=append(new_parent[ed_len:])
 break
 
 for fname in chain(dirs, files){
@@ -1883,7 +1884,7 @@ encoding=_encodings["merge"], errors="replace")
 new_fpath = filepath.Join(parent, new_fname)
 os.rename(fpath, new_fpath)
 unicode_error = true
-unicode_errors.append(new_fpath[ed_len:])
+unicode_errors=append(new_fpath[ed_len:])
 fname = new_fname
 fpath = new_fpath
 }else{
@@ -1915,19 +1916,19 @@ except portage.exception.InvalidData as e{
 needs_update = false
 if ! fixlafiles_announced{
 fixlafiles_announced = true
-writemsg("Fixing .la files\n", fd=out)
+atom.WriteMsg("Fixing .la files\n", fd=out)
 
 msg = fmt.Sprintf("   %s is not a valid libtool archive, skipping\n" % fpath[len(destdir):]
 qa_msg = fmt.Sprintf("QA Notice: invalid .la file found: %s, %s" % (fpath[len(destdir):], e)
 if has_lafile_header{
-writemsg(msg, fd=out)
+atom.WriteMsg(msg, fd=out)
 eqawarn(qa_msg, key=mysettings.mycpv, out=out)
 
 if needs_update{
 if ! fixlafiles_announced{
 fixlafiles_announced = true
-writemsg("Fixing .la files\n", fd=out)
-writemsg(fmt.Sprintf("   %s\n" % fpath[len(destdir):], fd=out)
+atom.WriteMsg("Fixing .la files\n", fd=out)
+atom.WriteMsg(fmt.Sprintf("   %s\n" % fpath[len(destdir):], fd=out)
 
 write_atomic(_unicode_encode(fpath,
 encoding=_encodings["merge"], errors="strict"),
@@ -1980,14 +1981,14 @@ f.close()
 
 _reapply_bsdflags_to_image(mysettings)
 
-func _reapply_bsdflags_to_image(mysettings){
+func _reapply_bsdflags_to_image(mysettings *Config){
 
 if bsd_chflags{
 os.system(fmt.Sprintf("mtree -e -p %s -U -k flags < %s > /dev/null" %
 (_shell_quote(mysettings.ValueDict["D"]),
 _shell_quote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
 
-func _post_src_install_soname_symlinks(mysettings, out){
+func _post_src_install_soname_symlinks(mysettings *Config, out){
 
 image_dir = mysettings.ValueDict["D"]
 needed_filename = filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"],
@@ -2132,7 +2133,7 @@ if entry.multilib_category is None{
 if ! qa_prebuilt || qa_prebuilt.match(
 entry.filename[len(mysettings.ValueDict["EPREFIX"]):].lstrip(
 os.sep)) is None{
-unrecognized_elf_files.append(entry)
+unrecognized_elf_files=append(entry)
 }else{
 soname_deps.add(entry)
 
@@ -2156,7 +2157,7 @@ raise
 }else{
 continue
 
-missing_symlinks.append((obj, soname))
+missing_symlinks=append((obj, soname))
 
 needed_file.close()
 
@@ -2176,10 +2177,10 @@ f.write(soname_deps.provides)
 
 if unrecognized_elf_files{
 qa_msg = ["QA Notice: Unrecognized ELF file(s):"]
-qa_msg.append("")
+qa_msg=append("")
 qa_msg.extend(fmt.Sprintf("\t%s" % _unicode(entry).rstrip()
 for entry in unrecognized_elf_files)
-qa_msg.append("")
+qa_msg=append("")
 for line in qa_msg{
 eqawarn(line, key=mysettings.mycpv, out=out)
 
@@ -2187,12 +2188,12 @@ if ! missing_symlinks{
 return
 
 qa_msg = ["QA Notice: Missing soname symlink(s):"]
-qa_msg.append("")
+qa_msg=append("")
 qa_msg.extend(fmt.Sprintf("\t%s -> %s" % (filepath.Join(
 os.path.dirname(obj).lstrip(os.sep), soname),
 filepath.Base(obj))
 for obj, soname in missing_symlinks)
-qa_msg.append("")
+qa_msg=append("")
 for line in qa_msg{
 eqawarn(line, key=mysettings.mycpv, out=out)
 
@@ -2203,10 +2204,10 @@ msg = _("QA Notice: This package installs one or more .desktop files "
 "that do not pass validation.")
 lines.extend(wrap(msg, 72))
 
-lines.append("")
+lines=append("")
 errors.sort()
 lines.extend("\t" + x for x in errors)
-lines.append("")
+lines=append("")
 
 return lines
 
@@ -2217,14 +2218,14 @@ msg = _("QA Notice: This package installs one or more file names "
 "containing characters that are not encoded with the UTF-8 encoding.")
 lines.extend(wrap(msg, 72))
 
-lines.append("")
+lines=append("")
 errors.sort()
 lines.extend("\t" + x for x in errors)
-lines.append("")
+lines=append("")
 
 return lines
 
-func _prepare_self_update(settings){
+func _prepare_self_update(settings *Config){
 
 if portage._bin_path != portage.const.PORTAGE_BIN_PATH{
 return
@@ -2253,7 +2254,7 @@ symlinks=true)
 for dir_path in (base_path_tmp, portage._bin_path, portage._pym_path){
 os.chmod(dir_path, 0o755)
 
-func _handle_self_update(settings, vardb){
+func _handle_self_update(settings *Config, vardb){
 cpv = settings.mycpv
 if settings.ValueDict["ROOT"] == "/" &&
 portage.dep.match_from_list(
