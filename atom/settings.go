@@ -887,14 +887,7 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 		}
 		vs := []string{}
 		for x := range expandFlags {
-			in := false
-			for _, v := range varSplit {
-				if v == x {
-					in = true
-					break
-				}
-			}
-			if in {
+			if ins(varSplit, x) {
 				vs = append(vs, x)
 			}
 		}
@@ -941,14 +934,7 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 		filteredVarSplit := []string{}
 		remaining := map[string]bool{}
 		for x := range hasIUse {
-			in := false
-			for _, v := range varSplit {
-				if v == x {
-					in = true
-					break
-				}
-			}
-			if in {
+			if ins(varSplit, x) {
 				remaining[x] = true
 			}
 		}
@@ -1498,14 +1484,7 @@ func (c *Config) selinux_enabled() bool {
 	if c._selinux_enabled == nil {
 		f := false
 		c._selinux_enabled = &f
-		in := false
-		for _, v := range strings.Fields(c.ValueDict["USE"]) {
-			if v == "selinux" {
-				in = true
-				break
-			}
-		}
-		if in {
+		if ins(strings.Fields(c.ValueDict["USE"]), "selinux") {
 			if selinux {
 				if selinux.is_selinux_enabled() == 1 {
 					f = true
@@ -2125,14 +2104,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 				}
 			}
 			for _, profile := range profilesComplex {
-				in := false
-				for _, v := range profile.profileFormats {
-					if v == "profile-bashrcs" {
-						in = true
-						break
-					}
-				}
-				if !in {
+				if !ins(profile.profileFormats, "profile-bashrcs") {
 					continue
 				}
 				c.pbashrcdict[profile] = map[string]map[*Atom][]string{}
@@ -2355,38 +2327,6 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 	}
 
 	return c
-}
-
-func ReverseSlice(s interface{}) {
-	size := reflect.ValueOf(s).Len()
-	swap := reflect.Swapper(s)
-	for i, j := 0, size-1; i < j; i, j = i+1, j-1 {
-		swap(i, j)
-	}
-}
-
-func CopyMapSS(m map[string]string) map[string]string {
-	r := map[string]string{}
-	for k, v := range m {
-		r[k] = v
-	}
-	return r
-}
-
-func CopyMapSB(m map[string]bool) map[string]bool {
-	r := map[string]bool{}
-	for k, v := range m {
-		r[k] = v
-	}
-	return r
-}
-
-func CopyMSMASS(m map[string]map[*Atom][]string) map[string]map[*Atom][]string {
-	r := map[string]map[*Atom][]string{}
-	for k, v := range m {
-		r[k] = v
-	}
-	return r
 }
 
 type featuresSet struct {
@@ -2740,14 +2680,7 @@ func (l *locationsManager) addProfile(currentPath string, repositories *repoConf
 		}
 	}
 	l.profiles = append(l.profiles, currentPath)
-	in := false
-	for _, x := range currentFormats {
-		if x == "build-id" {
-			in = true
-			break
-		}
-	}
-	l.profilesComplex = append(l.profilesComplex, &profileNode{location: currentPath, portage1Directories: allowDirectories, userConfig: false, profileFormats: currentFormats, eapi: eapi, allowBuildId: in})
+	l.profilesComplex = append(l.profilesComplex, &profileNode{location: currentPath, portage1Directories: allowDirectories, userConfig: false, profileFormats: currentFormats, eapi: eapi, allowBuildId: ins(currentFormats, "build-id")})
 }
 
 func (l *locationsManager) expandParentColon(parentsFile, parentPath, repoLoc string, repositories *repoConfigLoader) string {
@@ -3015,14 +2948,7 @@ func (u *useManager) parseRepositoryFilesToDictOfTuples(fileName string, reposit
 func (u *useManager) parseRepositoryFilesToDictOfDicts(fileName string, repositories *repoConfigLoader, eapiFilter func(string) bool) map[string]map[string]map[*Atom][]string {
 	ret := map[string]map[string]map[*Atom][]string{}
 	for _, repo := range repositories.reposWithProfiles() {
-		in := false
-		for _, v := range repo.profileFormats {
-			if v == "build-id" {
-				in = true
-				break
-			}
-		}
-		ret[repo.Name] = u.parseFileToDict(path.Join(repo.location, "profiles", fileName), false, true, eapiFilter, false, "0", repo.eapi, in)
+		ret[repo.Name] = u.parseFileToDict(path.Join(repo.location, "profiles", fileName), false, true, eapiFilter, false, "0", repo.eapi, ins(repo.profileFormats, "build-id"))
 	}
 	return ret
 }
@@ -3549,14 +3475,7 @@ func NewMaskManager(repositories *repoConfigLoader, profiles []*profileNode, abs
 	grabPMask := func(loc string, repoConfig *RepoConfig) [][2]string {
 		if _, ok := pmaskCache[loc]; !ok {
 			path := path.Join(loc, "profiles", "package.mask")
-			in := false
-			for _, v := range repoConfig.profileFormats {
-				if v == "build-id" {
-					in = true
-					break
-				}
-			}
-			pmaskCache[loc] = grabFilePackage(path, 0, repoConfig.portage1Profiles, false, false, in, true, true, "", repoConfig.eapi)
+			pmaskCache[loc] = grabFilePackage(path, 0, repoConfig.portage1Profiles, false, false, ins(repoConfig.profileFormats, "build-id"), true, true, "", repoConfig.eapi)
 			//if repo_config.portage1_profiles_compat and os.path.isdir(path):
 			//warnings.warn(_("Repository '%(repo_name)s' is implicitly using "
 			//"'portage-1' profile format in its profiles/package.mask, but "
@@ -3626,14 +3545,7 @@ func NewMaskManager(repositories *repoConfigLoader, profiles []*profileNode, abs
 		if !repo.portage1Profiles {
 			continue
 		}
-		in := false
-		for _, f := range repo.profileFormats {
-			if f == "build-id" {
-				in = true
-				break
-			}
-		}
-		repoLines := grabFilePackage(path.Join(repo.location, "profiles", "package.unmask"), 0, true, false, false, in, true, true, "", repo.eapi)
+		repoLines := grabFilePackage(path.Join(repo.location, "profiles", "package.unmask"), 0, true, false, false, ins(repo.profileFormats, "build-id"), true, true, "", repo.eapi)
 		lines := stackLists([][][2]string{repoLines}, 1, true, true, strict_umatched_removal, false)
 		repoPkgUnmaskLines = append(repoPkgUnmaskLines, appendRepo(lines, repo.Name, true)...)
 	}
@@ -4258,14 +4170,7 @@ func (v *virtualManager) _compile_virtuals() {
 			continue
 		}
 		for _, cp := range installedList {
-			in := false
-			for _, x := range profileList {
-				if x == cp {
-					in = true
-					break
-				}
-			}
-			if in {
+			if ins(profileList, cp) {
 				if _, ok := ptVirtuals[virt]; !ok {
 					ptVirtuals[virt] = []string{cp}
 				} else {
@@ -4353,14 +4258,7 @@ func (v *virtualManager) add_depgraph_virtuals(mycpv string, virts []string) {
 			providers = []string{}
 			v._depgraphVirtuals[virt] = providers
 		}
-		in := false
-		for _, p := range providers {
-			if cp.value == p {
-				in = true
-				break
-			}
-		}
-		if !in {
+		if !ins(providers, cp.value) {
 			providers = append(providers, cp.value)
 			modified = true
 		}

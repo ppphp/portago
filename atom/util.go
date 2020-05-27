@@ -1806,15 +1806,7 @@ func cacheddir(my_original_path string, ignorecvs bool, ignorelist []string, Emp
 		for i, file_path := range fpaths {
 			file_type := ftype[i]
 
-			in := false
-			for _, i := range ignorelist {
-				if file_path.Name() == i {
-					in = true
-					break
-				}
-			}
-
-			if in {
+			if ins(ignorelist, file_path.Name()) {
 			} else if ignorecvs {
 				if file_path.Name()[:2] != ".#" && !(file_type == 1 && VcsDirs[file_path.Name()]) {
 					ret_list = append(ret_list, file_path.Name())

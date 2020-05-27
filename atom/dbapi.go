@@ -2336,14 +2336,7 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex{
 
 	minimum_keys := []string{}
 	for _, k := range b._pkgindex_keys {
-		in := false
-		for _,k2 := range b._pkgindex_hashes{
-			if k == k2{
-				in = true
-				break
-			}
-		}
-		if !in {
+		if !ins(b._pkgindex_hashes, k) {
 			minimum_keys = append(minimum_keys, k)
 		}
 	}
