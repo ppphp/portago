@@ -122,10 +122,10 @@ func init() {
 	//atexit_register(run_exitfuncs)
 }
 
+// nil, "", nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, ""
 func spawn(mycommand []string, env map[string]string, opt_name string, fd_pipes map[int]uintptr, returnpid bool,
 	uid, gid int, groups []int, umask int, cwd, logfile string, path_lookup bool, pre_exec func(),
-	close_fds, unshare_net, unshare_ipc, unshare_mount, unshare_pid bool,
-	cgroup string) ([]int, error) { // nil, "", nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, ""
+	close_fds, unshare_net, unshare_ipc, unshare_mount, unshare_pid bool, cgroup string) ([]int, error) {
 	if env == nil {
 		env = ExpandEnv()
 	}
@@ -299,7 +299,8 @@ func NewUnshareValidator() *_unshare_validator {
 
 var _unshare_validate = NewUnshareValidator()
 
-func _setup_pipes(fd_pipes map[uintptr]uintptr, close_fds []uintptr) { // true
+// true
+func _setup_pipes(fd_pipes map[uintptr]uintptr, close_fds bool) {
 	reverseMap := map[uintptr][]uintptr{}
 	for newFd, oldFd := range fd_pipes {
 		if e, ok := reverseMap[oldFd]; !ok || e == nil {
@@ -329,7 +330,7 @@ func _setup_pipes(fd_pipes map[uintptr]uintptr, close_fds []uintptr) { // true
 		}
 	}
 
-	if len(close_fds) > 0 {
+	if close_fds {
 		for _, fd := range get_open_fds() {
 			if _, ok := fd_pipes[uintptr(fd)]; !ok {
 				//os.close(fd) // os.Fsync

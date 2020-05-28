@@ -1,6 +1,7 @@
 package atom
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"reflect"

@@ -172,7 +172,7 @@ func (p *Package) eapi() string {
 	return p.metadata.valueDict["EAPI"]
 }
 
-func (p *Package) buildId() string {
+func (p *Package) buildId() int {
 	return p.cpv.buildId
 }
 

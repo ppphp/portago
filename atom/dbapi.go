@@ -5,10 +5,12 @@ import (
 	"compress/gzip"
 	"crypto/md5"
 	"fmt"
+	"github.com/ppphp/shlex"
 	"io"
 	"io/ioutil"
 	"net/url"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -1431,9 +1433,92 @@ func (v *vardbapi) _aux_get(mycpv string, wants map[string]bool, st os.FileInfo)
 	return results
 }
 
-func (v *vardbapi) _aux_env_search(cpv, variables string) {}
+func (v *vardbapi) _aux_env_search(cpv string, variables []string) map[string]string {
 
-func (v *vardbapi) aux_update() {}
+	env_file := v.getpath(cpv, "environment.bz2")
+	if st, _ := os.Stat(env_file); st != nil && !st.IsDir() {
+		return map[string]string{}
+	}
+	bunzip2_cmd, _ := shlex.Split(
+		strings.NewReader(v.settings.ValueDict["PORTAGE_BUNZIP2_COMMAND"]), false, true)
+	if len(bunzip2_cmd) == 0 {
+		bunzip2_cmd, _ = shlex.Split(
+			strings.NewReader(v.settings.ValueDict["PORTAGE_BZIP2_COMMAND"]), false, true)
+		bunzip2_cmd = append(bunzip2_cmd, "-d")
+	}
+	args := append(bunzip2_cmd, "-c", env_file)
+	cmd := exec.Command(args[0], args[1:]...)
+	lines := &bytes.Buffer{}
+	cmd.Stdout = lines
+	if err := cmd.Run(); err != nil {
+		//except EnvironmentError as e:
+		//if e.errno != errno.ENOENT:
+		//raise
+		//raise portage.exception.CommandNotFound(args[0])
+	}
+
+	var_assign_re := regexp.MustCompile("(^|^declare\\s+-\\S+\\s+|^declare\\s+|^export\\s+)([^=\\s]+)=(\"|\\')?(.*)$")
+	close_quote_re := regexp.MustCompile("(\\\\\"|\"|\\')\\s*$")
+	have_end_quote := func(quote, line string) bool {
+		close_quote_match := close_quote_re.FindStringSubmatch(line)
+		return close_quote_match != nil && close_quote_match[1] == quote
+	}
+
+	results := map[string]string{}
+	for _, line := range strings.Split(lines.String(), "\n") {
+		var_assign_match := var_assign_re.FindStringSubmatch(line)
+		var key, value string
+		if var_assign_match != nil {
+			key = var_assign_match[2]
+			quote := var_assign_match[3]
+			if quote != "" {
+				if have_end_quote(quote,
+					line[var_assign_re.FindAllStringSubmatchIndex(line, -1)[2][1]+2:]) {
+					value = var_assign_match[4]
+				} else {
+					values := []string{var_assign_match[4]}
+					for _, line := range strings.Split(lines.String(), "\n") {
+						values = append(values, line)
+						if have_end_quote(quote, line) {
+							break
+						}
+						value = strings.Join(values, "")
+					}
+					value = strings.TrimRight(value, " ")
+					value = value[:len(value)-1]
+				}
+			} else {
+				value = strings.TrimRight(var_assign_match[4], " ")
+			}
+
+			if ins(variables, key) {
+				results[key] = value
+			}
+		}
+	}
+
+	return results
+}
+
+func (v *vardbapi) aux_update(cpv, values) {
+	mylink := v._dblink(cpv)
+	if !mylink.exists() {
+		//raise KeyError(cpv)
+	}
+	v._bump_mtime(cpv)
+	v._clear_pkg_cache(mylink)
+	for k, v1 := range values {
+		if v1 != "" {
+			mylink.setfile(k, v1)
+		} else {
+			if err := syscall.Unlink(filepath.Join(v.getpath(cpv, ""), k)); err != nil {
+				//except EnvironmentError:
+				//pass
+			}
+		}
+	}
+	v._bump_mtime(cpv)
+}
 
 func (v *vardbapi) counter_tick() int {
 	return v.counter_tick_core(1)
@@ -1506,9 +1591,86 @@ func (v *vardbapi) _dblink(cpv string) *dblink {
 	return NewDblink(category, pf, "", v.settings, "vartree", v.vartree, nil, nil, nil)
 }
 
-func (v *vardbapi) removeFromContents() {}
+// true
+func (v *vardbapi) removeFromContents(pkg, paths []string, relative_paths bool) {
+	if !hasattr(pkg, "getcontents") {
+		pkg = v._dblink(pkg)
+	}
+	root := v.settings.ValueDict["ROOT"]
+	root_len := len(root) - 1
+	new_contents := pkg.getcontents().copy()
+	removed := 0
 
-func (v *vardbapi) writeContentsToContentsFile() {}
+	for _, filename := range paths {
+		filename = NormalizePath(filename)
+		relative_filename := ""
+		if relative_paths {
+			relative_filename = filename
+		} else {
+			relative_filename = filename[root_len:]
+		}
+		contents_key := pkg._match_contents(relative_filename)
+		if len(contents_key) > 0 {
+			delete(new_contents, contents_key)
+			removed += 1
+		}
+	}
+
+	if removed != 0 {
+		needed_filename := filepath.Join(pkg.dbdir, LinkageMap._needed_aux_key)
+		var new_needed []string = nil
+		needed_lines := []string{}
+		f, err := os.Open(needed_filename)
+		if err == nil {
+			needed_lines = f.readlines()
+		}
+		if err != nil {
+			//except IOError as e:
+			//if e.errno not in(errno.ENOENT, errno.ESTALE):
+			//raise
+		} else {
+			new_needed = []string{}
+			for _, l := range needed_lines {
+				l = strings.TrimRight(l, "\n")
+				if l == "" {
+					continue
+				}
+				entry, err := NeededEntry.parse(needed_filename, l)
+				if err != nil {
+					//except InvalidData as e:
+					WriteMsgLevel(fmt.Sprintf("\n%s\n\n", err),
+						40, -1)
+					continue
+				}
+
+				filename := filepath.Join(root, strings.TrimLeft(entry.filename, string(os.PathSeparator)))
+				if _, ok := new_contents[filename]; ok {
+					new_needed = append(new_needed, entry)
+				}
+			}
+		}
+
+		v.writeContentsToContentsFile(pkg, new_contents, new_needed)
+	}
+}
+
+// nil
+func (v *vardbapi) writeContentsToContentsFile(pkg, new_contents, new_needed []string) {
+	root := v.settings.ValueDict["ROOT"]
+	v._bump_mtime(pkg.mycpv)
+	if new_needed != nil {
+		f := NewAtomic_ofstream(filepath.Join(pkg.dbdir, LinkageMap._needed_aux_key))
+		for entry := range new_needed {
+			f.Write([]byte(entry))
+		}
+		f.Close()
+	}
+	f = NewAtomic_ofstream(filepath.Join(pkg.dbdir, "CONTENTS"))
+	write_contents(new_contents, root, f)
+	f.close()
+	v._bump_mtime(pkg.mycpv)
+	pkg._clear_contents_cache()
+}
 
 func NewVarDbApi(settings *Config, vartree *varTree) *vardbapi { // nil, nil
 	v := &vardbapi{}
