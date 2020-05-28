@@ -927,7 +927,7 @@ func NewRepoConfigLoader(paths []string, settings *Config) *repoConfigLoader {
 		for _, masterRepo := range repo.mastersRepo {
 			eclassLocations = append(eclassLocations, masterRepo.location)
 		}
-		if !ins(eclassLocations, repo.location) {
+		if !Ins(eclassLocations, repo.location) {
 			eclassLocations = append(eclassLocations, repo.location)
 		}
 		if len(repo.eclassOverrides) != 0 {
@@ -1104,7 +1104,7 @@ func parseLayoutConf(repoLocation, repoName string) (map[string][]string, map[st
 		manifestHashes = strings.Fields(strings.ToUpper(manifestHashes[0]))
 		missingRequiredHashes := []string{}
 		for _, v := range manifestRequiredHashes {
-			if !ins(manifestHashes, v) {
+			if !Ins(manifestHashes, v) {
 				missingRequiredHashes = append(missingRequiredHashes, v)
 			}
 		}
@@ -1191,7 +1191,7 @@ func parseLayoutConf(repoLocation, repoName string) (map[string][]string, map[st
 	e, ok := layoutData["profile_eapi_when_unspecified"]
 	if ok {
 		eapi = e[0]
-		if ins(rawFormats, "profile-default-eapi") {
+		if Ins(rawFormats, "profile-default-eapi") {
 			//warnings.warn((_("Repository named '%(repo_name)s' has "
 			//"profile_eapi_when_unspecified setting in "
 			//"'%(layout_filename)s', but 'profile-default-eapi' is "

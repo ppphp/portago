@@ -6,6 +6,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	"github.com/ppphp/shlex"
+	"golang.org/x/sys/unix"
 	"io"
 	"io/ioutil"
 	"net/url"
@@ -121,26 +122,26 @@ func cpv_expand(mycpv string, mydb *dbapi, use_cache int, settings *Config) stri
 		//	myp=mysplit[0]
 		//	else:
 		//	myp=mycpv
-		//	mykey=None
+		//	mykey=nil
 		//	matches=[]
-		//	if mydb and hasattr(mydb, "categories"):
+		//	if mydb && hasattr(mydb, "categories"):
 		//	for x in mydb.categories:
 		//	if mydb.cp_list(x+"/"+myp,use_cache=use_cache):
 		//	matches.append(x+"/"+myp)
 		//	if len(matches) > 1:
-		//	virtual_name_collision = False
+		//	virtual_name_collision = false
 		//	if len(matches) == 2:
 		//	for x in matches:
 		//	if not x.startswith("virtual/"):
 		//	mykey = x
 		//	else:
-		//	virtual_name_collision = True
+		//	virtual_name_collision = true
 		//	if not virtual_name_collision:
 		//		raise AmbiguousPackageName(matches)
 		//	elif matches:
 		//	mykey=matches[0]
 		//
-		//	if not mykey and not isinstance(mydb, list):
+		//	if not mykey && not isinstance(mydb, list):
 		//	if hasattr(mydb, "vartree"):
 		//	settings._populate_treeVirtuals_if_needed(mydb.vartree)
 		//	virts_p = settings.get_virts_p().get(myp)
@@ -291,10 +292,10 @@ func (d *dbapi) _pkg_str(cpv *pkgStr, repo string) *pkgStr {
 	//else:
 	return cpv
 	//
-	//metadata = dict(zip(self._pkg_str_aux_keys,
-	//self.aux_get(cpv, self._pkg_str_aux_keys, myrepo=repo)))
+	//metadata = dict(zip(d._pkg_str_aux_keys,
+	//d.aux_get(cpv, d._pkg_str_aux_keys, myrepo=repo)))
 	//
-	//return _pkg_str(cpv, metadata=metadata, settings=self.settings, db=self)
+	//return _pkg_str(cpv, metadata=metadata, settings=d.settings, db=d)
 }
 
 func (d *dbapi) _iter_match_repo(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
@@ -1079,7 +1080,7 @@ func (v *vardbapi) cp_all(use_cache int, sort1 bool) []string {
 			y.string = y.string[1:]
 		}
 		//try:
-		mysplit := catPkgSplit(y.string, 1, "")
+		mysplit := CatPkgSplit(y.string, 1, "")
 		//except InvalidData:
 		//v.invalidentry(v.getpath(y))
 		//continue
@@ -1188,15 +1189,15 @@ func (v *vardbapi) _aux_cache() *struct {
 func (v *vardbapi) _aux_cache_init() {
 
 	//TODO: pickle
-	//aux_cache := None
+	//aux_cache := nil
 	//open_kwargs := {}
 	//try:
-	//	with open(_unicode_encode(self._aux_cache_filename,
+	//	with open(_unicode_encode(v._aux_cache_filename,
 	//		encoding=_encodings['fs'], errors='strict'),
 	//		mode='rb', **open_kwargs) as f:
 	//		mypickle = pickle.Unpickler(f)
 	//		try:
-	//			mypickle.find_global = None
+	//			mypickle.find_global = nil
 	//		except AttributeError:
 	//			# TODO: If py3k, override Unpickler.find_class().
 	//			pass
@@ -1204,12 +1205,12 @@ func (v *vardbapi) _aux_cache_init() {
 	//except (SystemExit, KeyboardInterrupt):
 	//	raise
 	//except Exception as e:
-	//	if isinstance(e, EnvironmentError) and \
-	//		getattr(e, 'errno', None) in (errno.ENOENT, errno.EACCES):
+	//	if isinstance(e, EnvironmentError) && \
+	//		getattr(e, 'errno', nil) in (errno.ENOENT, errno.EACCES):
 	//		pass
 	//	else:
 	//		writemsg(_("!!! Error loading '%s': %s\n") % \
-	//			(self._aux_cache_filename, e), noiselevel=-1)
+	//			(v._aux_cache_filename, e), noiselevel=-1)
 	//	del e
 
 	aux_cache := &struct {
@@ -1491,7 +1492,7 @@ func (v *vardbapi) _aux_env_search(cpv string, variables []string) map[string]st
 				value = strings.TrimRight(var_assign_match[4], " ")
 			}
 
-			if ins(variables, key) {
+			if Ins(variables, key) {
 				results[key] = value
 			}
 		}
@@ -1577,8 +1578,8 @@ func (v *vardbapi) counter_tick_core(incrementing int) int {
 		// try:
 		write_atomic(v._counter_path, fmt.Sprint(counter), 0, true)
 		//except InvalidLocation:
-		//self.settings._init_dirs()
-		//write_atomic(self._counter_path, str(counter))
+		//v.settings._init_dirs()
+		//write_atomic(v._counter_path, str(counter))
 	}
 	v._cached_counter = counter
 	v.flush_cache()
@@ -1592,10 +1593,7 @@ func (v *vardbapi) _dblink(cpv string) *dblink {
 }
 
 // true
-func (v *vardbapi) removeFromContents(pkg, paths []string, relative_paths bool) {
-	if !hasattr(pkg, "getcontents") {
-		pkg = v._dblink(pkg)
-	}
+func (v *vardbapi) removeFromContents(pkg *dblink, paths []string, relative_paths bool) {
 	root := v.settings.ValueDict["ROOT"]
 	root_len := len(root) - 1
 	new_contents := pkg.getcontents().copy()
@@ -1655,9 +1653,9 @@ func (v *vardbapi) removeFromContents(pkg, paths []string, relative_paths bool) 
 }
 
 // nil
-func (v *vardbapi) writeContentsToContentsFile(pkg, new_contents, new_needed []string) {
+func (v *vardbapi) writeContentsToContentsFile(pkg *dblink, new_contents, new_needed []string) {
 	root := v.settings.ValueDict["ROOT"]
-	v._bump_mtime(pkg.mycpv)
+	v._bump_mtime(pkg.mycpv.string)
 	if new_needed != nil {
 		f := NewAtomic_ofstream(filepath.Join(pkg.dbdir, LinkageMap._needed_aux_key))
 		for entry := range new_needed {
@@ -1665,10 +1663,10 @@ func (v *vardbapi) writeContentsToContentsFile(pkg, new_contents, new_needed []s
 		}
 		f.Close()
 	}
-	f := NewAtomic_ofstream(filepath.Join(pkg.dbdir, "CONTENTS"))
+	f := NewAtomic_ofstream(filepath.Join(pkg.dbdir, "CONTENTS"), os.O_RDWR, true)
 	write_contents(new_contents, root, f)
 	f.Close()
-	v._bump_mtime(pkg.mycpv)
+	v._bump_mtime(pkg.mycpv.string)
 	pkg._clear_contents_cache()
 }
 
@@ -2112,16 +2110,16 @@ func (f *fakedbapi) _instance_key_multi_instance(cpv *pkgStr, support_string boo
 	//	//raise
 	//}
 	//
-	//	latest := None
+	//	latest := nil
 	//for _, pkg := range f.cp_list(cpv_getkey(cpv)){
 	//
-	//	if pkg == cpv and (
-	//		latest is None or
+	//	if pkg == cpv && (
+	//		latest == nil or
 	//	latest.build_time < pkg.build_time):
 	//	latest = pkg
 	//}
 	//
-	//if latest is not None:
+	//if latest != nil:
 	//return (latest, latest.build_id, latest.file_size,
 	//	latest.build_time, latest.mtime)
 	//
@@ -2651,7 +2649,7 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex {
 
 	minimum_keys := []string{}
 	for _, k := range b._pkgindex_keys {
-		if !ins(b._pkgindex_hashes, k) {
+		if !Ins(b._pkgindex_hashes, k) {
 			minimum_keys = append(minimum_keys, k)
 		}
 	}
@@ -2846,7 +2844,7 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex {
 			}
 
 			if multi_instance {
-				name_split := catPkgSplit(mycat+"/"+mypf, 1, "")
+				name_split := CatPkgSplit(mycat+"/"+mypf, 1, "")
 				if name_split == [4]string{} || catsplit(mydir)[0] != name_split[0] || catsplit(mydir)[1] != name_split[1] {
 					continue
 				}
@@ -2907,7 +2905,7 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex {
 			b._eval_use_flags(d)
 			//except portage.exception.InvalidDependString:
 			//WriteMsg(fmt.Sprintf("!!! Invalid binary package: '%s'\n", b.getname(mycpv)), -1, nil)
-			//self.dbapi.cpv_remove(mycpv)
+			//b.dbapi.cpv_remove(mycpv)
 			//del pkg_paths[_instance_key(mycpv)]
 
 			if mypath != mycpv.string+".tbz2" {
@@ -3409,7 +3407,23 @@ func NewBinaryTree(pkgDir string, settings *Config) *BinaryTree {
 
 type portdbapi struct {
 	*dbapi
-	_use_mutable bool
+	_use_mutable            bool
+	repositories            *repoConfigLoader
+	treemap                 map[string]string
+	doebuild_settings       *Config
+	depcachedir             string
+	porttrees               []string
+	_have_root_eclass_dir   bool
+	xcache                  map[string]string
+	frozen                  int
+	auxdb                   map[string]string
+	_pregen_auxdb           map[string]string
+	_ro_auxdb               map[string]string
+	_ordered_repo_name_list []string
+	_aux_cache_keys         map[string]bool
+	_aux_cache              map[string]string
+	_broken_ebuilds         map[string]bool
+	_better_cache           interface{}
 }
 
 func (p *portdbapi) _categories() {}
@@ -3492,13 +3506,126 @@ func (p *portdbapi) _iter_visible() {}
 
 func (p *portdbapi) _visible() {}
 
-func NewPortDbApi() *portdbapi {
+// nil
+func NewPortDbApi(mysettings *Config) *portdbapi {
 	p := &portdbapi{}
 	p._use_mutable = true
+	if mysettings != nil {
+		p.settings = mysettings
+	} else {
+		p.settings = NewConfig(Settings(), nil, "", nil, "", "", "", "", true, nil, false, nil)
+	}
+
+	p.repositories = p.settings.Repositories
+	p.treemap = p.repositories.treeMap
+
+	p.doebuild_settings = NewConfig(p.settings, nil, "", nil, "", "", "", "", true, nil, false, nil)
+	p.depcachedir, _ = filepath.EvalSymlinks(p.settings.depcachedir)
+
+	if os.Getenv("SANDBOX_ON") == "1" {
+		sandbox_write := strings.Split(os.Getenv("SANDBOX_WRITE"), ":")
+		if !Ins(sandbox_write, p.depcachedir) {
+			sandbox_write = append(sandbox_write, p.depcachedir)
+			os.Setenv("SANDBOX_WRITE", strings.Join(sandbox_write, ":"))
+		}
+	}
+
+	p.porttrees = p.settings.Repositories.repoLocationList
+	st, _ := os.Stat(
+		filepath.Join(p.settings.Repositories.mainRepoLocation(), "eclass"))
+
+	p._have_root_eclass_dir = st != nil && st.IsDir()
+
+	p.xcache = map[string]string{}
+	p.frozen = 0
+
+	rs := []string{}
+	copy(rs, p.repositories.preposOrder)
+	ReverseSlice(rs)
+	p._ordered_repo_name_list = rs
+
+	p.auxdbmodule = p.settings.load_best_module("portdbapi.auxdbmodule")
+	p.auxdb = map[string]string{}
+	p._pregen_auxdb = map[string]string{}
+
+	p._ro_auxdb = map[string]string{}
+	p._init_cache_dirs()
+	depcachedir_st, err := os.Stat(p.depcachedir)
+	depcachedir_w_ok := false
+	if err == nil {
+		st, err = os.Stat(p.depcachedir)
+		if err == nil {
+			depcachedir_w_ok = st.Mode()&unix.W_OK != 0
+		}
+	} else {
+		//except OSError:
+	}
+
+	cache_kwargs := map[string]int{}
+
+	depcachedir_unshared := false
+	if *secpass < 1 &&
+		depcachedir_w_ok &&
+		depcachedir_st != nil &&
+		os.Getuid() == int(depcachedir_st.Sys().(syscall.Stat_t).Uid) &&
+		os.Getgid() == int(depcachedir_st.Sys().(syscall.Stat_t).Gid) {
+
+		depcachedir_unshared = true
+	} else {
+		cache_kwargs["gid"] = int(*portage_gid)
+		cache_kwargs["perms"] = 0o664
+	}
+
+	if (*secpass < 1 && !depcachedir_unshared) || !depcachedir_w_ok {
+		for _, x := range p.porttrees {
+			p.auxdb[x] = volatile.database(
+				p.depcachedir, x, p._known_keys,
+				**cache_kwargs)
+			p._ro_auxdb[x], err = p.auxdbmodule(p.depcachedir, x,
+				p._known_keys, readonly = true, **cache_kwargs)
+			if err != nil {
+				//except CacheError:
+				//pass
+			}
+		}
+	} else {
+		for _, x := range p.porttrees {
+			if _, ok := p.auxdb[x]; ok {
+				continue
+			}
+		}
+	}
+
+	p.auxdb[x] = p.auxdbmodule(
+		p.depcachedir, x, p._known_keys, **cache_kwargs)
+	if !p.settings.Features.Features["metadata-transfer"] {
+		for _, x := range p.porttrees {
+			if _, ok := p._pregen_auxdb[x]; ok {
+				continue
+			}
+		}
+		cache := p._create_pregen_cache(x)
+		if cache != nil {
+			p._pregen_auxdb[x] = cache
+		}
+	}
+
+	p._aux_cache_keys = map[string]bool{
+		"BDEPEND": true, "DEPEND": true, "EAPI": true,
+		"INHERITED": true, "IUSE": true, "KEYWORDS": true, "LICENSE": true,
+		"PDEPEND": true, "PROPERTIES": true, "RDEPEND": true, "repository": true,
+		"RESTRICT": true, "SLOT": true, "DEFINED_PHASES": true, "REQUIRED_USE": true}
+
+	p._aux_cache = map[string]string{}
+	p._better_cache = nil
+	p._broken_ebuilds = map[string]bool{}
+
 	return p
 }
 
 type PortageTree struct {
+	settings *Config
+	dbapi    *portdbapi
 }
 
 func (p *PortageTree) portroot() {}
@@ -3519,12 +3646,20 @@ func (p *PortageTree) getname() {}
 
 func (p *PortageTree) getslot() {}
 
-func NewPortageTree(setting *Config) *PortageTree {
+func NewPortageTree(settings *Config) *PortageTree {
 	p := &PortageTree{}
+	if settings == nil {
+		settings = Settings()
+	}
+	p.settings = settings
+	p.dbapi = NewPortDbApi(settings)
 	return p
 }
 
 type FetchlistDict struct {
+	pkgdir, cp, mytree string
+	settings           *Config
+	portdb             *portdbapi
 }
 
 func (f *FetchlistDict) __getitem__() {}
@@ -3539,8 +3674,14 @@ func (f *FetchlistDict) __len__() {}
 
 func (f *FetchlistDict) keys() {}
 
-func NewFetchlistDict(setting *Config) *FetchlistDict {
+func NewFetchlistDict(pkgdir string, settings *Config, mydbapi *portdbapi) *FetchlistDict {
 	f := &FetchlistDict{}
+	f.pkgdir = pkgdir
+	f.cp = filepath.Join(strings.Split(pkgdir, string(os.PathSeparator))[len(strings.Split(pkgdir, string(os.PathSeparator)))-2:]...)
+	f.settings = settings
+	f.mytree, _ = filepath.EvalSymlinks(filepath.Dir(filepath.Dir(pkgdir)))
+	f.portdb = mydbapi
+
 	return f
 }
 

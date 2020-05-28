@@ -250,7 +250,7 @@ func (c *Config) expandLicenseTokens(tokens []string) []string {
 	return c.licenseManager.expandLicenseTokens(tokens)
 }
 
-func (c *Config) validate() {
+func (c *Config) Validate() {
 	groups := strings.Fields(c.ValueDict["ACCEPT_KEYWORDS"])
 	archlist := c.archlist()
 	if len(archlist) == 0 {
@@ -328,11 +328,11 @@ func (c *Config) validate() {
 	}
 }
 
-func (c *Config) lock() {
+func (c *Config) Lock() {
 	c.locked = 1
 }
 
-func (c *Config) unlock() {
+func (c *Config) Unlock() {
 	c.locked = 0
 }
 
@@ -343,7 +343,7 @@ func (c *Config) modifying() error {
 	return nil
 }
 
-func (c *Config) backupChanges(key string) {
+func (c *Config) BackupChanges(key string) {
 	c.modifying()
 	if _, ok := c.configDict["env"][key]; key != "" && ok {
 		c.backupenv[key] = c.configDict["env"][key]
@@ -887,7 +887,7 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 		}
 		vs := []string{}
 		for x := range expandFlags {
-			if ins(varSplit, x) {
+			if Ins(varSplit, x) {
 				vs = append(vs, x)
 			}
 		}
@@ -934,7 +934,7 @@ func (c *Config) SetCpv(mycpv *pkgStr, mydb *vardbapi) {
 		filteredVarSplit := []string{}
 		remaining := map[string]bool{}
 		for x := range hasIUse {
-			if ins(varSplit, x) {
+			if Ins(varSplit, x) {
 				remaining[x] = true
 			}
 		}
@@ -1484,7 +1484,7 @@ func (c *Config) selinux_enabled() bool {
 	if c._selinux_enabled == nil {
 		f := false
 		c._selinux_enabled = &f
-		if ins(strings.Fields(c.ValueDict["USE"]), "selinux") {
+		if Ins(strings.Fields(c.ValueDict["USE"]), "selinux") {
 			if selinux {
 				if selinux.is_selinux_enabled() == 1 {
 					f = true
@@ -1501,7 +1501,8 @@ func (c *Config) selinux_enabled() bool {
 
 var eapiCache = map[string]bool{}
 
-func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configIncrementals []string, configRoot, targetRoot, sysroot, eprefix string, localConfig bool, env map[string]string, unmatchedRemoval bool, repositories *repoConfigLoader) *Config { // nil, nil, "", nil, "","","","",true, nil, false, nil
+// nil, nil, "", nil, "","","","",true, nil, false, nil
+func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configIncrementals []string, configRoot, targetRoot, sysroot, eprefix string, localConfig bool, env map[string]string, unmatchedRemoval bool, repositories *repoConfigLoader) *Config {
 	eapiCache = make(map[string]bool)
 	tolerant := initializingGlobals == nil
 	c := &Config{
@@ -1860,11 +1861,11 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 			kr[v] = true
 		}
 		c.ValueDict["PORTAGE_REPOSITORIES"] = c.Repositories.configString()
-		c.backupChanges("PORTAGE_REPOSITORIES")
+		c.BackupChanges("PORTAGE_REPOSITORIES")
 		mainRepo := c.Repositories.mainRepo()
 		if mainRepo != nil {
 			c.ValueDict["PORTDIR"] = mainRepo.location
-			c.backupChanges("PORTDIR")
+			c.BackupChanges("PORTDIR")
 			expandMap["PORTDIR"] = c.ValueDict["PORTDIR"]
 		}
 		portDirOverlay1 := c.Repositories.repoLocationList
@@ -1883,7 +1884,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 			}
 		}
 		c.ValueDict["PORTDIR_OVERLAY"] = strings.Join(newOv, " ")
-		c.backupChanges("PORTDIR_OVERLAY")
+		c.BackupChanges("PORTDIR_OVERLAY")
 		expandMap["PORTDIR_OVERLAY"] = c.ValueDict["PORTDIR_OVERLAY"]
 		locationsManager.setPortDirs(c.ValueDict["PORTDIR"], c.ValueDict["PORTDIR_OVERLAY"])
 		locationsManager.loadProfiles(c.Repositories, knownRepos)
@@ -1976,21 +1977,21 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 			delete(c.backupenv, blackListed)
 		}
 		c.ValueDict["PORTAGE_CONFIGROOT"] = configRoot
-		c.backupChanges("PORTAGE_CONFIGROOT")
+		c.BackupChanges("PORTAGE_CONFIGROOT")
 		c.ValueDict["ROOT"] = targetRoot
-		c.backupChanges("ROOT")
+		c.BackupChanges("ROOT")
 		c.ValueDict["SYSROOT"] = sysroot
-		c.backupChanges("SYSROOT")
+		c.BackupChanges("SYSROOT")
 		c.ValueDict["EPREFIX"] = eprefix
-		c.backupChanges("EPREFIX")
+		c.BackupChanges("EPREFIX")
 		c.ValueDict["EROOT"] = eroot
-		c.backupChanges("EROOT")
+		c.BackupChanges("EROOT")
 		c.ValueDict["ESYSROOT"] = esysroot
-		c.backupChanges("ESYSROOT")
+		c.BackupChanges("ESYSROOT")
 		c.ValueDict["BROOT"] = broot
-		c.backupChanges("BROOT")
+		c.BackupChanges("BROOT")
 		c.ValueDict["PORTAGE_OVERRIDE_EPREFIX"] = EPREFIX
-		c.backupChanges("PORTAGE_OVERRIDE_EPREFIX")
+		c.BackupChanges("PORTAGE_OVERRIDE_EPREFIX")
 
 		c.ppropertiesdict = map[string]map[*Atom][]string{}
 		c.pacceptRestrict = map[string]map[*Atom][]string{}
@@ -2104,7 +2105,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 				}
 			}
 			for _, profile := range profilesComplex {
-				if !ins(profile.profileFormats, "profile-bashrcs") {
+				if !Ins(profile.profileFormats, "profile-bashrcs") {
 					continue
 				}
 				c.pbashrcdict[profile] = map[string]map[*Atom][]string{}
@@ -2179,7 +2180,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 				pkgProvidedLines = p
 				continue
 			}
-			cpvr := catPkgSplit(pkgProvidedLines[x], 1, "")
+			cpvr := CatPkgSplit(pkgProvidedLines[x], 1, "")
 			if cpvr == [4]string{} || cpvr[0] == "null" {
 				WriteMsg("Invalid package name in package.provided: "+pkgProvidedLines[x]+"\n", -1, nil)
 				hasInvalidData = true
@@ -2198,7 +2199,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		}
 		c.pprovideddict = map[string][]string{}
 		for _, x := range pkgProvidedLines {
-			x_split := catPkgSplit(x, 1, "")
+			x_split := CatPkgSplit(x, 1, "")
 			if x_split == [4]string{} {
 				continue
 			}
@@ -2212,13 +2213,13 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 
 		if _, ok := c.ValueDict["USE_ORDER"]; !ok {
 			c.ValueDict["USE_ORDER"] = "env:pkg:conf:defaults:pkginternal:features:repo:env.d"
-			c.backupChanges("USE_ORDER")
+			c.BackupChanges("USE_ORDER")
 		}
 		_, ok1 := c.ValueDict["CBUILD"]
 		_, ok2 := c.ValueDict["CHOST"]
 		if !ok1 && ok2 {
 			c.ValueDict["CBUILD"] = c.ValueDict["CHOST"]
-			c.backupChanges("CBUILD")
+			c.BackupChanges("CBUILD")
 		}
 
 		if _, ok := c.ValueDict["USERLAND"]; !ok {
@@ -2228,7 +2229,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 			} else {
 				c.ValueDict["USERLAND"] = "GNU"
 			}
-			c.backupChanges("USERLAND")
+			c.BackupChanges("USERLAND")
 		}
 
 		defaultInstIds := map[string]string{"PORTAGE_INST_GID": "0", "PORTAGE_INST_UID": "0"}
@@ -2248,7 +2249,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 				if pwdStruct, err := user.LookupId(fmt.Sprintf("%v", erootSt.Sys().(*syscall.Stat_t).Uid)); err != nil {
 				} else {
 					c.ValueDict["PORTAGE_USERNAME"] = pwdStruct.Name
-					c.backupChanges("PORTAGE_USERNAME")
+					c.BackupChanges("PORTAGE_USERNAME")
 				}
 			}
 
@@ -2256,7 +2257,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 				if grpStruct, err := user.LookupGroupId(fmt.Sprintf("%v", erootSt.Sys().(*syscall.Stat_t).Gid)); err != nil {
 				} else {
 					c.ValueDict["PORTAGE_GRPNAME"] = grpStruct.Name
-					c.backupChanges("PORTAGE_GRPNAME")
+					c.BackupChanges("PORTAGE_GRPNAME")
 				}
 			}
 		}
@@ -2271,7 +2272,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 			} else {
 				c.ValueDict[varr] = v
 			}
-			c.backupChanges(varr)
+			c.BackupChanges(varr)
 		}
 
 		c.depcachedir = c.ValueDict["PORTAGE_DEPCACHEDIR"]
@@ -2285,11 +2286,11 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		}
 
 		c.ValueDict["PORTAGE_DEPCACHEDIR"] = c.depcachedir
-		c.backupChanges("PORTAGE_DEPCACHEDIR")
+		c.BackupChanges("PORTAGE_DEPCACHEDIR")
 
 		if InternalCaller {
 			c.ValueDict["PORTAGE_INTERNAL_CALLER"] = "1"
-			c.backupChanges("PORTAGE_INTERNAL_CALLER")
+			c.BackupChanges("PORTAGE_INTERNAL_CALLER")
 		}
 
 		c.regenerate(0)
@@ -2316,7 +2317,7 @@ func NewConfig(clone *Config, mycpv *pkgStr, configProfilePath string, configInc
 		for k := range c.caseInsensitiveVars {
 			if _, ok := c.ValueDict[k]; ok {
 				c.ValueDict[k] = strings.ToLower(c.ValueDict[k])
-				c.backupChanges(k)
+				c.BackupChanges(k)
 			}
 		}
 		output_init(c.ValueDict["PORTAGE_CONFIGROOT"])
@@ -2395,10 +2396,10 @@ func (f *featuresSet) differenceUpdate(values []string) {
 }
 
 func (f *featuresSet) remove(k string) {
-	f.discard(k)
+	f.Discard(k)
 }
 
-func (f *featuresSet) discard(k string) {
+func (f *featuresSet) Discard(k string) {
 	f.settings.modifying()
 	f.settings.featuresOverrides = append(f.settings.featuresOverrides, "-"+v)
 	if f.Features[v] {
@@ -2680,7 +2681,7 @@ func (l *locationsManager) addProfile(currentPath string, repositories *repoConf
 		}
 	}
 	l.profiles = append(l.profiles, currentPath)
-	l.profilesComplex = append(l.profilesComplex, &profileNode{location: currentPath, portage1Directories: allowDirectories, userConfig: false, profileFormats: currentFormats, eapi: eapi, allowBuildId: ins(currentFormats, "build-id")})
+	l.profilesComplex = append(l.profilesComplex, &profileNode{location: currentPath, portage1Directories: allowDirectories, userConfig: false, profileFormats: currentFormats, eapi: eapi, allowBuildId: Ins(currentFormats, "build-id")})
 }
 
 func (l *locationsManager) expandParentColon(parentsFile, parentPath, repoLoc string, repositories *repoConfigLoader) string {
@@ -2948,7 +2949,7 @@ func (u *useManager) parseRepositoryFilesToDictOfTuples(fileName string, reposit
 func (u *useManager) parseRepositoryFilesToDictOfDicts(fileName string, repositories *repoConfigLoader, eapiFilter func(string) bool) map[string]map[string]map[*Atom][]string {
 	ret := map[string]map[string]map[*Atom][]string{}
 	for _, repo := range repositories.reposWithProfiles() {
-		ret[repo.Name] = u.parseFileToDict(path.Join(repo.location, "profiles", fileName), false, true, eapiFilter, false, "0", repo.eapi, ins(repo.profileFormats, "build-id"))
+		ret[repo.Name] = u.parseFileToDict(path.Join(repo.location, "profiles", fileName), false, true, eapiFilter, false, "0", repo.eapi, Ins(repo.profileFormats, "build-id"))
 	}
 	return ret
 }
@@ -3475,7 +3476,7 @@ func NewMaskManager(repositories *repoConfigLoader, profiles []*profileNode, abs
 	grabPMask := func(loc string, repoConfig *RepoConfig) [][2]string {
 		if _, ok := pmaskCache[loc]; !ok {
 			path := path.Join(loc, "profiles", "package.mask")
-			pmaskCache[loc] = grabFilePackage(path, 0, repoConfig.portage1Profiles, false, false, ins(repoConfig.profileFormats, "build-id"), true, true, "", repoConfig.eapi)
+			pmaskCache[loc] = grabFilePackage(path, 0, repoConfig.portage1Profiles, false, false, Ins(repoConfig.profileFormats, "build-id"), true, true, "", repoConfig.eapi)
 			//if repo_config.portage1_profiles_compat and os.path.isdir(path):
 			//warnings.warn(_("Repository '%(repo_name)s' is implicitly using "
 			//"'portage-1' profile format in its profiles/package.mask, but "
@@ -3545,7 +3546,7 @@ func NewMaskManager(repositories *repoConfigLoader, profiles []*profileNode, abs
 		if !repo.portage1Profiles {
 			continue
 		}
-		repoLines := grabFilePackage(path.Join(repo.location, "profiles", "package.unmask"), 0, true, false, false, ins(repo.profileFormats, "build-id"), true, true, "", repo.eapi)
+		repoLines := grabFilePackage(path.Join(repo.location, "profiles", "package.unmask"), 0, true, false, false, Ins(repo.profileFormats, "build-id"), true, true, "", repo.eapi)
 		lines := stackLists([][][2]string{repoLines}, 1, true, true, strict_umatched_removal, false)
 		repoPkgUnmaskLines = append(repoPkgUnmaskLines, appendRepo(lines, repo.Name, true)...)
 	}
@@ -4170,7 +4171,7 @@ func (v *virtualManager) _compile_virtuals() {
 			continue
 		}
 		for _, cp := range installedList {
-			if ins(profileList, cp) {
+			if Ins(profileList, cp) {
 				if _, ok := ptVirtuals[virt]; !ok {
 					ptVirtuals[virt] = []string{cp}
 				} else {
@@ -4258,7 +4259,7 @@ func (v *virtualManager) add_depgraph_virtuals(mycpv string, virts []string) {
 			providers = []string{}
 			v._depgraphVirtuals[virt] = providers
 		}
-		if !ins(providers, cp.value) {
+		if !Ins(providers, cp.value) {
 			providers = append(providers, cp.value)
 			modified = true
 		}

@@ -38,270 +38,304 @@ func main() {
 
 	//description := "See the ebuild(1) man page for more info"
 	//usage := "Usage: ebuild <ebuild file> <command> [command] ..."
-	pf :=pflag.NewFlagSet("ebuild", pflag.ExitOnError)
+	pf := pflag.NewFlagSet("ebuild", pflag.ExitOnError)
 
 	force_help := "When used together with the digest or manifest " +
-	"command, this option forces regeneration of digests for all " +
-	"distfiles associated with the current ebuild. Any distfiles " +
-	"that do not already exist in ${DISTDIR} will be automatically fetched."
+		"command, this option forces regeneration of digests for all " +
+		"distfiles associated with the current ebuild. Any distfiles " +
+		"that do not already exist in ${DISTDIR} will be automatically fetched."
 
-	var opts struct{
+	var opts struct {
 		force, debug, version, ignore_default_opts, skip_manifest bool
-		color string
+		color                                                     string
 	}
-	pf.BoolVar(&opts.force,"--force", false ,force_help)
-	pf.StringVar(&opts.color,"--color", "y" ,"enable or disable color output")
-	pf.BoolVar(&opts.debug,"--debug", false ,"show debug output")
-	pf.BoolVar(&opts.version,"--version", false ,"show version and exit")
-	pf.BoolVar(&opts.ignore_default_opts,"--ignore-default-opts", false ,"do not use the EBUILD_DEFAULT_OPTS environment variable")
-	pf.BoolVar(&opts.skip_manifest,"--skip-manifest", false ,"skip all manifest checks")
+	pf.BoolVar(&opts.force, "--force", false, force_help)
+	pf.StringVar(&opts.color, "--color", "y", "enable or disable color output")
+	pf.BoolVar(&opts.debug, "--debug", false, "show debug output")
+	pf.BoolVar(&opts.version, "--version", false, "show version and exit")
+	pf.BoolVar(&opts.ignore_default_opts, "--ignore-default-opts", false, "do not use the EBUILD_DEFAULT_OPTS environment variable")
+	pf.BoolVar(&opts.skip_manifest, "--skip-manifest", false, "skip all manifest checks")
 	pf.Parse(os.Args[1:])
 	pargs := pf.Args()
 	if opts.version {
 		print("Portage", atom.VERSION)
 		os.Exit(syscall.F_OK)
 	}
-	if len(pargs) < 2{
-		os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],"missing required args")))
+	if len(pargs) < 2 {
+		os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0], "missing required args")))
 	}
-	if ! opts.ignore_default_opts {
-		default_opts , _:= shlex.Split(strings.NewReader(
+	if !opts.ignore_default_opts {
+		default_opts, _ := shlex.Split(strings.NewReader(
 			atom.Settings().ValueDict["EBUILD_DEFAULT_OPTS"]), false, true)
-		 pf.Parse(append(default_opts , os.Args[1:]...))
+		pf.Parse(append(default_opts, os.Args[1:]...))
 		pargs = pf.Args()
 	}
 	debug := opts.debug
 	force := opts.force
 	if debug {
 		os.Setenv("PORTAGE_DEBUG", "1")
-		atom._reset_legacy_globals()
+		atom.ResetLegacyGlobals()
 	}
 	if opts.color != "y" &&
-	(opts.color == "n"||
-		(atom.Settings().ValueDict["NOCOLOR"] != "yes" &&
-		atom.Settings().ValueDict["NOCOLOR"] !="true")||
-	atom.Settings().ValueDict["TERM"] == "dumb"|| ! terminal.IsTerminal(int(os.Stdout.Fd()))) {
+		(opts.color == "n" ||
+			(atom.Settings().ValueDict["NOCOLOR"] != "yes" &&
+				atom.Settings().ValueDict["NOCOLOR"] != "true") ||
+			atom.Settings().ValueDict["TERM"] == "dumb" || !terminal.IsTerminal(int(os.Stdout.Fd()))) {
 		atom.NoColor()
-		atom.Settings().unlock()
+		atom.Settings().Unlock()
 		atom.Settings().ValueDict["NOCOLOR"] = "true"
-		atom.Settings().backupChanges("NOCOLOR")
-		atom.Settings().lock()
+		atom.Settings().BackupChanges("NOCOLOR")
+		atom.Settings().Lock()
 	}
 	ebuild := pargs[0]
 	pargs = pargs[1:]
 
 	pf1 := ""
-	if strings.HasSuffix(ebuild,".ebuild") {
+	if strings.HasSuffix(ebuild, ".ebuild") {
 		pf1 = filepath.Base(ebuild)[:-7]
 	}
 	if pf1 == "" {
-		err(fmt.Sprintf("%s{ does not end with '.ebuild'" ,ebuild ))
+		err(fmt.Sprintf("%s{ does not end with '.ebuild'", ebuild))
 	}
-	if ! filepath.IsAbs(ebuild){
-	mycwd, _ := os.Getwd()
-	pwd := os.Getenv("PWD")
-	if rp, _ := filepath.EvalSymlinks(pwd);pwd!="" &&pwd != mycwd &&
-	rp == mycwd {
-		mycwd = atom.NormalizePath(pwd)
-		ebuild = filepath.Join(mycwd, ebuild)
+	if !filepath.IsAbs(ebuild) {
+		mycwd, _ := os.Getwd()
+		pwd := os.Getenv("PWD")
+		if rp, _ := filepath.EvalSymlinks(pwd); pwd != "" && pwd != mycwd &&
+			rp == mycwd {
+			mycwd = atom.NormalizePath(pwd)
+			ebuild = filepath.Join(mycwd, ebuild)
+		}
 	}
 	ebuild = atom.NormalizePath(ebuild)
 	ebuild_portdir, _ := filepath.EvalSymlinks(filepath.Dir(filepath.Dir(filepath.Dir(ebuild))))
-		ep :=strings.Split(ebuild, string(os.PathSeparator))
+	ep := strings.Split(ebuild, string(os.PathSeparator))
 	ebuild = filepath.Join(ebuild_portdir, ep[len(ep)-3], ep[len(ep)-2], ep[len(ep)-2])
-	vdb_path ,_:= filepath.EvalSymlinks(filepath.Join(atom.Settings().ValueDict["EROOT"], atom.VdbPath))
+	vdb_path, _ := filepath.EvalSymlinks(filepath.Join(atom.Settings().ValueDict["EROOT"], atom.VdbPath))
 	if ebuild_portdir != vdb_path &&
-	ebuild_portdir not in atom.portdb.porttrees{
-	portdir_overlay := atom.Settings().ValueDict["PORTDIR_OVERLAY"]
-	os.Setenv("PORTDIR_OVERLAY", portdir_overlay + " " + atom.ShellQuote(ebuild_portdir)
-	print(fmt.Sprintf("Appending %s to PORTDIR_OVERLAY..." ,ebuild_portdir))
-	atom._reset_legacy_globals()
+		!atom.Ins(atom.Portdb().porttrees, ebuild_portdir) {
+		portdir_overlay := atom.Settings().ValueDict["PORTDIR_OVERLAY"]
+		os.Setenv("PORTDIR_OVERLAY", portdir_overlay+" "+atom.ShellQuote(ebuild_portdir))
+
+		print(fmt.Sprintf("Appending %s to PORTDIR_OVERLAY...", ebuild_portdir))
+		atom.ResetLegacyGlobals()
 	}
-	myrepo = None
-	if ebuild_portdir != vdb_path{
-	myrepo = portage.portdb.getRepositoryName(ebuild_portdir)
-	if _, err := os.Stat(ebuild); err == os.ErrNotExist {
-		err(fmt.Sprintf("%s: does not exist" ,ebuild))
+
+	myrepo := nil
+	if ebuild_portdir != vdb_path {
+		myrepo = atom.Portdb().getRepositoryName(ebuild_portdir)
 	}
-	ebuild_split := strings.Split(ebuild,"/")
-	cpv := fmt.Sprintf("%s/%s" ,ebuild_split[len(ebuild_split)-3], pf)
+	if _, err1 := os.Stat(ebuild); err1 == os.ErrNotExist {
+		err(fmt.Sprintf("%s: does not exist", ebuild))
+	}
+	ebuild_split := strings.Split(ebuild, "/")
+	cpv := fmt.Sprintf("%s/%s", ebuild_split[len(ebuild_split)-3], pf)
 	f, _ := ioutil.ReadFile(ebuild)
-	eapi, _ := atom.parseEapiEbuildHead(strings.Split(string(f), "\n"))
-	if eapi =="" {
+	eapi, _ := atom.ParseEapiEbuildHead(strings.Split(string(f), "\n"))
+	if eapi == "" {
 		eapi = "0"
 	}
-	if atom.catPkgSplit(cpv, 1,eapi)==[4]string{} {
-		err(fmt.Sprintf("%s: %s: does not follow correct package syntax",ebuild, cpv))
+	if atom.CatPkgSplit(cpv, 1, eapi) == [4]string{} {
+		err(fmt.Sprintf("%s: %s: does not follow correct package syntax", ebuild, cpv))
 	}
 	print(vdb_path)
 	var mytree, pkg_type string
-	if strings.HasPrefix(ebuild,vdb_path){
+	if strings.HasPrefix(ebuild, vdb_path) {
 		mytree = "vartree"
-	pkg_type = "installed"
-	portage_ebuild := atom.Db().Values()[atom.Root()].VarTree().dbapi.findname(cpv)
-	if rp, _ :=filepath.EvalSymlinks(portage_ebuild); rp != ebuild{
-	err(fmt.Sprintf("Portage seems to think that %s is at %s" ,cpv, portage_ebuild))
-	}else {
+		pkg_type = "installed"
+		portage_ebuild := atom.Db().Values()[atom.Root()].VarTree().dbapi.findname(cpv)
+		if rp, _ := filepath.EvalSymlinks(portage_ebuild); rp != ebuild {
+			err(fmt.Sprintf("Portage seems to think that %s is at %s", cpv, portage_ebuild))
+		}
+	} else {
 		mytree = "porttree"
 		pkg_type = "ebuild"
-		portage_ebuild = portage.portdb.findname(cpv, myrepo = myrepo)
+		portage_ebuild := atom.Portdb().findname(cpv, myrepo)
 		if len(portage_ebuild) == 0 || portage_ebuild != ebuild {
 			err(fmt.Sprintf("%s: does not seem to have a valid PORTDIR structure", ebuild))
 		}
 	}
-	in := false
-	for _, v := range pargs{
-		if v == "config" {
-			in =true
-			break
+	if len(pargs) > 1 && atom.Ins(pargs, "config"){
+		other_phases := map[string]bool{}
+		for _, v := range pargs {
+			other_phases[v] = true
+		}
+		for _, v := range []string{"clean", "config", "digest", "manifest"} {
+			delete(other_phases, v)
+		}
+		if len(other_phases) > 0 {
+			err("\"config\" must not be called with any other phase")
 		}
 	}
-	if len(pargs) > 1 &&in{
-	other_phases := map[string]bool{}
-	for _, v := range pargs {
-		other_phases[v] = true
-	}
-	for _, v := range []string{"clean", "config", "digest", "manifest"}{
-		delete(other_phases, v)
-	}
-	if len(other_phases) > 0{
-			err("\"config\" must not be called with any other phase")
-			}
 
-	atom.Settings().validate()
-	build_dir_phases := map[string]bool{"setup":true, "unpack":true, "prepare":true, "configure":true, "compile":true,
-	"test":true, "install":true, "package":true, "rpm":true, "merge":true, "qmerge":true}
+	atom.Settings().Validate()
+	build_dir_phases := map[string]bool{"setup": true, "unpack": true, "prepare": true, "configure": true, "compile": true,
+		"test": true, "install": true, "package": true, "rpm": true, "merge": true, "qmerge": true}
 	ebuild_changed := false
-	inter := map[string]bool {}
+	inter := map[string]bool{}
 	for _, v := range pargs {
 		if build_dir_phases[v] {
 			inter[v] = true
 		}
 	}
-	if mytree == "porttree" &&len(inter)>0 {
+	if mytree == "porttree" && len(inter) > 0 {
 		ebuild_changed =
-			portage.portdb._pull_valid_cache(cpv, ebuild, ebuild_portdir)[0] == ""
+			atom.Portdb()._pull_valid_cache(cpv, ebuild, ebuild_portdir)[0] == ""
 	}
-	print(portage.portdb)
-	tmpsettings := portage.portdb.doebuild_settings
-	tmpsettings["PORTAGE_VERBOSE"] = "1"
-	tmpsettings.backup_changes("PORTAGE_VERBOSE")
-	if opts.skip_manifest{
-	tmpsettings["EBUILD_SKIP_MANIFEST"] = "1"
-	tmpsettings.backup_changes("EBUILD_SKIP_MANIFEST")
-	if opts.skip_manifest||
-	"digest" in tmpsettings.features||
-	"digest" in pargs||
-	"manifest" in pargs{
-	portage._doebuild_manifest_exempt_depend += 1
-	if "test" in pargs{
-	tmpsettings["EBUILD_FORCE_TEST"] = "1"
-	tmpsettings.backup_changes("EBUILD_FORCE_TEST")
-	tmpsettings.features.add("test")
-	atom.WriteMsg(fmt.Sprintf(_("Forcing test.\n"), noiselevel=-1)
-	tmpsettings.features.discard("fail-clean")
-	if "merge" in pargs &&"noauto" in tmpsettings.features{
-	print("Disabling noauto in features... merge disables it. (qmerge doesn't)")
-	tmpsettings.features.discard("noauto")
-	if "digest" in tmpsettings.features{
-	if pargs &&pargs[0] not in ("digest", "manifest"){
-	pargs = ["digest"] + pargs
-	tmpsettings.features.discard("digest")
-	tmpsettings = portage.config(clone=tmpsettings)
-	try{
-	metadata = dict(zip(Package.metadata_keys,
-	atom.Db()[atom.Settings()["EROOT"]][mytree].dbapi.aux_get(
-	cpv, Package.metadata_keys, myrepo=myrepo)))
-	except PortageKeyError{
-	sys.exit(1)
-	root_config = RootConfig(atom.Settings(),
-	atom.Db()[atom.Settings()["EROOT"]], None)
-	pkg = Package(built=(pkg_type != "ebuild"), cpv=cpv,
-	installed=(pkg_type=="installed"),
-	metadata=metadata, root_config=root_config,
-	type_name=pkg_type)
-	tmpsettings.setcpv(pkg)
-	checked_for_stale_env = false
-	for arg in pargs{
-	try{
-	if not checked_for_stale_env &&arg not in ("digest","manifest"){
-	stale_env_warning()
-	checked_for_stale_env = true
-	if arg in ("digest", "manifest") &&force{
-	discard_digests(ebuild, tmpsettings, portage.portdb)
-	print(ebuild, arg, tmpsettings, debug, mytree, atom.Db()[portage.root]["vartree"])
-	a = portage.doebuild(ebuild, arg, settings=tmpsettings,
-	debug=debug, tree=mytree,
-	vartree=atom.Db()[portage.root]["vartree"])
-	except KeyboardInterrupt{
-	print("Interrupted.")
-	a = 1
-	except PortageKeyError{
-	a = 1
-	except UnsupportedAPIException as e{
-	msg = textwrap.wrap(str(e), 70)
-	del e
-	for x in msg{
-	atom.WriteMsg(fmt.Sprintf("!!! %s\n" % x, noiselevel=-1)
-	a = 1
-	except PortagePackageException as e{
-	atom.WriteMsg(fmt.Sprintf("!!! %s\n" % (e,), noiselevel=-1)
-	a = 1
-	except PermissionDenied as e{
-	atom.WriteMsg(fmt.Sprintf("!!! Permission Denied: %s\n" % (e,), noiselevel=-1)
-	a = 1
-	if a == None{
-	print("Could not run the required binary?")
-	a = 127
-	if a{
-	global_event_loop().close()
-	sys.exit(a)
-	global_event_loop().close()
+	print(atom.Portdb())
+	tmpsettings := atom.Portdb().doebuild_settings
+	tmpsettings.ValueDict["PORTAGE_VERBOSE"] = "1"
+	tmpsettings.BackupChanges("PORTAGE_VERBOSE")
+	if opts.skip_manifest {
+		tmpsettings.ValueDict["EBUILD_SKIP_MANIFEST"] = "1"
+		tmpsettings.BackupChanges("EBUILD_SKIP_MANIFEST")
 	}
+	if opts.skip_manifest ||
+		tmpsettings.Features.Features["digest"] ||
+		atom.Ins(pargs, "digest") ||
+		atom.Ins(pargs, "manifest") {
+		atom._doebuild_manifest_exempt_depend += 1
+	}
+	if atom.Ins(pargs, "test") {
+		tmpsettings.ValueDict["EBUILD_FORCE_TEST"] = "1"
+		tmpsettings.BackupChanges("EBUILD_FORCE_TEST")
+		tmpsettings.Features.Features["test"] = true
+		atom.WriteMsg(fmt.Sprintf("Forcing test.\n"), -1, nil)
+	}
+	tmpsettings.Features.Discard("fail-clean")
+	if atom.Ins(pargs, "merge") && tmpsettings.Features.Features["noauto"] {
+		print("Disabling noauto in features... merge disables it. (qmerge doesn't)")
+		tmpsettings.Features.Discard("noauto")
+	}
+	if tmpsettings.Features.Features["digest"] {
+		if len(pargs) > 0 && pargs[0] != "digest" && pargs[0] != "manifest" {
+			pargs = append([]string{"digest"}, pargs...)
+		}
+		tmpsettings.Features.Discard("digest")
+	}
+	tmpsettings = atom.NewConfig(tmpsettings, nil, "", nil, "", "", "", "", true, nil, false, nil)
+	//try{
+	var mydbapi atom.DBAPI
+	if mytree == "porttree" {
+		mydbapi = atom.Db().Values()[atom.Settings().ValueDict["EROOT"]].PortTree().dbapi
+	} else if mytree == "vartree" {
+		mydbapi = atom.Db().Values()[atom.Settings().ValueDict["EROOT"]].VarTree().dbapi
+	}
+
+	metadata := dict(zip(atom.NewPackage().metadata_keys,
+		mydbapi.aux_get(
+			cpv, atom.NewPackage().metadata_keys, myrepo = myrepo)))
+	if err != nil {
+		//except PortageKeyError{
+		syscall.Exit(1)
+	}
+	root_config := RootConfig(atom.Settings(),
+		atom.Db().Values()[atom.Settings().ValueDict["EROOT"]], nil)
+	pkg := atom.NewPackage(pkg_type != "ebuild", cpv,
+		pkg_type == "installed",
+		metadata, root_config,
+		pkg_type)
+	tmpsettings.SetCpv(pkg)
+	checked_for_stale_env := false
+	for _, arg := range pargs {
+		//try{
+		if !checked_for_stale_env && arg != "digest" && arg != "manifest" {
+			stale_env_warning(pargs , tmpsettings, build_dir_phases , debug, ebuild_changed , ebuild )
+			checked_for_stale_env = true
+		}
+		if (arg == "digest" || arg == "manifest") && force {
+			discard_digests(ebuild, tmpsettings, atom.Portdb())
+		}
+		print(ebuild, arg, tmpsettings, debug, mytree, atom.Db().Values()[atom.Root()].VarTree())
+		a := atom.doebuild(ebuild, arg, settings = tmpsettings,
+			debug = debug, tree=mytree,
+			vartree = atom.Db().Values()[atom.Root()].VarTree())
+		//except KeyboardInterrupt{
+		//print("Interrupted.")
+		//a = 1
+		//except PortageKeyError{
+		//a = 1
+		//except UnsupportedAPIException as e{
+		//msg = textwrap.wrap(str(e), 70)
+		//del e
+		//for _, x := range msg{
+		//atom.WriteMsg(fmt.Sprintf("!!! %s\n" % x, -1, nil)
+		//a = 1
+		//except PortagePackageException as e{
+		//atom.WriteMsg(fmt.Sprintf("!!! %s\n" % (e,), -1, nil)
+		//a = 1
+		//except PermissionDenied as e{
+		//atom.WriteMsg(fmt.Sprintf("!!! Permission Denied: %s\n" % (e,), -1, nil)
+		//a = 1
+		if a == nil {
+			print("Could not run the required binary?")
+			a = 127
+		}
+		if a != 0 {
+			//global_event_loop().close()
+			syscall.Exit(a)
+		}
+	}
+	//global_event_loop().close()
+}
 
 func err(txt string) {
 	atom.WriteMsg(fmt.Sprintf("ebuild: %s\n" , txt ), -1, nil)
 	os.Exit(1)
 }
 
-func discard_digests(myebuild, mysettings, mydbapi){
-try{
-portage._doebuild_manifest_exempt_depend += 1
-pkgdir = filepath.dirname(myebuild)
-fetchlist_dict = portage.FetchlistDict(pkgdir, mysettings, mydbapi)
-mf = mysettings.repositories.get_repo_for_location(
-filepath.dirname(filepath.dirname(pkgdir)))
-mf = mf.load_manifest(pkgdir, mysettings["DISTDIR"],
-fetchlist_dict=fetchlist_dict)
-mf.create(requiredDistfiles=None,
-assumeDistHashesSometimes=true, assumeDistHashesAlways=true)
-distfiles = fetchlist_dict[cpv]
-for myfile in distfiles{
-try{
-del mf.fhashdict["DIST"][myfile]
-except KeyError{
-pass
-mf.write()
-finally{
-						portage._doebuild_manifest_exempt_depend -= 1
-						}
+func discard_digests(myebuild string, mysettings *atom.Config, mydbapi *atom.portdbapi) {
+	//try{
+	atom._doebuild_manifest_exempt_depend += 1
+	defer atom._doebuild_manifest_exempt_depend -= 1
 
-func stale_env_warning(){
-if "clean" not in pargs &&
-"noauto" not in tmpsettings.features &&
-build_dir_phases.intersection(pargs){
-portage.doebuild_environment(ebuild, "setup", portage.root,
-tmpsettings, debug, 1, portage.portdb)
-env_filename = filepath.Join(tmpsettings["T"], "environment")
-if filepath.exists(env_filename){
-msg = fmt.Sprintf("Existing ${T}/environment for '%s' will be sourced. " +
-"Run 'clean' to start with a fresh environment.") %
-(tmpsettings["PF"], )
-msg = textwrap.wrap(msg, 70)
-for x in msg{
-atom.WriteMsg(fmt.Sprintf(">>> %s\n" % x)
+	pkgdir := filepath.Dir(myebuild)
+	fetchlist_dict := atom.NewFetchlistDict(pkgdir, mysettings, mydbapi)
+	mf := mysettings.Repositories.getRepoForLocation(
+		filepath.Dir(filepath.Dir(pkgdir)))
+	mf = mf.load_manifest(pkgdir, mysettings.ValueDict["DISTDIR"],
+		fetchlist_dict = fetchlist_dict)
+	mf.create(requiredDistfiles = nil,
+		assumeDistHashesSometimes = true, assumeDistHashesAlways = true)
+	distfiles := fetchlist_dict[cpv]
+	for _, myfile := range distfiles {
+		//try{
+		delete(mf.fhashdict["DIST"], myfile)
+		//except KeyError{
+		//pass
+	}
+	mf.write()
+	//finally{
+}
 
-if ebuild_changed{
-						open(filepath.Join(tmpsettings["PORTAGE_BUILDDIR"],
-						".ebuild_changed"), "w").close()
-						}
+func stale_env_warning(pargs []string, tmpsettings*atom.Config, build_dir_phases map[string]bool, debug, ebuild_changed bool, ebuild string) {
+	inter := map[string]bool{}
+	for _, p :=range pargs{
+		if !build_dir_phases[p]{
+			inter[p] =true
+		}
+	}
+	if !atom.Ins(pargs, "clean") &&
+		!tmpsettings.Features.Features["noauto"] &&
+		len(inter)>0 {
+		atom.doebuild_environment(ebuild, "setup", atom.Root(),
+			tmpsettings, debug, 1, atom.Portdb())
+		env_filename := filepath.Join(tmpsettings.ValueDict["T"], "environment")
+		if _, err := os.Stat(env_filename) ;err != nil {
+			msg := fmt.Sprintf("Existing ${T}/environment for '%s' will be sourced. "+
+				"Run 'clean' to start with a fresh environment.",
+				tmpsettings.ValueDict["PF"], )
+			msgs := atom.SplitSubN(msg, 70)
+			for _, x := range msgs {
+				atom.WriteMsg(fmt.Sprintf(">>> %s\n", x), 0, nil)
+			}
+			if ebuild_changed{
+				f, err := os.OpenFile(filepath.Join(tmpsettings.ValueDict["PORTAGE_BUILDDIR"],
+					".ebuild_changed"), os.O_RDWR, 0644)
+				if err == nil {
+					f.Close()
+				}
+			}
+		}
+	}
+}
+

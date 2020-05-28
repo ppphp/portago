@@ -167,9 +167,9 @@ func _doebuild_spawn(phase string, settings *Config, actionmap=None, **kwargs)([
 	kwargs["ipc"] = !settings.Features.Features["ipc-sandbox"] || _ipc_phases[phase]
 	kwargs["mountns"] = settings.Features.Features["mount-sandbox"]
 	kwargs["networked"] = !settings.Features.Features["network-sandbox"] || (phase == "unpack" &&
-		ins(strings.Fields(settings.configDict["pkg"]["PROPERTIES"]), "live")) ||
+		Ins(strings.Fields(settings.configDict["pkg"]["PROPERTIES"]), "live")) ||
 		_ipc_phases[phase] ||
-		ins(strings.Fields(settings.ValueDict["PORTAGE_RESTRICT"]), "network-sandbox")
+		Ins(strings.Fields(settings.ValueDict["PORTAGE_RESTRICT"]), "network-sandbox")
 	kwargs["pidns"] = settings.Features.Features["pid-sandbox"] &&
 		!_global_pid_phases[phase]
 

@@ -1759,7 +1759,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 	}
 
 	mycpv := mydepA.cpv
-	mycpvCps := catPkgSplit(mycpv.string, 0, "")
+	mycpvCps := CatPkgSplit(mycpv.string, 0, "")
 	//slot      := mydepA.slot
 	buildId := mydepA.buildId
 
@@ -1793,7 +1793,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 		for _, x := range candidateList {
 			cp := x.cp
 			if cp == "" {
-				mysplit := catPkgSplit(removeSlot(x.string), 1, "")
+				mysplit := CatPkgSplit(removeSlot(x.string), 1, "")
 				if mysplit != [4]string{} {
 					cp = mysplit[0] + "/" + mysplit[1]
 				}
@@ -1812,7 +1812,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 			for _, x := range candidateList {
 				xVer := x.version
 				if xVer == "" {
-					xs := catPkgSplit(removeSlot(x.string), 1, "")
+					xs := CatPkgSplit(removeSlot(x.string), 1, "")
 					if xs == [4]string{} {
 						continue
 					}
@@ -1827,7 +1827,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 		for _, x := range candidateList {
 			cp := x.cp
 			if cp == "" {
-				mysplit := catPkgSplit(removeSlot(x.string), 1, "")
+				mysplit := CatPkgSplit(removeSlot(x.string), 1, "")
 				if mysplit != [4]string{} {
 					cp = mysplit[0] + "/" + mysplit[1]
 				}
@@ -1891,7 +1891,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 		for _, x := range candidateList {
 			xs := x.cpvSplit
 			if xs == [4]string{} {
-				xs = catPkgSplit(removeSlot(x.string), 1, "")
+				xs = CatPkgSplit(removeSlot(x.string), 1, "")
 			}
 			if xs == [4]string{} {
 				//raise InvalidData(x)

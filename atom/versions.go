@@ -352,7 +352,7 @@ var (
 )
 
 // 1, ""
-func catPkgSplit(mydata string, silent int, eapi string) [4]string {
+func CatPkgSplit(mydata string, silent int, eapi string) [4]string {
 	// return mydata.cpv_split // if can
 	mySplit := strings.SplitN(mydata, "/", 2)
 	var cat string
@@ -439,7 +439,7 @@ func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, r
 	p.fileSize = file_size   // int
 	p.buildId = build_id
 	p.mtime = mtime          // int
-	p.cpvSplit = catPkgSplit(cpv, 1, eapi)
+	p.cpvSplit = CatPkgSplit(cpv, 1, eapi)
 	p.cp = p.cpvSplit[0] + "/" + p.cpvSplit[1]
 	if p.cpvSplit[len(p.cpvSplit)-1] == "r0" && cpv[len(cpv)-3:] != "-r0" {
 		p.version = strings.Join(p.cpvSplit[2:4], "-")
@@ -481,7 +481,7 @@ func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, r
 
 // 1, nil
 func PkgSplit(mypkg string, silent int, eapi string) [3]string {
-	catPSplit := catPkgSplit(mypkg, 1, eapi)
+	catPSplit := CatPkgSplit(mypkg, 1, eapi)
 	if catPSplit == [4]string{} {
 		return [3]string{}
 	}
@@ -495,7 +495,7 @@ func PkgSplit(mypkg string, silent int, eapi string) [3]string {
 // ""
 func cpvGetKey(mycpv, eapi string) string {
 	//return mycpv.cp //TODO
-	mySplit := catPkgSplit(mycpv, 1, eapi)
+	mySplit := CatPkgSplit(mycpv, 1, eapi)
 	if mySplit != [4]string{} {
 		return mySplit[0] + "/" + mySplit[1]
 	}

@@ -49,7 +49,7 @@ func inmss(a map[string]string, b string) bool{
 	return false
 }
 
-func ins(a []string, b string) bool{
+func Ins(a []string, b string) bool{
 	for _ ,v := range a {
 		if b== v {
 			return true

@@ -82,7 +82,7 @@ func absSymlink(symlink, target string) string {
 
 var doebuildManifestExemptDepend = 0
 
-func parseEapiEbuildHead(f []string) (string, int) {
+func ParseEapiEbuildHead(f []string) (string, int) {
 	eapi := ""
 	eapiLineno := 0
 	lineno := 0
@@ -278,7 +278,7 @@ func CreateTrees(config_root, target_root string, ts *TreesDict, env map[string]
 	}
 
 	settings := NewConfig(nil, nil, "", nil, config_root, target_root, sysroot, eprefix, true, env, false, nil)
-	settings.lock()
+	settings.Lock()
 
 	depcachedir := settings.ValueDict["PORTAGE_DEPCACHEDIR"]
 	trees._target_eroot = settings.ValueDict["EROOT"]
@@ -306,7 +306,7 @@ func CreateTrees(config_root, target_root string, ts *TreesDict, env map[string]
 			clean_env["PORTAGE_DEPCACHEDIR"] = depcachedir
 		}
 		settings = NewConfig(nil, nil, "", nil, "", "/", "/", "", false, clean_env, false, nil)
-		settings.lock()
+		settings.Lock()
 		trees._running_eroot = settings.ValueDict["EROOT"]
 		myroots = append(myroots, st{settings.ValueDict["EROOT"], settings})
 	}
@@ -340,11 +340,20 @@ var _legacy_global_var_names = []string{"archlist", "db", "features",
 	"settings", "thirdpartymirrors"} // no use
 var mtimedb, portdb int
 
+var _portdb *portdbapi = nil
 var _db *TreesDict = nil
 var _settings *Config = nil
 var _root, _mtimedbfile *string = nil, nil
 
 var _legacy_globals_constructed map[string]bool
+
+func Portdb() *portdbapi {
+	if _portdb != nil {
+		return _portdb
+	}
+	_get_legacy_global()
+	return _portdb
+}
 
 func Db() *TreesDict {
 	if _db != nil {
@@ -380,6 +389,7 @@ func Mtimedbfile() string {
 }
 
 func _get_legacy_global() { // a fake copy, just init no return
+	_portdb = Db().valueDict[Root()].PortTree().dbapi
 	initializingGlobals = new(bool)
 	*initializingGlobals = true
 	_db = CreateTrees(os.Getenv("PORTAGE_CONFIGROOT"), os.Getenv("ROOT"), nil, nil, os.Getenv("SYSROOT"), os.Getenv("EPREFIX"))
@@ -389,7 +399,7 @@ func _get_legacy_global() { // a fake copy, just init no return
 	*_root = _db._target_eroot
 }
 
-func _reset_legacy_globals() {
+func ResetLegacyGlobals() {
 	_legacy_globals_constructed = map[string]bool{}
 	//mtimedb, mtimedbfile, portdb, _root, _settings =
 }

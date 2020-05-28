@@ -27,7 +27,8 @@ import (
 
 var noiseLimit = 0
 
-func WriteMsg(mystr string, noiseLevel int, fd *os.File) { //0n
+//0, nil
+func WriteMsg(mystr string, noiseLevel int, fd *os.File) {
 	if fd == nil {
 		fd = os.Stderr
 	}
@@ -1806,7 +1807,7 @@ func cacheddir(my_original_path string, ignorecvs bool, ignorelist []string, Emp
 		for i, file_path := range fpaths {
 			file_type := ftype[i]
 
-			if ins(ignorelist, file_path.Name()) {
+			if Ins(ignorelist, file_path.Name()) {
 			} else if ignorecvs {
 				if file_path.Name()[:2] != ".#" && !(file_type == 1 && VcsDirs[file_path.Name()]) {
 					ret_list = append(ret_list, file_path.Name())

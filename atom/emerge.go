@@ -1040,7 +1040,7 @@ if a.background {
 start_ipc_daemon := false
 if a._enable_ipc_daemon{
 delete(a.settings.ValueDict,"PORTAGE_EBUILD_EXIT_FILE")
-if  ! ins(a._phases_without_builddir,a.phase) {
+if  ! Ins(a._phases_without_builddir,a.phase) {
 	start_ipc_daemon = true
 	if _, ok := a.settings.ValueDict["PORTAGE_BUILDDIR_LOCKED"]; !ok {
 		a._build_dir = EbuildBuildDir(
@@ -1056,7 +1056,7 @@ delete(a.settings.ValueDict,"PORTAGE_IPC_DAEMON")
 }
 }else{
 delete(a.settings.ValueDict,"PORTAGE_IPC_DAEMON")
-if   ins(a._phases_without_builddir,a.phase) {
+if   Ins(a._phases_without_builddir,a.phase) {
 	exit_file := filepath.Join(
 		a.settings.ValueDict["PORTAGE_BUILDDIR"],
 		".exit_status")
@@ -1100,8 +1100,8 @@ func (a *AbstractEbuildProcess)_start_post_builddir_lock( lock_future , start_ip
 		}
 			null_fd := nil
 			if _, ok := a.fd_pipes[0] ;!ok &&
-			 ! ins( a._phases_interactive_whitelist ,a.phase)&&
-			 ! ins(strings.Fields(a.settings.Valuedict["PROPERTIES"]), "interactive") {
+			 ! Ins( a._phases_interactive_whitelist ,a.phase)&&
+			 ! Ins(strings.Fields(a.settings.Valuedict["PROPERTIES"]), "interactive") {
 				null_fd, _ := syscall.Open("/dev/null")
 				a.fd_pipes[0] = null_fd
 			}
