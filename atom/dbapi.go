@@ -1665,9 +1665,9 @@ func (v *vardbapi) writeContentsToContentsFile(pkg, new_contents, new_needed []s
 		}
 		f.Close()
 	}
-	f = NewAtomic_ofstream(filepath.Join(pkg.dbdir, "CONTENTS"))
+	f := NewAtomic_ofstream(filepath.Join(pkg.dbdir, "CONTENTS"))
 	write_contents(new_contents, root, f)
-	f.close()
+	f.Close()
 	v._bump_mtime(pkg.mycpv)
 	pkg._clear_contents_cache()
 }

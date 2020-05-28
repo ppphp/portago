@@ -194,9 +194,10 @@ type AbstractPollTask struct {
 	_bufsize int
 }
 
-func (a *AbstractPollTask) _read_array( f io.Reader)string{
+func (a *AbstractPollTask) _read_array( f int)string{
+	f2 := os.NewFile(uintptr(f), "")
 	buf := make([]byte, a._bufsize)
-	_, err := f.Read(buf)
+	_, err := f2.Read(buf)
 	if err != nil {
 		return ""
 	}
@@ -215,9 +216,10 @@ func (a *AbstractPollTask) _read_array( f io.Reader)string{
 return string(buf)
 }
 
-func (a *AbstractPollTask) _read_buf( fd io.Reader)[]byte{
+func (a *AbstractPollTask) _read_buf( fd int)[]byte{
+	f := os.NewFile(uintptr(fd), "")
 	buf := make([]byte, a._bufsize)
-	_, err := fd.Read(buf)
+	_, err := f.Read(buf)
 	if err != nil {
 		if err == syscall.EIO {
 			buf = []byte{}
@@ -621,7 +623,7 @@ try:
 	_close_fds()
 	_setup_pipes(fd_pipes, false)
 
-	rval = f._run()
+	rval := f._run()
 	except SystemExit:
 	raise
 except:
@@ -647,7 +649,8 @@ type MergeProcess struct {
 	mydbapi *vardbapi
 	vartree *varTree
 	mycat, mypkg,  treetype, blockers, pkgloc, infloc, myebuild,
-	  prev_mtimes, unmerge, _elog_reader_fd, _buf   string
+	  prev_mtimes, unmerge, _buf   string
+	_elog_reader_fd int
 	_elog_keys map[string]bool
 	postinst_failure, _locked_vdb bool
 }
@@ -666,12 +669,12 @@ func(m *MergeProcess)  _start(){
 	}
 
 	if m.fd_pipes == nil{
-		m.fd_pipes = map[int]{}
+		m.fd_pipes = map[int]int{}
 	}else{
-		m.fd_pipes = m.fd_pipes.copy()
+		m.fd_pipes = m.fd_pipes
 	}
 	if _, ok := m.fd_pipes[0]; !ok{
-		m.fd_pipes[0]=getStdin().fileno()
+		m.fd_pipes[0]=int(getStdin().Fd())
 	}
 
 	m.ForkProcess._start()
@@ -702,7 +705,7 @@ if len(output) > 0 {
 	} else{
 		lines[0] = m._buf + lines[0]
 		m._buf = lines.pop()
-		out = io.StringIO()
+		out := &bytes.Buffer{}
 		for _, line := range lines{
 			s4 := strings.SplitN(line," ", 4)
 			funcname, phase, key, msg := s4[0], s4[1],s4[2],s4[3]
@@ -1317,7 +1320,7 @@ func (a *AbstractEbuildProcess)_async_waitpid_cb( *args, **kwargs) {
 	}
 }
 
-func (a *AbstractEbuildProcess)_async_wait(a) {
+func (a *AbstractEbuildProcess)_async_wait() {
 	if a._build_dir == nil {
 		a.SpawnProcess._async_wait()
 	} else if a._build_dir_unlock == nil{
