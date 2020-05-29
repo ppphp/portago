@@ -3258,8 +3258,8 @@ func (u *useManager) getUseAliases(pkg *pkgStr) map[string][]string {
 	cp := pkg.cp
 	if cp == "" {
 		slot := depGetslot(pkg.string)
-		repo := depGetrepo(pkg.string)
-		pkg := NewPkgStr(removeSlot(pkg.string), nil, nil, "", repo, slot, 0, 0, "", 0, nil)
+		repo := DepGetrepo(pkg.string)
+		pkg := NewPkgStr(RemoveSlot(pkg.string), nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 		cp = pkg.cp
 	}
 	useAliases := map[string][]string{}
@@ -3346,8 +3346,8 @@ func (u *useManager) getPUSE(pkg *pkgStr) string {
 	cp := pkg.cp
 	if cp == "" {
 		slot := depGetslot(pkg.string)
-		repo := depGetrepo(pkg.string)
-		pkg := NewPkgStr(removeSlot(pkg.string), nil, nil, "", repo, slot, 0, 0, "", 0, nil)
+		repo := DepGetrepo(pkg.string)
+		pkg := NewPkgStr(RemoveSlot(pkg.string), nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 		cp = pkg.cp
 	}
 	ret := ""

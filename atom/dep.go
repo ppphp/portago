@@ -944,7 +944,7 @@ func (a *Atom) withoutSlot() *Atom {
 	if a.slot == "" && a.slotOperator == "" {
 		return a
 	}
-	atom := removeSlot(a.value)
+	atom := RemoveSlot(a.value)
 	if a.repo != "" {
 		atom += repoSeparator + a.repo
 	}
@@ -957,7 +957,7 @@ func (a *Atom) withoutSlot() *Atom {
 }
 
 func (a *Atom) withRepo(repo string) *Atom {
-	atom := removeSlot(a.value)
+	atom := RemoveSlot(a.value)
 	if a.slot != "" || a.slotOperator != "" {
 		atom += slotSeparator
 		if a.slot != "" {
@@ -980,7 +980,7 @@ func (a *Atom) withRepo(repo string) *Atom {
 }
 
 func (a *Atom) withSlot(slot string) *Atom {
-	atom := removeSlot(a.value) + slotSeparator + slot
+	atom := RemoveSlot(a.value) + slotSeparator + slot
 	if a.repo != "" {
 		atom += repoSeparator + a.repo
 	}
@@ -996,7 +996,7 @@ func (a *Atom) EvaluateConditionals(use map[string]bool) *Atom {
 	if !(a.Use != nil && a.Use.conditional != nil) {
 		return a
 	}
-	atom := removeSlot(a.value)
+	atom := RemoveSlot(a.value)
 	if a.slot != "" || a.slotOperator != "" {
 		atom += slotSeparator
 		if a.slot != "" {
@@ -1020,7 +1020,7 @@ func (a *Atom) violatedConditionals(otherUse map[string]bool, isValidFlag func(s
 	if a.Use == nil {
 		return a
 	}
-	atom := removeSlot(a.value)
+	atom := RemoveSlot(a.value)
 	if a.slot != "" || a.slotOperator != "" {
 		atom += slotSeparator
 		if a.slot != "" {
@@ -1044,7 +1044,7 @@ func (a *Atom) evalQaConditionals(useMask, useForce map[string]bool) *Atom {
 	if a.Use == nil || a.Use.conditional == nil {
 		return a
 	}
-	atom := removeSlot(a.value)
+	atom := RemoveSlot(a.value)
 	if a.slot != "" || a.slotOperator != "" {
 		atom += slotSeparator
 		if a.slot != "" {
@@ -1543,7 +1543,7 @@ func extendedCpMatch(extendedCp, otherCp string) bool {
 	return extendedCpRe.MatchString(otherCp)
 }
 
-func removeSlot(mydep string) string {
+func RemoveSlot(mydep string) string {
 	colon := strings.Index(mydep, slotSeparator)
 	if colon != -1 {
 		mydep = mydep[:colon]
@@ -1580,7 +1580,7 @@ func depGetslot(mydep string) string {
 	return ""
 }
 
-func depGetrepo(mydep string) string {
+func DepGetrepo(mydep string) string {
 	colon := strings.Index(mydep, repoSeparator)
 	if colon != -1 {
 		bracket := strings.Index(mydep[colon:], "[")
@@ -1718,7 +1718,7 @@ func bestMatchToList(mypkg *pkgStr, mylist []*Atom) *Atom {
 				mypkgCpv = mypkg.cpv
 			}
 			if mypkgCpv == nil {
-				mypkgCpv = NewPkgStr(removeSlot(mypkg.string), nil, nil, "", "", "", 0, 0, "", 0, nil)
+				mypkgCpv = NewPkgStr(RemoveSlot(mypkg.string), nil, nil, "", "", "", 0, 0, "", 0, nil)
 			}
 			if bestm.cpv == mypkgCpv || bestm.cpv == x.cpv {
 			} else if x.cpv == mypkgCpv {
@@ -1793,7 +1793,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 		for _, x := range candidateList {
 			cp := x.cp
 			if cp == "" {
-				mysplit := CatPkgSplit(removeSlot(x.string), 1, "")
+				mysplit := CatPkgSplit(RemoveSlot(x.string), 1, "")
 				if mysplit != [4]string{} {
 					cp = mysplit[0] + "/" + mysplit[1]
 				}
@@ -1812,7 +1812,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 			for _, x := range candidateList {
 				xVer := x.version
 				if xVer == "" {
-					xs := CatPkgSplit(removeSlot(x.string), 1, "")
+					xs := CatPkgSplit(RemoveSlot(x.string), 1, "")
 					if xs == [4]string{} {
 						continue
 					}
@@ -1827,7 +1827,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 		for _, x := range candidateList {
 			cp := x.cp
 			if cp == "" {
-				mysplit := CatPkgSplit(removeSlot(x.string), 1, "")
+				mysplit := CatPkgSplit(RemoveSlot(x.string), 1, "")
 				if mysplit != [4]string{} {
 					cp = mysplit[0] + "/" + mysplit[1]
 				}
@@ -1843,7 +1843,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 		for _, x := range candidateList {
 			xcpv := x.cpv
 			if xcpv == nil {
-				xcpv = &pkgStr{string: removeSlot(x.string)}
+				xcpv = &pkgStr{string: RemoveSlot(x.string)}
 			}
 			if !cpvequal(xcpv.string, mycpv.string) {
 				continue
@@ -1867,7 +1867,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 		for _, x := range candidateList {
 			pkg := x
 			if pkg.cp == "" {
-				pkg = NewPkgStr(removeSlot(x.string), nil, nil, "", "", "", 0, 0, "", 0, nil)
+				pkg = NewPkgStr(RemoveSlot(x.string), nil, nil, "", "", "", 0, 0, "", 0, nil)
 			}
 			xs := pkg.cpvSplit
 			myver := strings.TrimPrefix(xs[2], "0")
@@ -1891,7 +1891,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 		for _, x := range candidateList {
 			xs := x.cpvSplit
 			if xs == [4]string{} {
-				xs = CatPkgSplit(removeSlot(x.string), 1, "")
+				xs = CatPkgSplit(RemoveSlot(x.string), 1, "")
 			}
 			if xs == [4]string{} {
 				//raise InvalidData(x)
@@ -1908,7 +1908,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 		for _, x := range candidateList {
 			pkg := x
 			if x.cp == "" {
-				pkg = NewPkgStr(removeSlot(x.string), nil, nil, "", "", "", 0, 0, "", 0, nil)
+				pkg = NewPkgStr(RemoveSlot(x.string), nil, nil, "", "", "", 0, 0, "", 0, nil)
 			}
 
 			if pkg.cp != mydepA.cp {
@@ -1951,7 +1951,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 			if xPkg.cpv == nil {
 				xslot := depGetslot(x.string)
 				if xslot != "" {
-					xPkg = NewPkgStr(removeSlot(x.string), nil, nil, "", "", xslot, 0, 0, "", 0, nil)
+					xPkg = NewPkgStr(RemoveSlot(x.string), nil, nil, "", "", xslot, 0, 0, "", 0, nil)
 				} else {
 					continue
 				}
@@ -2015,7 +2015,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 		for _, x := range candidateList {
 			repo := x.repo
 			if repo == "" {
-				repo = depGetrepo(x.string)
+				repo = DepGetrepo(x.string)
 			}
 			if repo != "" && repo != unknownRepo && repo != mydepA.repo {
 				continue
