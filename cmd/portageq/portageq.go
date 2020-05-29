@@ -328,7 +328,7 @@ var mydbapi atom.DBAPI
 	}
 	//try:
 values := mydbapi.auxGet(pkgspec, metakeys, repo)
-atom.writeMsgStdout(strings.Join(values, "\n")+"\n", -1)
+atom.WriteMsgStdout(strings.Join(values, "\n")+"\n", -1)
 //except KeyError:
 //print(fmt.Sprintf("Package not found: '%s'" % pkgspec, file=os.Stderr)
 //return 1
@@ -351,8 +351,7 @@ func contents(argv []string) int       {
 	cat, pkg := atom.catsplit(cpv)[0], atom.catsplit(cpv)[1]
 	db := atom.NewDblink(cat, pkg, root, vartree.settings,
 		"vartree", vartree, nil, nil, nil)
-	atom.writeMsgStdout("".join(fmt.Sprintf("%s\n" % x for x in sorted(db.getcontents())),
-	-1)
+	atom.WriteMsgStdout(strings.Join(sorted(db.getcontents()), "\n") + "\n", -1)
 	return 0 }
 
 func owners(argv []string) int {
@@ -418,7 +417,7 @@ func owners(argv []string) int {
 		}
 	}
 
-	atom.writeMsgStdout(strings.Join(msg, ""), -1)
+	atom.WriteMsgStdout(strings.Join(msg, ""), -1)
 
 	if len(orphan_abs_paths)>0 || len(orphan_basenames)>0 {
 		orphans := []string{}
@@ -473,7 +472,7 @@ func is_protected(argv []string) int       {
 			err.Write([]byte("ERROR: file paths must begin with <eroot>!\n"))
 			return 2
 		}
-	
+
 	from portage.util import ConfigProtect
 
 	settings := atom.Settings()
@@ -498,8 +497,8 @@ func filter_protected(argv []string) int       {
 	root := argv[0]
 	out := os.Stdout
 	err := os.Stderr
-	cwd, err := os.Getwd()
-	if err != nil {
+	cwd, err1 := os.Getwd()
+	if err1 != nil {
 		//except OSError:
 		//pass
 	}
@@ -555,7 +554,7 @@ func bestVisible(argv []string) int       {
 	}
 
 	pkgtype := "ebuild"
-	var pkgtype, atom1 string
+	var atom1 string
 	if len(argv) > 2{
 	pkgtype = argv[1]
 	atom1 = argv[2]
@@ -619,12 +618,13 @@ try:
 	if not atom_set.findAtomForPackage(pkg):
 	continue
 
-	if pkg.visible:
-	atom.writeMsgStdout(fmt.Sprintf("%s\n" % (pkg.cpv,), -1)
-	return os.EX_OK
+	if pkg.visible {
+		atom.WriteMsgStdout(fmt.Sprintf("%s\n", pkg.cpv, ), -1)
+		return 0
+	}
 
-	
-		atom.writeMsgStdout("\n", -1)
+
+		atom.WriteMsgStdout("\n", -1)
 
 	return 1
 }
@@ -649,7 +649,7 @@ func massBestVisible(argv []string) int   {
 		argv = argv[:len(argv) -1]
 	}
 	for _, pack := range argv{
-	atom.writeMsgStdout(fmt.Sprintf("%s:" , pack), -1)
+	atom.WriteMsgStdout(fmt.Sprintf("%s:" , pack), -1)
 	bestVisible([]string{root, pkgtype, pack})
 	}
 
@@ -664,7 +664,7 @@ func allBestVisible(argv []string) int    {
 
 		return 2
 	}
-	
+
 	for _, pkg := range atom.Db().Values()[argv[0]].PortTree().dbapi.cp_all() {
 		mybest := atom.best(atom.Db().Values()[argv[0]].PortTree().dbapi.match(pkg))
 		if mybest != "" {
@@ -730,27 +730,28 @@ func match(argv []string) int             {
 
 func expand_virtual(argv []string) int    {
 
-	if len(argv) != 2:
-	atom.WriteMsg(fmt.Sprintf("ERROR: expected 2 parameters, got %d!\n" % len(argv),
-		-1)
+	if len(argv) != 2{
+	atom.WriteMsg(fmt.Sprintf("ERROR: expected 2 parameters, got %d!\n" , len(argv)),
+		-1, nil)
 	return 2
+	}
 
-	root, atom = argv
+	root, atom1 := argv[0], argv[1]
 
 try:
 	results = list(expand_new_virt(
-		atom.Db().Values()[root].VarTree().dbapi, atom))
+		atom.Db().Values()[root].VarTree().dbapi, atom1))
 	except portage.exception.InvalidAtom:
-	atom.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n" % atom,
+	atom.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n" , atom1),
 		-1)
 	return 2
 
 	results.sort()
 	for x in results:
 	if not x.blocker:
-	atom.writeMsgStdout(fmt.Sprintf("%s\n" % (x,))
+	atom.WriteMsgStdout(fmt.Sprintf("%s\n" ,x,), 0)
 
-	return os.EX_OK
+	return 0
 }
 
 func vdbPath(argv []string) int           {
@@ -771,10 +772,10 @@ func repositories_configuration(argv []string) int           {
 		return 3
 	}
 	os.Stdout.Write([]byte(atom.Db().Values()[argv[0]].VarTree().settings.Repositories.configString()))
-	
+
 	return 0 }
 
-func repos_config(argv []string) int           { 
+func repos_config(argv []string) int           {
 	return repositories_configuration(argv) }
 
 func configProtect(argv []string) int     {
@@ -839,7 +840,7 @@ func get_repos(argv []string) int {
 		print("ERROR: insufficient parameters!")
 		return 2
 	}
-	print(" ".join(reversed(atom.Db().Values()[argv[0]].VarTree().settings.Repositories.preposOrder)))
+	print(strings.Join(reversed(atom.Db().Values()[argv[0]].VarTree().settings.Repositories.preposOrder), " "))
 	return 0 }
 
 func master_repositories(argv []string) int {
@@ -870,34 +871,39 @@ func get_repo_path(argv []string) int {
 		os.Stderr.Write([]byte("ERROR: insufficient parameters!"))
 		return 3
 	}
-	for arg in argv[1:]:
-	if !atom._repo_name_re.Match(arg):
-	print(fmt.Sprintf("ERROR: invalid repository: %s" % arg, file=os.Stderr)
+	for _, arg := range argv[1:]{
+	if !atom._repo_name_re.Match(arg){
+		os.Stderr.Write([]byte(fmt.Sprintf("ERROR: invalid repository: %s" , arg))))
 	return 2
-	path = atom.Db().Values()[argv[0]].VarTree().settings.Repositories.treemap.get(arg)
-	if path == nil:
-	print("")
-	return 1
+	}
+	path := atom.Db().Values()[argv[0]].VarTree().settings.Repositories.treeMap[arg]
+	if path == "" {
+		print("")
+		return 1
+	}
 	print(path)
+	}
 	return 0 }
+
 func available_eclasses(argv []string) int {
 
 	if len(argv) < 2 {
 		os.Stderr.Write([]byte("ERROR: insufficient parameters!"))
 		return 3
 	}
-	for arg in argv[1:]:
-	if !atom._repo_name_re.Match(arg):
-	os.Stderr.Write([]byte(fmt.Sprintf("ERROR: invalid repository: %s" , arg)))
-	return 2
-try:
-	repo = atom.Db().Values()[argv[0]].VarTree().settings.Repositories[arg]
-	except KeyError:
-	print("")
-	return 1
-	}else{
-	print(" ".join(sorted(repo.eclass_db.eclasses)))
-
+	for _ ,arg := range argv[1:] {
+		if !atom._repo_name_re.Match(arg) {
+			os.Stderr.Write([]byte(fmt.Sprintf("ERROR: invalid repository: %s", arg)))
+			return 2
+		}
+		//try:
+		repo := atom.Db().Values()[argv[0]].VarTree().settings.Repositories.getitem(arg)
+		//except KeyError:
+		//print("")
+		//return 1
+		//}else{
+		print(strings.Join(sorted(repo.eclass_db.eclasses), " "))
+	}
 	return 0 }
 
 func eclass_path(argv []string) int {
@@ -908,14 +914,14 @@ func eclass_path(argv []string) int {
 	if !atom._repo_name_re.Match(argv[1]):
 	os.Stderr.Write([]byte(fmt.Sprintf("ERROR: invalid repository: %s" , argv[1])))
 	return 2
-try:
-	repo = atom.Db().Values()[argv[0]].VarTree().settings.Repositories[argv[1]]
-	except KeyError:
-	print("")
-	return 1
-	}else{
+//try:
+	repo := atom.Db().Values()[argv[0]].VarTree().settings.Repositories.getitem(argv[1])
+	//except KeyError:
+	//print("")
+	//return 1
+	//}else{
 	retval = 0
-	for arg in argv[2:]:
+	for _, arg := range argv[2:]:
 try:
 	eclass = repo.eclass_db.eclasses[arg]
 	except KeyError:
@@ -980,7 +986,7 @@ func list_preserved_libs(argv []string) int {
 	msg= append(msg," " + path)
 	rValue = 0
 	msg= append(msg,"\n")
-	atom.writeMsgStdout(strings.Join(msg, ""), -1)
+	atom.WriteMsgStdout(strings.Join(msg, ""), -1)
 	return rValue }
 
 func MaintainerEmailMatcher(maintainer_emails []string) func()bool{
@@ -1008,7 +1014,7 @@ func match_orphaned(metadata_xml) bool {
 }
 
 func pquery(opts , args []string) int {
-	portdb = atom.Db().Values()[atom.Root()].PortTree().dbapi
+	portdb := atom.Db().Values()[atom.Root()].PortTree().dbapi
 	root_config := RootConfig(portdb.settings,
 		atom.Db().Values()[atom.Root()], None)
 
@@ -1080,7 +1086,7 @@ func pquery(opts , args []string) int {
 	maintainer_emails = []string{}
 	for x in opts.maintainer_email:
 	maintainer_emails=append(maintainer_emails, strings.Split(x, ","))
-	if opts.no_regex: 
+	if opts.no_regex:
 	maintainer_emails := []string {}
 	for _, x := range maintainer_emails{
 		maintainer_emails = append(maintainer_emails, regexp.QuoteMeta(x))
@@ -1205,13 +1211,13 @@ func pquery(opts , args []string) int {
 	continue
 
 	if no_version{
-	atom.writeMsgStdout(fmt.Sprintf("%s\n" ,cp,), -1)
+	atom.WriteMsgStdout(fmt.Sprintf("%s\n" ,cp,), -1)
 	}else {
 		matches = list(set(matches))
 	}
 	portdb._cpv_sort_ascending(matches)
 	for cpv in matches:
-	atom.writeMsgStdout(fmt.Sprintf("%s\n", cpv,), -1)
+	atom.WriteMsgStdout(fmt.Sprintf("%s\n", cpv,), -1)
 
 	return os.EX_OK
 }
@@ -1253,4 +1259,19 @@ func usage(argv []string) {
 		fmt.Println("\nRun portageq with --help for info")
 	}
 
+}
+
+func reversed (a []string)[]string{
+	b:=[]string{}
+	for _,v := range a{
+		b = append([]string{v}, b...)
+	}
+	return b
+}
+
+func sorted (a []string)[]string{
+	b:=[]string{}
+	copy(b, a)
+	sort.Strings(b)
+	return b
 }

@@ -37,7 +37,8 @@ func WriteMsg(mystr string, noiseLevel int, fd *os.File) {
 	}
 }
 
-func writeMsgStdout(mystr string, noiseLevel int) { //0
+//0
+func WriteMsgStdout(mystr string, noiseLevel int) {
 	WriteMsg(mystr, noiseLevel, os.Stdout)
 }
 
