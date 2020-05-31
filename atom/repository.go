@@ -68,7 +68,8 @@ func (r *RepoConfig) eapiIsDeprecated(eapi string) bool {
 	return r.eapisDeprecated[eapi]
 }
 
-func (r *RepoConfig) iterPregeneratedCaches(auxdbkeys string, readonly, force bool) { // truefalse
+// true, false
+func (r *RepoConfig) iterPregeneratedCaches(auxdbkeys string, readonly, force bool) {
 	formats := r.cacheFormats
 	if len(formats) == 0 {
 		if !force {
@@ -76,9 +77,54 @@ func (r *RepoConfig) iterPregeneratedCaches(auxdbkeys string, readonly, force bo
 		}
 		formats = []string{"md5-dict"}
 	}
-	//for _, fmt := range formats{
-	//	name
-	//}
+	for _, fmt := range formats {
+		name := ""
+		if fmt == "pms" {
+			name = "metadata/cache"
+		}else if fmt == "md5-dict" {
+			name = "metadata/md5-cache"
+		}
+		if name != "" {
+			yield database(r.location, name,
+				auxdbkeys, readonly=readonly)
+		}
+	}
+}
+
+// true, false
+func (r *RepoConfig) get_pregenerated_cache(auxdbkeys string, readonly, force bool){
+return r.iterPregeneratedCaches(
+auxdbkeys, readonly, force)
+}
+
+func (r *RepoConfig) load_manifest(*args, **kwds) {
+	kwds['thin'] = r.thinManifest
+	kwds['allow_missing'] = r.allowMissingManifest
+	kwds['allow_create'] = r.createManifest
+	kwds['hashes'] = r.manifestHashes
+	kwds['required_hashes'] = r.manifestRequiredHashes
+	kwds['strict_misc_digests'] = r.strictMiscDigests
+	if r.disableManifest {
+		kwds['from_scratch'] = true
+	}
+	kwds['find_invalid_path_char'] = r.findInvalidPathChar
+	return manifest.Manifest(*args, **kwds)
+}
+
+func (r *RepoConfig) update( new_repo *RepoConfig) {
+
+	keys := map[string]bool{}(r.__slots__)
+	delete(keys, "missing_repo_name")
+	for k := range keys {
+		v = getattr(new_repo, k, None)
+		if v != nil{
+			setattr(self, k, v)
+		}
+	}
+
+	if new_repo.Name != ""{
+	r.missingRepoName = new_repo.missingRepoName
+}
 }
 
 func (r *RepoConfig) writable() bool {
@@ -103,6 +149,65 @@ func (r *RepoConfig) readRepoName(repoPath string) (string, bool) {
 	b := bufio.NewReader(f)
 	line, _, _ := b.ReadLine()
 	return string(line), false
+}
+
+func (r *RepoConfig) info_string() string {
+	indent := "    "
+	repo_msg := []string{}
+	repo_msg=append(repo_msg,r.Name)
+	if len(r.format)!=0 {
+		repo_msg = append(repo_msg, indent+"format: "+r.format)
+	}
+	if len(r.location) != 0 {
+		repo_msg = append(repo_msg, indent+"location: "+r.location)
+	}
+	if !r.strictMiscDigests {
+		repo_msg = append(repo_msg, indent+"strict-misc-digests: false")
+	}
+	if len(r.SyncType) > 0 {
+		repo_msg = append(repo_msg, indent+"sync-type: "+r.SyncType)
+	}
+	if len(r.syncUmask) > 0 {
+		repo_msg = append(repo_msg, indent+"sync-umask: "+r.syncUmask)
+	}
+	if len(r.SyncUri) > 0 {
+		repo_msg = append(repo_msg, indent+"sync-uri: "+r.SyncUri)
+	}
+	if len(r.syncUser) > 0 {
+		repo_msg = append(repo_msg, indent+"sync-user: "+r.syncUser)
+	}
+	if len(r.masters) > 0 {
+		rm := []string{}
+		for _, master := range r.masters {
+			rm = append(rm, master)
+		}
+		repo_msg = append(repo_msg, indent+"masters: "+strings.Join(rm, " "))
+	}
+	if r.priority != 0 {
+		repo_msg = append(repo_msg, indent+"priority: "+fmt.Sprint(r.priority))
+	}
+	if len(r.Aliases) > 0 {
+		ra := []string{}
+		for k := range r.Aliases {
+			ra = append(ra, k)
+		}
+		repo_msg = append(repo_msg, indent+"aliases: "+strings.Join(ra, " "))
+	}
+	if len(r.eclassOverrides) > 0 {
+		re := []string{}
+		for k := range r.eclassOverrides {
+			re = append(re, k)
+		}
+		repo_msg = append(repo_msg, indent+"eclass-overrides: "+
+			strings.Join(re, " "))
+	}
+	for o, v := range r.moduleSpecificOptions{
+		if v != "" {
+			repo_msg = append(repo_msg, indent+o+": "+v)
+		}
+	}
+	repo_msg=append(repo_msg,"")
+	return strings.Join(repo_msg, "\n")
 }
 
 func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *RepoConfig {

@@ -337,7 +337,8 @@ func (c *consoleStyleFile) flush() {}
 
 func (c *consoleStyleFile) close() {}
 
-func get_term_size(fd int) (int, int, error) { // 0
+// 0
+func get_term_size(fd int) (int, int, error) {
 	if fd == 0 {
 		fd = syscall.Stdout
 	}

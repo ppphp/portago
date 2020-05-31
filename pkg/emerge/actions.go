@@ -3,6 +3,7 @@ package emerge
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ppphp/portago/atom"
@@ -33,7 +34,22 @@ func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, action 
 	for _, root_trees := range emergeConfig.Trees.Values() {
 		settings := root_trees.VarTree().settings
 		settings.initDirs()
+		setconfig := load_default_config(settings, root_trees)
+		root_config := RootConfig(settings, root_trees, setconfig)
+		if "root_config" in root_trees{
+			root_trees["root_config"].update(root_config)
+		}else{
+			root_trees["root_config"] = root_config
+		}
 	}
+
+	target_eroot := emergeConfig.trees._target_eroot
+	emergeConfig.targetConfig = emergeConfig.Trees.Values()[target_eroot]["root_config"]
+	emergeConfig.targetConfig.mtimedb = portage.MtimeDB(
+		filepath.Join(target_eroot, atom.CachePath, "mtimedb"))
+	emergeConfig.running_config = emergeConfig.trees[
+		emergeConfig.trees._running_eroot]['root_config']
+	QueryCommand._db = emergeConfig.trees
 
 	return emergeConfig
 }

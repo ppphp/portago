@@ -3,6 +3,7 @@ package atom
 import (
 	"bufio"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"os"
 	"path"
 	"path/filepath"
@@ -212,7 +213,7 @@ logfile=None, **kwargs) ([]int, error){
 
 	ebuild_phase.start()
 	ebuild_phase.wait()
-	return ebuild_phase.returncode
+	return []int{*ebuild_phase.returncode}, nil
 }
 
 // ""
@@ -299,8 +300,9 @@ func _doebuild_path(settings *Config, eapi string) {
 	settings.ValueDict["PATH"] = strings.Join(path, ":")
 }
 
-func doebuild_environment(myebuild, mydo, myroot=None, settings *Config,
-debug=false, use_cache=None, db=None){
+// nil, nil, false, nil, nil
+func doebuild_environment(myebuild , mydo string, myroot=None, settings *Config,
+debug bool, use_cache=None, db *vardbapi){
 
 if settings == nil{
 //raise TypeError("settings argument is required")
@@ -312,90 +314,100 @@ if db == nil{
 
 mysettings := settings
 mydbapi := db
-ebuild_path := filepath.Abs(myebuild)
+ebuild_path, _ := filepath.Abs(myebuild)
 pkg_dir     := filepath.Dir(ebuild_path)
 mytree := filepath.Dir(filepath.Dir(pkg_dir))
 mypv := filepath.Base(ebuild_path)[:len(filepath.Base(ebuild_path))-7]
-mysplit := _pkgsplit(mypv, eapi=mysettings.configDict["pkg"].get("EAPI"))
-if mysplit == nil{
-raise IncorrectParameter(
-_("Invalid ebuild path: '%s'") % myebuild)
+mysplit := pkgSplit(mypv, mysettings.configDict["pkg"]["EAPI"])
+if mysplit == [3]string{} {
+	//raise IncorrectParameter(
+	//_("Invalid ebuild path: '%s'") % myebuild)
+}
 
-if mysettings.mycpv != nil &&
-mysettings.configDict["pkg"].get("PF") == mypv &&
-"CATEGORY" in mysettings.configDict["pkg"]{
+	cat := ""
+	mycpv := ""
+if _, ok := mysettings.configDict["pkg"]["CATEGORY"];mysettings.mycpv != nil &&
+mysettings.configDict["pkg"]["PF"] == mypv && ok {
 
 cat = mysettings.configDict["pkg"]["CATEGORY"]
-mycpv = mysettings.mycpv
-}else if filepath.Base(pkg_dir) in (mysplit[0], mypv){
-
+mycpv = mysettings.mycpv.string
+}else if filepath.Base(pkg_dir) == mysplit[0] || filepath.Base(pkg_dir)== mypv{
 cat = filepath.Base(filepath.Dir(pkg_dir))
 mycpv = cat + "/" + mypv
-}else{
-raise AssertionError("unable to determine CATEGORY")
+}else {
+	raise
+	AssertionError("unable to determine CATEGORY")
+}
 
-tmpdir = mysettings.ValueDict["PORTAGE_TMPDIR"]
+tmpdir := mysettings.ValueDict["PORTAGE_TMPDIR"]
 
 if mydo == "depend"{
-if mycpv != mysettings.mycpv{
+if mycpv != mysettings.mycpv {
 
-mysettings.SetCpv(mycpv)
-}else{
+	mysettings.SetCpv(mycpv)
+}
+}else {
 
-if mycpv != mysettings.mycpv ||
-"EAPI" ! in mysettings.configDict["pkg"]{
+	if _, ok := mysettings.configDict["pkg"]["EAPI"]; mycpv != mysettings.mycpv ||
+		!ok {
 
-mysettings.reload()
-mysettings.reset()
-mysettings.SetCpv(mycpv, mydb=mydbapi)
+		mysettings.reload()
+		mysettings.reset()
+		mysettings.SetCpv(mycpv, mydbapi)
+	}
+}
 
 mysettings.ValueDict["PORTAGE_TMPDIR"] ,_ = filepath.EvalSymlinks(tmpdir)
 
-mysettings.pop("EBUILD_PHASE", None)
+delete(mysettings.ValueDict, "EBUILD_PHASE")
 mysettings.ValueDict["EBUILD_PHASE"] = mydo
 
-mysettings.ValueDict["PORTAGE_PYTHON"] = portage._python_interpreter
+//mysettings.ValueDict["PORTAGE_PYTHON"] = _python_interpreter
 
-mysettings.ValueDict["PORTAGE_SIGPIPE_STATUS"] = str(128 + signal.SIGPIPE)
+mysettings.ValueDict["PORTAGE_SIGPIPE_STATUS"] = fmt.Sprint(128 + unix.SIGPIPE)
 
-mysettings.ValueDict["BASH_ENV"] = INVALID_ENV_FILE
+mysettings.ValueDict["BASH_ENV"] = InvalidEnvFile
 
-if debug:
+if debug {
 
-mysettings.ValueDict["PORTAGE_DEBUG"] = "1"
+	mysettings.ValueDict["PORTAGE_DEBUG"] = "1"
 
-mysettings.ValueDict["EBUILD"]   = ebuild_path
-mysettings.ValueDict["O"]        = pkg_dir
-mysettings.configDict["pkg"]["CATEGORY"] = cat
-mysettings.ValueDict["PF"]       = mypv
+	mysettings.ValueDict["EBUILD"] = ebuild_path
+	mysettings.ValueDict["O"] = pkg_dir
+	mysettings.configDict["pkg"]["CATEGORY"] = cat
+	mysettings.ValueDict["PF"] = mypv
+}
 
-if hasattr(mydbapi, "repositories"):
-repo = mydbapi.repositories.get_repo_for_location(mytree)
-mysettings.ValueDict["PORTDIR"] = repo.eclass_db.porttrees[0]
-mysettings.ValueDict["PORTAGE_ECLASS_LOCATIONS"] = repo.eclass_db.eclass_locations_string
-mysettings.configDict["pkg"]["PORTAGE_REPO_NAME"] = repo.name
+if hasattr(mydbapi, "repositories") {
+	repo := mydbapi.repositories.get_repo_for_location(mytree)
+	mysettings.ValueDict["PORTDIR"] = repo.eclass_db.porttrees[0]
+	mysettings.ValueDict["PORTAGE_ECLASS_LOCATIONS"] = repo.eclass_db.eclass_locations_string
+	mysettings.configDict["pkg"]["PORTAGE_REPO_NAME"] = repo.name
+}
 
 mysettings.ValueDict["PORTDIR"] ,_ = filepath.EvalSymlinks(mysettings.ValueDict["PORTDIR"])
-mysettings.pop("PORTDIR_OVERLAY", None)
+delete(mysettings.ValueDict,"PORTDIR_OVERLAY")
 mysettings.ValueDict["DISTDIR"] ,_ = filepath.EvalSymlinks(mysettings.ValueDict["DISTDIR"])
 mysettings.ValueDict["RPMDIR"]  ,_ = filepath.EvalSymlinks(mysettings.ValueDict["RPMDIR"])
 
 mysettings.ValueDict["ECLASSDIR"]   = mysettings.ValueDict["PORTDIR"]+"/eclass"
 
-mysettings.ValueDict["PORTAGE_BASHRC_FILES"] = "\n".join(mysettings._pbashrc)
+mysettings.ValueDict["PORTAGE_BASHRC_FILES"] = "\n".join(mysettings.pbashrc)
 
 mysettings.ValueDict["P"]  = mysplit[0]+"-"+mysplit[1]
 mysettings.ValueDict["PN"] = mysplit[0]
 mysettings.ValueDict["PV"] = mysplit[1]
 mysettings.ValueDict["PR"] = mysplit[2]
 
-if noiselimit < 0:
-mysettings.ValueDict["PORTAGE_QUIET"] = "1"
+if noiseLimit < 0 {
+	mysettings.ValueDict["PORTAGE_QUIET"] = "1"
+}
 
-if mysplit[2] == "r0":
+if mysplit[2] == "r0"{
 mysettings.ValueDict["PVR"]=mysplit[1]
-}else:
-mysettings.ValueDict["PVR"]=mysplit[1]+"-"+mysplit[2]
+}else {
+	mysettings.ValueDict["PVR"] = mysplit[1] + "-" + mysplit[2]
+}
 
 mysettings.ValueDict["BUILD_PREFIX"] = mysettings.ValueDict["PORTAGE_TMPDIR"]+"/portage"
 mysettings.ValueDict["PKG_TMPDIR"]   = mysettings.ValueDict["BUILD_PREFIX"]+"/._unmerge_"
@@ -404,10 +416,11 @@ if mydo in ("unmerge", "prerm", "postrm", "cleanrm"){
 mysettings.ValueDict["PORTAGE_BUILDDIR"] = filepath.Join(
 mysettings.ValueDict["PKG_TMPDIR"],
 mysettings.ValueDict["CATEGORY"], mysettings.ValueDict["PF"])
-}else{
-mysettings.ValueDict["PORTAGE_BUILDDIR"] = filepath.Join(
-mysettings.ValueDict["BUILD_PREFIX"],
-mysettings.ValueDict["CATEGORY"], mysettings.ValueDict["PF"])
+}else {
+	mysettings.ValueDict["PORTAGE_BUILDDIR"] = filepath.Join(
+		mysettings.ValueDict["BUILD_PREFIX"],
+		mysettings.ValueDict["CATEGORY"], mysettings.ValueDict["PF"])
+}
 
 mysettings.ValueDict["HOME"] = filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"], "homedir")
 mysettings.ValueDict["WORKDIR"] = filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"], "work")
@@ -416,154 +429,183 @@ mysettings.ValueDict["T"] = filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR
 mysettings.ValueDict["SANDBOX_LOG"] = filepath.Join(mysettings.ValueDict["T"], "sandbox.log")
 mysettings.ValueDict["FILESDIR"] = filepath.Join(settings.ValueDict["PORTAGE_BUILDDIR"], "files")
 
-eprefix_lstrip = mysettings.ValueDict["EPREFIX"].lstrip(string(os.PathSeparator))
+eprefix_lstrip := mysettings.ValueDict["EPREFIX"].lstrip(string(os.PathSeparator))
 mysettings.ValueDict["ED"] = filepath.Join(
 mysettings.ValueDict["D"], eprefix_lstrip).rstrip(string(os.PathSeparator)) + string(os.PathSeparator)
 
 mysettings.ValueDict["PORTAGE_BASHRC"] = filepath.Join(
-mysettings.ValueDict["PORTAGE_CONFIGROOT"], EBUILD_SH_ENV_FILE)
+mysettings.ValueDict["PORTAGE_CONFIGROOT"], EbuildShEnvFile)
 mysettings.ValueDict["PM_EBUILD_HOOK_DIR"] = filepath.Join(
-mysettings.ValueDict["PORTAGE_CONFIGROOT"], EBUILD_SH_ENV_DIR)
+mysettings.ValueDict["PORTAGE_CONFIGROOT"], EbuildShEnvDir)
 
-mysettings.ValueDict["PORTAGE_COLORMAP"] = colormap()
+mysettings.ValueDict["PORTAGE_COLORMAP"] = ColorMap()
 
-if "COLUMNS" ! in mysettings{
+if  _,ok := mysettings.ValueDict["COLUMNS"]; !ok {
+	columns := os.Getenv("COLUMNS")
+	if columns == "" {
+		_, columns, _ := get_term_size(0)
+		if columns < 1 {
+			columns = 80
+		}
+		columns = fmt.Sprint(columns)
+		os.Setenv("COLUMNS", columns)
+	}
+	mysettings.ValueDict["COLUMNS"] = columns
+}
 
-columns := os.Getenv("COLUMNS")
-if columns == nil{
-rows, columns = portage.output.get_term_size()
-if columns < 1{
 
-columns = 80
-columns = str(columns)
-os.environ["COLUMNS"] = columns
-mysettings.ValueDict["COLUMNS"] = columns
+eapi := mysettings.configDict["pkg"]["EAPI"]
+_doebuild_path(mysettings, eapi)
 
-eapi = mysettings.configDict["pkg"]["EAPI"]
-_doebuild_path(mysettings, eapi=eapi)
+if ! eapiIsSupported(eapi) {
+	//raise UnsupportedAPIException(mycpv, eapi)
+}
 
-if ! eapi_is_supported(eapi){
-raise UnsupportedAPIException(mycpv, eapi)
-
-if eapi_exports_REPOSITORY(eapi) && "PORTAGE_REPO_NAME" in mysettings.configDict["pkg"]{
-mysettings.configDict["pkg"]["REPOSITORY"] = mysettings.configDict["pkg"]["PORTAGE_REPO_NAME"]
+if eapiExportsRepository(eapi) && "PORTAGE_REPO_NAME" in mysettings.configDict["pkg"]
+	{
+		mysettings.configDict["pkg"]["REPOSITORY"] = mysettings.configDict["pkg"]["PORTAGE_REPO_NAME"]
+	}
 
 if mydo != "depend"{
 if hasattr(mydbapi, "getFetchMap") &&
 ("A" ! in mysettings.configDict["pkg"] ||
 "AA" ! in mysettings.configDict["pkg"]){
-src_uri = mysettings.configDict["pkg"].get("SRC_URI")
-if src_uri == nil{
-src_uri, = mydbapi.aux_get(mysettings.mycpv,
-["SRC_URI"], mytree=mytree)
-metadata = map[string]string{
-"EAPI"    : eapi,
-"SRC_URI" : src_uri,
-}
-use = map[string]bool{}
-for_, v := range strings.Fields(mysettings.ValueDict["PORTAGE_USE"]){
-use[v]=true
-}
-try{
-uri_map = _parse_uri_map(mysettings.mycpv, metadata, use=use)
-except InvalidDependString{
-mysettings.configDict["pkg"]["A"] = ""
-}else{
-mysettings.configDict["pkg"]["A"] = strings.Join(uri_map," ")
+		src_uri = mysettings.configDict["pkg"].get("SRC_URI")
+		if src_uri == nil {
+			src_uri, = mydbapi.aux_get(mysettings.mycpv,
+				["SRC_URI"], mytree = mytree)
+		}
+		metadata = map[string]string{
+			"EAPI":    eapi,
+			"SRC_URI": src_uri,
+		}
+		use = map[string]bool{}
+		for_, v := range strings.Fields(mysettings.ValueDict["PORTAGE_USE"])
+		{
+			use[v] = true
+		}
+		//try{
+		uri_map = _parse_uri_map(mysettings.mycpv, metadata, use = use)
+		//except InvalidDependString{
+		//mysettings.configDict["pkg"]["A"] = ""
+		//}else{
+		mysettings.configDict["pkg"]["A"] = strings.Join(uri_map, " ")
+	}
 
-try{
+//try{
 uri_map = _parse_uri_map(mysettings.mycpv, metadata)
-except InvalidDependString{
-mysettings.configDict["pkg"]["AA"] = ""
-}else{
+//except InvalidDependString{
+//mysettings.configDict["pkg"]["AA"] = ""
+//}else{
 mysettings.configDict["pkg"]["AA"] = strings.Join(uri_map," ")
 
-ccache = "ccache" in mysettings.Features.Features[]
-distcc = "distcc" in mysettings.Features.Features[]
-icecream = "icecream" in mysettings.Features.Features[]
+ccache :=   mysettings.Features.Features["ccache"]
+distcc := mysettings.Features.Features["distcc" ]
+icecream :=  mysettings.Features.Features["icecream"]
 
 if (ccache || distcc || icecream) && mydo in ("unpack",
 "prepare", "configure", "test", "install"){
 libdir = None
-default_abi = mysettings.ValueDict["DEFAULT_ABI")
-if default_abi{
-libdir = mysettings.ValueDict["LIBDIR_" + default_abi)
-if ! libdir{
-libdir = "lib"
+default_abi = mysettings.ValueDict["DEFAULT_ABI"]
+if default_abi {
+	libdir = mysettings.ValueDict["LIBDIR_"+default_abi]
+}
+if ! libdir {
+	libdir = "lib"
+}
 
 possible_libexecdirs = (libdir, "lib", "libexec")
-masquerades = []
-if distcc{
-masquerades=append(("distcc", "distcc"))
-if icecream{
-masquerades=append(("icecream", "icecc"))
-if ccache{
-masquerades=append(("ccache", "ccache"))
+masquerades = []string{}
+if distcc {
+	masquerades = append(("distcc", "distcc"))
+}
+if icecream {
+	masquerades = append(("icecream", "icecc"))
+}
+if ccache {
+	masquerades = append(("ccache", "ccache"))
+}
 
 for feature, m in masquerades{
 for l in possible_libexecdirs{
 p = filepath.Join(string(os.PathSeparator), eprefix_lstrip,
 "usr", l, m, "bin")
 if os.path.isdir(p){
-mysettings.ValueDict["PATH"] = p + ":" + mysettings.ValueDict["PATH"]
-break
+		mysettings.ValueDict["PATH"] = p + ":" + mysettings.ValueDict["PATH"]
+		break
+		}
 }else{
 atom.WriteMsg(fmt.Sprintf(("Warning: %s requested but no masquerade dir "
 "can be found in /usr/lib*/%s/bin\n") % (m, m))
-mysettings.Features.Features[].remove(feature)
+mysettings.Features.Features.remove(feature)
+		}
+	}
+}
 
 if "MAKEOPTS" ! in mysettings{
 nproc = get_cpu_count()
 if nproc{
 mysettings.ValueDict["MAKEOPTS"] = fmt.Sprintf("-j%d" % (nproc)
+		}
+	}
 
 if ! eapi_exports_KV(eapi){
-
-mysettings.pop("KV", None)
+delete(mysettings.ValueDict,"KV")
 }else if "KV" ! in mysettings &&
 mydo in ("compile", "config", "configure", "info",
 "install", "nofetch", "postinst", "postrm", "preinst",
-"prepare", "prerm", "setup", "test", "unpack"){
-mykv, err1 = ExtractKernelVersion(
-filepath.Join(mysettings.ValueDict["EROOT"], "usr/src/linux"))
-if mykv{
+"prepare", "prerm", "setup", "test", "unpack")
+	{
+		mykv, err1 = ExtractKernelVersion(
+			filepath.Join(mysettings.ValueDict["EROOT"], "usr/src/linux"))
+		if mykv {
 
-mysettings.ValueDict["KV"] = mykv
-}else{
-mysettings.ValueDict["KV"] = ""
-mysettings.backup_changes("KV")
+			mysettings.ValueDict["KV"] = mykv
+		} else {
+			mysettings.ValueDict["KV"] = ""
+		}
+		mysettings.BackupChanges("KV")
+	}
 
-binpkg_compression = mysettings.ValueDict["BINPKG_COMPRESS", "bzip2")
-try{
+binpkg_compression, ok := mysettings.ValueDict["BINPKG_COMPRESS"]
+if !ok {
+	binpkg_compression= "bzip2"
+}
+//try{
 compression = _compressors[binpkg_compression]
-except KeyError as e{
-if binpkg_compression{
-atom.WriteMsg(fmt.Sprintf("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
-}else{
+//except KeyError as e{
+//if binpkg_compression{
+//atom.WriteMsg(fmt.Sprintf("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
+//}else{
 
 mysettings.ValueDict["PORTAGE_COMPRESSION_COMMAND"] = "cat"
-}else{
-try{
+//}else{
+//try{
 compression_binary = shlex_split(varexpand(compression["compress"], mydict=settings))[0]
-except IndexError as e{
-atom.WriteMsg(fmt.Sprintf("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
-}else{
+//except IndexError as e{
+//atom.WriteMsg(fmt.Sprintf("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
+//}else{
 if find_binary(compression_binary) == nil{
 missing_package = compression["package"]
-atom.WriteMsg(fmt.Sprintf("Warning: File compression unsupported %s. Missing package: %s\n" % (binpkg_compression, missing_package))
-}else{
+WriteMsg(fmt.Sprintf("Warning: File compression unsupported %s. Missing package: %s\n" % (binpkg_compression, missing_package))
+//}else{
 cmd = [varexpand(x, mydict=settings) for _, x := range  shlex_split(compression["compress"])]
 
 cmd = []string{}
  for _, x := range  cmd if x != ""]
 mysettings.ValueDict["PORTAGE_COMPRESSION_COMMAND"] = strings.Join(cmd," ")
+}
+}
+}
 
-_doebuild_manifest_cache = None
+var (
+	_doebuild_manifest_cache = None
 _doebuild_broken_ebuilds = set()
 _doebuild_broken_manifests = set()
 _doebuild_commands_without_builddir = (
 "clean", "cleanrm", "depend", "digest",
 "fetch", "fetchall", "help", "manifest"
+)
 )
 
 func doebuild(myebuild, mydo, _unused=DeprecationWarning, settings *Config, debug=0, listonly=0,

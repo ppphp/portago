@@ -3412,33 +3412,55 @@ type portdbapi struct {
 	treemap                 map[string]string
 	doebuild_settings       *Config
 	depcachedir             string
-	porttrees               []string
+	_porttrees, _ordered_repo_name_list               []string
 	_have_root_eclass_dir   bool
-	xcache                  map[string]string
 	frozen                  int
-	auxdb                   map[string]string
-	_pregen_auxdb           map[string]string
-	_ro_auxdb               map[string]string
-	_ordered_repo_name_list []string
-	_aux_cache_keys         map[string]bool
-	_aux_cache              map[string]string
-	_broken_ebuilds         map[string]bool
+	auxdb, _aux_cache, _pregen_auxdb, _ro_auxdb, xcache       map[string]string
+	 _porttrees_repos map[string]*RepoConfig
+	_broken_ebuilds, _aux_cache_keys         map[string]bool
 	_better_cache           interface{}
 }
 
-func (p *portdbapi) _categories() {}
+func (p *portdbapi) _categories() map[string]bool{
+	return p.settings.categories
+}
 
-func (p *portdbapi) porttree_root() {}
+func (p *portdbapi) _set_porttrees(porttrees []string) {
+	p._porttrees_repos = map[string]*RepoConfig{}
+	for _, location := range porttrees {
+		 repo :=  p.repositories.getRepoForLocation(location)
+			p._porttrees_repos[repo.Name] =repo
+	}
+	p._porttrees = porttrees
+}
 
-func (p *portdbapi) eclassdb() {}
-
-func (p *portdbapi) _set_porttrees() {}
-
-func (p *portdbapi) _get_porttrees() {}
+func (p *portdbapi) _get_porttrees() []string {
+	return p._porttrees
+}
 
 func (p *portdbapi) _event_loop() {}
 
-func (p *portdbapi) _create_pregen_cache() {}
+func (p *portdbapi) _create_pregen_cache(tree string) {
+	conf := p.repositories.getRepoForLocation(tree)
+	cache := conf.get_pregenerated_cache(p._known_keys, true, false)
+
+	if cache != nil {
+	//try:
+		cache.ec = p.repositories.getRepoForLocation(tree).eclassDb
+		//except
+	//AttributeError:
+	//	pass
+
+		if not cache.complete_eclass_entries {
+			warnings.warn(
+				("Repository '%s' used deprecated 'pms' cache format. "
+			"Please migrate to 'md5-dict' format.") % (conf.name,),
+			DeprecationWarning)
+		}
+	}
+
+	return cache
+}
 
 func (p *portdbapi) _init_cache_dirs() {}
 
@@ -3577,7 +3599,7 @@ func NewPortDbApi(mysettings *Config) *portdbapi {
 	}
 
 	if (*secpass < 1 && !depcachedir_unshared) || !depcachedir_w_ok {
-		for _, x := range p.porttrees {
+		for _, x := range p._porttrees {
 			p.auxdb[x] = volatile.database(
 				p.depcachedir, x, p._known_keys,
 				**cache_kwargs)
@@ -3593,20 +3615,20 @@ func NewPortDbApi(mysettings *Config) *portdbapi {
 			if _, ok := p.auxdb[x]; ok {
 				continue
 			}
+			p.auxdb[x] = p.auxdbmodule(
+				p.depcachedir, x, p._known_keys, **cache_kwargs)
 		}
 	}
 
-	p.auxdb[x] = p.auxdbmodule(
-		p.depcachedir, x, p._known_keys, **cache_kwargs)
 	if !p.settings.Features.Features["metadata-transfer"] {
-		for _, x := range p.porttrees {
+		for _, x := range p._porttrees {
 			if _, ok := p._pregen_auxdb[x]; ok {
 				continue
 			}
-		}
-		cache := p._create_pregen_cache(x)
-		if cache != nil {
-			p._pregen_auxdb[x] = cache
+			cache := p._create_pregen_cache(x)
+			if cache != nil {
+				p._pregen_auxdb[x] = cache
+			}
 		}
 	}
 

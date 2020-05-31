@@ -2115,9 +2115,9 @@ func get_required_use_flags(requiredUse, eapi string) map[string]bool { //n
 	return usedFlags
 }
 
-// "/", nil, nil, nil
-func _expand_new_virtuals(mysplit, edebug, mydbapi, mysettings *Config, myroot string,
-trees TreesDict, use_mask=None, use_force=None, **kwargs){
+// "/", nil, 0, 0
+func _expand_new_virtuals(mysplit []string, edebug, mydbapi, mysettings *Config, myroot string,
+trees TreesDict, use_mask, use_force int, **kwargs){
 
 newsplit := []string{}
 mytrees := trees.valueDict[myroot]
@@ -2192,8 +2192,8 @@ if repoman {
 	x = x._eval_qa_conditionals(use_mask, use_force)
 }
 
-mykey = x.cp
-if!mykey.startswith("virtual/") {
+mykey := x.cp
+if!strings.HasPrefix(mykey,"virtual/") {
 	newsplit = append(newsplit, x)
 	if atom_graph != nil {
 		atom_graph.add((x, id(x)), graph_parent)
@@ -2214,47 +2214,47 @@ pkg_use_enabled == nil {
 	if portdb.cp_list(x.cp) {
 		newsplit = append(newsplit, x)
 	} else {
-		a := []string{}
-		myvartree = mytrees.get("vartree")
+		a := []*Atom{}
+		myvartree := mytrees.VarTree()
 		if myvartree != nil {
 			mysettings._populate_treeVirtuals_if_needed(myvartree)
 		}
-		mychoices = mysettings.getvirtuals().get(mykey, [])
+		mychoices := mysettings.getVirtuals()[mykey]
 		for _, y := range mychoices {
 			a = append(a, Atom(x.replace(x.cp, y.cp, 1)))
 		}
-		if !a {
+		if len(a) == 0 {
 			newsplit = append(newsplit, x)
 		} else if is_disjunction {
-			newsplit= append(, a)
+			newsplit= append(newsplit, a)
 		} else if len(a) == 1 {
-			newsplit = append(, a[0])
+			newsplit = append(newsplit, a[0])
 		} else {
-			newsplit = append(, ["||"] + a)
+			newsplit = append(newsplit, ["||"] + a)
 		}
 	}
 	continue
 }
 
 pkgs := []string{}
-matches = portdb.match_pkgs(x.without_use)
-matches.reverse()
-for pkg in matches{
-		if pkg.cp.startswith("virtual/"){
+matches := portdb.match_pkgs(x.without_use)
+ReverseSlice(matches)
+for _, pkg := range matches{
+		if strings.HasPrefix(pkg.cp,"virtual/"){
 		pkgs = append(pkgs, pkg)
 	}
 	}
 
 mychoices := []string{}
 if!pkgs &&!portdb.cp_list(x.cp) {
-	myvartree = mytrees.get("vartree")
+	myvartree := mytrees.VarTree()
 	if myvartree != nil {
 		mysettings._populate_treeVirtuals_if_needed(myvartree)
 	}
-	mychoices = mysettings.getvirtuals().get(mykey, [])
+	mychoices = mysettings.getVirtuals()[mykey]
 }
 
-if!(pkgs || mychoices) {
+if!(len(pkgs)>0 || len(mychoices) > 0) {
 	newsplit = append(newsplit, x)
 	if atom_graph != nil {
 		atom_graph.add((x, id(x)), graph_parent)
@@ -2264,7 +2264,7 @@ if!(pkgs || mychoices) {
 
 a := []string{}
 for pkg in pkgs{
-virt_atom = "=" + pkg.cpv
+virt_atom := "=" + pkg.cpv
 if x.unevaluated_atom.use{
 virt_atom += str(x.unevaluated_atom.use)
 virt_atom = Atom(virt_atom)
@@ -2289,10 +2289,8 @@ depstring = pkg._metadata["RDEPEND"]
 pkg_kwargs = kwargs.copy()
 pkg_kwargs["myuse"] = pkg_use_enabled(pkg)
 if edebug{
-		writemsg_level(_("Virtual Parent:      %s\n")
-		% (pkg, ), noiselevel = -1, level =logging.DEBUG)
-		writemsg_level(_("Virtual Depstring:   %s\n")
-		% (depstring, ), noiselevel =-1, level = logging.DEBUG)
+		writemsg_level(fmt.Sprint("Virtual Parent:      %s\n", pkg, ), noiselevel = -1, level =logging.DEBUG)
+		writemsg_level(fmt.Sprint("Virtual Depstring:   %s\n", depstring, ), noiselevel =-1, level = logging.DEBUG)
 		}
 
 mytrees.valueDict["virt_parent"] = pkg
@@ -2392,12 +2390,12 @@ type _dep_choice struct{
 }
 
 // 0, nil, false
-func dep_zapdeps(unreduced, reduced, myroot, use_binaries int, trees=None,
+func dep_zapdeps(unreduced, reduced, myroot string, use_binaries int, trees *TreesDict,
 minimize_slots bool) {
 	if trees == nil {
 		trees = Db()
 	}
-	WriteMsg("ZapDeps -- %s\n"%(use_binaries), 2)
+	WriteMsg(fmt.Sprint("ZapDeps -- %s\n",use_binaries), 2, nil)
 	if !reduced || unreduced == ["||"] || dep_eval(reduced) {
 		return []string{}
 	}
@@ -2504,7 +2502,7 @@ minimize_slots bool) {
 			avail_pkg := mydbapi_match_pkgs(atom.without_use)
 			if avail_pkg {
 				avail_pkg = avail_pkg[-1]
-				avail_slot = Atom("%s:%s"%(atom.cp, avail_pkg.slot))
+				avail_slot = Atom(fmt.Sprint("%s:%s", atom.cp, avail_pkg.slot))
 			}
 			if !avail_pkg {
 				all_available = false
@@ -2559,7 +2557,7 @@ minimize_slots bool) {
 						if avail_pkg_use != avail_pkg {
 							avail_pkg = avail_pkg_use
 						}
-						avail_slot = Atom("%s:%s"%(atom.cp, avail_pkg.slot))
+						avail_slot = Atom(fmt.Sprint("%s:%s", atom.cp, avail_pkg.slot))
 					}
 				}
 
@@ -2617,7 +2615,7 @@ minimize_slots bool) {
 				if parent != nil && graph_interface.want_update_pkg(parent, avail_pkg) {
 					want_update = true
 				}
-				if (!slot_atom.cp.startswith("virtual/")
+				if (!strings.HasPrefix(slot_atom.cp,"virtual/")
 				&&
 				!graph_db.match_pkgs(slot_atom)){
 				new_slot_count += 1
@@ -2640,7 +2638,7 @@ minimize_slots bool) {
 				in
 			atoms
 			if !atom.blocker){
-				if !vardb.match(atom) && !atom.startswith("virtual/") {
+				if !vardb.match(atom) && !strings.HasPrefix(atom, "virtual/") {
 					all_installed = false
 					break
 				}
@@ -2653,7 +2651,7 @@ minimize_slots bool) {
 					in
 				slot_map {
 					if !vardb.match(slot_atom) &&
-						not slot_atom.startswith("virtual/") {
+						! strings.HasPrefix(slot_atom,"virtual/") {
 						all_installed_slots = false
 						break
 					}
@@ -2688,7 +2686,7 @@ minimize_slots bool) {
 				for atom
 					in
 				atoms {
-					if atom.blocker || atom.cp.startswith("virtual/") {
+					if atom.blocker || strings.HasPrefix(atom.cp,"virtual/") {
 						continue
 					}
 					if !any(pkg in
@@ -2870,10 +2868,10 @@ minimize_slots bool) {
 
 }
 
-// "yes", nil, nil, 1, 0, nil, nil
-func dep_check(depstring, mydbapi, mysettings *Config, use string, mode=None, myuse []string,
-use_cache , use_binaries int, myroot=None, trees *TreesDict) {
-	myroot := mysettings.ValueDict["EROOT"]
+// "yes", nil, nil, 1, 0, "", nil
+func dep_check(depstring string, mydbapi, mysettings *Config, use string, mode=None, myuse []string,
+use_cache , use_binaries int, myroot string, trees *TreesDict) (int, []string) {
+	myroot = mysettings.ValueDict["EROOT"]
 	edebug := mysettings.ValueDict["PORTAGE_DEBUG"] == "1"
 	if trees == nil {
 		trees = Db()
@@ -2887,179 +2885,244 @@ use_cache , use_binaries int, myroot=None, trees *TreesDict) {
 		}
 	}
 
-mymasks := map[string]bool{}
-useforce := map[string]bool{}
-if use == "all" {
-	arch := mysettings.ValueDict["ARCH"]
-	for k := range mysettings.usemask {
-		mymasks[k.value] = true
+	mymasks := map[string]bool{}
+	useforce := map[string]bool{}
+	if use == "all" {
+		arch := mysettings.ValueDict["ARCH"]
+		for k := range mysettings.usemask {
+			mymasks[k.value] = true
+		}
+		for k := range mysettings.archlist() {
+			mymasks[k] = true
+		}
+		if len(arch) > 0 {
+			delete(mymasks, arch)
+			useforce[arch] = true
+		}
+		for k := range mysettings.useforce {
+			useforce[k.value] = true
+		}
+		for k := range mymasks {
+			delete(useforce, k)
+		}
 	}
-	for k := range mysettings.archlist() {
-		mymasks[k] = true
+
+	mytrees := trees.valueDict[myroot]
+	parent := mytrees.get("parent")
+	virt_parent := mytrees.get("virt_parent")
+	var current_parent = nil
+	var eapi = nil
+	if parent != "" {
+		if virt_parent != "" {
+			current_parent = virt_parent
+		} else {
+			current_parent = parent
+		}
 	}
-	if len(arch) > 0 {
-		delete(mymasks, arch)
-		useforce[arch] = true
+
+	if current_parent != nil {
+		if !current_parent.installed {
+			eapi = current_parent.eapi
+		}
 	}
-	for k := range mysettings.useforce {
-		useforce[k.value] = true
+
+	var mysplit []string = nil
+
+	if isinstance(depstring, list) {
+		mysplit = depstring
+	} else {
+		//try{
+		mysplit = useReduce(depstring, myusesplit,
+			mymasks, use == "all", useforce, false, eapi,
+			true, false, nil, func(s string) *Atom {
+				a, _ := NewAtom(s, nil, false, nil, nil, "", nil, nil)
+				return a
+			}, false)
+		//except InvalidDependString as e{
+		//return [0, "%s" % (e,)]
 	}
-	for k := range mymasks {
-		delete(useforce, k)
+
+	if mysplit == []string{} {
+		return 1, []string{}
+	}
+
+	//try{
+	mysplit = _expand_new_virtuals(mysplit, edebug, mydbapi, mysettings, myroot, trees,mymasks, useforce,
+		use = use, mode = mode, myuse=myuse,
+		 use_cache = use_cache,
+		use_binaries=use_binaries)
+	//except ParseError as e{
+	//return [0, "%s" % (e,)]
+
+	dnf := false
+	if mysettings.localConfig {
+		orig_split = mysplit
+		mysplit = _overlap_dnf(mysplit)
+		dnf = mysplit
+		is
+		!orig_split
+	}
+
+	mysplit2 := dep_wordreduce(mysplit,
+		mysettings, mydbapi, mode, use_cache = use_cache)
+	if mysplit2 == nil {
+		return 0, []string{"Invalid token"}
+	}
+
+	WriteMsg("\n\n\n", 1, nil)
+	WriteMsg(fmt.Sprint("mysplit:  %s\n", mysplit), 1, nil)
+	WriteMsg(fmt.Sprint("mysplit2: %s\n", mysplit2), 1, nil)
+
+	selected_atoms := dep_zapdeps(mysplit, mysplit2, myroot,
+		use_binaries, trees, dnf)
+
+	return 1, selected_atoms
+}
+
+
+func _overlap_dnf(dep_struct) {
+	if !_contains_disjunction(dep_struct) {
+		return dep_struct
+	}
+
+	cp_map = collections.defaultdict(list)
+	overlap_graph = digraph()
+	order_map = map[string]string{}
+	order_key = lambda
+x:
+	order_map[id(x)]
+	result := []string{}
+	for i, x
+	in
+	enumerate(dep_struct)
+	{
+		if isinstance(x, list) {
+			assert
+			x && x[0] == "||",
+				"Normalization error, nested conjunction found in %s" % (dep_struct,)
+		}
+		order_map[id(x)] = i
+		prev_cp = None
+
+		for atom
+			in
+		_iter_flatten(x)
+		{
+			if isinstance(atom, Atom) && !atom.blocker {
+				cp_map[atom.cp] = append(cp_map[atom.cp], x)
+				overlap_graph.add(atom.cp, parent = prev_cp)
+				prev_cp = atom.cp
+			}
+			if prev_cp == nil {
+				result = append(result, x)
+			}
+		} else {
+		result = append(result, x)
+	}
+	}
+
+	traversed := map[string]bool{}
+	overlap := false
+	for cp
+	in
+	overlap_graph{
+		if cp in traversed{
+		continue
+	}
+		disjunctions = map[string]bool{}
+		stack = []string{cp}
+		for len(stack) > 0{
+		cp = stack.pop()
+		traversed.add(cp)
+		for _, x := range cp_map[cp]{
+		disjunctions[id(x)] = x
+	}
+		for other_cp in itertools.chain(overlap_graph.child_nodes(cp),
+		overlap_graph.parent_nodes(cp)){
+		if other_cp!in traversed{
+		stack = append(stack, other_cp)
+	}
+	}
+	}
+
+		if len(disjunctions) > 1{
+		overlap = true
+		result = append(result, _dnf_convert(
+		sorted(disjunctions.values(), key = order_key)))
+	} else{
+		result = append(result, disjunctions.popitem()[1])
+	}
+	}
+
+	return result
+	if overlap
+	else
+	dep_struct
+}
+
+
+func _iter_flatten(dep_struct) {
+	for _, x := range dep_struct {
+		if isinstance(x, list) {
+			for _, x := range _iter_flatten(x) {
+				yield
+				x
+			}
+		} else {
+			yield
+			x
+		}
 	}
 }
 
-mytrees := trees.valueDict[myroot]
-parent := mytrees.get("parent")
-virt_parent := mytrees.get("virt_parent")
-var current_parent = nil
-var eapi = nil
-if parent != ""{
-if virt_parent != ""{
-current_parent = virt_parent
-}else{
-current_parent = parent
 
-if current_parent != nil{
-if!current_parent.installed{
-eapi = current_parent.eapi
-
-if isinstance(depstring, list){
-mysplit = depstring
-}else{
-try{
-mysplit = use_reduce(depstring, uselist=myusesplit,
-masklist=mymasks, matchall=(use=="all"), excludeall=useforce,
-opconvert=true, token_class=Atom, eapi=eapi)
-except InvalidDependString as e{
-return [0, "%s" % (e,)]
-
-if mysplit =:= []string{}{
-return [1,[]]
-
-try{
-mysplit = _expand_new_virtuals(mysplit, edebug, mydbapi, mysettings,
-use=use, mode=mode, myuse=myuse,
-use_force=useforce, use_mask=mymasks, use_cache=use_cache,
-use_binaries=use_binaries, myroot=myroot, trees=trees)
-except ParseError as e{
-return [0, "%s" % (e,)]
-
-dnf = false
-if mysettings.local_config: 
-orig_split = mysplit
-mysplit = _overlap_dnf(mysplit)
-dnf = mysplit is!orig_split
-
-mysplit2 = dep_wordreduce(mysplit,
-mysettings, mydbapi, mode, use_cache=use_cache)
-if mysplit2 == nil{
-return [0, _("Invalid token")]
-
-WriteMsg("\n\n\n", 1)
-WriteMsg("mysplit:  %s\n" % (mysplit), 1)
-WriteMsg("mysplit2: %s\n" % (mysplit2), 1)
-
-selected_atoms = dep_zapdeps(mysplit, mysplit2, myroot,
-use_binaries=use_binaries, trees=trees, minimize_slots=dnf)
-
-return [1, selected_atoms]
-
-
-func _overlap_dnf(dep_struct){
-if!_contains_disjunction(dep_struct){
-return dep_struct
-
-cp_map = collections.defaultdict(list)
-overlap_graph = digraph()
-order_map = {}
-order_key = lambda x: order_map[id(x)]
-result := []string{}
-for i, x in enumerate(dep_struct){
-if isinstance(x, list){
-assert x && x[0] == "||", 
-"Normalization error, nested conjunction found in %s" % (dep_struct,)
-order_map[id(x)] = i
-prev_cp = None
-for atom in _iter_flatten(x){
-if isinstance(atom, Atom) &&!atom.blocker{
-cp_map[atom.cp]= append(,x)
-overlap_graph.add(atom.cp, parent=prev_cp)
-prev_cp = atom.cp
-if prev_cp == nil: 
-result= append(result,x)
-}else{
-result= append(result,x)
-
-traversed = set()
-overlap = false
-for cp in overlap_graph{
-if cp in traversed{
-continue
-disjunctions = {}
-stack = [cp]
-while stack{
-cp = stack.pop()
-traversed.add(cp)
-for _, x := range cp_map[cp]{
-disjunctions[id(x)] = x
-for other_cp in itertools.chain(overlap_graph.child_nodes(cp),
-overlap_graph.parent_nodes(cp)){
-if other_cp!in traversed{
-stack= append(,other_cp)
-
-if len(disjunctions) > 1{
-overlap = true
-result= append(, _dnf_convert(
-sorted(disjunctions.values(), key=order_key)))
-}else{
-result= append(,disjunctions.popitem()[1])
-
-return result if overlap else dep_struct
-
-
-func _iter_flatten(dep_struct){
-for _, x := range dep_struct{
-if isinstance(x, list){
-for _, x := range _iter_flatten(x){
-yield x
-}else{
-yield x
-
-
-func dep_wordreduce(mydeplist,mysettings,mydbapi,mode,use_cache=1){
-deplist=mydeplist[:]
-for mypos, token in enumerate(deplist){
-if isinstance(deplist[mypos], list){
-deplist[mypos]=dep_wordreduce(deplist[mypos],mysettings,mydbapi,mode,use_cache=use_cache)
-}else if deplist[mypos]=="||"{
-pass
-}else if token[:1] == "!"{
-deplist[mypos] = false
-}else{
-mykey = deplist[mypos].cp
-if mysettings && mykey in mysettings.pprovideddict && 
-match_from_list(deplist[mypos], mysettings.pprovideddict[mykey]){
-deplist[mypos]=true
-}else if mydbapi == nil{
-deplist[mypos] = false
-}else{
-if mode{
-x = mydbapi.xmatch(mode, deplist[mypos])
-if mode.startswith("minimum-"){
-mydep := []string{}
-if x{
-mydep= append(,x)
-}else{
-mydep = x
-}else{
-mydep=mydbapi.match(deplist[mypos],use_cache=use_cache)
-if mydep!=None{
-tmp=(len(mydep)>=1)
-if deplist[mypos][0]=="!"{
-tmp=false
-deplist[mypos]=tmp
-}else{
-return None
-return deplist
-
+// 1
+func dep_wordreduce(mydeplist,mysettings,mydbapi,mode,use_cache int) {
+	deplist := mydeplist[:]
+	for mypos, token
+	in
+	enumerate(deplist)
+	{
+		if isinstance(deplist[mypos], list) {
+			deplist[mypos] = dep_wordreduce(deplist[mypos], mysettings, mydbapi, mode, use_cache = use_cache)
+		} else if deplist[mypos] == "||" {
+			pass
+		} else if token[:1] == "!" {
+			deplist[mypos] = false
+		} else {
+			mykey = deplist[mypos].cp
+			if mysettings && mykey in
+			mysettings.pprovideddict &&
+				match_from_list(deplist[mypos], mysettings.pprovideddict[mykey])
+			{
+				deplist[mypos] = true
+			}else if mydbapi == nil {
+				deplist[mypos] = false
+			} else {
+				if mode {
+					x = mydbapi.xmatch(mode, deplist[mypos])
+					if strings.HasPrefix(mode,"minimum-") {
+						mydep := []string{}
+						if x {
+							mydep = append(mydep, x)
+						}
+					} else {
+						mydep = x
+					}
+				} else {
+					mydep = mydbapi.match(deplist[mypos], use_cache = use_cache)
+				}
+				if mydep != nil {
+					tmp = (len(mydep) >= 1)
+					if deplist[mypos][0] == "!" {
+						tmp = false
+					}
+					deplist[mypos] = tmp
+				} else {
+					return nil
+				}
+			}
+		}
+	}
+	return deplist
+}
