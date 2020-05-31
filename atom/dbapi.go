@@ -1995,9 +1995,9 @@ func (d *dblink) _pre_unmerge_backup() {}
 
 func (d *dblink) _quickpkg_dblink() {}
 
-// "", nil, "", nil, nil, nil, nil
+// "", nil, "", nil, nil, nil, 0
 func NewDblink(cat, pkg, myroot string, settings *Config, treetype string,
-	vartree *varTree, blockers, scheduler, pipe interface{}) *dblink {
+	vartree *varTree, blockers, scheduler interface{}, pipe int) *dblink {
 	d := &dblink{}
 
 	d._normalize_needed = regexp.MustCompile("//|^[^/]|./$|(^|/)\\.\\.?(/|$)")

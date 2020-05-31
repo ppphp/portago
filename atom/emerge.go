@@ -723,7 +723,7 @@ if len(output) > 0 {
 return true
 }
 
-func(m *MergeProcess) _spawn( args, fd_pipes, **kwargs){
+func(m *MergeProcess) _spawn( args, fd_pipes map[int]int, **kwargs){
 	r := make([]int,2)
 	syscall.Pipe(r)
 	elog_reader_fd, elog_writer_fd :=r[0],r[1]
@@ -731,33 +731,24 @@ func(m *MergeProcess) _spawn( args, fd_pipes, **kwargs){
 	fcntl.fcntl(elog_reader_fd, fcntl.F_SETFL,
 		fcntl.fcntl(elog_reader_fd, fcntl.F_GETFL) | syscall.O_NONBLOCK)
 
-	if sys.hexversion < 0x3040000:
-try:
-	fcntl.FD_CLOEXEC
-	except AttributeError:
-	pass
-	}else{
-	fcntl.fcntl(elog_reader_fd, fcntl.F_SETFD,
-		fcntl.fcntl(elog_reader_fd, fcntl.F_GETFD) | fcntl.FD_CLOEXEC)
-
-	blockers = nil
+	var blockers = nil
 	if m.blockers != nil {
 		blockers = m.blockers()
 	}
-	mylink := NewDblink(m.mycat, m.mypkg, settings=m.settings,
-		treetype=m.treetype, vartree=m.vartree,
-		blockers=blockers, pipe=elog_writer_fd)
+	mylink := NewDblink(m.mycat, m.mypkg, "", m.settings,
+		m.treetype, m.vartree,
+		blockers, nil, elog_writer_fd)
 	fd_pipes[elog_writer_fd] = elog_writer_fd
 	m.scheduler.add_reader(elog_reader_fd, m._elog_output_handler)
 
 	m._lock_vdb()
-	counter = nil
+	counter := 0
 	if ! m.unmerge{
 		counter = m.vartree.dbapi.counter_tick()
 	}
 
 	parent_pid := syscall.Getpid()
-	pid = nil
+	pid := 0
 try:
 	pid = syscall.fork()
 
@@ -1380,7 +1371,7 @@ if e._dummy_pipe_fd != 0 {
 type BlockerDB struct{
 	_vartree *varTree
 	_portdb *portdbapi
-	_dep_check_trees map[string]map[string] interface{}
+	_dep_check_trees *TreesDict
 	_root_config  ,_fake_vartree string
 }
 
@@ -1393,11 +1384,15 @@ func NewBlockerDB( fake_vartree)*BlockerDB {
 
 	b._dep_check_trees = nil
 	b._fake_vartree = fake_vartree
-	b._dep_check_trees =map[string]map[string] interface{}{b._vartree.settings.ValueDict["EROOT"]:
-		{
-			"porttree"    :  fake_vartree,
-			"vartree"     :  fake_vartree,
+	b._dep_check_trees = &TreesDict{
+		valueDict: map[string]*Tree{b._vartree.settings.ValueDict["EROOT"]:
+		&Tree{
+			_porttree: fake_vartree,
+			_vartree:  fake_vartree,
 		},
+		},
+		_running_eroot: "",
+		_target_eroot:  "",
 	}
 	return b
 }
@@ -1434,7 +1429,7 @@ WriteMsg(fmt.Sprintf("!!! %s/*DEPEND: %s\n" ,
 pkg_location, atoms), -1, nil)
 continue
 
-blocker_atoms :=
+blocker_atoms := [
 	[atom for atom in atoms
 if atom.startswith("!")]
 blocker_atoms.sort()
