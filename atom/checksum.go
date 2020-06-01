@@ -133,6 +133,7 @@ func performMd5(x string, calcPrelink int) []byte {
 	b, _ := performChecksum(x, "MD5", calcPrelink)
 	return b
 }
+
 func performMd5Merge(x string, calcPrelink int) []byte {
 	return performMd5(x, calcPrelink)
 }

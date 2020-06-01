@@ -546,7 +546,7 @@ func catsplit(mydep string) []string {
 	return strings.SplitN(mydep, "/", 2)
 }
 
-func best(myMatches []string, eapi string) string {
+func Best(myMatches []string, eapi string) string {
 	if len(myMatches) == 0 {
 		return ""
 	}

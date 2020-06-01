@@ -547,6 +547,170 @@ func doStat(fname string, followLinks bool) (os.FileInfo, error) {
 	}
 }
 
+type ConfigProtect struct {
+	myroot                                        string
+	protect, protect_list, mask_list, protectmask []string
+	case_insensitive                              bool
+	_dirs                                         map[string]bool
+}
+
+func (c *ConfigProtect) updateprotect() {
+	c.protect = []string{}
+	c._dirs = map[string]bool{}
+	for _, x := range c.protect_list {
+		ppath := NormalizePath(
+			filepath.Join(c.myroot, strings.TrimLeft(x, string(os.PathSeparator))))
+		if st, _ := os.Stat(filepath.Dir(ppath)); st != nil && st.IsDir() {
+			c.protect = append(c.protect, ppath)
+		}
+		if st, err := os.Stat(ppath); err != nil {
+			//except OSError:
+			//pass
+		} else if st.IsDir() {
+			c._dirs[ppath] = true
+		}
+	}
+
+	c.protectmask = []string{}
+	for _, x := range c.mask_list {
+		ppath := NormalizePath(
+			filepath.Join(c.myroot, strings.TrimLeft(x, string(os.PathSeparator))))
+		if c.case_insensitive {
+			ppath = strings.ToLower(ppath)
+			st, err := os.Lstat(ppath)
+			if err == nil {
+				if st.IsDir() {
+					c._dirs[ppath] = true
+				}
+			}
+			c.protectmask = append(c.protectmask, ppath)
+			st, err = os.Stat(ppath)
+			if err == nil {
+				c._dirs[ppath] = true
+			}
+			if err != nil {
+				//except OSError:
+				//	pass
+			}
+		}
+	}
+}
+
+func (c *ConfigProtect) isprotected(obj string) bool {
+	masked := 0
+	protected := 0
+	sep := string(os.PathSeparator)
+	if c.case_insensitive {
+		obj = strings.ToLower(obj)
+	}
+	for _, ppath := range c.protect {
+		if len(ppath) > masked && strings.HasPrefix(obj, ppath) {
+			if c._dirs[ppath] {
+				if obj != ppath && strings.HasPrefix(obj, ppath+sep) {
+					continue
+				} else if obj != ppath {
+					continue
+				}
+				protected = len(ppath)
+				for _, pmpath := range c.protectmask {
+					if len(pmpath) >= protected && strings.HasPrefix(obj, pmpath) {
+						if c._dirs[pmpath] {
+							if obj != pmpath &&
+								!strings.HasPrefix(obj, pmpath+sep) {
+								continue
+							}
+						} else if obj != pmpath {
+							continue
+						}
+						masked = len(pmpath)
+					}
+				}
+			}
+		}
+	}
+	return protected > masked
+}
+
+// false
+func NewConfigProtect(myroot string, protect_list, mask_list []string,
+	case_insensitive bool) *ConfigProtect {
+	c := &ConfigProtect{}
+
+	c.myroot = myroot
+	c.protect_list = protect_list
+	c.mask_list = mask_list
+	c.case_insensitive = case_insensitive
+	c.updateprotect()
+	return c
+}
+
+// "", false
+func new_protect_filename(mydest, newmd5 string, force bool) string {
+	protNum := -1
+	lastPfile := ""
+	if st, _ := os.Stat(mydest); !force && st == nil {
+		return mydest
+	}
+
+	realFilename := filepath.Base(mydest)
+	realDirname := filepath.Dir(mydest)
+	rds, _ := ioutil.ReadDir(realDirname)
+	for _, pfile := range rds {
+		if pfile.Name()[0:5] != "._cfg" {
+			continue
+		}
+		if pfile.Name()[10:] != realFilename {
+			continue
+		}
+		newProtNum, err := strconv.Atoi(pfile.Name()[5:9])
+		if err != nil {
+			//except ValueError:
+			continue
+		} else {
+			if newProtNum > protNum {
+				protNum = newProtNum
+				lastPfile = pfile.Name()
+			}
+		}
+	}
+
+	protNum = protNum + 1
+	newPfile := NormalizePath(filepath.Join(realDirname,
+		"._cfg"+fmt.Sprintf("%04d", protNum)+"_"+realFilename))
+	oldPfile := NormalizePath(filepath.Join(realDirname, lastPfile))
+	if lastPfile != "" && newmd5 != "" {
+		oldPfileSt, err := os.Lstat(oldPfile)
+		if err != nil {
+			//except OSError as e:
+			if err != syscall.ENOENT {
+				//raise
+			}
+		} else {
+			if oldPfileSt.Mode()&os.ModeSymlink != 0 {
+				pfileLink, err := os.Readlink(oldPfile)
+				if err != nil {
+					//except OSError:
+					if err != syscall.ENOENT {
+						//raise
+					}
+				}
+				if pfileLink == newmd5 {
+					return oldPfile
+				}
+			} else {
+				lastPfileMd5 := performMd5Merge(oldPfile, 0)
+				//except FileNotFound:
+				//pass
+				//else{
+				if string(lastPfileMd5) == newmd5 {
+					return oldPfile
+				}
+			}
+		}
+	}
+	return newPfile
+}
+
 type sss struct {
 	S  string
 	SS []string
@@ -1408,9 +1572,9 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 	//	if destexists && dstat.st_flags != 0{
 	//		bsd_chflags.lchflags(dest, 0)
 	//	}
-	//	pflags = os.stat(os.path.dirname(dest)).st_flags
+	//	pflags = os.stat(filepath.Dir(dest)).st_flags
 	//	if pflags != 0{
-	//		bsd_chflags.chflags(os.path.dirname(dest), 0)
+	//		bsd_chflags.chflags(filepath.Dir(dest), 0)
 	//	}
 	//}
 

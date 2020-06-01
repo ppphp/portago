@@ -1551,11 +1551,11 @@ func(c*CompositeTask) _poll() {
 	prev = nil
 	for true {
 		task = c._current_task
-		if task == nil or
+		if task == nil ||
 		task
 		is
 		c._TASK_QUEUED
-		or
+		||
 		task
 		is
 		prev{
@@ -1624,7 +1624,9 @@ type EbuildPhase struct {
 	*CompositeTask
 
 	// slot
-	actionmap, fd_pipes, phase, settings, _ebuild_lock string
+	actionmap,  phase,  _ebuild_lock string
+	settings *Config
+	fd_pipes map[int]int
 
 	_features_display []string
 	_locked_phases    []string
@@ -1655,32 +1657,31 @@ func (e *EbuildPhase) _start() {
 	if need_builddir {
 		phase_completed_file =
 			filepath.Join(
-				e.settings.ValueDict['PORTAGE_BUILDDIR'],
-				".%sed"%e.phase.rstrip('e'))
-	}
-	if not os.path.exists(phase_completed_file) {
+				e.settings.ValueDict["PORTAGE_BUILDDIR"],
+				fmt.Sprintf(".%sed", strings.TrimRight(e.phase,"e")))
+		if not os.path.exists(phase_completed_file) {
 
-		err := syscall.Unlink(filepath.Join(e.settings.ValueDict['T'],
-			'logging', e.phase))
-		if err != nil {
-			//except OSError{
-			//pass
+			err := syscall.Unlink(filepath.Join(e.settings.ValueDict["T"],
+				"logging", e.phase))
+			if err != nil {
+				//except OSError{
+				//pass
+			}
 		}
 	}
 
-	if e.phase in('nofetch', 'pretend', 'setup') {
-
+	if e.phase =="nofetch" ||e.phase == "pretend"||e.phase == "setup" {
 		use := e.settings.ValueDict["PORTAGE_BUILT_USE"]
 		if use == nil {
 			use = e.settings.ValueDict["PORTAGE_USE"]
 		}
 
-		maint_str = ""
-		upstr_str = ""
-		metadata_xml_path = filepath.Join(filepath.Dir(e.settings.ValueDict["EBUILD"]), "metadata.xml")
+		maint_str := ""
+		upstr_str := ""
+		metadata_xml_path := filepath.Join(filepath.Dir(e.settings.ValueDict["EBUILD"]), "metadata.xml")
 		if MetaDataXML != nil && os.path.isfile(metadata_xml_path) {
-			herds_path = filepath.Join(e.settings.ValueDict["PORTDIR"],
-				'metadata/herds.xml')
+			herds_path := filepath.Join(e.settings.ValueDict["PORTDIR"],
+				"metadata/herds.xml")
 			//try{
 			metadata_xml = MetaDataXML(metadata_xml_path, herds_path)
 			maint_str = metadata_xml.format_maintainer_string()
@@ -1691,13 +1692,13 @@ func (e *EbuildPhase) _start() {
 
 		msg := []string{}
 		msg = append(msg, fmt.Sprintf("Package:    %s", e.settings.mycpv))
-		if e.settings.ValueDict["PORTAGE_REPO_NAME"] {
+		if e.settings.ValueDict["PORTAGE_REPO_NAME"] != "" {
 			msg = append(msg, fmt.Sprintf("Repository: %s", e.settings.ValueDict["PORTAGE_REPO_NAME"]))
 		}
-		if maint_str {
+		if maint_str!= "" {
 			msg = append(msg, fmt.Sprintf("Maintainer: %s", maint_str))
 		}
-		if upstr_str {
+		if upstr_str!= "" {
 			msg = append(msg, fmt.Sprintf("Upstream:   %s", upstr_str))
 		}
 
@@ -1720,16 +1721,14 @@ func (e *EbuildPhase) _start() {
 	}
 
 	if e.phase == "package" {
-		if 'PORTAGE_BINPKG_TMPFILE' not
-		in
-		e.settings{
-			e.settings.ValueDict['PORTAGE_BINPKG_TMPFILE'] =
-			filepath.Join(e.settings.ValueDict['PKGDIR'],
-			e.settings.ValueDict['CATEGORY'], e.settings.ValueDict['PF']) + '.tbz2'
+		if _, ok := e.settings.ValueDict["PORTAGE_BINPKG_TMPFILE"]; !ok{
+			e.settings.ValueDict["PORTAGE_BINPKG_TMPFILE"] =
+			filepath.Join(e.settings.ValueDict["PKGDIR"],
+			e.settings.ValueDict["CATEGORY"], e.settings.ValueDict["PF"]) + ".tbz2"
 		}
 	}
 
-	if e.phase in("pretend", "prerm") {
+	if e.phase  == "pretend" || e.phase ==  "prerm" {
 		env_extractor = BinpkgEnvExtractor(background = e.background,
 			scheduler = e.scheduler, settings=e.settings)
 		if env_extractor.saved_env_exists() {
@@ -1750,13 +1749,10 @@ func (e *EbuildPhase) _env_extractor_exit( env_extractor) {
 }
 
 func (e *EbuildPhase) _start_lock() {
-	if (e.phase in
-	e._locked_phases &&
-		"ebuild-locks"
-	in
-	e.settings.features){
-		eroot = e.settings.ValueDict["EROOT"]
-		lock_path = filepath.Join(eroot, portage.VDB_PATH+"-ebuild")
+	if Ins(e._locked_phases, e.phase) &&
+	e.settings.Features.Features["ebuild-locks"]{
+		eroot := e.settings.ValueDict["EROOT"]
+		lock_path := filepath.Join(eroot, VdbPath+"-ebuild")
 		if os.access(filepath.Dir(lock_path), os.W_OK) {
 			e._ebuild_lock = AsynchronousLock(path = lock_path,
 				scheduler = e.scheduler)
@@ -1776,13 +1772,13 @@ func (e *EbuildPhase) _lock_exit( ebuild_lock) {
 	e._start_ebuild()
 }
 
-func (e *EbuildPhase) _get_log_path(){
-logfile = nil
-if e.phase not in ("clean", "cleanrm") && 
-e.settings.ValueDict["PORTAGE_BACKGROUND") != "subprocess"{
-logfile = e.settings.ValueDict["PORTAGE_LOG_FILE")
+func (e *EbuildPhase) _get_log_path() string {
+	logfile := ""
+	if e.phase != "clean" && e.phase != "cleanrm" &&
+		e.settings.ValueDict["PORTAGE_BACKGROUND"] != "subprocess" {
+		logfile = e.settings.ValueDict["PORTAGE_LOG_FILE"]
 	}
-return logfile
+	return logfile
 }
 
 func (e *EbuildPhase) _start_ebuild() {
@@ -1795,14 +1791,14 @@ func (e *EbuildPhase) _start_ebuild() {
 	}
 
 	if e.phase == "unpack" {
-		alist = e.settings.configdict["pkg"].get("A", "").split()
+		alist := strings.Fields(e.settings.configDict["pkg"]["A"])
 		_prepare_fake_distdir(e.settings, alist)
 		_prepare_fake_filesdir(e.settings)
 	}
 
 	fd_pipes := e.fd_pipes
 	if fd_pipes == nil {
-		if !e.background && e.phase == 'nofetch' {
+		if !e.background && e.phase == "nofetch" {
 			fd_pipes = map[int]int{
 				1: syscall.Stderr,
 			}
@@ -1841,10 +1837,7 @@ func (e *EbuildPhase) _ebuild_exit_unlocked( ebuild_process, unlock_task=nil) {
 	fail := false
 	if ebuild_process.returncode != os.EX_OK {
 		e.returncode = ebuild_process.returncode
-		if e.phase == "test" &&
-			"test-fail-continue" in
-		e.settings.features
-		{
+		if e.phase == "test" && e.settings.Features.Features["test-fail-continue"] {
 			f, err := os.OpenFile(filepath.Join(
 				e.settings.ValueDict["PORTAGE_BUILDDIR"], ".tested"), os.O_RDWR|os.O_CREATE, 0644)
 			if err != nil {
@@ -1857,11 +1850,11 @@ func (e *EbuildPhase) _ebuild_exit_unlocked( ebuild_process, unlock_task=nil) {
 		}
 	}
 
-	if not fail {
+	if ! fail {
 		e.returncode = nil
 	}
 
-	logfile = e._get_log_path()
+	logfile := e._get_log_path()
 
 	if e.phase == "install" {
 		out = io.StringIO()
@@ -1875,18 +1868,18 @@ func (e *EbuildPhase) _ebuild_exit_unlocked( ebuild_process, unlock_task=nil) {
 		return
 	}
 
-	settings = e.settings
+	settings := e.settings
 	_post_phase_userpriv_perms(settings)
 
 	if e.phase == "unpack" {
-		os.utime(settings.ValueDict["WORKDIR"], nil)
+		syscall.Utime(settings.ValueDict["WORKDIR"], nil)
 		_prepare_workdir(settings)
 	} else if e.phase == "install" {
 		out = io.StringIO()
 		_post_src_install_write_metadata(settings)
 		_post_src_install_uid_fix(settings, out)
 		msg = out.getvalue()
-		if msg {
+		if len(msg) > 0 {
 			e.scheduler.output(msg, log_path = logfile)
 		}
 	} else if e.phase == "preinst" {
@@ -1895,7 +1888,7 @@ func (e *EbuildPhase) _ebuild_exit_unlocked( ebuild_process, unlock_task=nil) {
 		_postinst_bsdflags(settings)
 	}
 
-	post_phase_cmds = _post_phase_cmds.get(e.phase)
+	post_phase_cmds := _post_phase_cmds.get(e.phase)
 	if post_phase_cmds != nil {
 		if logfile != nil && e.phase in("install", ) {
 			fd, logfile = tempfile.mkstemp()
@@ -1909,35 +1902,36 @@ func (e *EbuildPhase) _ebuild_exit_unlocked( ebuild_process, unlock_task=nil) {
 		return
 	}
 
-	e.returncode = os.EX_OK
+	e.returncode = new(int)
+	*e.returncode = 0
 	e._current_task = nil
 	e.wait()
 }
 
-func (e *EbuildPhase) _post_phase_exit( post_phase){
+func (e *EbuildPhase) _post_phase_exit( post_phase) {
 
-e._assert_current(post_phase)
+	e._assert_current(post_phase)
 
-log_path := ""
-if e.settings.ValueDict["PORTAGE_BACKGROUND"] != "subprocess"{
-log_path = e.settings.ValueDict["PORTAGE_LOG_FILE"]
+	log_path := ""
+	if e.settings.ValueDict["PORTAGE_BACKGROUND"] != "subprocess" {
+		log_path = e.settings.ValueDict["PORTAGE_LOG_FILE"]
 	}
 
-if post_phase.logfile != nil &&
-post_phase.logfile != log_path {
-	e._append_temp_log(post_phase.logfile, log_path)
-}
+	if post_phase.logfile != nil &&
+		post_phase.logfile != log_path {
+		e._append_temp_log(post_phase.logfile, log_path)
+	}
 
-if e._final_exit(post_phase) != os.EX_OK{
-WriteMsg("!!! post %s failed; exiting.\n" , e.phase),
--1, nil)
-e._die_hooks()
-return
-}
+	if e._final_exit(post_phase) != os.EX_OK {
+		WriteMsg(fmt.Sprintf("!!! post %s failed; exiting.\n", e.phase),
+			-1, nil)
+		e._die_hooks()
+		return
+	}
 
-e._current_task = nil
-e.wait()
-return
+	e._current_task = nil
+	e.wait()
+	return
 }
 
 func (e *EbuildPhase) _append_temp_log( temp_log, log_path) {
@@ -1986,14 +1980,9 @@ func (e *EbuildPhase) _die_hooks() {
 }
 
 func (e *EbuildPhase) _die_hooks_exit( die_hooks) {
-	if e.phase != 'clean' &&
-		'noclean' not
-	in
-	e.settings.features &&
-		'fail-clean'
-	in
-	e.settings.features
-	{
+	if e.phase != "clean" &&
+		 !e.settings.Features.Features["noclean"] &&
+	e.settings.Features.Features["fail-clean"] {
 		e._default_exit(die_hooks)
 		e._fail_clean()
 		return
@@ -2006,8 +1995,8 @@ func (e *EbuildPhase) _die_hooks_exit( die_hooks) {
 func (e *EbuildPhase) _fail_clean() {
 	e.returncode = nil
 	portage.elog.elog_process(e.settings.mycpv, e.settings)
-	phase = "clean"
-	clean_phase = EbuildPhase(background = e.background,
+	phase := "clean"
+	clean_phase := EbuildPhase(background = e.background,
 		fd_pipes = e.fd_pipes, phase=phase, scheduler = e.scheduler,
 		settings=e.settings)
 	e._start_task(clean_phase, e._fail_clean_exit)
@@ -2016,7 +2005,8 @@ func (e *EbuildPhase) _fail_clean() {
 
 func (e *EbuildPhase) _fail_clean_exit( clean_phase) {
 	e._final_exit(clean_phase)
-	e.returncode = 1
+	e.returncode = new(int)
+	*e.returncode = 1
 	e.wait()
 }
 
@@ -2052,7 +2042,8 @@ type _PostPhaseCommands struct {
 	*CompositeTask
 
 	// slots
-	commands, elog, fd_pipes, logfile, phase, settings string
+	commands, elog, fd_pipes, logfile, phase  string
+	settings *Config
 }
 
 func(p*_PostPhaseCommands) _start(){
@@ -2082,54 +2073,56 @@ p._start_task(tasks, p._commands_exit)
 }
 }
 
-func(p*_PostPhaseCommands) _commands_exit( task){
+func(p*_PostPhaseCommands) _commands_exit( task) {
 
-if p._default_exit(task) != os.EX_OK {
-	p._async_wait()
-	return
-}
+	if p._default_exit(task) != os.EX_OK {
+		p._async_wait()
+		return
+	}
 
-if p.phase == 'install'{
-out = io.StringIO()
-_post_src_install_soname_symlinks(p.settings, out)
-msg = out.getvalue()
-if msg{
-p.scheduler.output(msg, log_path=p.settings.ValueDict["PORTAGE_LOG_FILE"))
-}
+	if p.phase == "install" {
+		out = io.StringIO()
+		_post_src_install_soname_symlinks(p.settings, out)
+		msg = out.getvalue()
+		if len(msg) > 0 {
+			p.scheduler.output(msg, log_path = p.settings.ValueDict["PORTAGE_LOG_FILE"])
+		}
 
-if 'qa-unresolved-soname-deps' in p.settings.features{
+		if p.settings.Features.Features["qa-unresolved-soname-deps"] {
 
-future = p._soname_deps_qa()
+			future = p._soname_deps_qa()
 
-future.add_done_callback(lambda future: future.cancelled() or future.result())
-p._start_task(AsyncTaskFuture(future=future), p._default_final_exit)
-}else {
+			future.add_done_callback(func(future) {
+				return future.cancelled() or future.result()
+			})
+			p._start_task(AsyncTaskFuture(future = future), p._default_final_exit)
+		} else {
+			p._default_final_exit(task)
+		}
+	} else {
 		p._default_final_exit(task)
 	}
-}else {
-	p._default_final_exit(task)
-}
 }
 
 @coroutine
 func(p*_PostPhaseCommands) _soname_deps_qa() {
 
-	vardb = QueryCommand.get_db()[p.settings.ValueDict['EROOT']]['vartree'].dbapi
+	vardb := QueryCommand.get_db()[p.settings.ValueDict["EROOT"]]["vartree"].dbapi
 
 	all_provides = (yield
 	p.scheduler.run_in_executor(ForkExecutor(loop = p.scheduler), _get_all_provides, vardb))
 
-	unresolved = _get_unresolved_soname_deps(filepath.Join(p.settings.ValueDict['PORTAGE_BUILDDIR'], 'build-info'), all_provides)
+	unresolved := _get_unresolved_soname_deps(filepath.Join(p.settings.ValueDict["PORTAGE_BUILDDIR"], "build-info"), all_provides)
 
-	if unresolved {
+	if len(unresolved) > 0 {
 		unresolved.sort()
-		qa_msg = ["QA Notice: Unresolved soname dependencies:"]
-		qa_msg.append("")
-		qa_msg.extend("\t%s: %s"%(filename, " ".join(sorted(soname_deps)))
+		qa_msg := []string{"QA Notice: Unresolved soname dependencies:"}
+		qa_msg = append(qa_msg, "")
+		qa_msg =append(qa_msg, fmt.Sprintf("\t%s: %s", filename, strings.Join(sorted(soname_deps)), " "))
 		for filename, soname_deps
 			in
 		unresolved)
-		qa_msg.append("")
+		qa_msg= append(qa_msg, "")
 		p.elog("eqawarn", qa_msg)
 	}
 }

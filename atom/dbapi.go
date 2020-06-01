@@ -3,7 +3,6 @@ package atom
 import (
 	"bytes"
 	"compress/gzip"
-	"crypto/md5"
 	"fmt"
 	"github.com/ppphp/shlex"
 	"golang.org/x/sys/unix"
@@ -168,7 +167,7 @@ type DBAPI interface {
 	_cmp_cpv(cpv1, cpv2 *pkgStr) int
 	_cpv_sort_ascending(cpv_list []*pkgStr)
 	cpv_all() []*pkgStr
-	auxGet(myCpv *pkgStr, myList []string, myRepo string) []string
+	AuxGet(myCpv *pkgStr, myList []string, myRepo string) []string
 	auxUpdate(cpv string, metadataUpdates map[string]string)
 	match(origdep *Atom, useCache int) []*pkgStr
 	_iter_match(atom *Atom, cpvIter []*pkgStr) []*pkgStr
@@ -1615,12 +1614,13 @@ func (v *vardbapi) removeFromContents(pkg *dblink, paths []string, relative_path
 	}
 
 	if removed != 0 {
-		needed_filename := filepath.Join(pkg.dbdir, LinkageMap._needed_aux_key)
+		needed_filename := filepath.Join(pkg.dbdir, NewLinkageMapELF(nil)._needed_aux_key)
 		var new_needed []string = nil
 		needed_lines := []string{}
 		f, err := os.Open(needed_filename)
 		if err == nil {
-			needed_lines = f.readlines()
+			ls, _ := ioutil.ReadAll(f)
+			needed_lines = strings.Split(string(ls), "\n")
 		}
 		if err != nil {
 			//except IOError as e:
@@ -1659,7 +1659,7 @@ func (v *vardbapi) writeContentsToContentsFile(pkg *dblink, new_contents, new_ne
 	if new_needed != nil {
 		f := NewAtomic_ofstream(filepath.Join(pkg.dbdir, LinkageMap._needed_aux_key))
 		for entry := range new_needed {
-			f.Write([]byte(entry))
+			f.Write([]byte(fmt.Sprint(entry)))
 		}
 		f.Close()
 	}
@@ -1784,7 +1784,7 @@ func (v *varTree) dep_bestmatch(mydep *Atom, use_cache int) string {
 	for _, p := range v.dbapi.match(dep_expand(mydep, v.dbapi.dbapi, 1, v.settings), use_cache) {
 		s = append(s, p.string)
 	}
-	mymatch := best(s, "")
+	mymatch := Best(s, "")
 	if mymatch == "" {
 		return ""
 	} else {
@@ -1853,28 +1853,92 @@ type dblink struct {
 	_verbose, _linkmap_broken, _postinst_failure, _preserve_libs                    bool
 	_contents                                                                       *ContentsCaseSensitivityManager
 
-	_hash_key []string
+	_hash_key    []string
+	_protect_obj *ConfigProtect
+	_slot_locks  []*Atom
 }
 
 func (d *dblink) __hash__() {}
 
 func (d *dblink) __eq__() {}
 
-func (d *dblink) _get_protect_obj() {}
+func (d *dblink) _get_protect_obj() *ConfigProtect{
+	cp, _ :=shlex.Split(
+		d.settings.ValueDict["CONFIG_PROTECT"])
+	cpm , _ := shlex.Split(
+		d.settings.ValueDict["CONFIG_PROTECT_MASK"])
+	if d._protect_obj == nil{
+	d._protect_obj = NewConfigProtect(d._eroot,
+		cp,cpm,
+		 d.settings.Features.Features["case-insensitive-fs"])
+	}
 
-func (d *dblink) isprotected() {}
+	return d._protect_obj
+}
 
-func (d *dblink) updateprotect() {}
+func (d *dblink) isprotected(obj string) bool {
+	return d._get_protect_obj().isprotected(obj)
+}
 
-func (d *dblink) lockdb() {}
+func (d *dblink) updateprotect() {
+	d._get_protect_obj().updateprotect()
+}
 
-func (d *dblink) unlockdb() {}
+func (d *dblink) lockdb() {
+	d.vartree.dbapi.lock()
+}
 
-func (d *dblink) _slot_locked() {}
+func (d *dblink) unlockdb() {
+	d.vartree.dbapi.unlock()
+}
 
-func (d *dblink) _acquire_slot_locks() {}
+func (d *dblink) _slot_locked(f func()) {
 
-func (d *dblink) _release_slot_locks() {}
+	 wrapper := func (d *dblink, *args, **kwargs) {
+		 if d.settings.Features.Features["parallel-install"] {
+			 d._acquire_slot_locks(
+				 kwargs.get("mydbapi", d.vartree.dbapi))
+		 }
+		 defer d._release_slot_locks()
+		 return f(d, *args, **kwargs)
+	 }
+	return wrapper
+}
+
+func (d *dblink) _acquire_slot_locks() {
+
+	slot_atoms := []*Atom{}
+
+//try:
+	slot := d.mycpv.slot
+	//except AttributeError:
+	//slot, = db.aux_get(self.mycpv, ["SLOT"])
+	//slot = slot.partition("/")[0]
+
+	a, _ := NewAtom(
+		fmt.Sprintf("%s:%s" ,d.mycpv.cp, slot), nil, false, nil, nil, "", nil, nil)
+	
+	slot_atoms=append(slot_atoms,a)
+
+	for _, blocker := range d._blockers || []string{}{
+		slot_atoms=append(slot_atoms, blocker.slot_atom)
+	}
+
+	sort.Strings(slot_atoms)
+	for _, slot_atom := range slot_atoms {
+		d.vartree.dbapi._slot_lock(slot_atom)
+		d._slot_locks=append(d._slot_locks, slot_atom)
+	}
+
+}
+
+func (d *dblink) _release_slot_locks() {
+	for len(d._slot_locks) != 0 {
+		l := d._slot_locks[len(d._slot_locks)-1]
+		d._slot_locks = d._slot_locks[:len(d._slot_locks)-1]
+		d.vartree.dbapi._slot_unlock(l)
+	}
+}
 
 func (d *dblink) getpath() string {
 	return d.dbdir
@@ -1889,9 +1953,45 @@ func (d *dblink) exists() bool {
 	}
 }
 
-func (d *dblink) delete() {}
+func (d *dblink) delete() {
+	if _, err := os.Lstat(d.dbdir); err != nil {
+		//except OSError as e:
+		if err != syscall.ENOENT && err != syscall.ENOTDIR &&err !=  syscall.ESTALE){
+			//raise
+		}
+		return
+	}
 
-func (d *dblink) clearcontents() {}
+	if ! strings.HasPrefix(d.dbdir, d.dbroot) {
+		WriteMsg(fmt.Sprintf("portage.dblink.delete(): invalid dbdir: %s\n", d.dbdir), -1, nil)
+		return
+	}
+
+	if d.dbdir == d.dbpkgdir {
+		counter := d.vartree.dbapi.aux_get(
+			d.mycpv, []string{"COUNTER"}, "")
+		d.vartree.dbapi._cache_delta.recordEvent(
+			"remove", d.mycpv,
+			strings.Split(d.settings["SLOT"],"/")[0], counter)
+	}
+
+	os.RemoveAll(d.dbdir)
+	os.RemoveAll(filepath.Dir(d.dbdir))
+	d.vartree.dbapi._remove(d)
+
+	ls ,_ :=os.Lstat(d.dbroot)
+	d._merged_path(d.dbroot, ls)
+
+	d._post_merge_sync()
+}
+
+func (d *dblink) clearcontents() {
+	d.lockdb()
+	if st, _ := os.Stat(d.dbdir+"/CONTENTS") ; st!= nil{
+		syscall.Unlink(d.dbdir + "/CONTENTS")
+	}
+	d.unlockdb()
+}
 
 func (d *dblink) _clear_contents_cache() {
 	d.contentscache = nil
@@ -1987,7 +2087,9 @@ func (d *dblink) getelements() {}
 
 func (d *dblink) setelements() {}
 
-func (d *dblink) isregular() {}
+func (d *dblink) isregular() {
+
+}
 
 func (d *dblink) _pre_merge_backup() {}
 
@@ -1995,9 +2097,9 @@ func (d *dblink) _pre_unmerge_backup() {}
 
 func (d *dblink) _quickpkg_dblink() {}
 
-// "", nil, "", nil, nil, nil, 0
+// "", nil, "", nil, nil, nil, nil
 func NewDblink(cat, pkg, myroot string, settings *Config, treetype string,
-	vartree *varTree, blockers, scheduler interface{}, pipe int) *dblink {
+	vartree *varTree, blockers, scheduler, pipe interface{}) *dblink {
 	d := &dblink{}
 
 	d._normalize_needed = regexp.MustCompile("//|^[^/]|./$|(^|/)\\.\\.?(/|$)")
@@ -2061,7 +2163,7 @@ func NewDblink(cat, pkg, myroot string, settings *Config, treetype string,
 
 	d._preserve_libs = mysettings.Features.Features["preserve-libs"]
 	d._contents = NewContentsCaseSensitivityManager(d)
-	d._slot_locks = []string{}
+	d._slot_locks = []*Atom{}
 
 	return d
 }
@@ -3158,7 +3260,7 @@ func (b *BinaryTree) dep_bestmatch(mydep *Atom) string {
 	for _, p := range matchFromList(mydep, b.dbapi.cp_list(mykey, 1)) {
 		ml = append(ml, p.string)
 	}
-	mymatch := best(ml, "")
+	mymatch := Best(ml, "")
 	WriteMsg(fmt.Sprintf("mymatch: %s\n", mymatch), 1, nil)
 	if mymatch == "" {
 		return ""
@@ -3412,55 +3514,33 @@ type portdbapi struct {
 	treemap                 map[string]string
 	doebuild_settings       *Config
 	depcachedir             string
-	_porttrees, _ordered_repo_name_list               []string
+	porttrees               []string
 	_have_root_eclass_dir   bool
+	xcache                  map[string]string
 	frozen                  int
-	auxdb, _aux_cache, _pregen_auxdb, _ro_auxdb, xcache       map[string]string
-	 _porttrees_repos map[string]*RepoConfig
-	_broken_ebuilds, _aux_cache_keys         map[string]bool
+	auxdb                   map[string]string
+	_pregen_auxdb           map[string]string
+	_ro_auxdb               map[string]string
+	_ordered_repo_name_list []string
+	_aux_cache_keys         map[string]bool
+	_aux_cache              map[string]string
+	_broken_ebuilds         map[string]bool
 	_better_cache           interface{}
 }
 
-func (p *portdbapi) _categories() map[string]bool{
-	return p.settings.categories
-}
+func (p *portdbapi) _categories() {}
 
-func (p *portdbapi) _set_porttrees(porttrees []string) {
-	p._porttrees_repos = map[string]*RepoConfig{}
-	for _, location := range porttrees {
-		 repo :=  p.repositories.getRepoForLocation(location)
-			p._porttrees_repos[repo.Name] =repo
-	}
-	p._porttrees = porttrees
-}
+func (p *portdbapi) porttree_root() {}
 
-func (p *portdbapi) _get_porttrees() []string {
-	return p._porttrees
-}
+func (p *portdbapi) eclassdb() {}
+
+func (p *portdbapi) _set_porttrees() {}
+
+func (p *portdbapi) _get_porttrees() {}
 
 func (p *portdbapi) _event_loop() {}
 
-func (p *portdbapi) _create_pregen_cache(tree string) {
-	conf := p.repositories.getRepoForLocation(tree)
-	cache := conf.get_pregenerated_cache(p._known_keys, true, false)
-
-	if cache != nil {
-	//try:
-		cache.ec = p.repositories.getRepoForLocation(tree).eclassDb
-		//except
-	//AttributeError:
-	//	pass
-
-		if not cache.complete_eclass_entries {
-			warnings.warn(
-				("Repository '%s' used deprecated 'pms' cache format. "
-			"Please migrate to 'md5-dict' format.") % (conf.name,),
-			DeprecationWarning)
-		}
-	}
-
-	return cache
-}
+func (p *portdbapi) _create_pregen_cache() {}
 
 func (p *portdbapi) _init_cache_dirs() {}
 
@@ -3599,7 +3679,7 @@ func NewPortDbApi(mysettings *Config) *portdbapi {
 	}
 
 	if (*secpass < 1 && !depcachedir_unshared) || !depcachedir_w_ok {
-		for _, x := range p._porttrees {
+		for _, x := range p.porttrees {
 			p.auxdb[x] = volatile.database(
 				p.depcachedir, x, p._known_keys,
 				**cache_kwargs)
@@ -3615,20 +3695,20 @@ func NewPortDbApi(mysettings *Config) *portdbapi {
 			if _, ok := p.auxdb[x]; ok {
 				continue
 			}
-			p.auxdb[x] = p.auxdbmodule(
-				p.depcachedir, x, p._known_keys, **cache_kwargs)
 		}
 	}
 
+	p.auxdb[x] = p.auxdbmodule(
+		p.depcachedir, x, p._known_keys, **cache_kwargs)
 	if !p.settings.Features.Features["metadata-transfer"] {
-		for _, x := range p._porttrees {
+		for _, x := range p.porttrees {
 			if _, ok := p._pregen_auxdb[x]; ok {
 				continue
 			}
-			cache := p._create_pregen_cache(x)
-			if cache != nil {
-				p._pregen_auxdb[x] = cache
-			}
+		}
+		cache := p._create_pregen_cache(x)
+		if cache != nil {
+			p._pregen_auxdb[x] = cache
 		}
 	}
 

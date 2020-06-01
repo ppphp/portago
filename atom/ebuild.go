@@ -3,11 +3,13 @@ package atom
 import (
 	"bufio"
 	"fmt"
+	"github.com/ppphp/shlex"
 	"golang.org/x/sys/unix"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -343,12 +345,11 @@ tmpdir := mysettings.ValueDict["PORTAGE_TMPDIR"]
 
 if mydo == "depend"{
 if mycpv != mysettings.mycpv {
-
-	mysettings.SetCpv(mycpv)
+	mysettings.SetCpv(mycpv, nil)
 }
 }else {
 
-	if _, ok := mysettings.configDict["pkg"]["EAPI"]; mycpv != mysettings.mycpv ||
+	if _, ok := mysettings.configDict["pkg"]["EAPI"]; mycpv != mysettings.mycpv.string ||
 		!ok {
 
 		mysettings.reload()
@@ -443,11 +444,11 @@ mysettings.ValueDict["PORTAGE_COLORMAP"] = ColorMap()
 if  _,ok := mysettings.ValueDict["COLUMNS"]; !ok {
 	columns := os.Getenv("COLUMNS")
 	if columns == "" {
-		_, columns, _ := get_term_size(0)
-		if columns < 1 {
-			columns = 80
+		_, columnsi, _ := get_term_size(0)
+		if columnsi < 1 {
+			columnsi = 80
 		}
-		columns = fmt.Sprint(columns)
+		columns = fmt.Sprint(columnsi)
 		os.Setenv("COLUMNS", columns)
 	}
 	mysettings.ValueDict["COLUMNS"] = columns
@@ -470,8 +471,8 @@ if mydo != "depend"{
 if hasattr(mydbapi, "getFetchMap") &&
 ("A" ! in mysettings.configDict["pkg"] ||
 "AA" ! in mysettings.configDict["pkg"]){
-		src_uri = mysettings.configDict["pkg"].get("SRC_URI")
-		if src_uri == nil {
+		src_uri := mysettings.configDict["pkg"]["SRC_URI"]
+		if src_uri == "" {
 			src_uri, = mydbapi.aux_get(mysettings.mycpv,
 				["SRC_URI"], mytree = mytree)
 		}
@@ -479,13 +480,12 @@ if hasattr(mydbapi, "getFetchMap") &&
 			"EAPI":    eapi,
 			"SRC_URI": src_uri,
 		}
-		use = map[string]bool{}
-		for_, v := range strings.Fields(mysettings.ValueDict["PORTAGE_USE"])
-		{
+		use := map[string]bool{}
+		for _, v := range strings.Fields(mysettings.ValueDict["PORTAGE_USE"]){
 			use[v] = true
 		}
 		//try{
-		uri_map = _parse_uri_map(mysettings.mycpv, metadata, use = use)
+		uri_map := _parse_uri_map(mysettings.mycpv, metadata, use)
 		//except InvalidDependString{
 		//mysettings.configDict["pkg"]["A"] = ""
 		//}else{
@@ -493,7 +493,7 @@ if hasattr(mydbapi, "getFetchMap") &&
 	}
 
 //try{
-uri_map = _parse_uri_map(mysettings.mycpv, metadata)
+uri_map := _parse_uri_map(nil, metadata, nil)
 //except InvalidDependString{
 //mysettings.configDict["pkg"]["AA"] = ""
 //}else{
@@ -503,30 +503,31 @@ ccache :=   mysettings.Features.Features["ccache"]
 distcc := mysettings.Features.Features["distcc" ]
 icecream :=  mysettings.Features.Features["icecream"]
 
-if (ccache || distcc || icecream) && mydo in ("unpack",
-"prepare", "configure", "test", "install"){
-libdir = None
-default_abi = mysettings.ValueDict["DEFAULT_ABI"]
+if (ccache || distcc || icecream) && Ins([]string{"unpack",
+"prepare", "configure", "test", "install"}, mydo){
+libdir := ""
+default_abi := mysettings.ValueDict["DEFAULT_ABI"]
 if default_abi {
 	libdir = mysettings.ValueDict["LIBDIR_"+default_abi]
 }
-if ! libdir {
+if  libdir ==""{
 	libdir = "lib"
 }
 
 possible_libexecdirs = (libdir, "lib", "libexec")
-masquerades = []string{}
+masquerades := [][2]string{}
 if distcc {
-	masquerades = append(("distcc", "distcc"))
+	masquerades = append(masquerades, [2]string{"distcc", "distcc"})
 }
 if icecream {
-	masquerades = append(("icecream", "icecc"))
+	masquerades = append(masquerades, [2]string{"icecream", "icecc"})
 }
 if ccache {
-	masquerades = append(("ccache", "ccache"))
+	masquerades = append(masquerades, [2]string{"ccache", "ccache"})
 }
 
-for feature, m in masquerades{
+for _, v  := range masquerades{
+	feature, m :=v[0],v[1]
 for l in possible_libexecdirs{
 p = filepath.Join(string(os.PathSeparator), eprefix_lstrip,
 "usr", l, m, "bin")
@@ -535,31 +536,30 @@ if os.path.isdir(p){
 		break
 		}
 }else{
-atom.WriteMsg(fmt.Sprintf(("Warning: %s requested but no masquerade dir "
-"can be found in /usr/lib*/%s/bin\n") % (m, m))
-mysettings.Features.Features.remove(feature)
+WriteMsg(fmt.Sprintf(("Warning: %s requested but no masquerade dir "
+"can be found in /usr/lib*/%s/bin\n") ,m, m), 0 ,nil)
+delete(mysettings.Features.Features,feature)
 		}
 	}
 }
 
 if "MAKEOPTS" ! in mysettings{
-nproc = get_cpu_count()
-if nproc{
+nproc := get_cpu_count()
+if nproc!= 0{
 mysettings.ValueDict["MAKEOPTS"] = fmt.Sprintf("-j%d" % (nproc)
 		}
 	}
 
-if ! eapi_exports_KV(eapi){
+if ! eapiExportsKv(eapi){
 delete(mysettings.ValueDict,"KV")
 }else if "KV" ! in mysettings &&
-mydo in ("compile", "config", "configure", "info",
+Ins( []string{"compile", "config", "configure", "info",
 "install", "nofetch", "postinst", "postrm", "preinst",
-"prepare", "prerm", "setup", "test", "unpack")
+"prepare", "prerm", "setup", "test", "unpack"},mydo)
 	{
-		mykv, err1 = ExtractKernelVersion(
+		mykv, err1 := ExtractKernelVersion(
 			filepath.Join(mysettings.ValueDict["EROOT"], "usr/src/linux"))
-		if mykv {
-
+		if mykv!= "" {
 			mysettings.ValueDict["KV"] = mykv
 		} else {
 			mysettings.ValueDict["KV"] = ""
@@ -572,7 +572,7 @@ if !ok {
 	binpkg_compression= "bzip2"
 }
 //try{
-compression = _compressors[binpkg_compression]
+compression := _compressors[binpkg_compression]
 //except KeyError as e{
 //if binpkg_compression{
 //atom.WriteMsg(fmt.Sprintf("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
@@ -581,13 +581,13 @@ compression = _compressors[binpkg_compression]
 mysettings.ValueDict["PORTAGE_COMPRESSION_COMMAND"] = "cat"
 //}else{
 //try{
-compression_binary = shlex_split(varexpand(compression["compress"], mydict=settings))[0]
+compression_binary, _ := shlex.Split(varExpand(compression["compress"], settings.ValueDict, ""))[0]
 //except IndexError as e{
 //atom.WriteMsg(fmt.Sprintf("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
 //}else{
 if find_binary(compression_binary) == nil{
 missing_package = compression["package"]
-WriteMsg(fmt.Sprintf("Warning: File compression unsupported %s. Missing package: %s\n" % (binpkg_compression, missing_package))
+WriteMsg(fmt.Sprintf("Warning: File compression unsupported %s. Missing package: %s\n" , binpkg_compression, missing_package), 0, nil)
 //}else{
 cmd = [varexpand(x, mydict=settings) for _, x := range  shlex_split(compression["compress"])]
 
@@ -600,108 +600,117 @@ mysettings.ValueDict["PORTAGE_COMPRESSION_COMMAND"] = strings.Join(cmd," ")
 
 var (
 	_doebuild_manifest_cache = None
-_doebuild_broken_ebuilds = set()
-_doebuild_broken_manifests = set()
-_doebuild_commands_without_builddir = (
-"clean", "cleanrm", "depend", "digest",
-"fetch", "fetchall", "help", "manifest"
-)
+_doebuild_broken_ebuilds = map[string]bool{}
+_doebuild_broken_manifests = map[string]bool{}
+_doebuild_commands_without_builddir = []string{
+	"clean", "cleanrm", "depend", "digest",
+	"fetch", "fetchall", "help", "manifest",
+}
 )
 
-func doebuild(myebuild, mydo, _unused=DeprecationWarning, settings *Config, debug=0, listonly=0,
-fetchonly=0, cleanup=0, dbkey=DeprecationWarning, use_cache=1, fetchall=0, tree=None,
-mydbapi=None, vartree=None, prev_mtimes=None,
-fd_pipes=None, returnpid=false){
+// 0, 0, 0, 0, 1, 0, "", nil, nil, nil, nil, false
+func doebuild(myebuild, mydo string, settings *Config, debug, listonly,
+fetchonly, cleanup, use_cache, fetchall int, tree string,
+mydbapi DBAPI, vartree *varTree, prev_mtimes=None,
+fd_pipes=None, returnpid bool){
 if settings == nil{
 //raise TypeError("settings parameter is required")
 }
 mysettings := settings
 myroot := settings.ValueDict["EROOT"]
 
-if ! tree{
-atom.WriteMsg("Warning: tree not specified to doebuild\n")
-tree = "porttree"
-
-actionmap_deps:=map[string][]string{
-"pretend"  : []string{},
-"setup":  []string{"pretend"},
-"unpack": []string{"setup"},
-"prepare": []string{"unpack"},
-"configure": []string{"prepare"},
-"compile":[]string{"configure"},
-"test":   []string{"compile"},
-"install":[]string{"test"},
-"instprep":[]string{"install"},
-"rpm":    []string{"install"},
-"package":[]string{"install"},
-"merge"  :[]string{"install"},
+if tree== "" {
+	WriteMsg("Warning: tree not specified to doebuild\n", -1, nil)
+	tree = "porttree"
 }
 
-if mydbapi == nil{
-mydbapi = portage.db[myroot][tree].dbapi
+actionmap_deps:=map[string][]string{
+"pretend"  : {},
+"setup":  {"pretend"},
+"unpack": {"setup"},
+"prepare": {"unpack"},
+"configure": {"prepare"},
+"compile":{"configure"},
+"test":   {"compile"},
+"install":{"test"},
+"instprep":{"install"},
+"rpm":    {"install"},
+"package":{"install"},
+"merge"  :{"install"},
+}
 
-if vartree == nil && mydo in ("merge", "qmerge", "unmerge"){
-vartree = portage.db[myroot]["vartree"]
+if mydbapi == nil {
+	mydbapi = Db().Values()[myroot][tree].dbapi
+}
 
-features = mysettings.Features.Features[]
+if vartree == nil && Ins([]string{"merge", "qmerge", "unmerge"}, mydo) {
+	vartree = Db().Values()[myroot].VarTree()
+}
 
-clean_phases = ("clean", "cleanrm")
-validcommands = ["help","clean","prerm","postrm","cleanrm","preinst","postinst",
+features := mysettings.Features.Features
+
+clean_phases := []string{"clean", "cleanrm"}
+validcommands := []string{"help","clean","prerm","postrm","cleanrm","preinst","postinst",
 "config", "info", "setup", "depend", "pretend",
 "fetch", "fetchall", "digest",
 "unpack", "prepare", "configure", "compile", "test",
 "install", "instprep", "rpm", "qmerge", "merge",
-"package", "unmerge", "manifest", "nofetch"]
+"package", "unmerge", "manifest", "nofetch",}
 
-if mydo ! in validcommands{
-validcommands.sort()
-atom.WriteMsg(fmt.Sprintf("!!! doebuild: '%s' is not one of the following valid commands:" % mydo,
--1,nil)
-for vcount in range(len(validcommands)){
-if vcount%6 == 0{
-atom.WriteMsg("\n!!! ", -1,nil)
-atom.WriteMsg(validcommands[vcount].ljust(11), -1,nil)
-atom.WriteMsg("\n", -1,nil)
-return 1
+if ! Ins(validcommands,mydo) {
+	sort.Strings(validcommands)
+	WriteMsg(fmt.Sprintf("!!! doebuild: '%s' is not one of the following valid commands:", mydo), -1, nil)
+	for vcount := range validcommands {
+		if vcount%6 == 0 {
+			WriteMsg("\n!!! ", -1, nil)
+		}
+		WriteMsg(fmt.Sprintf("%11s", validcommands[vcount]), -1, nil)
+	}
+	WriteMsg("\n", -1, nil)
+	return 1
+}
 
-if returnpid && mydo != "depend"{
+if returnpid && mydo != "depend" {
+	warnings.warn("portage.doebuild() called "
+	"with returnpid parameter enabled. This usage will "
+	"not be supported in the future.",
+		DeprecationWarning, stacklevel = 2)
+}
 
-warnings.warn("portage.doebuild() called "
-"with returnpid parameter enabled. This usage will "
-"not be supported in the future.",
-DeprecationWarning, stacklevel=2)
+if mydo == "fetchall" {
+	fetchall = 1
+	mydo = "fetch"
+}
 
-if mydo == "fetchall"{
-fetchall = 1
-mydo = "fetch"
-
-if mydo ! in clean_phases && ! os.path.exists(myebuild){
-atom.WriteMsg(fmt.Sprintf("!!! doebuild: %s not found for %s\n" % (myebuild, mydo),
--1,nil)
-return 1
+if !Ins(clean_phases,mydo) && ! os.path.exists(myebuild) {
+	WriteMsg(fmt.Sprintf("!!! doebuild: %s not found for %s\n", myebuild, mydo), -1, nil)
+	return 1
+}
 
 global _doebuild_manifest_cache
-pkgdir = filepath.Dir(myebuild)
-manifest_path = filepath.Join(pkgdir, "Manifest")
+pkgdir := filepath.Dir(myebuild)
+manifest_path := filepath.Join(pkgdir, "Manifest")
+var repo_config *RepoConfig = nil
 if tree == "porttree"{
-repo_config = mysettings.repositories.get_repo_for_location(
+repo_config = mysettings.Repositories.getRepoForLocation(
 filepath.Dir(filepath.Dir(pkgdir)))
-}else{
-repo_config = None
+}
 
 mf = None
-if "strict" in features &&
-"digest" ! in features &&
+if  features["strict"] &&
+ ! features["digest"] &&
 tree == "porttree" &&
-! repo_config.thin_manifest &&
-mydo ! in ("digest", "manifest", "help") &&
+! repo_config.thinManifest &&
+! Ins([]string{"digest", "manifest", "help"}, mydo) &&
 ! portage._doebuild_manifest_exempt_depend &&
-! (repo_config.allow_missing_manifest && ! os.path.exists(manifest_path)){
+! (repo_config.allowMissingManifest && ! os.path.exists(manifest_path)) {
 
-global _doebuild_broken_ebuilds
+	global _doebuild_broken_ebuilds
 
-if myebuild in _doebuild_broken_ebuilds{
-return 1
+	if _doebuild_broken_ebuilds[myebuild]{
+		return 1
+	}
+}
 
 if _doebuild_manifest_cache == nil ||
 _doebuild_manifest_cache.getFullname() != manifest_path{
@@ -709,8 +718,9 @@ _doebuild_manifest_cache = None
 if ! os.path.exists(manifest_path){
 out = portage.output.EOutput()
 out.eerror(fmt.Sprintf(("Manifest not found for '%s'") % (myebuild,))
-_doebuild_broken_ebuilds.add(myebuild)
+_doebuild_broken_ebuilds[myebuild]=true
 return 1
+}
 mf = repo_config.load_manifest(pkgdir, mysettings.ValueDict["DISTDIR"])
 
 }else{
