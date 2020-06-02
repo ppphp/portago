@@ -218,6 +218,9 @@ type Tree struct {
 	vartree   func() *varTree
 	porttree  func() *PortageTree
 	bintree   func() *BinaryTree
+
+	root_config *RootConfig
+
 }
 
 func (t *Tree) Virtuals() map[string][]string {

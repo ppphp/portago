@@ -26,16 +26,21 @@ func (a *AsynchronousTask) start() {
 	a._start()
 }
 
-func (a *AsynchronousTask)  async_wait(){
-waiter := a.scheduler.create_future()
-exit_listener := func(a *AsynchronousTask) { return waiter.cancelled() || waiter.set_result(a.returncode)}
-a.addExitListener(exit_listener)
-waiter.add_done_callback(func (waiter) {a.removeExitListener(exit_listener) if waiter.cancelled() else nil}
-)
-if a.returncode != nil {
-	a._async_wait()
-}
-return waiter
+func (a *AsynchronousTask)  async_wait() {
+	waiter := a.scheduler.create_future()
+	exit_listener := func(a *AsynchronousTask) { return waiter.cancelled() || waiter.set_result(a.returncode) }
+	a.addExitListener(exit_listener)
+	waiter.add_done_callback(func(waiter) {
+		if waiter.cancelled() {
+			return a.removeExitListener(exit_listener)
+		} else {
+			return nil
+		}
+	})
+	if a.returncode != nil {
+		a._async_wait()
+	}
+	return waiter
 }
 
 func (a *AsynchronousTask)  _start() {
@@ -162,18 +167,18 @@ func (a *AsynchronousTask)  _wait_hook() {
 		a._start_hook()
 	}
 
-	if a.returncode != nil && a._exit_listeners != nil{
+	if a.returncode != nil && a._exit_listeners != nil {
 		listeners := a._exit_listeners
 		a._exit_listeners = nil
-		if a._exit_listener_handles == nil{
-		a._exit_listener_handles =map[]{}
-	}
+		if a._exit_listener_handles == nil {
+			a._exit_listener_handles = map[]{}
+		}
 
-		for _, listener := range listeners{
-		if  _, ok := a._exit_listener_handles[listener]; ! ok{
-		a._exit_listener_handles[listener] = a.scheduler.call_soon(a._exit_listener_cb, listener)
-	}
-	}
+		for _, listener := range listeners {
+			if _, ok := a._exit_listener_handles[listener]; !ok {
+				a._exit_listener_handles[listener] = a.scheduler.call_soon(a._exit_listener_cb, listener)
+			}
+		}
 	}
 }
 
@@ -237,26 +242,26 @@ func (a *AbstractPollTask) _async_wait() {
 	a.AsynchronousTask._async_wait()
 }
 
-	func (a *AbstractPollTask)  _unregister() {
-		a._registered = false
-	}
+func (a *AbstractPollTask)  _unregister() {
+	a._registered = false
+}
 
-	// nil
-	func (a *AbstractPollTask)  _wait_loop( timeout=nil){
-loop := a.scheduler
-tasks := []{a.async_wait()}
-if timeout != nil{
-			tasks= append(asyncio.ensure_future(
-			asyncio.sleep(timeout, loop=loop), loop=loop))
-		}
+// nil
+func (a *AbstractPollTask) _wait_loop(timeout=nil) {
+	loop := a.scheduler
+	tasks := []{a.async_wait()}
+	if timeout != nil {
+		tasks = append(asyncio.ensure_future(
+			asyncio.sleep(timeout, loop = loop), loop = loop))
+	}
 try:
-loop.run_until_complete(asyncio.ensure_future(
-asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED,
-loop=loop), loop=loop))
+	loop.run_until_complete(asyncio.ensure_future(
+		asyncio.wait(tasks, return_when = asyncio.FIRST_COMPLETED,
+		loop = loop), loop = loop))
 finally:
-for _, task := range  tasks{
-	task.cancel()
-		}
+	for _, task := range tasks {
+		task.cancel()
+	}
 }
 
 func NewAbstractPollTask() *AbstractPollTask{
@@ -292,29 +297,28 @@ if s.isAlive() && s.pid != 0{
 }
 }
 
-func (s *SubProcess) _async_wait(){
-if s.returncode == nil {
-	//raise asyncio.InvalidStateError('Result is not ready for %s' % (s,))
-}else{
-	s.AbstractPollTask._async_wait()
+func (s *SubProcess) _async_wait() {
+	if s.returncode == nil {
+		//raise asyncio.InvalidStateError('Result is not ready for %s' % (s,))
+	} else {
+		s.AbstractPollTask._async_wait()
 	}
 }
-}
 
-func (s *SubProcess) _async_waitpid(){
-if s.returncode != nil {
-	s._async_wait()
-} else if s._waitpid_id == 0 {
+func (s *SubProcess) _async_waitpid() {
+	if s.returncode != nil {
+		s._async_wait()
+	} else if s._waitpid_id == 0 {
 		s._waitpid_id = s.pid
 		s.scheduler._asyncio_child_watcher.add_child_handler(s.pid, s._async_waitpid_cb)
 
 	}
 }
 
-func (s *SubProcess) _async_waitpid_cb( pid, returncode int){
-if pid != s.pid{
-	//raise AssertionError("expected pid %s, got %s" % (s.pid, pid))
-}
+func (s *SubProcess) _async_waitpid_cb( pid, returncode int) {
+	if pid != s.pid {
+		//raise AssertionError("expected pid %s, got %s" % (s.pid, pid))
+	}
 	s.returncode = new(int)
 	*s.returncode = returncode
 	s._async_wait()
@@ -472,15 +476,15 @@ func(s *SpawnProcess) _pipe()(int, int){
 	return r[0],r[1]
 }
 
-func(s *SpawnProcess) _spawn(args []string, **kwargs){
+func(s *SpawnProcess) _spawn(args []string, **kwargs) {
 	spawn_func := spawn
 
-	if s._selinux_type != nil{
+	if s._selinux_type != nil {
 		spawn_func = portage.selinux.spawn_wrapper(spawn_func,
-		s._selinux_type)
-		if args[0] != BashBinary{
-		args = append([]string{BashBinary, "-c", "exec \"$@\"", args[0]}, args...)
-	}
+			s._selinux_type)
+		if args[0] != BashBinary {
+			args = append([]string{BashBinary, "-c", "exec \"$@\"", args[0]}, args...)
+		}
 	}
 
 	return spawn_func(args, **kwargs)
@@ -509,9 +513,9 @@ func(s *SpawnProcess) _cancel(){
 	s._cgroup_cleanup()
 }
 
-func(s *SpawnProcess) _cgroup_cleanup(){
-	if s.cgroup != nil{
-		get_pids:= func(cgroup string)[]int{
+func(s *SpawnProcess) _cgroup_cleanup() {
+	if s.cgroup != nil {
+		get_pids := func(cgroup string) []int {
 			f, err := os.Open(filepath.Join(cgroup, "cgroup.procs"))
 			var b []byte
 			if err == nil {
@@ -521,55 +525,54 @@ func(s *SpawnProcess) _cgroup_cleanup(){
 				return []int{}
 			}
 			ps := []int{}
-			for _, p := range strings.Fields(string(b)){
+			for _, p := range strings.Fields(string(b)) {
 				pi, _ := strconv.Atoi(p)
-				ps =append(ps, pi)
+				ps = append(ps, pi)
 			}
 			return ps
 		}
-kill_all:= func(pids []int, sig syscall.Signal){
-	for _, p := range pids{
-		err := syscall.Kill(p, sig)
-		if err != nil {
-			//except OSError as e:
-			if err == syscall.EPERM{
-				WriteMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n", p), 40,-1)
-			}else if err != syscall.ESRCH {
-				//raise
+		kill_all := func(pids []int, sig syscall.Signal) {
+			for _, p := range pids {
+				err := syscall.Kill(p, sig)
+				if err != nil {
+					//except OSError as e:
+					if err == syscall.EPERM {
+						WriteMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n", p), 40, -1)
+					} else if err != syscall.ESRCH {
+						//raise
+					}
+				}
 			}
 		}
-	}
-	}
-remaining := s._CGROUP_CLEANUP_RETRY_MAX
-var pids []int
-for remaining> 0 {
-remaining -= 1
-pids = get_pids(s.cgroup)
-if len(pids) != 0 {
-kill_all(pids, syscall.SIGKILL)
-}else{
-break
-}
-}
+		remaining := s._CGROUP_CLEANUP_RETRY_MAX
+		var pids []int
+		for remaining > 0 {
+			remaining -= 1
+			pids = get_pids(s.cgroup)
+			if len(pids) != 0 {
+				kill_all(pids, syscall.SIGKILL)
+			} else {
+				break
+			}
+		}
 
-if len(pids) > 0 {
-msg := []string{}
-pidss := []string{}
-for _, p := range pids {
-	pidss = append(pidss, fmt.Sprint(p))
-}
-msg = append(msg,
-fmt.Sprintf("Failed to kill pid(s) in '%(cgroup)s': %(pids)s",
-filepath.Join(s.cgroup.Name(), "cgroup.procs", strings.Join(pidss, " "))))
+		if len(pids) > 0 {
+			msg := []string{}
+			pidss := []string{}
+			for _, p := range pids {
+				pidss = append(pidss, fmt.Sprint(p))
+			}
+			msg = append(msg,
+				fmt.Sprintf("Failed to kill pid(s) in '%(cgroup)s': %(pids)s",
+					filepath.Join(s.cgroup.Name(), "cgroup.procs", strings.Join(pidss, " "))))
 
+			s._elog("eerror", msg)
+		}
 
-s._elog("eerror", msg)
-	}
-
-err:= os.RemoveAll(s.cgroup.Name())
-if err != nil {
-	//except OSError:
-	//pass
+		err := os.RemoveAll(s.cgroup.Name())
+		if err != nil {
+			//except OSError:
+			//pass
 		}
 	}
 }
@@ -655,26 +658,26 @@ type MergeProcess struct {
 	postinst_failure, _locked_vdb bool
 }
 
-func(m *MergeProcess)  _start(){
-	cpv := fmt.Sprintf("%s/%s" ,m.mycat, m.mypkg)
+func(m *MergeProcess)  _start() {
+	cpv := fmt.Sprintf("%s/%s", m.mycat, m.mypkg)
 	settings := m.settings
 	if _, ok := settings.configDict["pkg"]["EAPI"]; cpv != settings.mycpv.string || !ok {
 		settings.reload()
 		settings.reset(0)
-		settings.SetCpv(NewPkgStr(cpv,nil, nil, "", "", "", 0, 0, "", 0, nil), m.mydbapi)
+		settings.SetCpv(NewPkgStr(cpv, nil, nil, "", "", "", 0, 0, "", 0, nil), m.mydbapi)
 	}
 
-	if _, ok := settings.Features.Features["merge-sync"];runtime.GOOS == "Linux" && ok {
+	if _, ok := settings.Features.Features["merge-sync"]; runtime.GOOS == "Linux" && ok {
 		find_library("c")
 	}
 
-	if m.fd_pipes == nil{
+	if m.fd_pipes == nil {
 		m.fd_pipes = map[int]int{}
-	}else{
+	} else {
 		m.fd_pipes = m.fd_pipes
 	}
-	if _, ok := m.fd_pipes[0]; !ok{
-		m.fd_pipes[0]=int(getStdin().Fd())
+	if _, ok := m.fd_pipes[0]; !ok {
+		m.fd_pipes[0] = int(getStdin().Fd())
 	}
 
 	m.ForkProcess._start()
@@ -696,40 +699,40 @@ func(m *MergeProcess) _unlock_vdb(){
 }
 
 // true means none
-func(m *MergeProcess) _elog_output_handler() bool{
-output := m._read_buf(m._elog_reader_fd)
-if len(output) > 0 {
-	lines := strings.Split(string(output), "\n")
-	if len(lines) == 1{
-		m._buf += lines[0]
-	} else{
-		lines[0] = m._buf + lines[0]
-		m._buf = lines.pop()
-		out := &bytes.Buffer{}
-		for _, line := range lines{
-			s4 := strings.SplitN(line," ", 4)
-			funcname, phase, key, msg := s4[0], s4[1],s4[2],s4[3]
-			m._elog_keys[key]=true
-			reporter = getattr(portage.elog.messages, funcname)
-			reporter(msg, phase=phase, key=key, out=out)
+func(m *MergeProcess) _elog_output_handler() bool {
+	output := m._read_buf(m._elog_reader_fd)
+	if len(output) > 0 {
+		lines := strings.Split(string(output), "\n")
+		if len(lines) == 1 {
+			m._buf += lines[0]
+		} else {
+			lines[0] = m._buf + lines[0]
+			m._buf = lines.pop()
+			out := &bytes.Buffer{}
+			for _, line := range lines {
+				s4 := strings.SplitN(line, " ", 4)
+				funcname, phase, key, msg := s4[0], s4[1], s4[2], s4[3]
+				m._elog_keys[key] = true
+				reporter = getattr(portage.elog.messages, funcname)
+				reporter(msg, phase = phase, key = key, out = out)
+			}
 		}
+	} else if output != nil {
+		m.scheduler.remove_reader(m._elog_reader_fd)
+		syscall.Close(m._elog_reader_fd)
+		m._elog_reader_fd = nil
+		return false
 	}
-} else if output != nil {
-	m.scheduler.remove_reader(m._elog_reader_fd)
-	syscall.Close(m._elog_reader_fd)
-	m._elog_reader_fd = nil
-	return false
-}
-return true
+	return true
 }
 
-func(m *MergeProcess) _spawn( args, fd_pipes map[int]int, **kwargs){
-	r := make([]int,2)
+func(m *MergeProcess) _spawn( args, fd_pipes map[int]int, **kwargs) {
+	r := make([]int, 2)
 	syscall.Pipe(r)
-	elog_reader_fd, elog_writer_fd :=r[0],r[1]
+	elog_reader_fd, elog_writer_fd := r[0], r[1]
 
 	fcntl.fcntl(elog_reader_fd, fcntl.F_SETFL,
-		fcntl.fcntl(elog_reader_fd, fcntl.F_GETFL) | syscall.O_NONBLOCK)
+		fcntl.fcntl(elog_reader_fd, fcntl.F_GETFL)|syscall.O_NONBLOCK)
 
 	var blockers = nil
 	if m.blockers != nil {
@@ -743,7 +746,7 @@ func(m *MergeProcess) _spawn( args, fd_pipes map[int]int, **kwargs){
 
 	m._lock_vdb()
 	counter := 0
-	if ! m.unmerge{
+	if !m.unmerge {
 		counter = m.vartree.dbapi.counter_tick()
 	}
 
@@ -752,16 +755,17 @@ func(m *MergeProcess) _spawn( args, fd_pipes map[int]int, **kwargs){
 try:
 	pid = syscall.fork()
 
-	if pid != 0{
+	if pid != 0 {
 		if not isinstance(pid, int):
-		raise AssertionError(
-			"fork returned non-integer: %s" % (repr(pid),))
+		raise
+		AssertionError(
+			"fork returned non-integer: %s" % (repr(pid), ))
 
 		syscall.Close(elog_writer_fd)
 		m._elog_reader_fd = elog_reader_fd
 		m._buf = ""
 		m._elog_keys = map[string]bool{}
-		portage.elog.messages.collect_messages(key=mylink.mycpv)
+		portage.elog.messages.collect_messages(key = mylink.mycpv)
 
 		if m.vartree.dbapi._categories != nil {
 			m.vartree.dbapi._categories = nil
@@ -780,23 +784,23 @@ try:
 	signal.signal(signal.SIGCHLD, signal.SIG_DFL)
 try:
 	wakeup_fd := signal.set_wakeup_fd(-1)
-	if wakeup_fd > 0{
+	if wakeup_fd > 0 {
 		syscall.Close(wakeup_fd)
 	}
-	except (ValueError, OSError):
+	except(ValueError, OSError):
 	pass
 
 	_close_fds()
-	portage.process._setup_pipes(fd_pipes, close_fds=false)
+	portage.process._setup_pipes(fd_pipes, close_fds = false)
 
-	havecolor := m.settings.ValueDict["NOCOLOR"]== "yes" ||  m.settings.ValueDict["NOCOLOR"]== "true"
+	havecolor := m.settings.ValueDict["NOCOLOR"] == "yes" || m.settings.ValueDict["NOCOLOR"] == "true"
 
 	m.vartree.dbapi._flush_cache_enabled = false
 
-	if ! m.unmerge{
+	if !m.unmerge {
 		if m.settings.ValueDict["PORTAGE_BACKGROUND"] == "1" {
 			m.settings.ValueDict["PORTAGE_BACKGROUND_UNMERGE"] = "1"
-		}else {
+		} else {
 			m.settings.ValueDict["PORTAGE_BACKGROUND_UNMERGE"] = "0"
 		}
 		m.settings.backupChanges("PORTAGE_BACKGROUND_UNMERGE")
@@ -806,11 +810,11 @@ try:
 
 	rval := 1
 try:
-	if m.unmerge{
-		if ! mylink.exists(){
+	if m.unmerge {
+		if !mylink.exists() {
 			rval = syscall.EX_OK
 		} else if mylink.unmerge(
-			ldpath_mtimes=m.prev_mtimes) == syscall.F_OK{
+			ldpath_mtimes = m.prev_mtimes) == syscall.F_OK{
 			mylink.lockdb()
 			try:
 			mylink.delete()
@@ -818,12 +822,13 @@ try:
 			mylink.unlockdb()
 			rval = syscall.EX_OK
 		}
-	}else{
+	} else {
 		rval = mylink.merge(m.pkgloc, m.infloc,
-			myebuild=m.myebuild, mydbapi=m.mydbapi,
-			prev_mtimes=m.prev_mtimes, counter=counter)
+			myebuild = m.myebuild, mydbapi = m.mydbapi,
+			prev_mtimes=m.prev_mtimes, counter = counter)
 	}
-	except SystemExit:
+	except
+SystemExit:
 	raise
 except:
 	traceback.print_exc()
@@ -832,7 +837,7 @@ finally:
 	syscall._exit(rval)
 
 finally:
-	if pid == 0 || (pid == 0 && syscall.Getpid() != parent_pid){
+	if pid == 0 || (pid == 0 && syscall.Getpid() != parent_pid) {
 		os._exit(1)
 	}
 }
@@ -846,24 +851,24 @@ func(m *MergeProcess) _async_waitpid_cb( *args, **kwargs){
 	}
 }
 
-func(m *MergeProcess) _unregister(){
-	if ! m.unmerge{
-	//try:
-		m.vartree.dbapi.aux_get(m.settings.mycpv.string, map[string]bool{"EAPI":true}, "")
+func(m *MergeProcess) _unregister() {
+	if !m.unmerge {
+		//try:
+		m.vartree.dbapi.aux_get(m.settings.mycpv.string, map[string]bool{"EAPI": true}, "")
 		//except KeyError:
 		//pass
 	}
 
 	m._unlock_vdb()
-	if m._elog_reader_fd != nil{
+	if m._elog_reader_fd != nil {
 		m.scheduler.remove_reader(m._elog_reader_fd)
 		syscall.Close(m._elog_reader_fd)
 		m._elog_reader_fd = nil
 	}
-	if m._elog_keys != nil{
-		for key := range m._elog_keys{
+	if m._elog_keys != nil {
+		for key := range m._elog_keys {
 			portage.elog.elog_process(key, m.settings,
-				phasefilter=("prerm", "postrm"))
+				phasefilter = ("prerm", "postrm"))
 		}
 		m._elog_keys = nil
 	}
@@ -886,14 +891,14 @@ type AbstractEbuildProcess struct {
 func NewAbstractEbuildProcess( **kwargs)*AbstractEbuildProcess {
 	a := &AbstractEbuildProcess{}
 	a._phases_without_builddir = []string{"clean", "cleanrm", "depend", "help",}
-	a. _phases_interactive_whitelist = []string{"config",}
+	a._phases_interactive_whitelist = []string{"config",}
 	a._exit_timeout = 10
 	a._enable_ipc_daemon = true
 
 	a.SpawnProcess = NewSpawnProcess(**kwargs)
 	if a.phase == "" {
 		phase := a.settings.ValueDict["EBUILD_PHASE"]
-		if phase== "" {
+		if phase == "" {
 			phase = "other"
 			a.phase = phase
 		}
@@ -901,169 +906,169 @@ func NewAbstractEbuildProcess( **kwargs)*AbstractEbuildProcess {
 	return a
 }
 
-func (a *AbstractEbuildProcess)_start(){
+func (a *AbstractEbuildProcess)_start() {
 
-need_builddir := true
-for _, v := range a._phases_without_builddir {
-	if a.phase == v {
-		need_builddir = false
-		break
-	}
-}
-
-if st, err := os.Stat(a.settings.ValueDict["PORTAGE_BUILDDIR"]);need_builddir &&err != nil && !st.IsDir(){
-	msg := fmt.Sprintf("The ebuild phase '%s' has been aborted " +
-		"since PORTAGE_BUILDDIR does not exist: '%s'", a.phase, a.settings.ValueDict["PORTAGE_BUILDDIR"])
-	a._eerror(SplitSubN(msg, 72))
-	i := 1
-	a.returncode = &i
-	a._async_wait()
-	return
-}
-
-if os.Geteuid() == 0 && runtime.GOOS == "linux" && a.settings.Features.Features["cgroup"] && ! _global_pid_phases[a.phase] {
-	cgroup_root := "/sys/fs/cgroup"
-	cgroup_portage := filepath.Join(cgroup_root, "portage")
-
-	mp, err := Mountpoint(cgroup_root)
-	if err == nil {
-		if mp != cgroup_root {
-			st, err1 := os.Stat(cgroup_root)
-			if err1 != nil {
-				err = err1
-			} else {
-				if !st.IsDir() {
-					os.MkdirAll(cgroup_root, 0755)
-				}
-				err = exec.Command("mount", "-t", "tmpfs",
-					"-o", "rw,nosuid,nodev,noexec,mode=0755",
-					"tmpfs", cgroup_root).Run()
-			}
+	need_builddir := true
+	for _, v := range a._phases_without_builddir {
+		if a.phase == v {
+			need_builddir = false
+			break
 		}
 	}
-	if err == nil {
-		mp, err1 := Mountpoint(cgroup_portage)
-		if err1 != nil {
-			err = err1
-		} else {
-			if mp != cgroup_portage {
-				st, err1 := os.Stat(cgroup_portage)
+
+	if st, err := os.Stat(a.settings.ValueDict["PORTAGE_BUILDDIR"]); need_builddir && err != nil && !st.IsDir() {
+		msg := fmt.Sprintf("The ebuild phase '%s' has been aborted "+
+			"since PORTAGE_BUILDDIR does not exist: '%s'", a.phase, a.settings.ValueDict["PORTAGE_BUILDDIR"])
+		a._eerror(SplitSubN(msg, 72))
+		i := 1
+		a.returncode = &i
+		a._async_wait()
+		return
+	}
+
+	if os.Geteuid() == 0 && runtime.GOOS == "linux" && a.settings.Features.Features["cgroup"] && !_global_pid_phases[a.phase] {
+		cgroup_root := "/sys/fs/cgroup"
+		cgroup_portage := filepath.Join(cgroup_root, "portage")
+
+		mp, err := Mountpoint(cgroup_root)
+		if err == nil {
+			if mp != cgroup_root {
+				st, err1 := os.Stat(cgroup_root)
 				if err1 != nil {
 					err = err1
 				} else {
 					if !st.IsDir() {
-						os.MkdirAll(cgroup_portage, 0755)
+						os.MkdirAll(cgroup_root, 0755)
 					}
-					err = exec.Command("mount", "-t", "cgroup",
-						"-o", "rw,nosuid,nodev,noexec,none,name=portage",
-						"tmpfs", cgroup_portage).Run()
-				}
-				if err == nil {
-					f, err1 := os.OpenFile(filepath.Join(
-						cgroup_portage, "release_agent"), os.O_RDWR|os.O_APPEND, 0644)
-					if err1 != nil {
-						err = err1
-					} else {
-						_, err = f.Write([]byte(filepath.Join(a.settings.ValueDict["PORTAGE_BIN_PATH"],
-							"cgroup-release-agent")))
-					}
-				}
-				if err == nil {
-					f, err1 := os.OpenFile(filepath.Join(
-						cgroup_portage, "notify_on_release"), os.O_RDWR|os.O_APPEND, 0644)
-					if err1 != nil {
-						err = err1
-					} else {
-						_, err = f.Write([]byte("1"))
-					}
-				}
-			} else {
-				release_agent := filepath.Join(
-					cgroup_portage, "release_agent")
-				f, err1 := os.Open(release_agent)
-				release_agent_path := ""
-				if err1 != nil {
-				}
-				defer f.Close()
-				l, err1 := ioutil.ReadAll(f)
-				if err1 != nil {
-				}
-				release_agent_path = strings.Split(string(l), "\n")[0]
-
-				if st, _ := os.Stat(release_agent_path); release_agent_path == "" || st!= nil {
-					f, err1 := os.OpenFile(release_agent, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
-					if err1 != nil {
-
-					}
-					f.Write([]byte(filepath.Join(
-						a.settings.ValueDict["PORTAGE_BIN_PATH"],
-						"cgroup-release-agent")))
+					err = exec.Command("mount", "-t", "tmpfs",
+						"-o", "rw,nosuid,nodev,noexec,mode=0755",
+						"tmpfs", cgroup_root).Run()
 				}
 			}
 		}
-	}
+		if err == nil {
+			mp, err1 := Mountpoint(cgroup_portage)
+			if err1 != nil {
+				err = err1
+			} else {
+				if mp != cgroup_portage {
+					st, err1 := os.Stat(cgroup_portage)
+					if err1 != nil {
+						err = err1
+					} else {
+						if !st.IsDir() {
+							os.MkdirAll(cgroup_portage, 0755)
+						}
+						err = exec.Command("mount", "-t", "cgroup",
+							"-o", "rw,nosuid,nodev,noexec,none,name=portage",
+							"tmpfs", cgroup_portage).Run()
+					}
+					if err == nil {
+						f, err1 := os.OpenFile(filepath.Join(
+							cgroup_portage, "release_agent"), os.O_RDWR|os.O_APPEND, 0644)
+						if err1 != nil {
+							err = err1
+						} else {
+							_, err = f.Write([]byte(filepath.Join(a.settings.ValueDict["PORTAGE_BIN_PATH"],
+								"cgroup-release-agent")))
+						}
+					}
+					if err == nil {
+						f, err1 := os.OpenFile(filepath.Join(
+							cgroup_portage, "notify_on_release"), os.O_RDWR|os.O_APPEND, 0644)
+						if err1 != nil {
+							err = err1
+						} else {
+							_, err = f.Write([]byte("1"))
+						}
+					}
+				} else {
+					release_agent := filepath.Join(
+						cgroup_portage, "release_agent")
+					f, err1 := os.Open(release_agent)
+					release_agent_path := ""
+					if err1 != nil {
+					}
+					defer f.Close()
+					l, err1 := ioutil.ReadAll(f)
+					if err1 != nil {
+					}
+					release_agent_path = strings.Split(string(l), "\n")[0]
 
-	var cgroup_path string
-	if err == nil {
-		cp, err1 :=
-			ioutil.TempFile(cgroup_portage,
-				fmt.Sprintf("%s:%s.*", a.settings.ValueDict["CATEGORY"],
-					a.settings.ValueDict["PF"]))
-		if err1 != nil {
-			err = err1
+					if st, _ := os.Stat(release_agent_path); release_agent_path == "" || st != nil {
+						f, err1 := os.OpenFile(release_agent, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+						if err1 != nil {
+
+						}
+						f.Write([]byte(filepath.Join(
+							a.settings.ValueDict["PORTAGE_BIN_PATH"],
+							"cgroup-release-agent")))
+					}
+				}
+			}
+		}
+
+		var cgroup_path string
+		if err == nil {
+			cp, err1 :=
+				ioutil.TempFile(cgroup_portage,
+					fmt.Sprintf("%s:%s.*", a.settings.ValueDict["CATEGORY"],
+						a.settings.ValueDict["PF"]))
+			if err1 != nil {
+				err = err1
+			} else {
+				cgroup_path = filepath.Join(cgroup_portage, cp.Name())
+			}
+		}
+		if err != nil {
+			//except (subprocess.CalledProcessError, OSError){
+			//pass
+			//}else{
 		} else {
-			cgroup_path = filepath.Join(cgroup_portage,cp.Name())
+			a.cgroup = cgroup_path
 		}
 	}
-	if err != nil {
-		//except (subprocess.CalledProcessError, OSError){
-		//pass
-		//}else{
+
+	if a.background {
+		a.settings.ValueDict["NOCOLOR"] = "true"
+	}
+
+	start_ipc_daemon := false
+	if a._enable_ipc_daemon {
+		delete(a.settings.ValueDict, "PORTAGE_EBUILD_EXIT_FILE")
+		if !Ins(a._phases_without_builddir, a.phase) {
+			start_ipc_daemon = true
+			if _, ok := a.settings.ValueDict["PORTAGE_BUILDDIR_LOCKED"]; !ok {
+				a._build_dir = EbuildBuildDir(
+					scheduler = a.scheduler, settings = a.settings)
+				a._start_future = a._build_dir.async_lock()
+				a._start_future.add_done_callback(
+					functools.partial(a._start_post_builddir_lock,
+						start_ipc_daemon = start_ipc_daemon))
+				return
+			}
+		} else {
+			delete(a.settings.ValueDict, "PORTAGE_IPC_DAEMON")
+		}
 	} else {
-		a.cgroup = cgroup_path
-	}
-}
-
-if a.background {
-	a.settings.ValueDict["NOCOLOR"] = "true"
-}
-
-start_ipc_daemon := false
-if a._enable_ipc_daemon{
-delete(a.settings.ValueDict,"PORTAGE_EBUILD_EXIT_FILE")
-if  ! Ins(a._phases_without_builddir,a.phase) {
-	start_ipc_daemon = true
-	if _, ok := a.settings.ValueDict["PORTAGE_BUILDDIR_LOCKED"]; !ok {
-		a._build_dir = EbuildBuildDir(
-			scheduler = a.scheduler, settings = a.settings)
-		a._start_future = a._build_dir.async_lock()
-		a._start_future.add_done_callback(
-			functools.partial(a._start_post_builddir_lock,
-				start_ipc_daemon = start_ipc_daemon))
-		return
-	}
-}else{
-delete(a.settings.ValueDict,"PORTAGE_IPC_DAEMON")
-}
-}else{
-delete(a.settings.ValueDict,"PORTAGE_IPC_DAEMON")
-if   Ins(a._phases_without_builddir,a.phase) {
-	exit_file := filepath.Join(
-		a.settings.ValueDict["PORTAGE_BUILDDIR"],
-		".exit_status")
-	a.settings.ValueDict["PORTAGE_EBUILD_EXIT_FILE"] = exit_file
-	if err := syscall.Unlink(exit_file); err != nil {
-		//except OSError{
-		if st, err :=os.Stat(exit_file); err == nil && st!= nil{
-			//raise
+		delete(a.settings.ValueDict, "PORTAGE_IPC_DAEMON")
+		if Ins(a._phases_without_builddir, a.phase) {
+			exit_file := filepath.Join(
+				a.settings.ValueDict["PORTAGE_BUILDDIR"],
+				".exit_status")
+			a.settings.ValueDict["PORTAGE_EBUILD_EXIT_FILE"] = exit_file
+			if err := syscall.Unlink(exit_file); err != nil {
+				//except OSError{
+				if st, err := os.Stat(exit_file); err == nil && st != nil {
+					//raise
+				}
+			}
+		} else {
+			delete(a.settings.ValueDict, "PORTAGE_EBUILD_EXIT_FILE")
 		}
 	}
-} else{
-	delete(a.settings.ValueDict,"PORTAGE_EBUILD_EXIT_FILE")
-	}
-	}
 
-a._start_post_builddir_lock(nil, start_ipc_daemon)
+	a._start_post_builddir_lock(nil, start_ipc_daemon)
 }
 
 // nil, false
@@ -1086,53 +1091,53 @@ func (a *AbstractEbuildProcess)_start_post_builddir_lock( lock_future , start_ip
 		a._start_ipc_daemon()
 	}
 
-		if a.fd_pipes == nil {
-			a.fd_pipes ={}
-		}
-			null_fd := nil
-			if _, ok := a.fd_pipes[0] ;!ok &&
-			 ! Ins( a._phases_interactive_whitelist ,a.phase)&&
-			 ! Ins(strings.Fields(a.settings.Valuedict["PROPERTIES"]), "interactive") {
-				null_fd, _ := syscall.Open("/dev/null")
-				a.fd_pipes[0] = null_fd
-			}
+	if a.fd_pipes == nil {
+		a.fd_pipes = map[int]int{}
+	}
+	null_fd := 0
+	if _, ok := a.fd_pipes[0]; !ok &&
+		!Ins(a._phases_interactive_whitelist, a.phase) &&
+		!Ins(strings.Fields(a.settings.ValueDict["PROPERTIES"]), "interactive") {
+		null_fd, _ := syscall.Open("/dev/null", os.O_RDWR, 0644)
+		a.fd_pipes[0] = null_fd
+	}
 
-			//try{
-			a.SpawnProcess._start()
-			//finally{
-			if null_fd != nil{
-				syscall.Close(null_fd)
-			}
-}
-
-
-
-func (a *AbstractEbuildProcess)_init_ipc_fifos()(string,string){
-
-input_fifo := filepath.Join(
-a.settings.ValueDict["PORTAGE_BUILDDIR"], ".ipc_in")
-output_fifo := filepath.Join(
-a.settings.ValueDict["PORTAGE_BUILDDIR"], ".ipc_out")
-
-for _, p := range []string{input_fifo, output_fifo}{
-
-st, err := os.Lstat(p)
-if err != nil {
-
-	//except OSError{
-		syscall.Mkfifo(p, 0755)
-}else {
-	if st.Mode()&syscall.S_IFIFO == 0 {
-		st = nil
-		if err := syscall.Unlink(p); err != nil {
-			//except OSError{
-			//	pass
-		}
-		syscall.Mkfifo(p, 0755)
+	//try{
+	a.SpawnProcess._start()
+	//finally{
+	if null_fd != 0 {
+		syscall.Close(null_fd)
 	}
 }
-	apply_secpass_permissions(p, uint32(os.Getuid()), *portage_gid, 0770, -1,st, true)
-}
+
+
+
+func (a *AbstractEbuildProcess)_init_ipc_fifos()(string,string) {
+
+	input_fifo := filepath.Join(
+		a.settings.ValueDict["PORTAGE_BUILDDIR"], ".ipc_in")
+	output_fifo := filepath.Join(
+		a.settings.ValueDict["PORTAGE_BUILDDIR"], ".ipc_out")
+
+	for _, p := range []string{input_fifo, output_fifo} {
+
+		st, err := os.Lstat(p)
+		if err != nil {
+
+			//except OSError{
+			syscall.Mkfifo(p, 0755)
+		} else {
+			if st.Mode()&syscall.S_IFIFO == 0 {
+				st = nil
+				if err := syscall.Unlink(p); err != nil {
+					//except OSError{
+					//	pass
+				}
+				syscall.Mkfifo(p, 0755)
+			}
+		}
+		apply_secpass_permissions(p, uint32(os.Getuid()), *portage_gid, 0770, -1, st, true)
+	}
 
 	return input_fifo, output_fifo
 }
@@ -1178,22 +1183,21 @@ func (a *AbstractEbuildProcess)_exit_command_timeout_cb() {
 	}
 }
 
-func (a *AbstractEbuildProcess)_cancel_timeout_cb(){
-		a._exit_timeout_id = nil
-		a._async_waitpid()
-	}
+func (a *AbstractEbuildProcess)_cancel_timeout_cb() {
+	a._exit_timeout_id = nil
+	a._async_waitpid()
+}
 
 func (a *AbstractEbuildProcess)_orphan_process_warn() {
 	phase := a.phase
 
 	msg := fmt.Sprintf("The ebuild phase '%s' with pid %s appears "+
-		"to have left an orphan process running in the "+
-		"background.", phase, a.pid)
+		"to have left an orphan process running in the background.", phase, a.pid)
 
 	a._eerror(SplitSubN(msg, 72))
 }
 
-func (a *AbstractEbuildProcess)_pipe( fd_pipes map[int]int) (int, int){
+func (a *AbstractEbuildProcess)_pipe( fd_pipes map[int]int) (int, int) {
 	stdout_pipe := 0
 	if !a.background {
 		stdout_pipe = fd_pipes[1]
@@ -1203,68 +1207,71 @@ func (a *AbstractEbuildProcess)_pipe( fd_pipes map[int]int) (int, int){
 	return master_fd, slave_fd
 }
 
-func (a *AbstractEbuildProcess)_can_log( slave_fd int)bool{
-		return !(a.settings.Features.Features["sesandbox"] && a.settings.selinux_enabled()) || os.isatty(slave_fd)
-	}
+func (a *AbstractEbuildProcess)_can_log( slave_fd int)bool {
+	return !(a.settings.Features.Features["sesandbox"] && a.settings.selinux_enabled()) || os.isatty(slave_fd)
+}
 
 func (a *AbstractEbuildProcess)_killed_by_signal( signum int) {
-	msg := fmt.Sprintf("The ebuild phase '%s' has been "+
-		"killed by signal %s.", a.phase, signum)
+	msg := fmt.Sprintf("The ebuild phase '%s' has been killed by signal %s.", a.phase, signum)
 	a._eerror(SplitSubN(msg, 72))
 }
 
-func (a *AbstractEbuildProcess)_unexpected_exit(){
+func (a *AbstractEbuildProcess)_unexpected_exit() {
 
 	phase := a.phase
 
 	msg := fmt.Sprintf("The ebuild phase '%s' has exited "+
-	"unexpectedly. This type of behavior "+
-	"is known to be triggered "+
-	"by things such as failed variable "+
-	"assignments (bug #190128) or bad substitution "+
-	"errors (bug #200313). Normally, before exiting, bash should "+
-	"have displayed an error message above. If bash did not "+
-	"produce an error message above, it's possible "+
-	"that the ebuild has called `exit` when it "+
-	"should have called `die` instead. This behavior may also "+
-	"be triggered by a corrupt bash binary or a hardware "+
-	"problem such as memory or cpu malfunction. If the problem is not "+
-	"reproducible or it appears to occur randomly, then it is likely "+
-	"to be triggered by a hardware problem. "+
-	"If you suspect a hardware problem then you should "+
-	"try some basic hardware diagnostics such as memtest. "+
-	"Please do not report this as a bug unless it is consistently "+
-	"reproducible and you are sure that your bash binary and hardware "+
-	"are functioning properly.",phase)
+		"unexpectedly. This type of behavior "+
+		"is known to be triggered "+
+		"by things such as failed variable "+
+		"assignments (bug #190128) or bad substitution "+
+		"errors (bug #200313). Normally, before exiting, bash should "+
+		"have displayed an error message above. If bash did not "+
+		"produce an error message above, it's possible "+
+		"that the ebuild has called `exit` when it "+
+		"should have called `die` instead. This behavior may also "+
+		"be triggered by a corrupt bash binary or a hardware "+
+		"problem such as memory or cpu malfunction. If the problem is not "+
+		"reproducible or it appears to occur randomly, then it is likely "+
+		"to be triggered by a hardware problem. "+
+		"If you suspect a hardware problem then you should "+
+		"try some basic hardware diagnostics such as memtest. "+
+		"Please do not report this as a bug unless it is consistently "+
+		"reproducible and you are sure that your bash binary and hardware "+
+		"are functioning properly.", phase)
 
 	a._eerror(SplitSubN(msg, 72))
-	}
-
-func (a *AbstractEbuildProcess)_eerror( lines []string){
-	a._elog("eerror", lines)
-	}
-
-func (a *AbstractEbuildProcess)_elog( elog_funcname, lines){
-out := &bytes.Buffer{}
-phase := a.phase
-elog_func = getattr(elog_messages, elog_funcname)
-global_havecolor := HaveColor
-//try{
-	HaveColor =
-a.settings.Valuedict["NOCOLOR", "false").lower() in ("no", "false")
-for _, line := range lines{
-	elog_func(line, phase = phase, key =a.settings.mycpv, out = out)
-	}
-//finally{
-	HaveColor = global_havecolor
-msg := out.String()
-if msg!= ""{
-log_path = nil
-if a.settings.Valuedict["PORTAGE_BACKGROUND"] != "subprocess"{
-log_path = a.settings.Valuedict["PORTAGE_LOG_FILE"]
-	}
-a.scheduler.output(msg, log_path=log_path)
 }
+
+func (a *AbstractEbuildProcess)_eerror( lines []string) {
+	a._elog("eerror", lines)
+}
+
+func (a *AbstractEbuildProcess)_elog( elog_funcname, lines) {
+	out := &bytes.Buffer{}
+	phase := a.phase
+	elog_func = getattr(elog_messages, elog_funcname)
+	global_havecolor := HaveColor
+	//try{
+	nc, ok := a.settings.ValueDict["NOCOLOR"]
+	if !ok {
+		HaveColor = 1
+	} else if strings.ToLower(nc) == "no" || strings.ToLower(nc) == "false" {
+		HaveColor = 0
+	}
+	for _, line := range lines {
+		elog_func(line, phase = phase, key = a.settings.mycpv, out = out)
+	}
+	//finally{
+	HaveColor = global_havecolor
+	msg := out.String()
+	if msg != "" {
+		log_path = nil
+		if a.settings.Valuedict["PORTAGE_BACKGROUND"] != "subprocess" {
+			log_path = a.settings.ValueDict["PORTAGE_LOG_FILE"]
+		}
+		a.scheduler.output(msg, log_path = log_path)
+	}
 }
 
 func (a *AbstractEbuildProcess)_async_waitpid_cb( *args, **kwargs) {
@@ -1357,13 +1364,13 @@ type EbuildSpawnProcess struct {
 	}
 var _spawn_kwarg_names = append(NewAbstractEbuildProcess()._spawn_kwarg_names ,"fakeroot_state",)
 
-func (e *EbuildSpawnProcess)_spawn( args, **kwargs){
+func (e *EbuildSpawnProcess)_spawn( args, **kwargs) {
 
-env := e.settings.environ()
+	env := e.settings.environ()
 
-if e._dummy_pipe_fd != 0 {
-	env["PORTAGE_PIPE_FD"] = fmt.Sprint(e._dummy_pipe_fd)
-}
+	if e._dummy_pipe_fd != 0 {
+		env["PORTAGE_PIPE_FD"] = fmt.Sprint(e._dummy_pipe_fd)
+	}
 
 	return e.spawn_func(args, env = env, **kwargs)
 }
@@ -1462,7 +1469,7 @@ func (b *BlockerDB)findInstalledBlockers( new_pkg) {
 	blocker_atoms = InternalPackageSet(initial_atoms = blocker_atoms)
 	blocking_pkgs = set()
 	for atom
-	in
+		in
 	blocker_atoms.iterAtomsForPackage(new_pkg)
 	{
 		blocking_pkgs.update(blocker_parents.parent_nodes(atom))
@@ -1470,7 +1477,7 @@ func (b *BlockerDB)findInstalledBlockers( new_pkg) {
 
 	depstr = " ".join(new_pkg._metadata[k]
 	for k
-	in
+		in
 	dep_keys)
 	success, atoms = dep_check(depstr,
 		vardb, settings, "yes", new_pkg.use.enabled, 1, 0,
@@ -1483,7 +1490,7 @@ func (b *BlockerDB)findInstalledBlockers( new_pkg) {
 
 	blocker_atoms = [atom.lstrip("!")
 	for atom
-	in
+		in
 	atoms
 	if atom[:1] == "!"]
 if blocker_atoms{
@@ -1499,14 +1506,18 @@ next(blocker_atoms.iterAtomsForPackage(inst_pkg))
 return blocking_pkgs
 }
 
-func (b *BlockerDB)discardBlocker( pkg){
-for cpv_match in b._fake_vartree.dbapi.match_pkgs(Atom(fmt.Sprintf("=%s" % (pkg.cpv,)))
+func (b *BlockerDB)discardBlocker( pkg) {
+	for cpv_match
+	in
+	b._fake_vartree.dbapi.match_pkgs(Atom(fmt.Sprintf("=%s", pkg.cpv, )))
 	{
 		if cpv_match.cp == pkg.cp {
 			b._fake_vartree.cpv_discard(cpv_match)
 		}
 	}
-for slot_match in b._fake_vartree.dbapi.match_pkgs(pkg.slot_atom)
+	for slot_match
+	in
+	b._fake_vartree.dbapi.match_pkgs(pkg.slot_atom)
 	{
 		if slot_match.cp == pkg.cp {
 			b._fake_vartree.cpv_discard(slot_match)
@@ -1971,8 +1982,8 @@ func (e *EbuildPhase) _open_log( log_path) {
 
 func (e *EbuildPhase) _die_hooks() {
 	e.returncode = nil
-	phase = 'die_hooks'
-	die_hooks = MiscFunctionsProcess(background = e.background,
+	phase := "die_hooks"
+	die_hooks := MiscFunctionsProcess(background = e.background,
 		commands = [phase], phase = phase, logfile = e._get_log_path(),
 		fd_pipes=e.fd_pipes, scheduler = e.scheduler,
 		settings=e.settings)
@@ -1981,14 +1992,15 @@ func (e *EbuildPhase) _die_hooks() {
 
 func (e *EbuildPhase) _die_hooks_exit( die_hooks) {
 	if e.phase != "clean" &&
-		 !e.settings.Features.Features["noclean"] &&
-	e.settings.Features.Features["fail-clean"] {
+		!e.settings.Features.Features["noclean"] &&
+		e.settings.Features.Features["fail-clean"] {
 		e._default_exit(die_hooks)
 		e._fail_clean()
 		return
 	}
 	e._final_exit(die_hooks)
-	e.returncode = 1
+	e.returncode = new(int)
+	*e.returncode = 1
 	e.wait()
 }
 
@@ -2053,7 +2065,7 @@ cmds = [({}, p.commands)]
 cmds = list(p.commands)
 }
 
-if 'selinux' not in p.settings.features{
+if ! p.settings.Features.Features["selinux"]{
 cmds = [(kwargs, commands) for kwargs, commands in
 cmds if not kwargs.get('selinux_only'
 })]
@@ -2081,9 +2093,9 @@ func(p*_PostPhaseCommands) _commands_exit( task) {
 	}
 
 	if p.phase == "install" {
-		out = io.StringIO()
+		out := bytes.Buffer{}
 		_post_src_install_soname_symlinks(p.settings, out)
-		msg = out.getvalue()
+		msg := out.String()
 		if len(msg) > 0 {
 			p.scheduler.output(msg, log_path = p.settings.ValueDict["PORTAGE_LOG_FILE"])
 		}
@@ -2093,7 +2105,7 @@ func(p*_PostPhaseCommands) _commands_exit( task) {
 			future = p._soname_deps_qa()
 
 			future.add_done_callback(func(future) {
-				return future.cancelled() or future.result()
+				return future.cancelled() || future.result()
 			})
 			p._start_task(AsyncTaskFuture(future = future), p._default_final_exit)
 		} else {
@@ -2130,7 +2142,7 @@ func(p*_PostPhaseCommands) _soname_deps_qa() {
 type RootConfig struct{
 	// slot
 	mtimedb,root string
-	settings*Config
+	settings *Config
 	trees *Tree
 	setconfig *SetConfig
 	sets map[string]string
@@ -2140,7 +2152,6 @@ type RootConfig struct{
 
 func NewRootConfig(settings *Config, trees *Tree, setconfig *SetConfig)*RootConfig {
 	r := &RootConfig{}
-
 	r.pkg_tree_map = map[string]string{
 		"ebuild":    "porttree",
 		"binary":    "bintree",

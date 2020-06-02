@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"syscall"
 )
 
@@ -101,4 +102,47 @@ func SplitSubN(s string, n int) []string {
 	}
 
 	return subs
+}
+
+
+func CopyMap(m map[string]interface{}) map[string]interface{} {
+	cp := make(map[string]interface{})
+	for k, v := range m {
+		vm, ok := v.(map[string]interface{})
+		if ok {
+			cp[k] = CopyMap(vm)
+		} else {
+			cp[k] = v
+		}
+	}
+
+	return cp
+}
+
+func pathExists(filename string) bool {
+	st, _ := os.Stat(filename)
+	return st != nil
+}
+
+func pathAccess(filename string) bool {
+	st, _ := os.Stat(filename)
+	if st == nil {
+		return false
+	}
+	return st.Mode()&os.ModePerm== 0
+}
+
+func reversed (a []string)[]string {
+	b := []string{}
+	for _, v := range a {
+		b = append([]string{v}, b...)
+	}
+	return b
+}
+
+func sorted (a []string)[]string {
+	b := []string{}
+	copy(b, a)
+	sort.Strings(b)
+	return b
 }

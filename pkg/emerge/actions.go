@@ -13,7 +13,7 @@ type EmergeConfig struct {
 	action                      string
 	args                        []string
 	opts                        map[string]string
-	runningConfig, targetConfig struct{ settings *atom.Config }
+	runningConfig, targetConfig *atom.RootConfig
 	Trees                       *atom.TreesDict
 }
 
@@ -36,20 +36,20 @@ func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, action 
 		settings.initDirs()
 		setconfig := atom.load_default_config(settings, root_trees)
 		root_config := atom.NewRootConfig(settings, root_trees, setconfig)
-		if "root_config" in root_trees{
-			root_trees["root_config"].update(root_config)
+		if root_trees.root_config!= nil{
+			root_trees.root_config.update(root_config)
 		}else{
-			root_trees["root_config"] = root_config
+			root_trees.root_config = root_config
 		}
 	}
 
 	target_eroot := emergeConfig.trees._target_eroot
-	emergeConfig.targetConfig = emergeConfig.Trees.Values()[target_eroot]["root_config"]
+	emergeConfig.targetConfig = emergeConfig.Trees.Values()[target_eroot].root_config
 	emergeConfig.targetConfig.mtimedb = portage.MtimeDB(
 		filepath.Join(target_eroot, atom.CachePath, "mtimedb"))
-	emergeConfig.running_config = emergeConfig.trees[
-		emergeConfig.trees._running_eroot]['root_config']
-	QueryCommand._db = emergeConfig.trees
+	emergeConfig.runningConfig = emergeConfig.Trees.Values()[
+		emergeConfig.Trees._running_eroot].root_config
+	QueryCommand._db = emergeConfig.Trees
 
 	return emergeConfig
 }

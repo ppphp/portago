@@ -1877,7 +1877,7 @@ func (d *dblink) _get_protect_obj() *ConfigProtect{
 }
 
 func (d *dblink) isprotected(obj string) bool {
-	return d._get_protect_obj().isprotected(obj)
+	return d._get_protect_obj().Isprotected(obj)
 }
 
 func (d *dblink) updateprotect() {

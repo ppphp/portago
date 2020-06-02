@@ -57,8 +57,37 @@ type fuu struct {
 }
 
 var globalFunctions = map[string]fuu{
-	"colormap": {colormap, false, false, "Display the color.map as environment variables."},
-	"distdir":  {distdir, false, false, "Returns the DISTDIR path."},
+	"has_version":                {hasVersion, true, false, "<eroot> <category/package>\nReturn code 0 if it's available, 1 otherwise.\n"},
+	"best_version":               {bestVersion, true, false, "<eroot> <category/package>\nReturns highest installed matching category/package-version (without .ebuild).\n"},
+	"mass_best_version":          {massBestVersion, true, false, "<eroot> [<category/package>]+\nReturns category/package-version (without .ebuild)."},
+	"metadata":                   {metadata, true, false, ""},
+	"contents":                   {contents, true, false, ""},
+	"owners":                     {owners, true, false, ""},
+	"is_protected":               {is_protected, true, false, ""},
+	"filter_protected":           {filter_protected, true, false, ""},
+	"best_visible":               {bestVisible, true, false, ""},
+	"mass_best_visible":          {massBestVisible, true, false, ""},
+	"all_best_visible":           {allBestVisible, true, false, ""},
+	"match":                      {match, true, false, ""},
+	"expand_virtual":             {expand_virtual, true, false, ""},
+	"vdb_path":                   {vdbPath, false, false, ""},
+	"gentoo_mirrors":             {gentooMirrors, false, false, ""},
+	"repositories_configuration": {repositories_configuration, true, true, ""},
+	"repos_config":               {repos_config, true, true, ""},
+	"config_protect":             {configProtect, false, false, ""},
+	"config_protect_mask":        {configProtectMask, false, false, ""},
+	"pkgdir":                     {pkgdir, false, false, ""},
+	"distdir":                    {distdir, false, false, "Returns the DISTDIR path."},
+	"colormap":                   {colormap, false, false, "Display the color.map as environment variables."},
+	"envvar":                     {envvar, false, false, ""},
+	"get_repos":                  {get_repos, true, true, ""},
+	"master_repositories":        {master_repositories, true, true, ""},
+	"master_repos":               {master_repos, true, true, ""},
+	"get_repo_path":              {get_repo_path, true, true, ""},
+	"available_eclasses":         {available_eclasses, true, false, ""},
+	"eclass_path":                {eclass_path, true, false, ""},
+	"license_path":               {license_path, true, false, ""},
+	"list_preserved_libs":        {list_preserved_libs, true, false, ""},
 }
 
 var (
@@ -92,6 +121,7 @@ func init() {
 		elog = func(string, []string) {}
 	}
 }
+
 type Opts struct {
 	verbose, help, version,noFilter,noRegex,orphaned,noVersion bool
 	repo string
@@ -106,14 +136,14 @@ func main() {
 	var opts Opts
 	pf := pflag.NewFlagSet("portageq", pflag.ExitOnError)
 	pf.BoolVarP(&opts.verbose, "verbose", "v", false, "verbose form")
-	pf.BoolVarP(&opts.help,"help", "h", false, "help message")
-	pf.BoolVarP(&opts.version,"version", "", false, "version")
-	pf.BoolVarP(&opts.noFilter,"no-filters", "", false, "no visibility filters (ACCEPT_KEYWORDS, package masking, etc)")
-	pf.StringVarP(&opts.repo,"repo", "", "", "repository to use (all repositories are used by default)")
-	pf.StringArrayVarP(&opts.maintainerEmail,"maintainer-email", "", nil, "comma-separated list of maintainer email regexes to search for")
-	pf.BoolVarP(&opts.noRegex,"no-regex", "", false, "Use exact matching instead of regex matching for --maintainer-email")
-	pf.BoolVarP(&opts.orphaned,"orphaned", "", false, "match only orphaned (maintainer-needed) packages")
-	pf.BoolVarP(&opts.noVersion,"no-version", "n", false, "collapse multiple matching versions together")
+	pf.BoolVarP(&opts.help, "help", "h", false, "help message")
+	pf.BoolVarP(&opts.version, "version", "", false, "version")
+	pf.BoolVarP(&opts.noFilter, "no-filters", "", false, "no visibility filters (ACCEPT_KEYWORDS, package masking, etc)")
+	pf.StringVarP(&opts.repo, "repo", "", "", "repository to use (all repositories are used by default)")
+	pf.StringArrayVarP(&opts.maintainerEmail, "maintainer-email", "", nil, "comma-separated list of maintainer email regexes to search for")
+	pf.BoolVarP(&opts.noRegex, "no-regex", "", false, "Use exact matching instead of regex matching for --maintainer-email")
+	pf.BoolVarP(&opts.orphaned, "orphaned", "", false, "match only orphaned (maintainer-needed) packages")
+	pf.BoolVarP(&opts.noVersion, "no-version", "n", false, "collapse multiple matching versions together")
 	pf.Parse(argv)
 
 	args := pf.Args()
@@ -127,8 +157,8 @@ func main() {
 	}
 
 	cmd := ""
-	if  len(args) != 0 {
-		if _, ok := globalFunctions[args[0]]; ok{
+	if len(args) != 0 {
+		if _, ok := globalFunctions[args[0]]; ok {
 			cmd = args[0]
 		}
 	}
@@ -197,18 +227,18 @@ func hasVersion(argv  []string) int {
 
 	warnings := []string{}
 
-	allow_repo := ! atomValidateStrict  || atom.EapiHasRepoDeps(eapi)
-	atom1, err := atom.NewAtom(argv[1], nil, false, &allow_repo,nil, "", nil, nil )
+	allow_repo := !atomValidateStrict || atom.EapiHasRepoDeps(eapi)
+	atom1, err := atom.NewAtom(argv[1], nil, false, &allow_repo, nil, "", nil, nil)
 	if err != nil {
-	//except portage.exception.InvalidAtom:
-	if atomValidateStrict {
-		atom.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n", argv[1]),
-			-1, nil)
-		return 2
-	}else {
-		atom1 = argv[1]
-	}
-	}else {
+		//except portage.exception.InvalidAtom:
+		if atomValidateStrict {
+			atom.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n", argv[1]),
+				-1, nil)
+			return 2
+		} else {
+			atom1 = argv[1]
+		}
+	} else {
 		if atomValidateStrict {
 			atom1, err = atom.NewAtom(argv[1], nil, false, &allow_repo, nil, eapi, nil, nil)
 			if err != nil {
@@ -219,15 +249,15 @@ func hasVersion(argv  []string) int {
 		atom1 = eval_atom_use(atom1)
 	}
 
-	if len(warnings)> 0 {
+	if len(warnings) > 0 {
 		elog("eqawarn", warnings)
 	}
 
-//try:
+	//try:
 	mylist := atom.Db().Values()[argv[0]].VarTree().dbapi.match(atom1, 1)
-	if len(mylist)>0{
-	return 0
-	}else {
+	if len(mylist) > 0 {
+		return 0
+	} else {
 		return 1
 	}
 	//except KeyError:
@@ -283,7 +313,7 @@ func bestVersion(argv []string) int {
 }
 
 func massBestVersion(argv []string) int {
-	if (len(argv) < 2) {
+	if len(argv) < 2 {
 		print("ERROR: insufficient parameters!")
 		return 2
 	}
@@ -443,7 +473,7 @@ func owners(argv []string) int {
 	return 1
 }
 
-func is_protected(argv []string) int       {
+func is_protected(argv []string) int {
 
 	if len(argv) != 2 {
 		os.Stderr.Write([]byte((fmt.Sprintf("ERROR: expected 2 parameters, got %d!\n", len(argv)))))
@@ -459,7 +489,7 @@ func is_protected(argv []string) int       {
 		//pass
 	}
 	f := atom.NormalizePath(filename)
-	if ! strings.HasPrefix(f,string(os.PathSeparator)) {
+	if !strings.HasPrefix(f, string(os.PathSeparator)) {
 		if cwd == "" {
 			err.Write([]byte("ERROR: cwd does not exist!\n"))
 
@@ -469,26 +499,24 @@ func is_protected(argv []string) int       {
 		f = atom.NormalizePath(f)
 	}
 
-		if !strings.HasPrefix(f, root) {
-			err.Write([]byte("ERROR: file paths must begin with <eroot>!\n"))
-			return 2
-		}
-
-	from portage.util import ConfigProtect
+	if !strings.HasPrefix(f, root) {
+		err.Write([]byte("ERROR: file paths must begin with <eroot>!\n"))
+		return 2
+	}
 
 	settings := atom.Settings()
-	protect, _ := shlex.Split(settings.ValueDict["CONFIG_PROTECT"])
+	protect, _ := shlex.Split(strings.NewReader(settings.ValueDict["CONFIG_PROTECT"]), false, true)
 	protect_mask, _ := shlex.Split(
-		settings.ValueDict["CONFIG_PROTECT_MASK"])
-	protect_obj := ConfigProtect(root, protect, protect_mask,
-		case_insensitive=( settings.Features.Features["case-insensitive-fs"]))
-	if protect_obj.isprotected(f) {
+		strings.NewReader(settings.ValueDict["CONFIG_PROTECT_MASK"]), false, true)
+	protect_obj := atom.NewConfigProtect(root, protect, protect_mask,
+		settings.Features.Features["case-insensitive-fs"])
+	if protect_obj.Isprotected(f) {
 		return 0
 	}
 	return 1
 }
 
-func filter_protected(argv []string) int       {
+func filter_protected(argv []string) int {
 
 	if len(argv) != 1 {
 		os.Stderr.Write([]byte((fmt.Sprintf("ERROR: expected 1 parameter, got %d!\n", len(argv)))))
@@ -503,19 +531,18 @@ func filter_protected(argv []string) int       {
 		//except OSError:
 		//pass
 	}
-	from portage.util import ConfigProtect
 
 	settings := atom.Settings()
-	protect := shlex.Split(settings.ValueDict["CONFIG_PROTECT"]
-	protect_mask := shlex.Split(
-		settings.ValueDict["CONFIG_PROTECT_MASK"])
-	protect_obj := ConfigProtect(root, protect, protect_mask,
-		case_insensitive=settings.Features.Features["case-insensitive-fs"])
+	protect, _ := shlex.Split(strings.NewReader(settings.ValueDict["CONFIG_PROTECT"]), false, true)
+	protect_mask, _ := shlex.Split(
+		strings.NewReader(settings.ValueDict["CONFIG_PROTECT_MASK"]), false, true)
+	protect_obj := atom.NewConfigProtect(root, protect, protect_mask,
+		settings.Features.Features["case-insensitive-fs"])
 
 	errors := 0
 
 	lines, _ := ioutil.ReadAll(os.Stdin)
-	for _, line :=range strings.Split(string(lines),"\n") {
+	for _, line := range strings.Split(string(lines), "\n") {
 		filename := strings.TrimRight(line, "\n")
 		f := atom.NormalizePath(filename)
 		if !strings.HasPrefix(f, string(os.PathSeparator)) {
@@ -535,40 +562,40 @@ func filter_protected(argv []string) int       {
 			continue
 		}
 
-		if protect_obj.isprotected(f) {
+		if protect_obj.Isprotected(f) {
 			out.Write([]byte(fmt.Sprintf("%s\n", filename)))
 		}
 	}
 
-		if errors>0 {
-			return 2
-		}
+	if errors > 0 {
+		return 2
+	}
 
 	return 0
 }
 
-func bestVisible(argv []string) int       {
+func bestVisible(argv []string) int {
 
-	if (len(argv) < 2) {
+	if len(argv) < 2 {
 		atom.WriteMsg("ERROR: insufficient parameters!\n", -1, nil)
 		return 2
 	}
 
 	pkgtype := "ebuild"
 	var atom1 string
-	if len(argv) > 2{
-	pkgtype = argv[1]
-	atom1 = argv[2]
-	}else {
+	if len(argv) > 2 {
+		pkgtype = argv[1]
+		atom1 = argv[2]
+	} else {
 		atom1 = argv[1]
 	}
 
 	type_map := map[string]string{
-		"ebuild":"porttree",
-			"binary":"bintree",
-			"installed":"vartree"}
+		"ebuild":    "porttree",
+		"binary":    "bintree",
+		"installed": "vartree"}
 
-	if  _, ok := type_map[pkgtype];!ok {
+	if _, ok := type_map[pkgtype]; !ok {
 		atom.WriteMsg(fmt.Sprintf("Unrecognized package type: '%s'\n", pkgtype),
 			-1, nil)
 		return 2
@@ -585,7 +612,7 @@ func bestVisible(argv []string) int       {
 		db = atom.Db().Values()[eroot].VarTree().dbapi
 	}
 
-//try:
+	//try:
 	atom2 := atom.dep_expandS(atom1, db, 1, atom.Settings())
 	//except portage.exception.InvalidAtom:
 	//atom.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n" % atom,
@@ -595,9 +622,9 @@ func bestVisible(argv []string) int       {
 	root_config := atom.NewRootConfig(atom.Settings(), atom.Db().Values()[eroot], nil)
 
 	var cpv_list []string
-	if hasattr(db, "xmatch"){
-	cpv_list = db.xmatch("match-all-cpv-only", atom2)
-	}else {
+	if hasattr(db, "xmatch") {
+		cpv_list = db.xmatch("match-all-cpv-only", atom2)
+	} else {
 		cpv_list = db.match(atom2, 1)
 	}
 
@@ -605,29 +632,30 @@ func bestVisible(argv []string) int       {
 
 		atom.ReverseSlice(cpv_list)
 
-		atom_set := InternalPackageSet(initial_atoms=(atom2,))
+		atom_set := InternalPackageSet(initial_atoms = (atom2,))
 
 		var repo_list []string
 
-		if atom.repo == nil && hasattr(db, "getRepositories"){
+		if atom.repo == nil && hasattr(db, "getRepositories") {
 			repo_list = db.getRepositories()
-		}else {
+		} else {
 			repo_list = []string{atom2.repo}
 		}
 
-		for _, cpv := range cpv_list{
-			for _, repo := range  repo_list{
+		for _, cpv := range cpv_list {
+			for _, repo := range repo_list {
 
 			try:
 				metadata := dict(zip(Package.metadata_keys,
-					db.aux_get(cpv, Package.metadata_keys, myrepo=repo)))
+					db.aux_get(cpv, Package.metadata_keys, myrepo = repo)))
 				except KeyError:
 				continue
 				pkg := atom.NewPackage(pkgtype != "ebuild", cpv,
-					pkgtype=="installed", metadata,
+					pkgtype == "installed", metadata,
 					root_config, pkgtype)
-				if ! atom_set.findAtomForPackage(pkg):
-				continue
+				if !atom_set.findAtomForPackage(pkg) {
+					continue
+				}
 
 				if pkg.visible {
 					atom.WriteMsgStdout(fmt.Sprintf("%s\n", pkg.cpv, ), -1)
@@ -698,14 +726,15 @@ func match(argv []string) int {
 	}
 
 	vardb := atom.Db().Values()[root].VarTree().dbapi
-	atom2, err := atom.NewAtom(atom1, allow_wildcard = true, allow_repo = true)
+	t := true
+	atom2, err := atom.NewAtom(atom1, nil, true, &t, nil, "", nil, nil)
 	if err != nil {
 		//except portage.exception.InvalidAtom:
 		atom2 = atom.dep_expandS(atom1, vardb, 1, vardb.settings)
 	}
 
+	var results []string
 	if atom2.extendedSyntax {
-		var results []string
 		if atom2.value == "*/*" {
 			results = vardb.cpv_all()
 		} else {
@@ -720,7 +749,7 @@ func match(argv []string) int {
 					continue
 				}
 
-				if require_metadata {
+				if require_metadata != "" {
 					//try:
 					cpv := vardb._pkg_str(cpv, atom.repo)
 					//except (KeyError, portage.exception.InvalidData):
@@ -1049,9 +1078,9 @@ func pquery(opts Opts, args []string) int {
 	_pkg := func(cpv *atom.PkgStr, repo_name string) *atom.Package {
 		metadata := map[string]string{}
 		//try:
-		for i := range atom.NewPackage().metadata_keys {
-			metadata[atom.NewPackage().metadata_keys[i]] = portdb.auxGet(cpv,
-				atom.NewPackage().metadata_keys,
+		for i := range atom.NewPackage(false, nil, false, nil, nil, "").metadata_keys {
+			metadata[atom.NewPackage(false, nil, false, nil, nil, "").metadata_keys[i]] = portdb.auxGet(cpv,
+				atom.NewPackage(false, nil, false, nil, nil, "").metadata_keys,
 				repo_name)[i]
 		}
 		//except KeyError:

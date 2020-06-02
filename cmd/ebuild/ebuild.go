@@ -221,14 +221,14 @@ func main() {
 		mydbapi = atom.Db().Values()[atom.Settings().ValueDict["EROOT"]].VarTree().dbapi
 	}
 
-	metadata := dict(zip(atom.NewPackage().metadata_keys,
+	metadata := dict(zip(atom.NewPackage(false, nil, false, nil, nil, "").metadata_keys,
 		mydbapi.aux_get(
-			cpv, atom.NewPackage().metadata_keys, myrepo = myrepo)))
+			cpv, atom.NewPackage(false, nil, false, nil, nil, "").metadata_keys, myrepo = myrepo)))
 	if err != nil {
 		//except PortageKeyError{
 		syscall.Exit(1)
 	}
-	root_config := RootConfig(atom.Settings(),
+	root_config := atom.NewRootConfig(atom.Settings(),
 		atom.Db().Values()[atom.Settings().ValueDict["EROOT"]], nil)
 	pkg := atom.NewPackage(pkg_type != "ebuild", cpv,
 		pkg_type == "installed",

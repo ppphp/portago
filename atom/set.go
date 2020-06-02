@@ -124,7 +124,7 @@ func (s*SetConfig) update(setname string, options map[string]string) {
 	} else {
 		section := s.psets[setname].creator
 		if parser.HasOption(section, "multiset") &&
-			parser.getboolean(section, "multiset") {
+			parser.GetSectionMap()[section]["multiset"] == "true" {
 			s.errors = append(s.errors, fmt.Sprintf("Invalid request to reconfigure set '%s' generated "+
 				"by multiset section '%s'", setname, section))
 			return
@@ -163,19 +163,13 @@ func(s*SetConfig) _parse( update bool) {
 		s.errors = append(s.errors, fmt.Sprintf("Could not import '%s' for section '%s'", classname, sname))
 		continue
 		optdict := map[string]string{}
-		for oname
-			in
-		parser.options(sname) {
-			optdict[oname] = parser.get(sname, oname)
+		for _, oname := range parser.Options(sname) {
+			optdict[oname], _= parser.gett(sname, oname)
 		}
 
-		if parser.has_option(sname, "multiset") and \
-		parser.getboolean(sname, "multiset")
-		{
+		if parser.HasOption(sname, "multiset") && parser.getboolean(sname, "multiset") {
 			if hasattr(setclass, "multiBuilder") {
-				newsets =
-				{
-				}
+				newsets :=map[string]string{}
 			try:
 				newsets = setclass.multiBuilder(optdict, s.settings, s.trees)
 				except
@@ -189,19 +183,17 @@ func(s*SetConfig) _parse( update bool) {
 				newsets {
 					if x in
 					s.psets
-					and
-					not
-				update{
+					&&!update{
 					s.errors = append(s.errors, fmt.Sprintf("Redefinition of set '%s' (sections: '%s', '%s')", x, s.psets[x].creator, sname))
 				}
 					newsets[x].creator = sname
-					if parser.has_option(sname, "world-candidate") and \
-					parser.getboolean(sname, "world-candidate")
-					{
+					if parser.HasOption(sname, "world-candidate") && parser.getboolean(sname, "world-candidate") {
 						newsets[x].world_candidate = true
 					}
 				}
-				s.psets.update(newsets)
+				for k, v := range newsets {
+					s.psets[k]=v
+				}
 			}else {
 				s.errors = append(s.errors, fmt.Sprintf("Section '%s' is configured as multiset, but '%s' "+
 					"doesn't support that configuration", sname, classname))
@@ -220,9 +212,9 @@ func(s*SetConfig) _parse( update bool) {
 			try:
 				s.psets[setname] = setclass.singleBuilder(optdict, s.settings, s.trees)
 				s.psets[setname].creator = sname
-				if parser.has_option(sname, "world-candidate") and \
-				parser.getboolean(sname, "world-candidate"):
-				s.psets[setname].world_candidate = True
+				if parser.HasOption(sname, "world-candidate") &&
+					parser.GetSectionMap()[sname]["world-candidate"] == "true":
+				s.psets[setname].world_candidate = true
 				except
 				SetConfigError
 				as
@@ -282,13 +274,14 @@ KeyError:
 
 func NewSetConfig(paths []string, settings *Config, trees *Tree)*SetConfig{
 	s := &SetConfig{}
-	s._parser = SafeConfigParser(
-		defaults=map[string]string{
+	agm := configparser.DefaultArgument
+	agm.Defaults = map[string]string{
 		"EPREFIX" : settings.ValueDict["EPREFIX"],
-			"EROOT" : settings.ValueDict["EROOT"],
-			"PORTAGE_CONFIGROOT" : settings.ValueDict["PORTAGE_CONFIGROOT"],
-			"ROOT" : settings.ValueDict["ROOT"],
-	})
+		"EROOT" : settings.ValueDict["EROOT"],
+		"PORTAGE_CONFIGROOT" : settings.ValueDict["PORTAGE_CONFIGROOT"],
+		"ROOT" : settings.ValueDict["ROOT"],
+	}
+	s._parser = configparser.NewConfigParser(agm)
 
 	if enableSetConfig {
 		readConfigs(s._parser, paths)
