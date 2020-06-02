@@ -22,141 +22,140 @@ import (
 )
 
 //nil,1,nil
-func dep_expandS(mydep string, mydb *dbapi, use_cache int, settings *Config) *Atom {
-	orig_dep := mydep
-	if mydep == "" {
+func dep_expandS(myDep string, myDb *dbapi, useCache int, settings *Config) *Atom {
+	origDep := myDep
+	if myDep == "" {
 		return nil
 	}
-	if mydep[0] == '*' {
-		mydep = mydep[1:]
-		orig_dep = mydep
+	if myDep[0] == '*' {
+		myDep = myDep[1:]
+		origDep = myDep
 	}
-	has_cat := strings.Contains(strings.Split(orig_dep, ":")[0], "/")
-	if !has_cat {
+	hasCat := strings.Contains(strings.Split(origDep, ":")[0], "/")
+	if !hasCat {
 		re := regexp.MustCompile("\\w")
-		alphanum := re.FindStringSubmatchIndex(orig_dep)
+		alphanum := re.FindStringSubmatchIndex(origDep)
 		if len(alphanum) > 0 {
-			mydep = orig_dep[:alphanum[0]] + "null/" + orig_dep[alphanum[0]:]
+			myDep = origDep[:alphanum[0]] + "null/" + origDep[alphanum[0]:]
 		}
 	}
-	allow_repo := true
-	mydepA, err := NewAtom(mydep, nil, false, &allow_repo, nil, "", nil, nil)
+	allowRepo := true
+	myDepA, err := NewAtom(myDep, nil, false, &allowRepo, nil, "", nil, nil)
 	if err != nil {
 		//except InvalidAtom:
-		if !isValidAtom("="+mydep, false, false, true, "", false) {
+		if !isValidAtom("="+myDep, false, false, true, "", false) {
 			//raise
 		}
-		mydepA, _ = NewAtom("="+mydep, nil, false, &allow_repo, nil, "", nil, nil)
-		orig_dep = "=" + orig_dep
+		myDepA, _ = NewAtom("="+myDep, nil, false, &allowRepo, nil, "", nil, nil)
+		origDep = "=" + origDep
 	}
 
-	if !has_cat {
-		mydep = catsplit(mydepA.cp)[1]
+	if !hasCat {
+		myDep = catsplit(myDepA.cp)[1]
 	}
 
-	if has_cat {
-
-		if strings.HasPrefix(mydepA.cp, "virtual/") {
-			return mydepA
+	if hasCat {
+		if strings.HasPrefix(myDepA.cp, "virtual/") {
+			return myDepA
 		}
-		if len(mydb.cp_list(mydepA.cp, 1)) > 0 {
-			return mydepA
+		if len(myDb.cp_list(myDepA.cp, 1)) > 0 {
+			return myDepA
 		}
-		mydep = mydepA.cp
+		myDep = myDepA.cp
 	}
 
-	expanded := cpv_expand(mydep, mydb, use_cache, settings)
+	expanded := cpv_expand(myDep, myDb, useCache, settings)
 	r := true
-	a, _ := NewAtom(strings.Replace(mydep, orig_dep, expanded, 1), nil, false, &r, nil, "", nil, nil)
+	a, _ := NewAtom(strings.Replace(myDep, origDep, expanded, 1), nil, false, &r, nil, "", nil, nil)
 	return a
 }
 
 //nil,1,nil
-func dep_expand(mydep *Atom, mydb *dbapi, use_cache int, settings *Config) *Atom {
-	orig_dep := mydep
-	d := mydep.value
-	if !strings.HasPrefix(mydep.cp, "virtual/") {
-		return mydep
+func dep_expand(myDep *Atom, myDb *dbapi, useCache int, settings *Config) *Atom {
+	origDep := myDep
+	d := myDep.value
+	if !strings.HasPrefix(myDep.cp, "virtual/") {
+		return myDep
 	}
-	d = mydep.cp
+	d = myDep.cp
 
-	expanded := cpv_expand(d, mydb, use_cache, settings)
+	expanded := cpv_expand(d, myDb, useCache, settings)
 	r := true
-	a, _ := NewAtom(strings.Replace(d, orig_dep.value, expanded, 1), nil, false, &r, nil, "", nil, nil)
+	a, _ := NewAtom(strings.Replace(d, origDep.value, expanded, 1), nil, false, &r, nil, "", nil, nil)
 	return a
 }
 
-func cpv_expand(mycpv string, mydb *dbapi, use_cache int, settings *Config) string { // n1n
-	myslash := strings.Split(mycpv, "/")
-	mysplit := pkgSplit(myslash[len(myslash)-1], "")
+func cpv_expand(myCpv string, myDb *dbapi, useCache int, settings *Config) string { // n1n
+	mySlash := strings.Split(myCpv, "/")
+	mySplit := pkgSplit(mySlash[len(mySlash)-1], "")
 	if settings == nil {
-		settings = mydb.settings
+		settings = myDb.settings
 	}
-	mykey := ""
-	if len(myslash) > 2 {
-		mysplit = [3]string{}
-		mykey = mycpv
-	} else if len(myslash) == 2 {
-		if mysplit != [3]string{} {
-			mykey = myslash[0] + "/" + mysplit[0]
+	myKey := ""
+	if len(mySlash) > 2 {
+		mySplit = [3]string{}
+		myKey = myCpv
+	} else if len(mySlash) == 2 {
+		if mySplit != [3]string{} {
+			myKey = mySlash[0] + "/" + mySplit[0]
 		} else {
-			mykey = mycpv
+			myKey = myCpv
 		}
 	}
-	if strings.HasPrefix(mykey, "virtual/") && len(mydb.cp_list(mykey, use_cache)) == 0 {
-		//		if hasattr(mydb, "vartree"):
-		//		settings._populate_treeVirtuals_if_needed(mydb.vartree)
-		//		virts = settings.getvirtuals().get(mykey)
+	if strings.HasPrefix(myKey, "virtual/") && len(myDb.cp_list(myKey, useCache)) == 0 {
+		//		if hasattr(myDb, "vartree"):
+		//		settings._populate_treeVirtuals_if_needed(myDb.vartree)
+		//		virts = settings.getvirtuals().get(myKey)
 		//		if virts:
-		//		mykey_orig = mykey
+		//		mykey_orig = myKey
 		//		for vkey in virts:
-		//		if mydb.cp_list(vkey.cp):
-		//		mykey = str(vkey)
+		//		if myDb.cp_list(vkey.cp):
+		//		myKey = str(vkey)
 		//		break
-		//		if mykey == mykey_orig:
-		//		mykey = str(virts[0])
+		//		if myKey == mykey_orig:
+		//		myKey = str(virts[0])
 		//	}
 	} else {
-		//	if mysplit:
-		//	myp=mysplit[0]
+		//	if mySplit:
+		//	myp=mySplit[0]
 		//	else:
-		//	myp=mycpv
-		//	mykey=nil
+		//	myp=myCpv
+		//	myKey=nil
 		//	matches=[]
-		//	if mydb && hasattr(mydb, "categories"):
-		//	for x in mydb.categories:
-		//	if mydb.cp_list(x+"/"+myp,use_cache=use_cache):
+		//	if myDb && hasattr(myDb, "categories"):
+		//	for x in myDb.categories:
+		//	if myDb.cp_list(x+"/"+myp,use_cache=use_cache):
 		//	matches.append(x+"/"+myp)
 		//	if len(matches) > 1:
 		//	virtual_name_collision = false
 		//	if len(matches) == 2:
 		//	for x in matches:
 		//	if not x.startswith("virtual/"):
-		//	mykey = x
+		//	myKey = x
 		//	else:
 		//	virtual_name_collision = true
 		//	if not virtual_name_collision:
 		//		raise AmbiguousPackageName(matches)
 		//	elif matches:
-		//	mykey=matches[0]
+		//	myKey=matches[0]
 		//
-		//	if not mykey && not isinstance(mydb, list):
-		//	if hasattr(mydb, "vartree"):
-		//	settings._populate_treeVirtuals_if_needed(mydb.vartree)
+		//	if not myKey && not isinstance(myDb, list):
+		//	if hasattr(myDb, "vartree"):
+		//	settings._populate_treeVirtuals_if_needed(myDb.vartree)
 		//	virts_p = settings.get_virts_p().get(myp)
 		//	if virts_p:
-		//	mykey = virts_p[0]
-		//	if not mykey:
-		//	mykey="null/"+myp
+		//	myKey = virts_p[0]
+		//	if not myKey:
+		//	myKey="null/"+myp
 	}
-	if mysplit != [3]string{} {
-		if mysplit[2] == "r0" {
-			return mykey + "-" + mysplit[1]
+	if mySplit != [3]string{} {
+		if mySplit[2] == "r0" {
+			return myKey + "-" + mySplit[1]
 		} else {
-			return mykey + "-" + mysplit[1] + "-" + mysplit[2]
+			return myKey + "-" + mySplit[1] + "-" + mySplit[2]
 		}
 	} else {
-		return mykey
+		return myKey
 	}
 }
 
@@ -233,10 +232,10 @@ func (d *dbapi) _cmp_cpv(cpv1, cpv2 *PkgStr) int {
 	return result
 }
 
-func (d *dbapi) _cpv_sort_ascending(cpv_list []*PkgStr) {
-	if len(cpv_list) > 1 {
-		sort.Slice(cpv_list, func(i, j int) bool {
-			return d._cmp_cpv(cpv_list[i], cpv_list[j]) < 0
+func (d *dbapi) _cpv_sort_ascending(cpvList []*PkgStr) {
+	if len(cpvList) > 1 {
+		sort.Slice(cpvList, func(i, j int) bool {
+			return d._cmp_cpv(cpvList[i], cpvList[j]) < 0
 		})
 	}
 }
@@ -254,7 +253,7 @@ func (d *dbapi) cp_all(sort bool) []string { // false
 	return nil
 }
 
-func (d *dbapi) auxGet(myCpv *PkgStr, myList []string, myRepo string) []string {
+func (d *dbapi) AuxGet(myCpv *PkgStr, myList []string, myRepo string) []string {
 	panic("NotImplementedError")
 	return nil
 }
@@ -325,7 +324,7 @@ func (d *dbapi) _iter_match_use(atom *Atom, cpvIter []*PkgStr) []*PkgStr {
 	r := []*PkgStr{}
 	for _, cpv := range cpvIter {
 		metadata := map[string]string{}
-		a := d.auxGet(cpv, aux_keys, atom.repo)
+		a := d.AuxGet(cpv, aux_keys, atom.repo)
 		for i, k := range aux_keys {
 			metadata[k] = a[i]
 		}
@@ -339,32 +338,32 @@ func (d *dbapi) _iter_match_use(atom *Atom, cpvIter []*PkgStr) []*PkgStr {
 
 func (d *dbapi) _repoman_iuse_implicit_cnstr(pkg, metadata map[string]string) func(flag string) bool {
 	eapiAttrs := getEapiAttrs(metadata["EAPI"])
-	var iuseImplicitMatch func(flag string) bool = nil
+	var iUseImplicitMatch func(flag string) bool = nil
 	if eapiAttrs.iuseEffective {
-		iuseImplicitMatch = func(flag string) bool {
+		iUseImplicitMatch = func(flag string) bool {
 			return d.settings.iuseEffectiveMatch(flag)
 		}
 	} else {
-		iuseImplicitMatch = func(flag string) bool {
+		iUseImplicitMatch = func(flag string) bool {
 			return d.settings.iuseImplicitMatch.call(flag)
 		}
 	}
-	return iuseImplicitMatch
+	return iUseImplicitMatch
 }
 
 func (d *dbapi) _iuse_implicit_cnstr(pkg *PkgStr, metadata map[string]string) func(string) bool {
 	eapiAttrs := getEapiAttrs(metadata["EAPI"])
-	var iuseImplicitMatch func(string) bool
+	var iUseImplicitMatch func(string) bool
 	if eapiAttrs.iuseEffective {
-		iuseImplicitMatch = d.settings.iuseEffectiveMatch
+		iUseImplicitMatch = d.settings.iuseEffectiveMatch
 	} else {
-		iuseImplicitMatch = d.settings.iuseImplicitMatch.call
+		iUseImplicitMatch = d.settings.iuseImplicitMatch.call
 	}
 
 	if !d._use_mutable && eapiAttrs.iuseEffective {
-		profIuse := iuseImplicitMatch
+		profIuse := iUseImplicitMatch
 		enabled := strings.Fields(metadata["USE"])
-		iuseImplicitMatch = func(flag string) bool {
+		iUseImplicitMatch = func(flag string) bool {
 			if profIuse(flag) {
 				return true
 			}
@@ -377,17 +376,17 @@ func (d *dbapi) _iuse_implicit_cnstr(pkg *PkgStr, metadata map[string]string) fu
 		}
 	}
 
-	return iuseImplicitMatch
+	return iUseImplicitMatch
 }
 
 // false
-func (d *dbapi) _match_use(atom *Atom, pkg *PkgStr, metadata map[string]string, ignore_profile bool) bool {
-	iuseImplicitMatch := d._iuse_implicit_cnstr(pkg, metadata)
+func (d *dbapi) _match_use(atom *Atom, pkg *PkgStr, metadata map[string]string, ignoreProfile bool) bool {
+	iUseImplicitMatch := d._iuse_implicit_cnstr(pkg, metadata)
 	useAliases := d.settings.useManager.getUseAliases(pkg)
-	iuse := NewIUse("", strings.Fields(metadata["IUSE"]), iuseImplicitMatch, useAliases, metadata["EAPI"])
+	iUse := NewIUse("", strings.Fields(metadata["IUSE"]), iUseImplicitMatch, useAliases, metadata["EAPI"])
 
 	for x := range atom.unevaluatedAtom.Use.required {
-		if iuse.getRealFlag(x) == "" {
+		if iUse.getRealFlag(x) == "" {
 			return false
 		}
 	}
@@ -396,34 +395,34 @@ func (d *dbapi) _match_use(atom *Atom, pkg *PkgStr, metadata map[string]string, 
 	} else if !d._use_mutable {
 		use := map[string]bool{}
 		for _, x := range strings.Fields(metadata["USE"]) {
-			if iuse.getRealFlag(x) != "" {
+			if iUse.getRealFlag(x) != "" {
 				use[x] = true
 			}
 		}
 		missingEnabled := map[string]bool{}
 		for x := range atom.Use.missingEnabled {
-			if iuse.getRealFlag(x) == "" {
+			if iUse.getRealFlag(x) == "" {
 				missingEnabled[x] = true
 			}
 		}
 		missingDisabled := map[string]bool{}
 		for x := range atom.Use.missingDisabled {
-			if iuse.getRealFlag(x) == "" {
+			if iUse.getRealFlag(x) == "" {
 				missingDisabled[x] = true
 			}
 		}
 		enabled := map[string]bool{}
 		for x := range atom.Use.enabled {
-			if iuse.getRealFlag(x) != "" {
-				enabled[iuse.getRealFlag(x)] = true
+			if iUse.getRealFlag(x) != "" {
+				enabled[iUse.getRealFlag(x)] = true
 			} else {
 				enabled[x] = true
 			}
 		}
 		disabled := map[string]bool{}
 		for x := range atom.Use.disabled {
-			if iuse.getRealFlag(x) != "" {
-				disabled[iuse.getRealFlag(x)] = true
+			if iUse.getRealFlag(x) != "" {
+				disabled[iUse.getRealFlag(x)] = true
 			} else {
 				disabled[x] = true
 			}
@@ -469,7 +468,7 @@ func (d *dbapi) _match_use(atom *Atom, pkg *PkgStr, metadata map[string]string, 
 			}
 		}
 	} else if !d.settings.localConfig {
-		if !ignore_profile {
+		if !ignoreProfile {
 			useMask := d.settings._getUseMask(pkg, d.settings.parentStable)
 			for x := range atom.Use.enabled {
 				for y := range useMask {
@@ -499,7 +498,7 @@ func (d *dbapi) _match_use(atom *Atom, pkg *PkgStr, metadata map[string]string, 
 
 		if len(atom.Use.enabled) > 0 {
 			for x := range atom.Use.missingDisabled {
-				if iuse.getRealFlag(x) == "" {
+				if iUse.getRealFlag(x) == "" {
 					if atom.Use.enabled[x] {
 						return false
 					}
@@ -508,7 +507,7 @@ func (d *dbapi) _match_use(atom *Atom, pkg *PkgStr, metadata map[string]string, 
 		}
 		if len(atom.Use.disabled) > 0 {
 			for x := range atom.Use.missingEnabled {
-				if iuse.getRealFlag(x) == "" {
+				if iUse.getRealFlag(x) == "" {
 					if atom.Use.disabled[x] {
 						return false
 					}
@@ -520,13 +519,13 @@ func (d *dbapi) _match_use(atom *Atom, pkg *PkgStr, metadata map[string]string, 
 	return true
 }
 
-func (d *dbapi) invalidentry(mypath string) {
-	if strings.Contains(mypath, "/"+MergingIdentifier) {
-		if _, err := os.Stat(mypath); err != nil {
-			WriteMsg(colorize("BAD", "INCOMPLETE MERGE:"+fmt.Sprintf(" %s\n", mypath)), -1, nil)
+func (d *dbapi) invalidentry(myPath string) {
+	if strings.Contains(myPath, "/"+MergingIdentifier) {
+		if _, err := os.Stat(myPath); err != nil {
+			WriteMsg(colorize("BAD", "INCOMPLETE MERGE:"+fmt.Sprintf(" %s\n", myPath)), -1, nil)
 		}
 	} else {
-		WriteMsg(fmt.Sprintf("!!! Invalid db entry: %s\n", mypath), -1, nil)
+		WriteMsg(fmt.Sprintf("!!! Invalid db entry: %s\n", myPath), -1, nil)
 	}
 }
 
@@ -536,9 +535,9 @@ func (d *dbapi) update_ents(updates map[string][][]*Atom, onProgress, onUpdate f
 		return cpvAll[i].string < cpvAll[j].string
 	})
 	maxval := len(cpvAll)
-	auxGet := d.auxGet
+	auxGet := d.AuxGet
 	auxUpdate := d.auxUpdate
-	updateKeys := Package{}.depKeys
+	updateKeys := NewPackage(false, nil, false, nil, nil, "").depKeys
 	metaKeys := append(updateKeys, d._pkg_str_aux_keys...)
 	repoDict := updates // is dict, else nil
 	if onUpdate != nil {
@@ -590,10 +589,10 @@ func (d *dbapi) update_ents(updates map[string][][]*Atom, onProgress, onUpdate f
 	}
 }
 
-func (d *dbapi) move_slot_ent(mylist []*Atom, repo_match func(string) bool) int { // nil
-	atom := mylist[1]
-	origSlot := mylist[2]
-	newSlot := mylist[3]
+func (d *dbapi) move_slot_ent(myList []*Atom, repoMatch func(string) bool) int { // nil
+	atom := myList[1]
+	origSlot := myList[2]
+	newSlot := myList[3]
 	atom = atom.withSlot(origSlot.value)
 	origMatches := d.match(atom, 1)
 	moves := 0
@@ -602,7 +601,7 @@ func (d *dbapi) move_slot_ent(mylist []*Atom, repo_match func(string) bool) int 
 	}
 	for _, mycpv := range origMatches {
 		mycpv = d._pkg_str(mycpv, atom.repo)
-		if repo_match != nil && !repo_match(mycpv.repo) {
+		if repoMatch != nil && !repoMatch(mycpv.repo) {
 			continue
 		}
 		moves += 1
@@ -722,8 +721,8 @@ func (v *vardbapi) root() string {
 	return v.settings.ValueDict["ROOT"]
 }
 
-func (v *vardbapi) getpath(mykey, filename string) string { // ""
-	rValue := v._dbroot + VdbPath + string(os.PathSeparator) + mykey
+func (v *vardbapi) getpath(myKey, filename string) string { // ""
+	rValue := v._dbroot + VdbPath + string(os.PathSeparator) + myKey
 	if filename != "" {
 		rValue = path.Join(rValue, filename)
 	}
@@ -787,13 +786,13 @@ func (v *vardbapi) _fs_unlock() {
 	v._fs_lock_count -= 1
 }
 
-func (v *vardbapi) _slot_lock(slot_atom *Atom) {
-	lock := v._slot_locks[slot_atom].s
-	counter := v._slot_locks[slot_atom].int
+func (v *vardbapi) _slot_lock(slotAtom *Atom) {
+	lock := v._slot_locks[slotAtom].s
+	counter := v._slot_locks[slotAtom].int
 	if lock == nil {
-		lock_path := v.getpath(fmt.Sprintf("%s:%s", slot_atom.cp, slot_atom.slot), "")
-		ensureDirs(path.Dir(lock_path), -1, -1, -1, -1, nil, true)
-		a, b, c, d, _ := Lockfile(lock_path, true, false, "", 0)
+		lockPath := v.getpath(fmt.Sprintf("%s:%s", slotAtom.cp, slotAtom.slot), "")
+		ensureDirs(path.Dir(lockPath), -1, -1, -1, -1, nil, true)
+		a, b, c, d, _ := Lockfile(lockPath, true, false, "", 0)
 		lock = &struct {
 			string
 			int
@@ -801,7 +800,7 @@ func (v *vardbapi) _slot_lock(slot_atom *Atom) {
 			method func(int, int) error
 		}{a, b, c, d}
 	}
-	v._slot_locks[slot_atom] = &struct {
+	v._slot_locks[slotAtom] = &struct {
 		s *struct {
 			string
 			int
@@ -812,18 +811,18 @@ func (v *vardbapi) _slot_lock(slot_atom *Atom) {
 	}{lock, counter + 1}
 }
 
-func (v *vardbapi) _slot_unlock(slot_atom *Atom) {
-	lock := v._slot_locks[slot_atom].s
-	counter := v._slot_locks[slot_atom].int
+func (v *vardbapi) _slot_unlock(slotAtom *Atom) {
+	lock := v._slot_locks[slotAtom].s
+	counter := v._slot_locks[slotAtom].int
 	if lock == nil {
 		panic("not locked")
 	}
 	counter -= 1
 	if counter == 0 {
 		Unlockfile(lock.string, lock.int, lock.bool, lock.method)
-		delete(v._slot_locks, slot_atom)
+		delete(v._slot_locks, slotAtom)
 	} else {
-		v._slot_locks[slot_atom] = &struct {
+		v._slot_locks[slotAtom] = &struct {
 			s *struct {
 				string
 				int
@@ -838,45 +837,45 @@ func (v *vardbapi) _slot_unlock(slot_atom *Atom) {
 func (v *vardbapi) _bump_mtime(cpv string) {
 	base := v._eroot + VdbPath
 	cat := catsplit(cpv)[0]
-	catdir := base + string(filepath.Separator) + cat
+	catDir := base + string(filepath.Separator) + cat
 	t := time.Now()
 
-	for _, x := range []string{catdir, base} {
+	for _, x := range []string{catDir, base} {
 		if err := syscall.Utime(x, &syscall.Utimbuf{Actime: t.Unix(), Modtime: t.Unix()}); err != nil {
-			ensureDirs(catdir, -1, -1, -1, -1, nil, true)
+			ensureDirs(catDir, -1, -1, -1, -1, nil, true)
 		}
 	}
 }
 
-func (v *vardbapi) cpv_exists(mykey, myrepo string) bool {
-	_, err := os.Stat(v.getpath(mykey, ""))
+func (v *vardbapi) cpv_exists(myKey, myRepo string) bool {
+	_, err := os.Stat(v.getpath(myKey, ""))
 	if err != nil {
 		return true
 	}
 	return false
 }
 
-func (v *vardbapi) cpv_counter(mycpv *PkgStr) int {
-	s, err := strconv.Atoi(v.auxGet(mycpv, []string{"COUNTER"}, "")[0])
+func (v *vardbapi) cpv_counter(myCpv *PkgStr) int {
+	s, err := strconv.Atoi(v.AuxGet(myCpv, []string{"COUNTER"}, "")[0])
 	if err != nil {
-		WriteMsgLevel(fmt.Sprintf("portage: COUNTER for %s was corrupted; resetting to value of 0\n", mycpv.string), 40, -1)
+		WriteMsgLevel(fmt.Sprintf("portage: COUNTER for %s was corrupted; resetting to value of 0\n", myCpv.string), 40, -1)
 		return 0
 	}
 	return s
 }
 
-func (v *vardbapi) cpv_inject(mycpv *PkgStr) {
-	ensureDirs(v.getpath(mycpv.string, ""), -1, -1, -1, -1, nil, true)
+func (v *vardbapi) cpv_inject(myCpv *PkgStr) {
+	ensureDirs(v.getpath(myCpv.string, ""), -1, -1, -1, -1, nil, true)
 	counter := v.counter_tick()
-	write_atomic(v.getpath(mycpv.string, "COUNTER"), string(counter), 0, true)
+	write_atomic(v.getpath(myCpv.string, "COUNTER"), string(counter), 0, true)
 }
 
-func (v *vardbapi) isInjected(mycpv string) bool {
-	if v.cpv_exists(mycpv, "") {
-		if _, err := os.Stat(v.getpath(mycpv, "INJECTED")); err == nil {
+func (v *vardbapi) isInjected(myCpv string) bool {
+	if v.cpv_exists(myCpv, "") {
+		if _, err := os.Stat(v.getpath(myCpv, "INJECTED")); err == nil {
 			return true
 		}
-		if _, err := os.Stat(v.getpath(mycpv, "CONTENTS")); err != nil {
+		if _, err := os.Stat(v.getpath(myCpv, "CONTENTS")); err != nil {
 			return true
 		}
 	}
@@ -884,57 +883,57 @@ func (v *vardbapi) isInjected(mycpv string) bool {
 }
 
 // nil
-func (v *vardbapi) move_ent(mylist []*Atom, repo_match func(string) bool) int {
-	origcp := mylist[1]
-	newcp := mylist[2]
+func (v *vardbapi) move_ent(myList []*Atom, repoMatch func(string) bool) int {
+	origCp := myList[1]
+	newCp := myList[2]
 
-	for _, atom := range []*Atom{origcp, newcp} {
+	for _, atom := range []*Atom{origCp, newCp} {
 		if !isJustName(atom.value) {
 			//raise InvalidPackageName(str(atom))
 		}
 	}
-	origmatches := v.match(origcp, 0)
+	origMatches := v.match(origCp, 0)
 	moves := 0
-	if len(origmatches) == 0 {
+	if len(origMatches) == 0 {
 		return moves
 	}
-	for _, mycpv := range origmatches {
+	for _, mycpv := range origMatches {
 		mycpv = v._pkg_str(mycpv, "")
-		mycpv_cp := cpvGetKey(mycpv.string, "")
-		if mycpv_cp != origcp.value {
+		mycpvCp := cpvGetKey(mycpv.string, "")
+		if mycpvCp != origCp.value {
 			continue
 		}
-		if repo_match != nil && !repo_match(mycpv.repo) {
-			continue
-		}
-
-		if !isValidAtom(newcp.value, false, false, false, mycpv.eapi, false) {
+		if repoMatch != nil && !repoMatch(mycpv.repo) {
 			continue
 		}
 
-		mynewcpv := strings.Replace(mycpv.string, mycpv_cp, newcp.value, 1)
-		mynewcat := catsplit(newcp.value)[0]
-		origpath := v.getpath(mycpv.string, "")
-		if _, err := os.Stat(origpath); err != nil {
+		if !isValidAtom(newCp.value, false, false, false, mycpv.eapi, false) {
+			continue
+		}
+
+		myNewCpv := strings.Replace(mycpv.string, mycpvCp, newCp.value, 1)
+		myNewCat := catsplit(newCp.value)[0]
+		origPath := v.getpath(mycpv.string, "")
+		if _, err := os.Stat(origPath); err != nil {
 			continue
 		}
 		moves += 1
-		if _, err := os.Stat(v.getpath(mynewcat, "")); err != nil {
-			ensureDirs(v.getpath(mynewcat, ""), -1, -1, -1, -1, nil, true)
+		if _, err := os.Stat(v.getpath(myNewCat, "")); err != nil {
+			ensureDirs(v.getpath(myNewCat, ""), -1, -1, -1, -1, nil, true)
 		}
-		newpath := v.getpath(mynewcpv, "")
-		if _, err := os.Stat(newpath); err == nil {
+		newPath := v.getpath(myNewCpv, "")
+		if _, err := os.Stat(newPath); err == nil {
 			continue
 		}
-		_movefile(origpath, newpath, 0, nil, v.settings, nil)
+		_movefile(origPath, newPath, 0, nil, v.settings, nil)
 		v._clear_pkg_cache(v._dblink(mycpv.string))
-		v._clear_pkg_cache(v._dblink(mynewcpv))
+		v._clear_pkg_cache(v._dblink(myNewCpv))
 
-		old_pf := catsplit(mycpv.string)[1]
-		new_pf := catsplit(mynewcpv)[1]
-		if new_pf != old_pf {
-			err := os.Rename(path.Join(newpath, old_pf+".ebuild"),
-				path.Join(newpath, new_pf+".ebuild"))
+		oldPf := catsplit(mycpv.string)[1]
+		newPf := catsplit(myNewCpv)[1]
+		if newPf != oldPf {
+			err := os.Rename(path.Join(newPath, oldPf+".ebuild"),
+				path.Join(newPath, newPf+".ebuild"))
 			if err != nil {
 				if err != syscall.ENOENT {
 					//raise
@@ -942,84 +941,84 @@ func (v *vardbapi) move_ent(mylist []*Atom, repo_match func(string) bool) int {
 				//del e
 			}
 		}
-		write_atomic(path.Join(newpath, "PF"), new_pf+"\n", 0, true)
-		write_atomic(path.Join(newpath, "CATEGORY"), mynewcat+"\n", 0, true)
+		write_atomic(path.Join(newPath, "PF"), newPf+"\n", 0, true)
+		write_atomic(path.Join(newPath, "CATEGORY"), myNewCat+"\n", 0, true)
 	}
 	return moves
 }
 
-func (v *vardbapi) cp_list(mycp string, use_cache int) []*PkgStr {
-	mysplit := catsplit(mycp)
-	if mysplit[0] == "*" {
-		mysplit[0] = mysplit[0][1:]
+func (v *vardbapi) cp_list(myCp string, useCache int) []*PkgStr {
+	mySplit := catsplit(myCp)
+	if mySplit[0] == "*" {
+		mySplit[0] = mySplit[0][1:]
 	}
-	mystatt, err := os.Stat(v.getpath(mysplit[0], ""))
+	myStatt, err := os.Stat(v.getpath(mySplit[0], ""))
 
-	mystat := int64(0)
+	myStat := int64(0)
 	if err == nil {
-		mystat = mystatt.ModTime().UnixNano()
+		myStat = myStatt.ModTime().UnixNano()
 	}
-	if cpc, ok := v.cpcache[mycp]; use_cache != 0 && ok {
-		if cpc.int64 == mystat {
+	if cpc, ok := v.cpcache[myCp]; useCache != 0 && ok {
+		if cpc.int64 == myStat {
 			return cpc.p
 		}
 	}
-	cat_dir := v.getpath(mysplit[0], "")
-	dir_list, err := ioutil.ReadDir(cat_dir)
+	catDir := v.getpath(mySplit[0], "")
+	dirList, err := ioutil.ReadDir(catDir)
 	if err != nil {
 		if err == syscall.EPERM {
 			//raise PermissionDenied(cat_dir)
 		}
-		dir_list = []os.FileInfo{}
+		dirList = []os.FileInfo{}
 	}
 
-	returnme := []*PkgStr{}
-	for _, x := range dir_list {
+	returnMe := []*PkgStr{}
+	for _, x := range dirList {
 		if v._excluded_dirs.MatchString(x.Name()) {
 			continue
 		}
 		ps := PkgSplit(x.Name(), 1, "")
 		if ps == [3]string{} {
-			v.invalidentry(path.Join(v.getpath(mysplit[0], ""), x.Name()))
+			v.invalidentry(path.Join(v.getpath(mySplit[0], ""), x.Name()))
 			continue
 		}
-		if len(mysplit) > 1 {
-			if ps[0] == mysplit[1] {
-				cpv := fmt.Sprintf("%s/%s", mysplit[0], x)
+		if len(mySplit) > 1 {
+			if ps[0] == mySplit[1] {
+				cpv := fmt.Sprintf("%s/%s", mySplit[0], x)
 				metadata := map[string]string{}
 				for i := range v._aux_cache_keys {
 					metadata[i] = v.aux_get(cpv, v._aux_cache_keys, "")[0]
 				}
-				returnme = append(returnme, NewPkgStr(cpv, metadata,
+				returnMe = append(returnMe, NewPkgStr(cpv, metadata,
 					v.settings, "", "", "", 0, 0, "", 0, v.dbapi))
 			}
 		}
 	}
-	v._cpv_sort_ascending(returnme)
-	if use_cache != 0 {
-		v.cpcache[mycp] = struct {
+	v._cpv_sort_ascending(returnMe)
+	if useCache != 0 {
+		v.cpcache[myCp] = struct {
 			int64
 			p []*PkgStr
-		}{mystat, returnme}
+		}{myStat, returnMe}
 
-	} else if _, ok := v.cpcache[mycp]; ok {
-		delete(v.cpcache, mycp)
+	} else if _, ok := v.cpcache[myCp]; ok {
+		delete(v.cpcache, myCp)
 	}
-	return returnme
+	return returnMe
 }
 
 // 1
-func (v *vardbapi) cpv_all(use_cache int) []*PkgStr {
-	return v._iter_cpv_all(use_cache != 0, false)
+func (v *vardbapi) cpv_all(useCache int) []*PkgStr {
+	return v._iter_cpv_all(useCache != 0, false)
 }
 
 // true, true
-func (v *vardbapi) _iter_cpv_all(use_cache, sort1 bool) []*PkgStr {
-	basepath := filepath.Join(v._eroot, VdbPath) + string(filepath.Separator)
-	listdir := listdir
-	if !use_cache {
-		listdir = func(mypath string, recursive, filesonly, ignorecvs bool, ignorelist []string, followSymlinks, EmptyOnError, dirsonly bool) []string {
-			ss, err := ioutil.ReadDir(mypath)
+func (v *vardbapi) _iter_cpv_all(useCache, sort1 bool) []*PkgStr {
+	basePath := filepath.Join(v._eroot, VdbPath) + string(filepath.Separator)
+	listDir := listdir
+	if !useCache {
+		listDir = func(myPath string, recursive, filesOnly, ignoreCvs bool, ignoreList []string, followSymlinks, EmptyOnError, dirsOnly bool) []string {
+			ss, err := ioutil.ReadDir(myPath)
 			if err != nil {
 				//except EnvironmentError as e:
 				//if e.errno == PermissionDenied.errno:
@@ -1036,58 +1035,58 @@ func (v *vardbapi) _iter_cpv_all(use_cache, sort1 bool) []*PkgStr {
 			return ret
 		}
 	}
-	catdirs := listdir(basepath, false, false, true, []string{}, true, true, true)
+	catDirs := listDir(basePath, false, false, true, []string{}, true, true, true)
 	if sort1 {
-		sort.Strings(catdirs)
+		sort.Strings(catDirs)
 	}
 
 	ps := []*PkgStr{}
-	for _, x := range catdirs {
+	for _, x := range catDirs {
 		if v._excluded_dirs.MatchString(x) {
 			continue
 		}
 		if !v._category_re.MatchString(x) {
 			continue
 		}
-		pkgdirs := listdir(basepath+x, false, false, false, []string{}, true, true, true)
+		pkgDirs := listDir(basePath+x, false, false, false, []string{}, true, true, true)
 		if sort1 {
-			sort.Strings(pkgdirs)
+			sort.Strings(pkgDirs)
 		}
 
-		for _, y := range pkgdirs {
+		for _, y := range pkgDirs {
 			if v._excluded_dirs.MatchString(y) {
 				continue
 			}
-			subpath := x + "/" + y
-			subpathP := NewPkgStr(subpath, nil, nil, "", "", "", 0, 0, "", 0, v.dbapi)
+			subPath := x + "/" + y
+			subPathP := NewPkgStr(subPath, nil, nil, "", "", "", 0, 0, "", 0, v.dbapi)
 			//except InvalidData:
-			//v.invalidentry(v.getpath(subpath))
+			//v.invalidentry(v.getpath(subPath))
 			//continue
 
-			ps = append(ps, subpathP)
+			ps = append(ps, subPathP)
 		}
 	}
 	return ps
 }
 
 // 1, false
-func (v *vardbapi) cp_all(use_cache int, sort1 bool) []string {
-	mylist := v.cpv_all(use_cache)
+func (v *vardbapi) cp_all(useCache int, sort1 bool) []string {
+	myList := v.cpv_all(useCache)
 	d := map[string]bool{}
-	for _, y := range mylist {
+	for _, y := range myList {
 		if y.string[0] == '*' {
 			y.string = y.string[1:]
 		}
 		//try:
-		mysplit := CatPkgSplit(y.string, 1, "")
+		mySplit := CatPkgSplit(y.string, 1, "")
 		//except InvalidData:
 		//v.invalidentry(v.getpath(y))
 		//continue
-		if mysplit == [4]string{} {
+		if mySplit == [4]string{} {
 			v.invalidentry(v.getpath(y.string, ""))
 			continue
 		}
-		d[mysplit[0]+"/"+mysplit[1]] = true
+		d[mySplit[0]+"/"+mySplit[1]] = true
 	}
 	dr := []string{}
 	for k := range d {
@@ -1111,58 +1110,58 @@ func (v *vardbapi) _clear_cache() {
 	v._aux_cache_obj = nil
 }
 
-func (v *vardbapi) _add(pkg_dblink *dblink) {
+func (v *vardbapi) _add(pkgDblink *dblink) {
 	v._pkgs_changed = true
-	v._clear_pkg_cache(pkg_dblink)
+	v._clear_pkg_cache(pkgDblink)
 }
 
-func (v *vardbapi) _remove(pkg_dblink *dblink) {
+func (v *vardbapi) _remove(pkgDblink *dblink) {
 	v._pkgs_changed = true
-	v._clear_pkg_cache(pkg_dblink)
+	v._clear_pkg_cache(pkgDblink)
 }
 
-func (v *vardbapi) _clear_pkg_cache(pkg_dblink *dblink) {
-	delete(v.mtdircache, pkg_dblink.cat)
-	delete(v.matchcache, pkg_dblink.cat)
-	delete(v.cpcache, pkg_dblink.mysplit[0])
+func (v *vardbapi) _clear_pkg_cache(pkgDblink *dblink) {
+	delete(v.mtdircache, pkgDblink.cat)
+	delete(v.matchcache, pkgDblink.cat)
+	delete(v.cpcache, pkgDblink.mysplit[0])
 	// TODO: already deprecated?
 	//delete(dircache,pkg_dblink.dbcatdir)
 }
 
 // 1
-func (v *vardbapi) match(origdep *Atom, use_cache int) []*PkgStr {
-	mydep := dep_expand(origdep, v.dbapi, use_cache, v.settings)
-	cache_key := [2]*Atom{mydep, mydep.unevaluatedAtom}
-	mykey := depGetKey(mydep.value)
-	mycat := catsplit(mykey)[0]
-	if use_cache == 0 {
-		if _, ok := v.matchcache[mykey]; ok {
-			delete(v.mtdircache, mycat)
-			delete(v.matchcache, mycat)
+func (v *vardbapi) match(origDep *Atom, useCache int) []*PkgStr {
+	myDep := dep_expand(origDep, v.dbapi, useCache, v.settings)
+	cacheKey := [2]*Atom{myDep, myDep.unevaluatedAtom}
+	myKey := depGetKey(myDep.value)
+	myCat := catsplit(myKey)[0]
+	if useCache == 0 {
+		if _, ok := v.matchcache[myKey]; ok {
+			delete(v.mtdircache, myCat)
+			delete(v.matchcache, myCat)
 		}
-		return v._iter_match(mydep,
-			v.cp_list(mydep.cp, use_cache))
+		return v._iter_match(myDep,
+			v.cp_list(myDep.cp, useCache))
 	}
-	st, err := os.Stat(path.Join(v._eroot, VdbPath, mycat))
-	curmtime := 0
+	st, err := os.Stat(path.Join(v._eroot, VdbPath, myCat))
+	curMtime := 0
 	if err == nil {
-		curmtime = st.ModTime().Nanosecond()
+		curMtime = st.ModTime().Nanosecond()
 	}
 
-	if _, ok := v.matchcache[mycat]; !ok || v.mtdircache[mycat] != curmtime {
-		v.mtdircache[mycat] = curmtime
-		v.matchcache[mycat] = map[[2]*Atom][]*PkgStr{}
+	if _, ok := v.matchcache[myCat]; !ok || v.mtdircache[myCat] != curMtime {
+		v.mtdircache[myCat] = curMtime
+		v.matchcache[myCat] = map[[2]*Atom][]*PkgStr{}
 	}
-	if _, ok := v.matchcache[mycat][[2]*Atom{mydep, nil}]; !ok {
-		mymatch := v._iter_match(mydep,
-			v.cp_list(mydep.cp, use_cache))
-		v.matchcache[mycat][cache_key] = mymatch
+	if _, ok := v.matchcache[myCat][[2]*Atom{myDep, nil}]; !ok {
+		myMatch := v._iter_match(myDep,
+			v.cp_list(myDep.cp, useCache))
+		v.matchcache[myCat][cacheKey] = myMatch
 	}
-	return v.matchcache[mycat][cache_key][:]
+	return v.matchcache[myCat][cacheKey][:]
 }
 
-func (v *vardbapi) findname(mycpv string) string {
-	return v.getpath(mycpv, catsplit(mycpv)[1]+".ebuild")
+func (v *vardbapi) findname(myCpv string) string {
+	return v.getpath(myCpv, catsplit(myCpv)[1]+".ebuild")
 }
 
 func (v *vardbapi) flush_cache() {}
@@ -1212,7 +1211,7 @@ func (v *vardbapi) _aux_cache_init() {
 	//			(v._aux_cache_filename, e), noiselevel=-1)
 	//	del e
 
-	aux_cache := &struct {
+	auxCache := &struct {
 		version  int
 		packages map[string]*struct {
 			cache_mtime int64
@@ -1224,12 +1223,12 @@ func (v *vardbapi) _aux_cache_init() {
 		}
 		modified map[string]bool
 	}{version: v._aux_cache_version}
-	aux_cache.packages = map[string]*struct {
+	auxCache.packages = map[string]*struct {
 		cache_mtime int64
 		metadata    map[string]string
 	}{}
 
-	owners := aux_cache.owners
+	owners := auxCache.owners
 	if owners != nil {
 		if owners == nil {
 			owners = nil
@@ -1247,159 +1246,159 @@ func (v *vardbapi) _aux_cache_init() {
 			base_names map[string]string
 			version    int
 		}{base_names: map[string]string{}, version: v._owners_cache_version}
-		aux_cache.owners = owners
+		auxCache.owners = owners
 	}
-	aux_cache.modified = map[string]bool{}
-	v._aux_cache_obj = aux_cache
+	auxCache.modified = map[string]bool{}
+	v._aux_cache_obj = auxCache
 }
 
 // nil
-func (v *vardbapi) aux_get(mycpv string, wants map[string]bool, myrepo string) []string {
-	cache_these_wants := map[string]bool{}
+func (v *vardbapi) aux_get(myCpv string, wants map[string]bool, myRepo string) []string {
+	cacheTheseWants := map[string]bool{}
 	for k := range v._aux_cache_keys {
 		if wants[k] {
-			cache_these_wants[k] = true
+			cacheTheseWants[k] = true
 		}
 	}
 	for x := range wants {
 		if v._aux_cache_keys_re.MatchString(x) {
-			cache_these_wants[x] = true
+			cacheTheseWants[x] = true
 		}
 	}
 
-	if len(cache_these_wants) == 0 {
-		mydata := v._aux_get(mycpv, wants, nil)
+	if len(cacheTheseWants) == 0 {
+		myData := v._aux_get(myCpv, wants, nil)
 		ret := []string{}
 		for x := range wants {
-			ret = append(ret, mydata[x])
+			ret = append(ret, myData[x])
 		}
 		return ret
 	}
 
-	cache_these := map[string]bool{}
+	cacheThese := map[string]bool{}
 	for k := range v._aux_cache_keys {
-		cache_these[k] = true
+		cacheThese[k] = true
 	}
-	for k := range cache_these_wants {
-		cache_these[k] = true
+	for k := range cacheTheseWants {
+		cacheThese[k] = true
 	}
 
-	mydir := v.getpath(mycpv, "")
-	mydir_stat, err := os.Stat(mydir)
+	myDir := v.getpath(myCpv, "")
+	myDirStat, err := os.Stat(myDir)
 	if err != nil {
 		//except OSError as e:
 		if err != syscall.ENOENT {
 			//raise
 		}
-		//raise KeyError(mycpv)
+		//raise KeyError(myCpv)
 	}
-	mydir_mtime := mydir_stat.ModTime().UnixNano()
-	pkg_data := v._aux_cache().packages[mycpv]
-	pull_me := map[string]bool{}
-	for k := range cache_these {
-		pull_me[k] = true
+	mydirMtime := myDirStat.ModTime().UnixNano()
+	pkgData := v._aux_cache().packages[myCpv]
+	pullMe := map[string]bool{}
+	for k := range cacheThese {
+		pullMe[k] = true
 	}
 	for k := range wants {
-		pull_me[k] = true
+		pullMe[k] = true
 	}
-	mydata := map[string]string{"_mtime_": fmt.Sprint(mydir_mtime)}
-	cache_valid := false
-	cache_mtime := int64(0)
+	myData := map[string]string{"_mtime_": fmt.Sprint(mydirMtime)}
+	cacheValid := false
+	cacheMtime := int64(0)
 	var metadata map[string]string = nil
 
-	if pkg_data != nil {
-		cache_mtime, metadata = pkg_data.cache_mtime, pkg_data.metadata
-		if cache_mtime == mydir_stat.ModTime().UnixNano() {
-			cache_valid = true
-		} else if cache_mtime == mydir_stat.ModTime().UnixNano() {
-			cache_valid = true
+	if pkgData != nil {
+		cacheMtime, metadata = pkgData.cache_mtime, pkgData.metadata
+		if cacheMtime == myDirStat.ModTime().UnixNano() {
+			cacheValid = true
+		} else if cacheMtime == myDirStat.ModTime().UnixNano() {
+			cacheValid = true
 		} else {
-			cache_valid = cache_mtime == mydir_stat.ModTime().UnixNano()
+			cacheValid = cacheMtime == myDirStat.ModTime().UnixNano()
 		}
 	}
-	if cache_valid {
+	if cacheValid {
 		for k, v := range metadata {
-			mydata[k] = v
+			myData[k] = v
 		}
-		for k := range mydata {
-			delete(pull_me, k)
+		for k := range myData {
+			delete(pullMe, k)
 		}
 	}
 
-	if len(pull_me) > 0 {
-		aux_keys := CopyMapSB(pull_me)
-		for k, v := range v._aux_get(mycpv, aux_keys, mydir_stat) {
-			mydata[k] = v
+	if len(pullMe) > 0 {
+		auxKeys := CopyMapSB(pullMe)
+		for k, v := range v._aux_get(myCpv, auxKeys, myDirStat) {
+			myData[k] = v
 		}
 		df := map[string]bool{}
-		for k := range cache_these {
+		for k := range cacheThese {
 			if _, ok := metadata[k]; !ok {
 				df[k] = true
 			}
 		}
-		if !cache_valid || len(df) > 0 {
-			cache_data := map[string]string{}
-			if cache_valid && len(metadata) > 0 {
+		if !cacheValid || len(df) > 0 {
+			cacheData := map[string]string{}
+			if cacheValid && len(metadata) > 0 {
 				for k, v := range metadata {
-					cache_data[k] = v
+					cacheData[k] = v
 				}
 			}
-			for aux_key := range cache_these {
-				cache_data[aux_key] = mydata[aux_key]
+			for auxKey := range cacheThese {
+				cacheData[auxKey] = myData[auxKey]
 			}
-			v._aux_cache().packages[mycpv] = &struct {
+			v._aux_cache().packages[myCpv] = &struct {
 				cache_mtime int64
 				metadata    map[string]string
-			}{mydir_mtime, cache_data}
-			v._aux_cache().modified[mycpv] = true
+			}{mydirMtime, cacheData}
+			v._aux_cache().modified[myCpv] = true
 		}
 	}
 
-	eapi_attrs := getEapiAttrs(mydata["EAPI"])
-	if !getSlotRe(eapi_attrs).MatchString(mydata["SLOT"]) {
-		mydata["SLOT"] = "0"
+	eapiAttrs := getEapiAttrs(myData["EAPI"])
+	if !getSlotRe(eapiAttrs).MatchString(myData["SLOT"]) {
+		myData["SLOT"] = "0"
 	}
 
 	ret := []string{}
 	for x := range wants {
-		ret = append(ret, mydata[x])
+		ret = append(ret, myData[x])
 	}
 
 	return ret
 }
 
 // nil
-func (v *vardbapi) _aux_get(mycpv string, wants map[string]bool, st os.FileInfo) map[string]string {
-	mydir := v.getpath(mycpv, "")
+func (v *vardbapi) _aux_get(myCpv string, wants map[string]bool, st os.FileInfo) map[string]string {
+	myDir := v.getpath(myCpv, "")
 	if st == nil {
 		var err error
-		st, err = os.Stat(mydir)
+		st, err = os.Stat(myDir)
 		if err != nil {
 			//except OSError as e:
 			if err == syscall.ENOENT {
-				//raise KeyError(mycpv)
+				//raise KeyError(myCpv)
 			}
 			//elif e.errno == PermissionDenied.errno:
-			//raise PermissionDenied(mydir)
+			//raise PermissionDenied(myDir)
 			//else:
 			//raise
 		}
 	}
 	if !st.IsDir() {
-		//raise KeyError(mycpv)
+		//raise KeyError(myCpv)
 	}
 	results := map[string]string{}
-	env_keys := []string{}
+	envKeys := []string{}
 	for x := range wants {
 		if x == "_mtime_" {
 			results[x] = fmt.Sprint(st.ModTime().UnixNano())
 			continue
 		}
-		myd, err := ioutil.ReadFile(path.Join(mydir, x))
+		myd, err := ioutil.ReadFile(path.Join(myDir, x))
 		if err != nil {
 			//except IOError:
 			if !v._aux_cache_keys[x] && !v._aux_cache_keys_re.MatchString(x) {
-				env_keys = append(env_keys, x)
+				envKeys = append(envKeys, x)
 				continue
 			}
 			myd = []byte("")
@@ -1412,10 +1411,10 @@ func (v *vardbapi) _aux_get(mycpv string, wants map[string]bool, st os.FileInfo)
 		results[x] = string(myd)
 	}
 
-	if len(env_keys) > 0 {
-		env_results := v._aux_env_search(mycpv, env_keys)
-		for _, k := range env_keys {
-			va := env_results[k]
+	if len(envKeys) > 0 {
+		envResults := v._aux_env_search(myCpv, envKeys)
+		for _, k := range envKeys {
+			va := envResults[k]
 			if va == "" {
 				va = ""
 			}
@@ -1435,18 +1434,18 @@ func (v *vardbapi) _aux_get(mycpv string, wants map[string]bool, st os.FileInfo)
 
 func (v *vardbapi) _aux_env_search(cpv string, variables []string) map[string]string {
 
-	env_file := v.getpath(cpv, "environment.bz2")
-	if st, _ := os.Stat(env_file); st != nil && !st.IsDir() {
+	envFile := v.getpath(cpv, "environment.bz2")
+	if st, _ := os.Stat(envFile); st != nil && !st.IsDir() {
 		return map[string]string{}
 	}
-	bunzip2_cmd, _ := shlex.Split(
+	bunzip2Cmd, _ := shlex.Split(
 		strings.NewReader(v.settings.ValueDict["PORTAGE_BUNZIP2_COMMAND"]), false, true)
-	if len(bunzip2_cmd) == 0 {
-		bunzip2_cmd, _ = shlex.Split(
+	if len(bunzip2Cmd) == 0 {
+		bunzip2Cmd, _ = shlex.Split(
 			strings.NewReader(v.settings.ValueDict["PORTAGE_BZIP2_COMMAND"]), false, true)
-		bunzip2_cmd = append(bunzip2_cmd, "-d")
+		bunzip2Cmd = append(bunzip2Cmd, "-d")
 	}
-	args := append(bunzip2_cmd, "-c", env_file)
+	args := append(bunzip2Cmd, "-c", envFile)
 	cmd := exec.Command(args[0], args[1:]...)
 	lines := &bytes.Buffer{}
 	cmd.Stdout = lines
@@ -1457,29 +1456,29 @@ func (v *vardbapi) _aux_env_search(cpv string, variables []string) map[string]st
 		//raise portage.exception.CommandNotFound(args[0])
 	}
 
-	var_assign_re := regexp.MustCompile("(^|^declare\\s+-\\S+\\s+|^declare\\s+|^export\\s+)([^=\\s]+)=(\"|\\')?(.*)$")
-	close_quote_re := regexp.MustCompile("(\\\\\"|\"|\\')\\s*$")
-	have_end_quote := func(quote, line string) bool {
-		close_quote_match := close_quote_re.FindStringSubmatch(line)
-		return close_quote_match != nil && close_quote_match[1] == quote
+	varAssignRe := regexp.MustCompile("(^|^declare\\s+-\\S+\\s+|^declare\\s+|^export\\s+)([^=\\s]+)=(\"|\\')?(.*)$")
+	closeQuoteRe := regexp.MustCompile("(\\\\\"|\"|\\')\\s*$")
+	haveEndQuote := func(quote, line string) bool {
+		closeQuoteMatch := closeQuoteRe.FindStringSubmatch(line)
+		return closeQuoteMatch != nil && closeQuoteMatch[1] == quote
 	}
 
 	results := map[string]string{}
 	for _, line := range strings.Split(lines.String(), "\n") {
-		var_assign_match := var_assign_re.FindStringSubmatch(line)
+		varAssignMatch := varAssignRe.FindStringSubmatch(line)
 		var key, value string
-		if var_assign_match != nil {
-			key = var_assign_match[2]
-			quote := var_assign_match[3]
+		if varAssignMatch != nil {
+			key = varAssignMatch[2]
+			quote := varAssignMatch[3]
 			if quote != "" {
-				if have_end_quote(quote,
-					line[var_assign_re.FindAllStringSubmatchIndex(line, -1)[2][1]+2:]) {
-					value = var_assign_match[4]
+				if haveEndQuote(quote,
+					line[varAssignRe.FindAllStringSubmatchIndex(line, -1)[2][1]+2:]) {
+					value = varAssignMatch[4]
 				} else {
-					values := []string{var_assign_match[4]}
+					values := []string{varAssignMatch[4]}
 					for _, line := range strings.Split(lines.String(), "\n") {
 						values = append(values, line)
-						if have_end_quote(quote, line) {
+						if haveEndQuote(quote, line) {
 							break
 						}
 						value = strings.Join(values, "")
@@ -1488,7 +1487,7 @@ func (v *vardbapi) _aux_env_search(cpv string, variables []string) map[string]st
 					value = value[:len(value)-1]
 				}
 			} else {
-				value = strings.TrimRight(var_assign_match[4], " ")
+				value = strings.TrimRight(varAssignMatch[4], " ")
 			}
 
 			if Ins(variables, key) {
@@ -1500,7 +1499,7 @@ func (v *vardbapi) _aux_env_search(cpv string, variables []string) map[string]st
 	return results
 }
 
-func (v *vardbapi) aux_update(cpv, values) {
+func (v *vardbapi) aux_update(cpv string, values map[string]string) {
 	mylink := v._dblink(cpv)
 	if !mylink.exists() {
 		//raise KeyError(cpv)
@@ -1520,13 +1519,16 @@ func (v *vardbapi) aux_update(cpv, values) {
 	v._bump_mtime(cpv)
 }
 
+func (v *vardbapi) unpack_metadata() {}
+
+func (v *vardbapi) unpack_contents() {}
+
 func (v *vardbapi) counter_tick() int {
 	return v.counter_tick_core(1)
 }
 
 // ignored, ignored
 func (v *vardbapi) get_counter_tick_core() int {
-
 	counter := -1
 	c, err := ioutil.ReadFile(v._counter_path)
 	if err == nil {
@@ -1551,21 +1553,21 @@ func (v *vardbapi) get_counter_tick_core() int {
 		}
 	}
 
-	max_counter := counter
+	maxCounter := counter
 	if v._cached_counter != counter {
 		for _, cpv := range v.cpv_all(1) {
 			//try:
-			pkg_counter, err := strconv.Atoi(v.aux_get(cpv.string, map[string]bool{"COUNTER": true}, "")[0])
+			pkgCounter, err := strconv.Atoi(v.aux_get(cpv.string, map[string]bool{"COUNTER": true}, "")[0])
 			if err != nil {
 				//except(KeyError, OverflowError, ValueError):
 				continue
 			}
-			if pkg_counter > max_counter {
-				max_counter = pkg_counter
+			if pkgCounter > maxCounter {
+				maxCounter = pkgCounter
 			}
 		}
 	}
-	return max_counter + 1
+	return maxCounter + 1
 }
 
 // ignnored, 1, ignored
@@ -1592,16 +1594,21 @@ func (v *vardbapi) _dblink(cpv string) *dblink {
 }
 
 // true
-func (v *vardbapi) removeFromContents(pkg *dblink, paths []string, relative_paths bool) {
+func (v *vardbapi) removeFromContents(pkg *dblink, paths []string, relativePaths bool) {
 	root := v.settings.ValueDict["ROOT"]
 	root_len := len(root) - 1
-	new_contents := pkg.getcontents().copy()
+	new_contents := map[string][]string{}
+	for k, v := range pkg.getcontents(){
+		var v2 []string
+		copy(v2, v)
+		new_contents[k]=v2
+	}
 	removed := 0
 
 	for _, filename := range paths {
 		filename = NormalizePath(filename)
 		relative_filename := ""
-		if relative_paths {
+		if relativePaths {
 			relative_filename = filename
 		} else {
 			relative_filename = filename[root_len:]
@@ -1653,7 +1660,7 @@ func (v *vardbapi) removeFromContents(pkg *dblink, paths []string, relative_path
 }
 
 // nil
-func (v *vardbapi) writeContentsToContentsFile(pkg *dblink, new_contents, new_needed []string) {
+func (v *vardbapi) writeContentsToContentsFile(pkg *dblink, new_contents map[string][]string, new_needed []string) {
 	root := v.settings.ValueDict["ROOT"]
 	v._bump_mtime(pkg.mycpv.string)
 	if new_needed != nil {
@@ -1852,25 +1859,26 @@ type dblink struct {
 	settings                                                                        *Config
 	_verbose, _linkmap_broken, _postinst_failure, _preserve_libs                    bool
 	_contents                                                                       *ContentsCaseSensitivityManager
+	contentscache map[string][]string
 
-	_hash_key    []string
-	_protect_obj *ConfigProtect
-	_slot_locks  []*Atom
+	_hash_key     []string
+	_protect_obj  *ConfigProtect
+	_slot_locks   []*Atom
 }
 
 func (d *dblink) __hash__() {}
 
 func (d *dblink) __eq__() {}
 
-func (d *dblink) _get_protect_obj() *ConfigProtect{
-	cp, _ :=shlex.Split(
-		d.settings.ValueDict["CONFIG_PROTECT"])
-	cpm , _ := shlex.Split(
-		d.settings.ValueDict["CONFIG_PROTECT_MASK"])
-	if d._protect_obj == nil{
-	d._protect_obj = NewConfigProtect(d._eroot,
-		cp,cpm,
-		 d.settings.Features.Features["case-insensitive-fs"])
+func (d *dblink) _get_protect_obj() *ConfigProtect {
+	cp, _ := shlex.Split(
+		strings.NewReader(d.settings.ValueDict["CONFIG_PROTECT"]), false, true)
+	cpm, _ := shlex.Split(
+		strings.NewReader(d.settings.ValueDict["CONFIG_PROTECT_MASK"]), false, true)
+	if d._protect_obj == nil {
+		d._protect_obj = NewConfigProtect(d._eroot,
+			cp, cpm,
+			d.settings.Features.Features["case-insensitive-fs"])
 	}
 
 	return d._protect_obj
@@ -1894,14 +1902,14 @@ func (d *dblink) unlockdb() {
 
 func (d *dblink) _slot_locked(f func()) {
 
-	 wrapper := func (d *dblink, *args, **kwargs) {
-		 if d.settings.Features.Features["parallel-install"] {
-			 d._acquire_slot_locks(
-				 kwargs.get("mydbapi", d.vartree.dbapi))
-		 }
-		 defer d._release_slot_locks()
-		 return f(d, *args, **kwargs)
-	 }
+	wrapper := func(d *dblink, *args, **kwargs) {
+		if d.settings.Features.Features["parallel-install"] {
+			d._acquire_slot_locks(
+				kwargs.get("mydbapi", d.vartree.dbapi))
+		}
+		defer d._release_slot_locks()
+		return f(d, *args, **kwargs)
+	}
 	return wrapper
 }
 
@@ -1909,25 +1917,25 @@ func (d *dblink) _acquire_slot_locks() {
 
 	slot_atoms := []*Atom{}
 
-//try:
+	//try:
 	slot := d.mycpv.slot
 	//except AttributeError:
-	//slot, = db.aux_get(self.mycpv, ["SLOT"])
+	//slot, = db.aux_get(d.mycpv, ["SLOT"])
 	//slot = slot.partition("/")[0]
 
 	a, _ := NewAtom(
-		fmt.Sprintf("%s:%s" ,d.mycpv.cp, slot), nil, false, nil, nil, "", nil, nil)
-	
-	slot_atoms=append(slot_atoms,a)
+		fmt.Sprintf("%s:%s", d.mycpv.cp, slot), nil, false, nil, nil, "", nil, nil)
 
-	for _, blocker := range d._blockers || []string{}{
-		slot_atoms=append(slot_atoms, blocker.slot_atom)
+	slot_atoms = append(slot_atoms, a)
+
+	for _, blocker := range d._blockers || []string{} {
+		slot_atoms = append(slot_atoms, blocker.slot_atom)
 	}
 
 	sort.Strings(slot_atoms)
 	for _, slot_atom := range slot_atoms {
 		d.vartree.dbapi._slot_lock(slot_atom)
-		d._slot_locks=append(d._slot_locks, slot_atom)
+		d._slot_locks = append(d._slot_locks, slot_atom)
 	}
 
 }
@@ -1956,13 +1964,13 @@ func (d *dblink) exists() bool {
 func (d *dblink) delete() {
 	if _, err := os.Lstat(d.dbdir); err != nil {
 		//except OSError as e:
-		if err != syscall.ENOENT && err != syscall.ENOTDIR &&err !=  syscall.ESTALE){
+		if err != syscall.ENOENT && err != syscall.ENOTDIR && err != syscall.ESTALE){
 			//raise
 		}
 		return
 	}
 
-	if ! strings.HasPrefix(d.dbdir, d.dbroot) {
+	if !strings.HasPrefix(d.dbdir, d.dbroot) {
 		WriteMsg(fmt.Sprintf("portage.dblink.delete(): invalid dbdir: %s\n", d.dbdir), -1, nil)
 		return
 	}
@@ -1972,14 +1980,14 @@ func (d *dblink) delete() {
 			d.mycpv, []string{"COUNTER"}, "")
 		d.vartree.dbapi._cache_delta.recordEvent(
 			"remove", d.mycpv,
-			strings.Split(d.settings["SLOT"],"/")[0], counter)
+			strings.Split(d.settings["SLOT"], "/")[0], counter)
 	}
 
 	os.RemoveAll(d.dbdir)
 	os.RemoveAll(filepath.Dir(d.dbdir))
 	d.vartree.dbapi._remove(d)
 
-	ls ,_ :=os.Lstat(d.dbroot)
+	ls, _ := os.Lstat(d.dbroot)
 	d._merged_path(d.dbroot, ls)
 
 	d._post_merge_sync()
@@ -1987,7 +1995,7 @@ func (d *dblink) delete() {
 
 func (d *dblink) clearcontents() {
 	d.lockdb()
-	if st, _ := os.Stat(d.dbdir+"/CONTENTS") ; st!= nil{
+	if st, _ := os.Stat(d.dbdir + "/CONTENTS"); st != nil {
 		syscall.Unlink(d.dbdir + "/CONTENTS")
 	}
 	d.unlockdb()
@@ -2000,7 +2008,119 @@ func (d *dblink) _clear_contents_cache() {
 	d._contents.clear_cache()
 }
 
-func (d *dblink) getcontents() {}
+func (d *dblink) getcontents() map[string][]string{
+	if d.contentscache != nil {
+		return d.contentscache
+	}
+	contents_file := filepath.Join(d.dbdir, "CONTENTS")
+	pkgfiles := map[string][]string{}
+	f, err:= ioutil.ReadFile(contents_file)
+	if err != nil {
+		//except EnvironmentError as e:
+		if err != syscall.ENOENT {
+			//raise
+		}
+		//del e
+		d.contentscache = pkgfiles
+		return pkgfiles
+	}
+			
+	mylines := strings.Split(string(f), "\n") 
+
+	null_byte := []byte{0}
+	normalize_needed := d._normalize_needed
+	contents_re := d._contents_re
+	var obj_index,dir_index,sym_index,oldsym_index int
+	for i, v := range contents_re.SubexpNames(){
+		switch v {
+		case "obj":
+			obj_index = i
+		case "dir":
+			dir_index = i
+		case "sym":
+			sym_index=i
+		case "oldsym":
+			oldsym_index = i
+		}
+	}
+	myroot := d.settings.ValueDict["ROOT"]
+	if myroot == string(os.PathSeparator) {
+		myroot = ""
+	}
+	dir_entry := []string{"dir"}
+	eroot_split_len := len(strings.Split(d.settings.ValueDict["EROOT"],string(os.PathSeparator))) - 1
+	errors := []struct{int; string}{}
+	for pos, line := range mylines {
+		if strings.Contains(line, string(null_byte)) {
+			errors = append(errors, struct{ int; string }{pos + 1, "Null byte found in CONTENTS entry"})
+			continue
+		}
+		line = strings.TrimRight(line, "\n")
+		m := contents_re.FindAllString(line, -1)
+		if m == nil {
+			errors= append(errors, struct{ int; string }{pos + 1, "Unrecognized CONTENTS entry"})
+			continue
+		}
+
+		base:=0
+		var data []string
+		if m[obj_index] != "" {
+			base = obj_index
+			data = []string{m[base + 1], m[base + 4], m[base + 3]}
+		}else if m[dir_index]!= ""{
+				base = dir_index
+				data = []string{m[base + 1]}
+		}else if m[sym_index]!= "" {
+			base = sym_index
+			mtime := ""
+			if m[oldsym_index] =="" {
+				mtime = m[base + 5]
+			} else {
+				mtime = m[base+8]
+			}
+			data = []string{m[base + 1], mtime, m[base + 3]}
+		}else{
+			//raise AssertionError(_("required group not found " + \
+			//"in CONTENTS entry: '%s'") % line)
+		}
+
+		path := m[base + 2]
+		if normalize_needed.MatchString(path) {
+			path = NormalizePath(path)
+			if ! strings.HasPrefix(path, string(os.PathSeparator)) {
+				path = string(os.PathSeparator) + path
+			}
+		}
+
+		if myroot != "" {
+			path = filepath.Join(myroot, strings.TrimLeft(path, string(os.PathSeparator)))
+		}
+
+		path_split := strings.Split(path, string(os.PathSeparator))
+		path_split = path_split[:len(path_split)-1]
+		for len(path_split) > eroot_split_len {
+			parent:= strings.Join(path_split, string(os.PathSeparator))
+			if _, ok := pkgfiles[parent]; ok {
+				break
+			}
+			pkgfiles[parent] = dir_entry
+			path_split = path_split[:len(path_split)-1]
+
+		}
+
+		pkgfiles[path] = data
+	}
+
+	if len(errors) > 0 {
+		WriteMsg(fmt.Sprintf("!!! Parse error in '%s'\n", contents_file), -1, nil)
+		for _, v := range errors {
+			pos, e := v.int, v.string
+			WriteMsg(fmt.Sprintf("!!!   line %d: %s\n", pos, e), -1, nil)
+		}
+	}
+	d.contentscache = pkgfiles
+	return pkgfiles
+}
 
 func (d *dblink) quickpkg() {}
 
@@ -2081,7 +2201,9 @@ func (d *dblink) copyfile(fname string) {
 
 func (d *dblink) getfile() {}
 
-func (d *dblink) setfile() {}
+func (d *dblink) setfile(fname, data string) {
+	write_atomic(filepath.Join(d.dbdir, fname), data, os.O_RDWR|os.O_TRUNC|os.O_CREATE, true)
+}
 
 func (d *dblink) getelements() {}
 

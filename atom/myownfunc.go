@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"sort"
+	"strconv"
 	"syscall"
 )
 
@@ -145,4 +147,19 @@ func sorted (a []string)[]string {
 	copy(b, a)
 	sort.Strings(b)
 	return b
+}
+
+func getNamedRegexp(re *regexp.Regexp, target, name string) string {
+	match := re.FindStringSubmatch(target)
+	for i, n := range re.SubexpNames() {
+		if i > 0 && i <= len(match) && n == name {
+			return match[i]
+		}
+	}
+	return ""
+}
+
+func toi(s string) int {
+	i, _ := strconv.Atoi(s)
+	return i
 }

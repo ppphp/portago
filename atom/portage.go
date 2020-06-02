@@ -219,7 +219,7 @@ type Tree struct {
 	porttree  func() *PortageTree
 	bintree   func() *BinaryTree
 
-	root_config *RootConfig
+	RootConfig *RootConfig
 
 }
 

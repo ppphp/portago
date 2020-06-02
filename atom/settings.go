@@ -165,7 +165,7 @@ func (c *Config) _validateCommands() {
 	}
 }
 
-func (c *Config) initDirs() {
+func (c *Config) InitDirs() {
 	st, _ := os.Stat(c.ValueDict["EROOT"])
 	if st.Mode()|os.FileMode(os.O_WRONLY) == 0 {
 		return

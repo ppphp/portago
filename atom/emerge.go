@@ -2139,13 +2139,14 @@ func(p*_PostPhaseCommands) _soname_deps_qa() {
 	}
 }
 
-type RootConfig struct{
+type RootConfig struct {
 	// slot
-	mtimedb,root string
-	settings *Config
-	trees *Tree
+	Mtimedb   *MtimeDB
+	root      string
+	settings  *Config
+	trees     *Tree
 	setconfig *SetConfig
-	sets map[string]string
+	sets      map[string]string
 
 	pkg_tree_map, tree_pkg_map map[string]string
 }
@@ -2174,8 +2175,8 @@ func NewRootConfig(settings *Config, trees *Tree, setconfig *SetConfig)*RootConf
 	return r
 }
 
-func (r*RootConfig) update(other *RootConfig) {
-	r.mtimedb = other.mtimedb
+func (r*RootConfig) Update(other *RootConfig) {
+	r.Mtimedb = other.Mtimedb
 	r.root=other.root
 	r.settings=other.settings
 	r.trees=other.trees

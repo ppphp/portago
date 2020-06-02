@@ -298,7 +298,7 @@ func NewSetConfig(paths []string, settings *Config, trees *Tree)*SetConfig{
 	return s
 }
 
-func load_default_config(settings *Config, trees *Tree) *SetConfig {
+func LoadDefaultConfig(settings *Config, trees *Tree) *SetConfig {
 
 	if !enableSetConfig {
 		return NewSetConfig(nil, settings, trees)
