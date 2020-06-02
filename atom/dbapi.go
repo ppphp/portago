@@ -3797,23 +3797,39 @@ type portdbapi struct {
 	_aux_cache              map[string]string
 	_broken_ebuilds         map[string]bool
 	_better_cache           interface{}
+	_porttrees_repos        map[string]*RepoConfig
 }
 
-func (p *portdbapi) _categories() {}
+func (p *portdbapi) _categories() map[string]bool{
+	return p.settings.categories
+}
 
-func (p *portdbapi) porttree_root() {}
+func (p *portdbapi) _set_porttrees(porttrees []string) {
+	for _, location := range porttrees {
+		repo := p.repositories.getRepoForLocation(location)
+			p._porttrees_repos[repo.Name] = repo
+	}
+	p.porttrees = porttrees
+}
 
-func (p *portdbapi) eclassdb() {}
-
-func (p *portdbapi) _set_porttrees() {}
-
-func (p *portdbapi) _get_porttrees() {}
+func (p *portdbapi) _get_porttrees() []string {
+	return p.porttrees
+}
 
 func (p *portdbapi) _event_loop() {}
 
-func (p *portdbapi) _create_pregen_cache() {}
+func (p *portdbapi) _create_pregen_cache(tree string) {
+	conf := p.repositories.getRepoForLocation(tree)
+	cache := conf.get_pregenerated_cache(p._known_keys, true,false)
+	if cache!= nil {
 
-func (p *portdbapi) _init_cache_dirs() {}
+	}
+}
+
+func (p *portdbapi) _init_cache_dirs() {
+	ensureDirs(p.depcachedir, -1, *portage_gid,
+		0o2070, 0o2, nil, true)
+}
 
 func (p *portdbapi) close_caches() {}
 
@@ -3821,7 +3837,9 @@ func (p *portdbapi) flush_cache() {}
 
 func (p *portdbapi) findLicensePath() {}
 
-func (p *portdbapi) findname() {}
+func (p *portdbapi) findname(mycpv, mytree = None, myrepo = None) {
+	return p.findname2(mycpv, mytree, myrepo)[0]
+}
 
 func (p *portdbapi) getRepositoryPath() {}
 
@@ -3829,9 +3847,13 @@ func (p *portdbapi) getRepositoryName() {}
 
 func (p *portdbapi) getRepositories() {}
 
-func (p *portdbapi) getMissingRepoNames() {}
+func (p *portdbapi) getMissingRepoNames() map[string]bool{
+	return p.settings.Repositories.missingRepoNames
+}
 
-func (p *portdbapi) getIgnoredRepos() {}
+func (p *portdbapi) getIgnoredRepos() []sss{
+	return p.settings.Repositories.ignoredRepos
+}
 
 func (p *portdbapi) findname2() {}
 

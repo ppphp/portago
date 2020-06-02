@@ -69,7 +69,7 @@ func (r *RepoConfig) eapiIsDeprecated(eapi string) bool {
 }
 
 // true, false
-func (r *RepoConfig) iterPregeneratedCaches(auxdbkeys string, readonly, force bool) {
+func (r *RepoConfig) iterPregeneratedCaches(auxdbkeys []string, readonly, force bool) {
 	formats := r.cacheFormats
 	if len(formats) == 0 {
 		if !force {
@@ -92,7 +92,7 @@ func (r *RepoConfig) iterPregeneratedCaches(auxdbkeys string, readonly, force bo
 }
 
 // true, false
-func (r *RepoConfig) get_pregenerated_cache(auxdbkeys string, readonly, force bool){
+func (r *RepoConfig) get_pregenerated_cache(auxdbkeys []string, readonly, force bool){
 return r.iterPregeneratedCaches(
 auxdbkeys, readonly, force)
 }
