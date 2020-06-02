@@ -2165,3 +2165,64 @@ func NewMtimeDB(filename string) *MtimeDB {
 	m._load(filename)
 	return m
 }
+
+type NeededEntry struct {
+	// slots
+	arch, filename, multilib_category, soname string
+	needed, runpaths                          []string
+
+	_MIN_FIELDS, _MULTILIB_CAT_INDEX int
+}
+
+func (n *NeededEntry) parse(filename, line string) (*NeededEntry, error) {
+
+	fields := strings.Split(line, ";")
+	if len(fields) < n._MIN_FIELDS {
+		//raise InvalidData(_("Wrong number of fields "
+		//"in %s: %s\n\n") % (filename, line))
+		return nil, fmt.Errorf("Wrong number of fields in %s: %s\n\n",filename, line)
+	}
+
+	n2 := NewNeededEntry()
+	if len(fields) > n._MULTILIB_CAT_INDEX && fields[n._MULTILIB_CAT_INDEX] != "" {
+		n2.multilib_category = fields[n._MULTILIB_CAT_INDEX]
+	} else {
+		n2.multilib_category = ""
+	}
+
+	fields = fields[:n._MIN_FIELDS]
+	n2.arch, n2.filename, n2.soname = fields[0], fields[1], fields[2]
+	rpaths, needed := fields[3], fields[4]
+	n2.runpaths = []string{}
+	for _, v := range strings.Split(rpaths, ":") {
+		if v != "" {
+			n2.runpaths = append(n2.runpaths, v)
+		}
+	}
+	n2.needed = []string{}
+	for _, v := range strings.Split(needed, ",") {
+		if v != "" {
+			n2.runpaths = append(n2.needed, v)
+		}
+	}
+
+	return n2, nil
+}
+
+func (n *NeededEntry) __str__() string {
+	return n.arch + ";" +
+		n.filename + ";" +
+		n.soname + ";" +
+		strings.Join(n.runpaths, ":") + ";" +
+		strings.Join(n.needed, ",") + ";" +
+		n.multilib_category + "\n"
+}
+
+func NewNeededEntry() *NeededEntry {
+	n := &NeededEntry{}
+
+	n._MIN_FIELDS = 5
+	n._MULTILIB_CAT_INDEX = 5
+
+	return n
+}

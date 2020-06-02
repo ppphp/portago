@@ -1693,7 +1693,7 @@ func (v *vardbapi) removeFromContents(pkg *dblink, paths []string, relativePaths
 
 	if removed != 0 {
 		neededFilename := filepath.Join(pkg.dbdir, NewLinkageMapELF(nil)._needed_aux_key)
-		var newNeeded []string = nil
+		var newNeeded []*NeededEntry = nil
 		neededLines := []string{}
 		f, err := os.Open(neededFilename)
 		if err == nil {
@@ -1705,13 +1705,13 @@ func (v *vardbapi) removeFromContents(pkg *dblink, paths []string, relativePaths
 			//if e.errno not in(errno.ENOENT, errno.ESTALE):
 			//raise
 		} else {
-			newNeeded = []string{}
+			newNeeded = []*NeededEntry{}
 			for _, l := range neededLines {
 				l = strings.TrimRight(l, "\n")
 				if l == "" {
 					continue
 				}
-				entry, err := NeededEntry.parse(neededFilename, l)
+				entry, err := NewNeededEntry().parse(neededFilename, l)
 				if err != nil {
 					//except InvalidData as e:
 					WriteMsgLevel(fmt.Sprintf("\n%s\n\n", err),
@@ -1731,13 +1731,13 @@ func (v *vardbapi) removeFromContents(pkg *dblink, paths []string, relativePaths
 }
 
 // nil
-func (v *vardbapi) writeContentsToContentsFile(pkg *dblink, new_contents map[string][]string, new_needed []string) {
+func (v *vardbapi) writeContentsToContentsFile(pkg *dblink, new_contents map[string][]string, new_needed []*NeededEntry) {
 	root := v.settings.ValueDict["ROOT"]
 	v._bump_mtime(pkg.mycpv.string)
 	if new_needed != nil {
-		f := NewAtomic_ofstream(filepath.Join(pkg.dbdir, LinkageMap._needed_aux_key))
-		for entry := range new_needed {
-			f.Write([]byte(fmt.Sprint(entry)))
+		f := NewAtomic_ofstream(filepath.Join(pkg.dbdir, NewLinkageMapELF(nil)._needed_aux_key), os.O_RDWR|os.O_CREATE|os.O_TRUNC, true)
+		for _, entry := range new_needed {
+			f.Write([]byte(entry.__str__()))
 		}
 		f.Close()
 	}
