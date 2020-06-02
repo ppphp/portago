@@ -34,8 +34,8 @@ func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, action 
 	for _, root_trees := range emergeConfig.Trees.Values() {
 		settings := root_trees.VarTree().settings
 		settings.initDirs()
-		setconfig := load_default_config(settings, root_trees)
-		root_config := RootConfig(settings, root_trees, setconfig)
+		setconfig := atom.load_default_config(settings, root_trees)
+		root_config := atom.NewRootConfig(settings, root_trees, setconfig)
 		if "root_config" in root_trees{
 			root_trees["root_config"].update(root_config)
 		}else{

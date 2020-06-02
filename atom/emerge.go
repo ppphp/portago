@@ -2126,3 +2126,48 @@ func(p*_PostPhaseCommands) _soname_deps_qa() {
 		p.elog("eqawarn", qa_msg)
 	}
 }
+
+type RootConfig struct{
+	// slot
+	mtimedb,root string
+	settings*Config
+	trees *Tree
+	setconfig *SetConfig
+	sets map[string]string
+
+	pkg_tree_map, tree_pkg_map map[string]string
+}
+
+func NewRootConfig(settings *Config, trees *Tree, setconfig *SetConfig)*RootConfig {
+	r := &RootConfig{}
+
+	r.pkg_tree_map = map[string]string{
+		"ebuild":    "porttree",
+		"binary":    "bintree",
+		"installed": "vartree",
+	}
+	r.tree_pkg_map = map[string]string{
+		"porttree": "ebuild",
+		"bintree":  "binary",
+		"vartree":  "installed",
+	}
+	r.trees = trees
+	r.settings = settings
+	r.root = r.settings.ValueDict["EROOT"]
+	r.setconfig = setconfig
+	if setconfig == nil {
+		r.sets = map[string]string{}
+	} else {
+		r.sets = r.setconfig.getSets()
+	}
+	return r
+}
+
+func (r*RootConfig) update(other *RootConfig) {
+	r.mtimedb = other.mtimedb
+	r.root=other.root
+	r.settings=other.settings
+	r.trees=other.trees
+	r.setconfig=other.setconfig
+	r.sets=other.sets
+}
