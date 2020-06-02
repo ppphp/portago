@@ -650,7 +650,14 @@ actionmap_deps:=map[string][]string{
 }
 
 if mydbapi == nil {
-	mydbapi = Db().Values()[myroot][tree].dbapi
+	switch tree {
+	case "vartree":
+		mydbapi = Db().Values()[myroot].VarTree().dbapi
+	case "porttree":
+		mydbapi = Db().Values()[myroot].PortTree().dbapi
+	case "bintree":
+		mydbapi = Db().Values()[myroot].BinTree().dbapi
+	}
 }
 
 if vartree == nil && Ins([]string{"merge", "qmerge", "unmerge"}, mydo) {
