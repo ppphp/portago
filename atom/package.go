@@ -156,16 +156,17 @@ func NewIUse(pkg string, tokens []string, iuseImplicitMatch func(string) bool, a
 
 type Package struct {
 	*Task
-	metadataKeys, buildtimeKeys, runtimeKeys, useConditionalMiscKeys                                                                                                                                                         map[string]bool
-	depKeys                                                                                                                                                                                                                  []string
-	UnknownRepo                                                                                                                                                                                                              string
-	built, installed                                                                                                                                                                                                         bool
-	cpv                                                                                                                                                                                                                      *pkgStr
-	counter, mtime                                                                                                                                                                                                           int
-	metadata                                                                                                                                                                                                                 *packageMetadataWrapper
-	_raw_metadata                                                                                                                                                                                                            map[string]string
-	inherited                                                                                                                                                                                                                map[string]bool
-	depth, onlydeps, operation, root_config, type_name, category, cp, cpv_split, iuse, pf, root, slot, sub_slot, slot_atom, version, _invalid, _masks, _provided_cps, _provides, _requires, _use, _validated_atoms, _visible string
+	metadataKeys, buildtimeKeys, runtimeKeys, useConditionalMiscKeys                                                                                                                                            map[string]bool
+	depKeys                                                                                                                                                                                                     []string
+	UnknownRepo                                                                                                                                                                                                 string
+	built, installed                                                                                                                                                                                            bool
+	cpv                                                                                                                                                                                                         *PkgStr
+	counter, mtime                                                                                                                                                                                              int
+	metadata                                                                                                                                                                                                    *packageMetadataWrapper
+	_raw_metadata                                                                                                                                                                                               map[string]string
+	inherited                                                                                                                                                                                                   map[string]bool
+	depth, onlydeps, operation, type_name, category, cp, cpv_split, iuse, pf, root, slot, sub_slot, slot_atom, version, _invalid, _masks, _provided_cps, _provides, _requires, _use, _validated_atoms, _visible string
+	root_config                                                                                                                                                                                                 *RootConfig
 }
 
 func (p *Package) eapi() string {
@@ -190,7 +191,7 @@ func (p *Package) masks() {
 	}
 }
 
-func NewPackage(built bool, cpv *pkgStr, installed bool, metadata map[string]string, root_config, type_name string) *Package {
+func NewPackage(built bool, cpv *PkgStr, installed bool, metadata map[string]string, root_config *RootConfig, type_name string) *Package {
 	p := &Package{metadataKeys: map[string]bool{
 		"BDEPEND": true, "BUILD_ID": true, "BUILD_TIME": true, "CHOST": true, "COUNTER": true, "DEFINED_PHASES": true,
 		"DEPEND": true, "EAPI": true, "HDEPEND": true, "INHERITED": true, "IUSE": true, "KEYWORDS": true,

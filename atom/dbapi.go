@@ -163,21 +163,21 @@ func cpv_expand(mycpv string, mydb *dbapi, use_cache int, settings *Config) stri
 type DBAPI interface {
 	categories() []string
 	close_caches()
-	cp_list(cp string, useCache int) []*pkgStr
-	_cmp_cpv(cpv1, cpv2 *pkgStr) int
-	_cpv_sort_ascending(cpv_list []*pkgStr)
-	cpv_all() []*pkgStr
-	AuxGet(myCpv *pkgStr, myList []string, myRepo string) []string
+	cp_list(cp string, useCache int) []*PkgStr
+	_cmp_cpv(cpv1, cpv2 *PkgStr) int
+	_cpv_sort_ascending(cpv_list []*PkgStr)
+	cpv_all() []*PkgStr
+	AuxGet(myCpv *PkgStr, myList []string, myRepo string) []string
 	auxUpdate(cpv string, metadataUpdates map[string]string)
-	match(origdep *Atom, useCache int) []*pkgStr
-	_iter_match(atom *Atom, cpvIter []*pkgStr) []*pkgStr
-	_pkg_str(cpv *pkgStr, repo string) *pkgStr
-	_iter_match_repo(atom *Atom, cpvIter []*pkgStr) []*pkgStr
-	_iter_match_slot(atom *Atom, cpvIter []*pkgStr) []*pkgStr
-	_iter_match_use(atom *Atom, cpvIter []*pkgStr) []*pkgStr
+	match(origdep *Atom, useCache int) []*PkgStr
+	_iter_match(atom *Atom, cpvIter []*PkgStr) []*PkgStr
+	_pkg_str(cpv *PkgStr, repo string) *PkgStr
+	_iter_match_repo(atom *Atom, cpvIter []*PkgStr) []*PkgStr
+	_iter_match_slot(atom *Atom, cpvIter []*PkgStr) []*PkgStr
+	_iter_match_use(atom *Atom, cpvIter []*PkgStr) []*PkgStr
 	_repoman_iuse_implicit_cnstr(pkg, metadata map[string]string) func(flag string) bool
-	_iuse_implicit_cnstr(pkg *pkgStr, metadata map[string]string) func(string) bool
-	_match_use(atom *Atom, pkg *pkgStr, metadata map[string]string, ignore_profile bool) bool
+	_iuse_implicit_cnstr(pkg *PkgStr, metadata map[string]string) func(string) bool
+	_match_use(atom *Atom, pkg *PkgStr, metadata map[string]string, ignore_profile bool) bool
 	invalidentry(mypath string)
 	update_ents(updates map[string][][]*Atom, onProgress, onUpdate func(int, int))
 	move_slot_ent(mylist []*Atom, repo_match func(string) bool) int
@@ -212,12 +212,12 @@ func (d *dbapi) categories() []string {
 func (d *dbapi) close_caches() {}
 
 //1
-func (d *dbapi) cp_list(cp string, useCache int) []*pkgStr {
+func (d *dbapi) cp_list(cp string, useCache int) []*PkgStr {
 	panic("")
 	return nil
 }
 
-func (d *dbapi) _cmp_cpv(cpv1, cpv2 *pkgStr) int {
+func (d *dbapi) _cmp_cpv(cpv1, cpv2 *PkgStr) int {
 	result, _ := verCmp(cpv1.version, cpv2.version)
 	if result == 0 && cpv1.buildTime != 0 && cpv2.buildTime != 0 {
 		if (cpv1.buildTime > cpv2.buildTime) && (cpv1.buildTime < cpv2.buildTime) {
@@ -233,7 +233,7 @@ func (d *dbapi) _cmp_cpv(cpv1, cpv2 *pkgStr) int {
 	return result
 }
 
-func (d *dbapi) _cpv_sort_ascending(cpv_list []*pkgStr) {
+func (d *dbapi) _cpv_sort_ascending(cpv_list []*PkgStr) {
 	if len(cpv_list) > 1 {
 		sort.Slice(cpv_list, func(i, j int) bool {
 			return d._cmp_cpv(cpv_list[i], cpv_list[j]) < 0
@@ -241,8 +241,8 @@ func (d *dbapi) _cpv_sort_ascending(cpv_list []*pkgStr) {
 	}
 }
 
-func (d *dbapi) cpv_all() []*pkgStr {
-	cpvList := []*pkgStr{}
+func (d *dbapi) cpv_all() []*PkgStr {
+	cpvList := []*PkgStr{}
 	for _, cp := range d.cp_all(false) {
 		cpvList = append(cpvList, d.cp_list(cp, 1)...)
 	}
@@ -254,7 +254,7 @@ func (d *dbapi) cp_all(sort bool) []string { // false
 	return nil
 }
 
-func (d *dbapi) auxGet(myCpv *pkgStr, myList []string, myRepo string) []string {
+func (d *dbapi) auxGet(myCpv *PkgStr, myList []string, myRepo string) []string {
 	panic("NotImplementedError")
 	return nil
 }
@@ -263,12 +263,12 @@ func (d *dbapi) auxUpdate(cpv string, metadataUpdates map[string]string) {
 	panic("NotImplementedError")
 }
 
-func (d *dbapi) match(origdep *Atom, useCache int) []*pkgStr { // 1
+func (d *dbapi) match(origdep *Atom, useCache int) []*PkgStr { // 1
 	mydep := dep_expand(origdep, d, 1, d.settings)
 	return d._iter_match(mydep, d.cp_list(mydep.cp, useCache))
 }
 
-func (d *dbapi) _iter_match(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
+func (d *dbapi) _iter_match(atom *Atom, cpvIter []*PkgStr) []*PkgStr {
 	cpvIter = matchFromList(atom, cpvIter)
 	if atom.repo != "" {
 
@@ -283,7 +283,7 @@ func (d *dbapi) _iter_match(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
 	return cpvIter
 }
 
-func (d *dbapi) _pkg_str(cpv *pkgStr, repo string) *pkgStr {
+func (d *dbapi) _pkg_str(cpv *PkgStr, repo string) *PkgStr {
 	//try:
 	//cpv.slot
 	//except AttributeError:
@@ -297,8 +297,8 @@ func (d *dbapi) _pkg_str(cpv *pkgStr, repo string) *pkgStr {
 	//return _pkg_str(cpv, metadata=metadata, settings=d.settings, db=d)
 }
 
-func (d *dbapi) _iter_match_repo(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
-	r := []*pkgStr{}
+func (d *dbapi) _iter_match_repo(atom *Atom, cpvIter []*PkgStr) []*PkgStr {
+	r := []*PkgStr{}
 	for _, cpv := range cpvIter {
 		pkgStr := d._pkg_str(cpv, atom.repo)
 		if pkgStr.repo == atom.repo {
@@ -308,8 +308,8 @@ func (d *dbapi) _iter_match_repo(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
 	return r
 }
 
-func (d *dbapi) _iter_match_slot(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
-	r := []*pkgStr{}
+func (d *dbapi) _iter_match_slot(atom *Atom, cpvIter []*PkgStr) []*PkgStr {
+	r := []*PkgStr{}
 	for _, cpv := range cpvIter {
 		pkgStr := d._pkg_str(cpv, atom.repo)
 		if matchSlot(atom, cpv) {
@@ -319,10 +319,10 @@ func (d *dbapi) _iter_match_slot(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
 	return r
 }
 
-func (d *dbapi) _iter_match_use(atom *Atom, cpvIter []*pkgStr) []*pkgStr {
+func (d *dbapi) _iter_match_use(atom *Atom, cpvIter []*PkgStr) []*PkgStr {
 	aux_keys := []string{"EAPI", "IUSE", "KEYWORDS", "SLOT", "USE", "repository"}
 
-	r := []*pkgStr{}
+	r := []*PkgStr{}
 	for _, cpv := range cpvIter {
 		metadata := map[string]string{}
 		a := d.auxGet(cpv, aux_keys, atom.repo)
@@ -352,7 +352,7 @@ func (d *dbapi) _repoman_iuse_implicit_cnstr(pkg, metadata map[string]string) fu
 	return iuseImplicitMatch
 }
 
-func (d *dbapi) _iuse_implicit_cnstr(pkg *pkgStr, metadata map[string]string) func(string) bool {
+func (d *dbapi) _iuse_implicit_cnstr(pkg *PkgStr, metadata map[string]string) func(string) bool {
 	eapiAttrs := getEapiAttrs(metadata["EAPI"])
 	var iuseImplicitMatch func(string) bool
 	if eapiAttrs.iuseEffective {
@@ -381,7 +381,7 @@ func (d *dbapi) _iuse_implicit_cnstr(pkg *pkgStr, metadata map[string]string) fu
 }
 
 // false
-func (d *dbapi) _match_use(atom *Atom, pkg *pkgStr, metadata map[string]string, ignore_profile bool) bool {
+func (d *dbapi) _match_use(atom *Atom, pkg *PkgStr, metadata map[string]string, ignore_profile bool) bool {
 	iuseImplicitMatch := d._iuse_implicit_cnstr(pkg, metadata)
 	useAliases := d.settings.useManager.getUseAliases(pkg)
 	iuse := NewIUse("", strings.Fields(metadata["IUSE"]), iuseImplicitMatch, useAliases, metadata["EAPI"])
@@ -668,11 +668,11 @@ type vardbapi struct {
 	_aux_cache_threshold                                   int
 
 	_pkgs_changed, _flush_cache_enabled bool
-	matchcache                          map[string]map[[2]*Atom][]*pkgStr
+	matchcache                          map[string]map[[2]*Atom][]*PkgStr
 	blockers                            map[string]string
 	cpcache                             map[string]struct {
 		int64
-		p []*pkgStr
+		p []*PkgStr
 	}
 	mtdircache                                                                                 map[string]int
 	_eroot, _dbroot, _conf_mem_file, _aux_cache_filename, _cache_delta_filename, _counter_path string
@@ -856,7 +856,7 @@ func (v *vardbapi) cpv_exists(mykey, myrepo string) bool {
 	return false
 }
 
-func (v *vardbapi) cpv_counter(mycpv *pkgStr) int {
+func (v *vardbapi) cpv_counter(mycpv *PkgStr) int {
 	s, err := strconv.Atoi(v.auxGet(mycpv, []string{"COUNTER"}, "")[0])
 	if err != nil {
 		WriteMsgLevel(fmt.Sprintf("portage: COUNTER for %s was corrupted; resetting to value of 0\n", mycpv.string), 40, -1)
@@ -865,7 +865,7 @@ func (v *vardbapi) cpv_counter(mycpv *pkgStr) int {
 	return s
 }
 
-func (v *vardbapi) cpv_inject(mycpv *pkgStr) {
+func (v *vardbapi) cpv_inject(mycpv *PkgStr) {
 	ensureDirs(v.getpath(mycpv.string, ""), -1, -1, -1, -1, nil, true)
 	counter := v.counter_tick()
 	write_atomic(v.getpath(mycpv.string, "COUNTER"), string(counter), 0, true)
@@ -948,7 +948,7 @@ func (v *vardbapi) move_ent(mylist []*Atom, repo_match func(string) bool) int {
 	return moves
 }
 
-func (v *vardbapi) cp_list(mycp string, use_cache int) []*pkgStr {
+func (v *vardbapi) cp_list(mycp string, use_cache int) []*PkgStr {
 	mysplit := catsplit(mycp)
 	if mysplit[0] == "*" {
 		mysplit[0] = mysplit[0][1:]
@@ -973,7 +973,7 @@ func (v *vardbapi) cp_list(mycp string, use_cache int) []*pkgStr {
 		dir_list = []os.FileInfo{}
 	}
 
-	returnme := []*pkgStr{}
+	returnme := []*PkgStr{}
 	for _, x := range dir_list {
 		if v._excluded_dirs.MatchString(x.Name()) {
 			continue
@@ -999,7 +999,7 @@ func (v *vardbapi) cp_list(mycp string, use_cache int) []*pkgStr {
 	if use_cache != 0 {
 		v.cpcache[mycp] = struct {
 			int64
-			p []*pkgStr
+			p []*PkgStr
 		}{mystat, returnme}
 
 	} else if _, ok := v.cpcache[mycp]; ok {
@@ -1009,12 +1009,12 @@ func (v *vardbapi) cp_list(mycp string, use_cache int) []*pkgStr {
 }
 
 // 1
-func (v *vardbapi) cpv_all(use_cache int) []*pkgStr {
+func (v *vardbapi) cpv_all(use_cache int) []*PkgStr {
 	return v._iter_cpv_all(use_cache != 0, false)
 }
 
 // true, true
-func (v *vardbapi) _iter_cpv_all(use_cache, sort1 bool) []*pkgStr {
+func (v *vardbapi) _iter_cpv_all(use_cache, sort1 bool) []*PkgStr {
 	basepath := filepath.Join(v._eroot, VdbPath) + string(filepath.Separator)
 	listdir := listdir
 	if !use_cache {
@@ -1041,7 +1041,7 @@ func (v *vardbapi) _iter_cpv_all(use_cache, sort1 bool) []*pkgStr {
 		sort.Strings(catdirs)
 	}
 
-	ps := []*pkgStr{}
+	ps := []*PkgStr{}
 	for _, x := range catdirs {
 		if v._excluded_dirs.MatchString(x) {
 			continue
@@ -1103,10 +1103,10 @@ func (v *vardbapi) checkblockers() {}
 
 func (v *vardbapi) _clear_cache() {
 	v.mtdircache = map[string]int{}
-	v.matchcache = map[string]map[[2]*Atom][]*pkgStr{}
+	v.matchcache = map[string]map[[2]*Atom][]*PkgStr{}
 	v.cpcache = map[string]struct {
 		int64
-		p []*pkgStr
+		p []*PkgStr
 	}{}
 	v._aux_cache_obj = nil
 }
@@ -1130,7 +1130,7 @@ func (v *vardbapi) _clear_pkg_cache(pkg_dblink *dblink) {
 }
 
 // 1
-func (v *vardbapi) match(origdep *Atom, use_cache int) []*pkgStr {
+func (v *vardbapi) match(origdep *Atom, use_cache int) []*PkgStr {
 	mydep := dep_expand(origdep, v.dbapi, use_cache, v.settings)
 	cache_key := [2]*Atom{mydep, mydep.unevaluatedAtom}
 	mykey := depGetKey(mydep.value)
@@ -1151,7 +1151,7 @@ func (v *vardbapi) match(origdep *Atom, use_cache int) []*pkgStr {
 
 	if _, ok := v.matchcache[mycat]; !ok || v.mtdircache[mycat] != curmtime {
 		v.mtdircache[mycat] = curmtime
-		v.matchcache[mycat] = map[[2]*Atom][]*pkgStr{}
+		v.matchcache[mycat] = map[[2]*Atom][]*PkgStr{}
 	}
 	if _, ok := v.matchcache[mycat][[2]*Atom{mydep, nil}]; !ok {
 		mymatch := v._iter_match(mydep,
@@ -1686,10 +1686,10 @@ func NewVarDbApi(settings *Config, vartree *varTree) *vardbapi { // nil, nil
 	v._pkgs_changed = false
 	v._flush_cache_enabled = true
 	v.mtdircache = map[string]int{}
-	v.matchcache = map[string]map[[2]*Atom][]*pkgStr{}
+	v.matchcache = map[string]map[[2]*Atom][]*PkgStr{}
 	v.cpcache = map[string]struct {
 		int64
-		p []*pkgStr
+		p []*PkgStr
 	}{}
 	v.blockers = nil
 	if settings == nil {
@@ -1774,8 +1774,8 @@ func (v *varTree) getprovide() []string {
 	return []string{}
 }
 
-func (v *varTree) get_all_provides() map[string][]*pkgStr {
-	return map[string][]*pkgStr{}
+func (v *varTree) get_all_provides() map[string][]*PkgStr {
+	return map[string][]*PkgStr{}
 }
 
 // 1
@@ -1793,10 +1793,10 @@ func (v *varTree) dep_bestmatch(mydep *Atom, use_cache int) string {
 }
 
 // 1
-func (v *varTree) dep_match(mydep *Atom, use_cache int) []*pkgStr {
+func (v *varTree) dep_match(mydep *Atom, use_cache int) []*PkgStr {
 	mymatch := v.dbapi.match(mydep, use_cache)
 	if mymatch == nil {
-		return []*pkgStr{}
+		return []*PkgStr{}
 	} else {
 		return mymatch
 	}
@@ -1807,7 +1807,7 @@ func (v *varTree) exists_specific(cpv string) bool {
 	return v.dbapi.cpv_exists(cpv, "")
 }
 
-func (v *varTree) getallcpv() []*pkgStr {
+func (v *varTree) getallcpv() []*PkgStr {
 	return v.dbapi.cpv_all(1)
 }
 
@@ -1820,7 +1820,7 @@ func (v *varTree) getebuildpath(fullpackage string) string {
 	return v.getpath(fullpackage, packagee+".ebuild")
 }
 
-func (v *varTree) getslot(mycatpkg *pkgStr) string {
+func (v *varTree) getslot(mycatpkg *PkgStr) string {
 	return v.dbapi._pkg_str(mycatpkg, "").slot
 }
 
@@ -1846,7 +1846,7 @@ type dblink struct {
 	_contents_re, _normalize_needed               *regexp.Regexp
 
 	_eroot, cat, pkg, treetype, dbroot, dbcatdir, dbtmpdir, dbpkgdir, dbdir, myroot string
-	mycpv                                                                           *pkgStr
+	mycpv                                                                           *PkgStr
 	mysplit                                                                         []string
 	vartree                                                                         *varTree
 	settings                                                                        *Config
@@ -2180,9 +2180,9 @@ type fakedbapi struct {
 	*dbapi
 	_exclusive_slots bool
 	cpvdict          map[string]map[string]string
-	cpdict           map[string][]*pkgStr
-	_match_cache     map[[2]string][]*pkgStr
-	_instance_key    func(*pkgStr, bool) *pkgStr
+	cpdict           map[string][]*PkgStr
+	_match_cache     map[[2]string][]*PkgStr
+	_instance_key    func(*PkgStr, bool) *PkgStr
 	_multi_instance  bool
 }
 
@@ -2200,12 +2200,12 @@ func (f *fakedbapi) _set_multi_instance(multi_instance bool) {
 }
 
 // false
-func (f *fakedbapi) _instance_key_cpv(cpv *pkgStr, support_string bool) *pkgStr {
+func (f *fakedbapi) _instance_key_cpv(cpv *PkgStr, support_string bool) *PkgStr {
 	return cpv
 }
 
 // false
-func (f *fakedbapi) _instance_key_multi_instance(cpv *pkgStr, support_string bool) *pkgStr {
+func (f *fakedbapi) _instance_key_multi_instance(cpv *PkgStr, support_string bool) *PkgStr {
 	return NewPkgStr(cpv.string, nil, nil, "", "", "", cpv.buildTime, cpv.buildId, cpv.fileSize, cpv.mtime, nil)
 	//except AttributeError:
 	//if ! support_string{
@@ -2231,7 +2231,7 @@ func (f *fakedbapi) _instance_key_multi_instance(cpv *pkgStr, support_string boo
 func (f *fakedbapi) clear() {
 	f._clear_cache()
 	f.cpvdict = map[string]map[string]string{}
-	f.cpdict = map[string][]*pkgStr{}
+	f.cpdict = map[string][]*PkgStr{}
 }
 
 func (f *fakedbapi) _clear_cache() {
@@ -2239,12 +2239,12 @@ func (f *fakedbapi) _clear_cache() {
 		f._categories = nil
 	}
 	if len(f._match_cache) > 0 {
-		f._match_cache = map[[2]string][]*pkgStr{}
+		f._match_cache = map[[2]string][]*PkgStr{}
 	}
 }
 
 // 1
-func (f *fakedbapi) match(origdep *Atom, use_cache int) []*pkgStr {
+func (f *fakedbapi) match(origdep *Atom, use_cache int) []*PkgStr {
 	atom := dep_expand(origdep, f.dbapi, 1, f.settings)
 	cacheKey := [2]string{atom.value, atom.unevaluatedAtom.value}
 	result := f._match_cache[cacheKey]
@@ -2256,14 +2256,14 @@ func (f *fakedbapi) match(origdep *Atom, use_cache int) []*pkgStr {
 	return result[:]
 }
 
-func (f *fakedbapi) cpv_exists(mycpv *pkgStr) bool {
+func (f *fakedbapi) cpv_exists(mycpv *PkgStr) bool {
 	_, ok := f.cpvdict[f._instance_key(mycpv,
 		true).string]
 	return ok
 }
 
 // 1
-func (f *fakedbapi) cp_list(mycp string, use_cache int) []*pkgStr {
+func (f *fakedbapi) cp_list(mycp string, use_cache int) []*PkgStr {
 	cacheKey := [2]string{mycp, mycp}
 	cacheList := f._match_cache[cacheKey]
 	if cacheList != nil {
@@ -2271,7 +2271,7 @@ func (f *fakedbapi) cp_list(mycp string, use_cache int) []*pkgStr {
 	}
 	cpvList := f.cpdict[mycp]
 	if cpvList == nil {
-		cpvList = []*pkgStr{}
+		cpvList = []*PkgStr{}
 	}
 	f._cpv_sort_ascending(cpvList)
 	f._match_cache[cacheKey] = cpvList
@@ -2306,7 +2306,7 @@ func (f *fakedbapi) cpv_all() []string {
 	}
 }
 
-func (f *fakedbapi) cpv_inject(mycpv *pkgStr, metadata map[string]string) {
+func (f *fakedbapi) cpv_inject(mycpv *PkgStr, metadata map[string]string) {
 	f._clear_cache()
 
 	myCp := mycpv.cp
@@ -2343,10 +2343,10 @@ func (f *fakedbapi) cpv_inject(mycpv *pkgStr, metadata map[string]string) {
 
 	cpList := f.cpdict[myCp]
 	if cpList == nil {
-		cpList = []*pkgStr{}
+		cpList = []*PkgStr{}
 	}
 	tmp := cpList
-	cpList = []*pkgStr{}
+	cpList = []*PkgStr{}
 	for _, x := range tmp {
 		if f._instance_key(x, false) != instanceKey {
 			cpList = append(cpList, x)
@@ -2356,7 +2356,7 @@ func (f *fakedbapi) cpv_inject(mycpv *pkgStr, metadata map[string]string) {
 	f.cpdict[myCp] = cpList
 }
 
-func (f *fakedbapi) cpv_remove(mycpv *pkgStr) {
+func (f *fakedbapi) cpv_remove(mycpv *PkgStr) {
 	f._clear_cache()
 	myCp := cpvGetKey(mycpv.string, "")
 	instanceKey := f._instance_key(mycpv, false)
@@ -2364,7 +2364,7 @@ func (f *fakedbapi) cpv_remove(mycpv *pkgStr) {
 	cpList := f.cpdict[myCp]
 	if cpList != nil {
 		tmp := cpList
-		cpList = []*pkgStr{}
+		cpList = []*PkgStr{}
 		for _, x := range tmp {
 			if f._instance_key(x, false) != instanceKey {
 				cpList = append(cpList, x)
@@ -2379,7 +2379,7 @@ func (f *fakedbapi) cpv_remove(mycpv *pkgStr) {
 }
 
 // nil
-func (f *fakedbapi) aux_get(mycpv *pkgStr, wants []string) []string {
+func (f *fakedbapi) aux_get(mycpv *PkgStr, wants []string) []string {
 	metadata := f.cpvdict[f._instance_key(mycpv, true).string]
 	if metadata == nil {
 		//raise KeyError(mycpv)
@@ -2391,7 +2391,7 @@ func (f *fakedbapi) aux_get(mycpv *pkgStr, wants []string) []string {
 	return ret
 }
 
-func (f *fakedbapi) aux_update(cpv *pkgStr, values map[string]string) {
+func (f *fakedbapi) aux_update(cpv *PkgStr, values map[string]string) {
 	f._clear_cache()
 	metadata := f.cpvdict[f._instance_key(cpv, true).string]
 	if metadata == nil {
@@ -2406,12 +2406,12 @@ func (f *fakedbapi) aux_update(cpv *pkgStr, values map[string]string) {
 func NewFakeDbApi(settings *Config, exclusive_slots, multi_instance bool) *fakedbapi {
 	f := &fakedbapi{dbapi: NewDbapi(), _exclusive_slots: exclusive_slots,
 		cpvdict: map[string]map[string]string{},
-		cpdict:  map[string][]*pkgStr{}}
+		cpdict:  map[string][]*PkgStr{}}
 	if settings == nil {
 		settings = Settings()
 	}
 	f.settings = settings
-	f._match_cache = map[[2]string][]*pkgStr{}
+	f._match_cache = map[[2]string][]*PkgStr{}
 	f._set_multi_instance(multi_instance)
 	return f
 }
@@ -2434,35 +2434,35 @@ func (b *bindbapi) writable() bool {
 }
 
 // 1
-func (b *bindbapi) match(origdep *Atom, use_cache int) []*pkgStr {
+func (b *bindbapi) match(origdep *Atom, use_cache int) []*PkgStr {
 	if b.bintree != nil && !b.bintree.populated {
 		b.bintree.Populate(false, true, []string{})
 	}
 	return b.fakedbapi.match(origdep, use_cache)
 }
 
-func (b *bindbapi) cpv_exists(cpv *pkgStr) bool {
+func (b *bindbapi) cpv_exists(cpv *PkgStr) bool {
 	if b.bintree != nil && !b.bintree.populated {
 		b.bintree.Populate(false, true, []string{})
 	}
 	return b.fakedbapi.cpv_exists(cpv)
 }
 
-func (b *bindbapi) cpv_inject(cpv *pkgStr) {
+func (b *bindbapi) cpv_inject(cpv *PkgStr) {
 	if b.bintree != nil && !b.bintree.populated {
 		b.bintree.Populate(false, true, []string{})
 	}
 	b.fakedbapi.cpv_inject(cpv, cpv.metadata)
 }
 
-func (b *bindbapi) cpv_remove(cpv *pkgStr) {
+func (b *bindbapi) cpv_remove(cpv *PkgStr) {
 	if b.bintree != nil && !b.bintree.populated {
 		b.bintree.Populate(false, true, []string{})
 	}
 	b.fakedbapi.cpv_remove(cpv)
 }
 
-func (b *bindbapi) aux_get(mycpv *pkgStr, wants map[string]string) []string {
+func (b *bindbapi) aux_get(mycpv *PkgStr, wants map[string]string) []string {
 	if b.bintree != nil && !b.bintree.populated {
 		b.bintree.Populate(false, true, []string{})
 	}
@@ -2532,7 +2532,7 @@ func (b *bindbapi) aux_get(mycpv *pkgStr, wants map[string]string) []string {
 func (b *bindbapi) aux_update() {}
 
 // 1
-func (b *bindbapi) cp_list(mycp string, use_cache int) []*pkgStr {
+func (b *bindbapi) cp_list(mycp string, use_cache int) []*PkgStr {
 	if !b.bintree.populated {
 		b.bintree.Populate(false, true, []string{})
 	}
@@ -2573,7 +2573,7 @@ type BinaryTree struct {
 	_pkgindex_default_pkg_data, _pkgindex_default_header_data, _pkg_paths, _pkgindex_header                      map[string]string
 	_pkgindex_translated_keys                                                                                    [][2]string
 	invalids                                                                                                     []string
-	_allocate_filename                                                                                           func(cpv *pkgStr) string
+	_allocate_filename                                                                                           func(cpv *PkgStr) string
 }
 
 func (b *BinaryTree) root() string {
@@ -3093,7 +3093,7 @@ func (b *BinaryTree) _pkgindex_write(pkgindex *PackageIndex) {
 	}
 }
 
-func (b *BinaryTree) _pkgindex_entry(cpv *pkgStr) map[string]string {
+func (b *BinaryTree) _pkgindex_entry(cpv *PkgStr) map[string]string {
 
 	pkg_path := b.getname(cpv.string, false)
 
@@ -3239,7 +3239,7 @@ func (b *BinaryTree) _eval_use_flags(metadata map[string]string) {
 }
 
 // deprecated ?
-func (b *BinaryTree) exists_specific(cpv string) []*pkgStr {
+func (b *BinaryTree) exists_specific(cpv string) []*PkgStr {
 	if !b.populated {
 		b.Populate(false, true, []string{})
 	}
@@ -3316,7 +3316,7 @@ func (b *BinaryTree) getname(cpvS string, allocate_new bool) string {
 
 func (b *BinaryTree) _is_specific_instance() {}
 
-func (b *BinaryTree) _max_build_id(cpv *pkgStr) int {
+func (b *BinaryTree) _max_build_id(cpv *PkgStr) int {
 	max_build_id := 0
 	for _, x := range b.dbapi.cp_list(cpv.cp, 1) {
 		if x.string == cpv.string && x.buildId != 0 && x.buildId > max_build_id {
@@ -3326,7 +3326,7 @@ func (b *BinaryTree) _max_build_id(cpv *pkgStr) int {
 	return max_build_id
 }
 
-func (b *BinaryTree) _allocate_filename_multi(cpv *pkgStr) string {
+func (b *BinaryTree) _allocate_filename_multi(cpv *PkgStr) string {
 	max_build_id := b._max_build_id(cpv)
 
 	pf := catsplit(cpv.string)[1]
@@ -3358,7 +3358,7 @@ func (b *BinaryTree) _parse_build_id(filename string) int {
 	return build_id
 }
 
-func (b *BinaryTree) isremote(pkgname *pkgStr) bool {
+func (b *BinaryTree) isremote(pkgname *PkgStr) bool {
 	if b._remotepkgs == nil {
 		return false
 	}
@@ -3403,7 +3403,7 @@ func NewBinaryTree(pkgDir string, settings *Config) *BinaryTree {
 	if b._multi_instance {
 		b._allocate_filename = b._allocate_filename_multi
 	} else {
-		b._allocate_filename = func(cpv *pkgStr) string {
+		b._allocate_filename = func(cpv *PkgStr) string {
 			return filepath.Join(b.pkgdir, cpv.string+".tbz2")
 		}
 	}

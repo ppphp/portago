@@ -175,7 +175,7 @@ func parenEncloses(myList []string, unevaluatedAtom, opconvert bool) string {
 	return strings.Join(myStrParts, " ")
 }
 
-func matchSlot(atom *Atom, pkg *pkgStr) bool {
+func matchSlot(atom *Atom, pkg *PkgStr) bool {
 	if pkg.slot == atom.slot {
 		if atom.subSlot == "" {
 			return true
@@ -936,7 +936,7 @@ type Atom struct {
 	buildId                                                        int
 	Blocker                                                        *blocker
 	slotOperator, subSlot, repo, slot, eapi, cp, version, Operator string
-	cpv                                                            *pkgStr
+	cpv                                                            *PkgStr
 	Use                                                            *useDep
 	withoutUse, unevaluatedAtom                                    *Atom
 }
@@ -1098,8 +1098,8 @@ func (a *Atom) deepcopy() *Atom { // memo=None, memo[id(self)] = self
 	return a
 }
 
-func (a *Atom) match(pkg *pkgStr) bool {
-	return len(matchFromList(a, []*pkgStr{pkg})) > 0
+func (a *Atom) match(pkg *PkgStr) bool {
+	return len(matchFromList(a, []*PkgStr{pkg})) > 0
 }
 
 //s, nil, false, nil, nil, "", nil, nil
@@ -1562,7 +1562,7 @@ func getOperator(mydep string) string {
 	return a.Operator
 }
 
-func depGetcpv(mydep string) *pkgStr {
+func depGetcpv(mydep string) *PkgStr {
 	a, _ := NewAtom(mydep, nil, false, nil, nil, "", nil, nil)
 	return a.cpv
 }
@@ -1666,10 +1666,10 @@ func depGetKey(mydep string) string {
 	return a.cp
 }
 
-func matchToList(mypkg *pkgStr, mylist []*Atom) []*Atom {
+func matchToList(mypkg *PkgStr, mylist []*Atom) []*Atom {
 	matches := map[*Atom]bool{}
 	result := []*Atom{}
-	pkgs := []*pkgStr{mypkg}
+	pkgs := []*PkgStr{mypkg}
 	for _, x := range  mylist {
 		if !matches[x] && len(matchFromList(x, pkgs)) > 0 {
 			matches[x] = true
@@ -1679,11 +1679,11 @@ func matchToList(mypkg *pkgStr, mylist []*Atom) []*Atom {
 	return result
 }
 
-func bestMatchToList(mypkg *pkgStr, mylist []*Atom) *Atom {
+func bestMatchToList(mypkg *PkgStr, mylist []*Atom) *Atom {
 	operatorValues := map[string]int{"=": 6, "~": 5, "=*": 4, ">": 2, "<": 2, ">=": 2, "<=": 2, "": 1}
 	maxvalue := -99
 	var bestm *Atom = nil
-	var mypkgCpv *pkgStr = nil
+	var mypkgCpv *PkgStr = nil
 	for _, x := range  matchToList(mypkg, mylist) {
 		if x.extendedSyntax {
 			if x.Operator == "=*" {
@@ -1725,7 +1725,7 @@ func bestMatchToList(mypkg *pkgStr, mylist []*Atom) *Atom {
 			} else if x.cpv == mypkgCpv {
 				bestm = x
 			} else {
-				cpvList := []*pkgStr{bestm.cpv, mypkgCpv, x.cpv}
+				cpvList := []*PkgStr{bestm.cpv, mypkgCpv, x.cpv}
 				sort.Slice(cpvList, func(i, j int) bool {
 					b, _ := verCmp(cpvList[i].version, cpvList[j].version)
 					return b < 0
@@ -1743,9 +1743,9 @@ func bestMatchToList(mypkg *pkgStr, mylist []*Atom) *Atom {
 
 }
 
-func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
+func matchFromList(mydep *Atom, candidateList []*PkgStr) []*PkgStr {
 	if len(candidateList) == 0 {
-		return []*pkgStr{}
+		return []*PkgStr{}
 	}
 	mydepA := mydep
 	if "!" == mydep.value[:1] {
@@ -1785,11 +1785,11 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 		if operator == "" {
 			WriteMsg(fmt.Sprintf("!!! Invalid Atom: %s\n", mydep.value), -1, nil)
 		}
-		return []*pkgStr{}
+		return []*PkgStr{}
 	} else {
 		operator = ""
 	}
-	mylist := []*pkgStr{}
+	mylist := []*PkgStr{}
 	if mydepA.extendedSyntax {
 		for _, x := range  candidateList {
 			cp := x.cp
@@ -1808,7 +1808,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 		}
 		if len(mylist) > 0 && mydepA.Operator == "=*" {
 			candidateList = mylist
-			mylist = []*pkgStr{}
+			mylist = []*PkgStr{}
 			ver = mydepA.version[1 : len(mydepA.version)-1]
 			for _, x := range  candidateList {
 				xVer := x.version
@@ -1844,7 +1844,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 		for _, x := range  candidateList {
 			xcpv := x.cpv
 			if xcpv == nil {
-				xcpv = &pkgStr{string: RemoveSlot(x.string)}
+				xcpv = &PkgStr{string: RemoveSlot(x.string)}
 			}
 			if !cpvequal(xcpv.string, mycpv.string) {
 				continue
@@ -1946,7 +1946,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 
 	if mydepA.slot != "" {
 		candidateList = mylist
-		mylist = []*pkgStr{}
+		mylist = []*PkgStr{}
 		for _, x := range  candidateList {
 			xPkg := x
 			if xPkg.cpv == nil {
@@ -1974,7 +1974,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 
 	if mydepA.unevaluatedAtom.Use != nil {
 		candidateList = mylist
-		mylist = []*pkgStr{}
+		mylist = []*PkgStr{}
 		for _, x := range  candidateList {
 			//Use = getattr(x, "Use", None)
 			//if Use != nil{
@@ -2012,7 +2012,7 @@ func matchFromList(mydep *Atom, candidateList []*pkgStr) []*pkgStr {
 
 	if mydepA.repo != "" {
 		candidateList = mylist
-		mylist = []*pkgStr{}
+		mylist = []*PkgStr{}
 		for _, x := range  candidateList {
 			repo := x.repo
 			if repo == "" {

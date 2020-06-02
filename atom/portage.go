@@ -410,7 +410,7 @@ func DisableLegacyGlobals() {
 
 var ignored_dbentries = map[string]bool{"CONTENTS": true, "environment.bz2": true}
 
-func update_dbentry(updateCmd []*Atom, mycontent string, eapi string, parent *pkgStr) string { // "", nil
+func update_dbentry(updateCmd []*Atom, mycontent string, eapi string, parent *PkgStr) string { // "", nil
 	if parent != nil {
 		eapi = parent.eapi
 	}
@@ -432,7 +432,7 @@ func update_dbentry(updateCmd []*Atom, mycontent string, eapi string, parent *pk
 					continue
 				}
 				newAtom, _ := NewAtom(strings.Replace(token, oldValue.value, newValue.value, 1), nil, false, nil, nil, eapi, nil, nil)
-				if newAtom.Blocker != nil && parent != nil && parent.cp == newAtom.cp && len(matchFromList(newAtom, []*pkgStr{parent})) > 0 {
+				if newAtom.Blocker != nil && parent != nil && parent.cp == newAtom.cp && len(matchFromList(newAtom, []*PkgStr{parent})) > 0 {
 					continue
 				}
 				splitContent[i] = newAtom.value
@@ -489,7 +489,7 @@ func update_dbentry(updateCmd []*Atom, mycontent string, eapi string, parent *pk
 }
 
 // "", nil
-func update_dbentries(updateIter [][]*Atom, mydata map[string]string, eapi string, parent *pkgStr) map[string]string {
+func update_dbentries(updateIter [][]*Atom, mydata map[string]string, eapi string, parent *PkgStr) map[string]string {
 	updatedItems := map[string]string{}
 	for k, mycontent := range mydata {
 		if !ignored_dbentries[k] {

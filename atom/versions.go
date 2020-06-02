@@ -372,7 +372,7 @@ func CatPkgSplit(mydata string, silent int, eapi string) [4]string {
 	return [4]string{cat, p[0], p[1], p[2]}
 }
 
-type pkgStr struct {
+type PkgStr struct {
 	string
 	metadata                                                               map[string]string
 	settings                                                               *Config
@@ -382,10 +382,10 @@ type pkgStr struct {
 	buildId, buildTime, mtime                                                       int
 	_stable                                                                *bool
 	cpvSplit                                                               [4]string
-	cpv                                                                    *pkgStr
+	cpv                                                                    *PkgStr
 }
 
-func (p *pkgStr) stable() bool {
+func (p *PkgStr) stable() bool {
 	if p._stable != nil {
 		return *p._stable
 	}
@@ -399,8 +399,8 @@ func (p *pkgStr) stable() bool {
 }
 
 // nil, nil, "", "", "", 0, 0, "", 0, nil
-func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, repo, slot string, build_time, build_id int, file_size string, mtime int, db *dbapi) *pkgStr {
-	p := &pkgStr{string: cpv}
+func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, repo, slot string, build_time, build_id int, file_size string, mtime int, db *dbapi) *PkgStr {
+	p := &PkgStr{string: cpv}
 	if len(metadata) != 0 {
 		p.metadata = metadata
 		if a, ok := metadata["SLOT"]; ok {
@@ -524,7 +524,7 @@ func cpvGetVersion(mycpv, eapi string) string {
 	return mycpv[len(cp+"-"):]
 }
 
-var splitCache = map[string]*pkgStr{}
+var splitCache = map[string]*PkgStr{}
 
 func cpvSortKey(eapi string) func(string, string, string) (int, error) {
 	cmpCpv := func(cpv1, cpv2, eapi string) (int, error) {
