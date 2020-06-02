@@ -236,7 +236,7 @@ func (c *Config) soname_provided() map[*sonameAtom]bool {
 			e = append(e, grabDict(path.Join(x, "soname.provided"), false, false, true, true, false))
 		}
 		c.sonameProvided = map[*sonameAtom]bool{}
-		d := stackDictlist(e, 1, []string{}, 0)
+		d := stackDictList(e, 1, []string{}, 0)
 		for cat, sonames := range d {
 			for _, soname := range sonames {
 				c.sonameProvided[NewSonameAtom(cat, soname)] = true
@@ -4155,7 +4155,7 @@ func (v *virtualManager) read_dirVirtuals(profiles []string) {
 		}
 	}
 
-	v._dirVirtuals = stackDictlist(virtualsList, 1, nil, 0)
+	v._dirVirtuals = stackDictList(virtualsList, 1, nil, 0)
 
 	for virt := range v._dirVirtuals {
 		ReverseSlice(v._dirVirtuals[virt])
@@ -4181,7 +4181,7 @@ func (v *virtualManager) _compile_virtuals() {
 		}
 	}
 
-	virtuals := stackDictlist([]map[string][]string{ptVirtuals, v._treeVirtuals, v._dirVirtuals, v._depgraphVirtuals}, 0, nil, 0)
+	virtuals := stackDictList([]map[string][]string{ptVirtuals, v._treeVirtuals, v._dirVirtuals, v._depgraphVirtuals}, 0, nil, 0)
 	v._virtuals = virtuals
 	v._virts_p = nil
 }

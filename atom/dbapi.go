@@ -628,15 +628,86 @@ func NewDbapi() *dbapi {
 }
 
 type ContentsCaseSensitivityManager struct {
-	getContents        string
-	unmapKey           string
-	keys               string
-	contentInsensitive string
-	reverseKeyMap      string
+	getcontents           func() map[string][]string
+	unmap_key              func(string) string
+	contains              func(string) bool
+	keys                  func() []string
+	_contents_insensitive map[string][]string
+	_reverse_key_map      map[string]string
 }
 
-func NewContentsCaseSensitivityManager(db string) *ContentsCaseSensitivityManager {
-	return nil
+func(c *ContentsCaseSensitivityManager) clear_cache() {
+	c._contents_insensitive = nil
+	c._reverse_key_map = nil
+}
+
+
+
+func(c *ContentsCaseSensitivityManager) _case_insensitive_init() {
+	c._contents_insensitive = map[string][]string{}
+	for k, v:= range c.getcontents(){
+		c._contents_insensitive[strings.ToLower(k)] = v
+	}
+	c._reverse_key_map = map[string]string{}
+	for k:= range c.getcontents(){
+		c._reverse_key_map[strings.ToLower(k)] = k
+	}
+}
+
+func(c *ContentsCaseSensitivityManager) _keys_case_insensitive() []string{
+	if c._contents_insensitive == nil {
+		c._case_insensitive_init()
+	}
+	ret := []string{}
+	for k := range c._contents_insensitive{
+		ret = append(ret, k)
+	}
+	return ret
+}
+
+func(c *ContentsCaseSensitivityManager) _contains_case_insensitive(key string) bool{
+	if c._contents_insensitive ==nil {
+		c._case_insensitive_init()
+	}
+	_, ok := c._contents_insensitive[strings.ToLower(key)]
+	return ok
+}
+
+func(c *ContentsCaseSensitivityManager) _unmap_key_case_insensitive(key string) string {
+	if c._reverse_key_map  ==nil {
+		c._case_insensitive_init()
+	}
+	return c._reverse_key_map[key]
+}
+
+func NewContentsCaseSensitivityManager(db *dblink) *ContentsCaseSensitivityManager {
+	c := &ContentsCaseSensitivityManager{}
+
+	c.getcontents = db.getcontents
+
+	c.keys = func() []string {
+		ret := []string{}
+		for k := range c.getcontents() {
+			ret = append(ret, k)
+		}
+		return ret
+	}
+	c.contains = func(key string) bool {
+		_, ok := c.getcontents()[key]
+		return ok
+	}
+	c.unmap_key = func(key string) string {
+		return key
+	}
+	if db.settings.Features.Features["case-insensitive-fs"] {
+		c.unmap_key = c._unmap_key_case_insensitive
+		c.contains = c._contains_case_insensitive
+		c.keys = c._keys_case_insensitive
+	}
+
+	c._contents_insensitive = nil
+	c._reverse_key_map = nil
+	return c
 }
 
 type vdbMetadataDelta struct {
@@ -1596,51 +1667,51 @@ func (v *vardbapi) _dblink(cpv string) *dblink {
 // true
 func (v *vardbapi) removeFromContents(pkg *dblink, paths []string, relativePaths bool) {
 	root := v.settings.ValueDict["ROOT"]
-	root_len := len(root) - 1
-	new_contents := map[string][]string{}
+	rootLen := len(root) - 1
+	newContents := map[string][]string{}
 	for k, v := range pkg.getcontents(){
 		var v2 []string
 		copy(v2, v)
-		new_contents[k]=v2
+		newContents[k]=v2
 	}
 	removed := 0
 
 	for _, filename := range paths {
 		filename = NormalizePath(filename)
-		relative_filename := ""
+		relativeFilename := ""
 		if relativePaths {
-			relative_filename = filename
+			relativeFilename = filename
 		} else {
-			relative_filename = filename[root_len:]
+			relativeFilename = filename[rootLen:]
 		}
-		contents_key := pkg._match_contents(relative_filename)
-		if len(contents_key) > 0 {
-			delete(new_contents, contents_key)
+		contentsKey := pkg._match_contents(relativeFilename)
+		if len(contentsKey) > 0 {
+			delete(newContents, contentsKey)
 			removed += 1
 		}
 	}
 
 	if removed != 0 {
-		needed_filename := filepath.Join(pkg.dbdir, NewLinkageMapELF(nil)._needed_aux_key)
-		var new_needed []string = nil
-		needed_lines := []string{}
-		f, err := os.Open(needed_filename)
+		neededFilename := filepath.Join(pkg.dbdir, NewLinkageMapELF(nil)._needed_aux_key)
+		var newNeeded []string = nil
+		neededLines := []string{}
+		f, err := os.Open(neededFilename)
 		if err == nil {
 			ls, _ := ioutil.ReadAll(f)
-			needed_lines = strings.Split(string(ls), "\n")
+			neededLines = strings.Split(string(ls), "\n")
 		}
 		if err != nil {
 			//except IOError as e:
 			//if e.errno not in(errno.ENOENT, errno.ESTALE):
 			//raise
 		} else {
-			new_needed = []string{}
-			for _, l := range needed_lines {
+			newNeeded = []string{}
+			for _, l := range neededLines {
 				l = strings.TrimRight(l, "\n")
 				if l == "" {
 					continue
 				}
-				entry, err := NeededEntry.parse(needed_filename, l)
+				entry, err := NeededEntry.parse(neededFilename, l)
 				if err != nil {
 					//except InvalidData as e:
 					WriteMsgLevel(fmt.Sprintf("\n%s\n\n", err),
@@ -1649,13 +1720,13 @@ func (v *vardbapi) removeFromContents(pkg *dblink, paths []string, relativePaths
 				}
 
 				filename := filepath.Join(root, strings.TrimLeft(entry.filename, string(os.PathSeparator)))
-				if _, ok := new_contents[filename]; ok {
-					new_needed = append(new_needed, entry)
+				if _, ok := newContents[filename]; ok {
+					newNeeded = append(newNeeded, entry)
 				}
 			}
 		}
 
-		v.writeContentsToContentsFile(pkg, new_contents, new_needed)
+		v.writeContentsToContentsFile(pkg, newContents, newNeeded)
 	}
 }
 
@@ -1859,11 +1930,13 @@ type dblink struct {
 	settings                                                                        *Config
 	_verbose, _linkmap_broken, _postinst_failure, _preserve_libs                    bool
 	_contents                                                                       *ContentsCaseSensitivityManager
-	contentscache map[string][]string
+	contentscache                                                                   map[string][]string
 
-	_hash_key     []string
-	_protect_obj  *ConfigProtect
-	_slot_locks   []*Atom
+	_hash_key           []string
+	_protect_obj        *ConfigProtect
+	_slot_locks         []*Atom
+	_contents_basenames map[string]bool
+	_contents_inodes    map[[2]uint64][]string
 }
 
 func (d *dblink) __hash__() {}
@@ -1885,7 +1958,7 @@ func (d *dblink) _get_protect_obj() *ConfigProtect {
 }
 
 func (d *dblink) isprotected(obj string) bool {
-	return d._get_protect_obj().Isprotected(obj)
+	return d._get_protect_obj().IsProtected(obj)
 }
 
 func (d *dblink) updateprotect() {
@@ -2142,7 +2215,83 @@ func (d *dblink) _unmerge_dirs() {}
 
 func (d *dblink) isowner() {}
 
-func (d *dblink) _match_contents() {}
+func (d *dblink) _match_contents(filename string) string {
+	destroot := d.settings.ValueDict["ROOT"]
+
+	destfile := NormalizePath(
+		filepath.Join(destroot,
+			strings.TrimLeft(filename, string(os.PathSeparator))))
+
+	if d.settings.Features.Features["case-insensitive-fs"] {
+		destfile = strings.ToLower(destfile)
+	}
+
+	if d._contents.contains(destfile) {
+		return d._contents.unmap_key(destfile)
+	}
+
+	if len(d.getcontents())>0 {
+		basename := filepath.Base(destfile)
+		if d._contents_basenames == nil {
+			for _, x:= range d._contents.keys(){
+				d._contents_basenames[filepath.Base(x)] =true
+			}
+		}
+		if d._contents_basenames[basename] {
+			return ""
+		}
+
+		parent_path := filepath.Dir(destfile)
+		parent_stat, err := os.Stat(parent_path)
+		if err != nil {
+			//except EnvironmentError as e:
+			if err != syscall.ENOENT{
+				//raise
+			}
+			//del e
+			return ""
+		}
+		if d._contents_inodes == nil {
+			d._contents_inodes = map[[2]uint64][]string{}
+			parent_paths := map[string]bool{}
+			for _, x := range d._contents.keys(){
+				p_path := filepath.Dir(x)
+				if parent_paths[p_path] {
+					continue
+				}
+				parent_paths[p_path] = true
+				s, err := os.Stat(p_path)
+				if err != nil {
+					//except OSError:
+					//pass
+				} else{
+					inode_key := [2]uint64{s.Sys().(*syscall.Stat_t).Dev, s.Sys().(*syscall.Stat_t).Ino}
+					p_path_list := d._contents_inodes[inode_key]
+					if p_path_list == nil{
+						p_path_list = []string{}
+						d._contents_inodes[inode_key] = p_path_list
+					}
+					if !Ins(p_path_list,p_path) {
+						p_path_list=append(p_path_list,p_path)
+					}
+				}
+			}
+		}
+
+
+		p_path_list := d._contents_inodes[[2]uint64{parent_stat.Sys().(*syscall.Stat_t).Dev, parent_stat.Sys().(*syscall.Stat_t).Ino}]
+		if len(p_path_list) > 0 {
+			for _, p_path := range p_path_list {
+				x := filepath.Join(p_path, basename)
+				if d._contents.contains(x) {
+					return d._contents.unmap_key(x)
+				}
+			}
+		}
+	}
+
+	return ""
+}
 
 func (d *dblink) _linkmap_rebuild() {}
 

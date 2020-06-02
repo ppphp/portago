@@ -30,28 +30,28 @@ import (
 var noiseLimit = 0
 
 //0, nil
-func WriteMsg(mystr string, noiseLevel int, fd *os.File) {
+func WriteMsg(myStr string, noiseLevel int, fd *os.File) {
 	if fd == nil {
 		fd = os.Stderr
 	}
 	if noiseLevel <= noiseLimit {
-		fd.Write([]byte(mystr))
+		fd.Write([]byte(myStr))
 	}
 }
 
 //0
-func WriteMsgStdout(mystr string, noiseLevel int) {
-	WriteMsg(mystr, noiseLevel, os.Stdout)
+func WriteMsgStdout(myStr string, noiseLevel int) {
+	WriteMsg(myStr, noiseLevel, os.Stdout)
 }
 
-func WriteMsgLevel(msg string, level, noiselevel int) { //00
+func WriteMsgLevel(msg string, level, noiseLevel int) { //00
 	var fd *os.File
 	if level >= 30 {
 		fd = os.Stderr
 	} else {
 		fd = os.Stdout
 	}
-	WriteMsg(msg, noiselevel, fd)
+	WriteMsg(msg, noiseLevel, fd)
 }
 
 func NormalizePath(myPath string) string {
@@ -83,12 +83,12 @@ func grabFile(myFileName string, compatLevel int, recursive, rememberSourceFile 
 			continue
 		}
 		if m[0] == '#' {
-			mylineTest := strings.SplitN(m, "<==", 1)
-			if len(mylineTest) == 2 {
-				myLinePotential := mylineTest[1]
-				mylineTest = strings.Split(mylineTest[0], "##COMPAT==>")
-				if len(mylineTest) == 2 {
-					l, _ := strconv.Atoi(mylineTest[1])
+			myLineTest := strings.SplitN(m, "<==", 1)
+			if len(myLineTest) == 2 {
+				myLinePotential := myLineTest[1]
+				myLineTest = strings.Split(myLineTest[0], "##COMPAT==>")
+				if len(myLineTest) == 2 {
+					l, _ := strconv.Atoi(myLineTest[1])
 					if compatLevel >= l {
 						if rememberSourceFile {
 							newLines = append(newLines, [2]string{myLinePotential, sourceFile})
@@ -121,20 +121,20 @@ func mapDictListVals(f func(string) string, mydict map[string][]string) {
 	}
 }
 
-func stackDictlist(originalDicts []map[string][]string, incremental int, incrementals []string, ignoreNone int) map[string][]string { // false, []string{}, false
+func stackDictList(originalDicts []map[string][]string, incremental int, incrementalS []string, ignoreNone int) map[string][]string { // false, []string{}, false
 	finalDict := map[string][]string{}
-	for _, mydict := range originalDicts {
-		if mydict == nil {
+	for _, myDict := range originalDicts {
+		if myDict == nil {
 			continue
 		}
-		for y := range mydict {
+		for y := range myDict {
 			if _, ok := finalDict[y]; !ok {
 				finalDict[y] = []string{}
 			}
-			for _, thing := range mydict[y] {
+			for _, thing := range myDict[y] {
 				if thing != "" {
 					c := false
-					for _, v := range incrementals {
+					for _, v := range incrementalS {
 						if v == y {
 							c = true
 							break
@@ -177,11 +177,11 @@ func stackDictlist(originalDicts []map[string][]string, incremental int, increme
 
 func stackDicts(dicts []map[string]string, incremental int, incrementals map[string]bool, ignoreNone int) map[string]string { // 0[]0
 	finalDict := map[string]string{}
-	for _, mydict := range dicts {
-		if mydict == nil {
+	for _, myDict := range dicts {
+		if myDict == nil {
 			continue
 		}
-		for k, v := range mydict {
+		for k, v := range myDict {
 			c := false
 			for r := range incrementals {
 				if r == k {
@@ -434,15 +434,15 @@ func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, a
 	return atoms
 }
 
-func grabFilePackage(myfilename string, compatLevel int, recursive, allowWildcard, allowRepo, allowBuildId, rememberSourceFile, verifyEapi bool, eapi, eapiDefault string) [][2]string { // 0,false,false,false,false,false,false,nil,0
-	pkgs := grabFile(myfilename, compatLevel, recursive, true)
+func grabFilePackage(myFileName string, compatLevel int, recursive, allowWildcard, allowRepo, allowBuildId, rememberSourceFile, verifyEapi bool, eapi, eapiDefault string) [][2]string { // 0,false,false,false,false,false,false,nil,0
+	pkgs := grabFile(myFileName, compatLevel, recursive, true)
 	if len(pkgs) == 0 {
 		return pkgs
 	}
 	if verifyEapi && eapi == "" {
-		eapi = readCorrespondingEapiFile(myfilename, eapiDefault)
+		eapi = readCorrespondingEapiFile(myFileName, eapiDefault)
 	}
-	myBaseName := path.Base(myfilename)
+	myBaseName := path.Base(myFileName)
 	isPackagesFile := myBaseName == "packages"
 	atoms := [][2]string{}
 	for _, v := range pkgs {
@@ -521,10 +521,10 @@ func recursiveFileList(p string) []string {
 }
 
 func grabLines(fname string, recursive, rememberSourceFile bool) [][2]string { // 0f
-	mylines := make([][2]string, 0)
+	myLines := make([][2]string, 0)
 	if recursive {
 		for _, f := range recursiveFileList(fname) {
-			mylines = append(mylines, grabLines(f, false, rememberSourceFile)...)
+			myLines = append(myLines, grabLines(f, false, rememberSourceFile)...)
 		}
 	} else {
 		f, _ := os.Open(fname)
@@ -532,13 +532,13 @@ func grabLines(fname string, recursive, rememberSourceFile bool) [][2]string { /
 		lines := strings.Split(string(s), "\n")
 		for _, l := range lines {
 			if rememberSourceFile {
-				mylines = append(mylines, [2]string{l, fname})
+				myLines = append(myLines, [2]string{l, fname})
 			} else {
-				mylines = append(mylines, [2]string{l, ""})
+				myLines = append(myLines, [2]string{l, ""})
 			}
 		}
 	}
-	return mylines
+	return myLines
 }
 
 func doStat(fname string, followLinks bool) (os.FileInfo, error) {
@@ -598,7 +598,7 @@ func (c *ConfigProtect) updateprotect() {
 	}
 }
 
-func (c *ConfigProtect) Isprotected(obj string) bool {
+func (c *ConfigProtect) IsProtected(obj string) bool {
 	masked := 0
 	protected := 0
 	sep := string(os.PathSeparator)
@@ -634,28 +634,28 @@ func (c *ConfigProtect) Isprotected(obj string) bool {
 }
 
 // false
-func NewConfigProtect(myroot string, protect_list, mask_list []string,
-	case_insensitive bool) *ConfigProtect {
+func NewConfigProtect(myroot string, protectList, maskList []string,
+	caseInsensitive bool) *ConfigProtect {
 	c := &ConfigProtect{}
 
 	c.myroot = myroot
-	c.protect_list = protect_list
-	c.mask_list = mask_list
-	c.case_insensitive = case_insensitive
+	c.protect_list = protectList
+	c.mask_list = maskList
+	c.case_insensitive = caseInsensitive
 	c.updateprotect()
 	return c
 }
 
 // "", false
-func new_protect_filename(mydest, newmd5 string, force bool) string {
+func new_protect_filename(myDest, newMd5 string, force bool) string {
 	protNum := -1
 	lastPfile := ""
-	if st, _ := os.Stat(mydest); !force && st == nil {
-		return mydest
+	if st, _ := os.Stat(myDest); !force && st == nil {
+		return myDest
 	}
 
-	realFilename := filepath.Base(mydest)
-	realDirname := filepath.Dir(mydest)
+	realFilename := filepath.Base(myDest)
+	realDirname := filepath.Dir(myDest)
 	rds, _ := ioutil.ReadDir(realDirname)
 	for _, pfile := range rds {
 		if pfile.Name()[0:5] != "._cfg" {
@@ -680,7 +680,7 @@ func new_protect_filename(mydest, newmd5 string, force bool) string {
 	newPfile := NormalizePath(filepath.Join(realDirname,
 		"._cfg"+fmt.Sprintf("%04d", protNum)+"_"+realFilename))
 	oldPfile := NormalizePath(filepath.Join(realDirname, lastPfile))
-	if lastPfile != "" && newmd5 != "" {
+	if lastPfile != "" && newMd5 != "" {
 		oldPfileSt, err := os.Lstat(oldPfile)
 		if err != nil {
 			//except OSError as e:
@@ -696,7 +696,7 @@ func new_protect_filename(mydest, newmd5 string, force bool) string {
 						//raise
 					}
 				}
-				if pfileLink == newmd5 {
+				if pfileLink == newMd5 {
 					return oldPfile
 				}
 			} else {
@@ -704,7 +704,7 @@ func new_protect_filename(mydest, newmd5 string, force bool) string {
 				//except FileNotFound:
 				//pass
 				//else{
-				if string(lastPfileMd5) == newmd5 {
+				if string(lastPfileMd5) == newMd5 {
 					return oldPfile
 				}
 			}
@@ -787,7 +787,7 @@ func (g *getConfigShlex) SourceHook(newfile string) (string, *os.File, error) {
 	return g.Shlex.SourceHook(newfile)
 }
 
-func NewGetConfgShlex(instream io.Reader, infile string, posix bool, punctuation_chars string, portageTolerant bool) *getConfigShlex {
+func NewGetConfigShlex(instream io.Reader, infile string, posix bool, punctuation_chars string, portageTolerant bool) *getConfigShlex {
 	g := &getConfigShlex{portageTolerant: portageTolerant}
 	g.Shlex = shlex.NewShlex(instream, infile, posix, punctuation_chars)
 
@@ -796,7 +796,7 @@ func NewGetConfgShlex(instream io.Reader, infile string, posix bool, punctuation
 
 var invalidVarNameRe = regexp.MustCompile("^\\d|\\W")
 
-func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, expandMap map[string]string) map[string]string {
+func getConfig(myCfg string, tolerant, allowSourcing, expand, recursive bool, expandMap map[string]string) map[string]string {
 	if len(expandMap) > 0 {
 		expand = true
 	} else {
@@ -809,7 +809,7 @@ func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, ex
 			expandMap = map[string]string{}
 		}
 		fname := ""
-		for _, fname = range recursiveFileList(mycfg) {
+		for _, fname = range recursiveFileList(myCfg) {
 			newKeys := getConfig(fname, tolerant, allowSourcing, true, false, expandMap)
 			for k, v := range newKeys {
 				myKeys[k] = v
@@ -821,7 +821,7 @@ func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, ex
 		return myKeys
 	}
 
-	f, err := os.Open(mycfg)
+	f, err := os.Open(myCfg)
 	if err != nil {
 		return nil
 	}
@@ -836,9 +836,9 @@ func getConfig(mycfg string, tolerant, allowSourcing, expand, recursive bool, ex
 		content += "\n"
 	}
 	if strings.Contains(content, "\r") {
-		WriteMsg(fmt.Sprintf("!!! Please use dos2unix to convert line endings in config file: '%s'\n", mycfg), -1, nil)
+		WriteMsg(fmt.Sprintf("!!! Please use dos2unix to convert line endings in config file: '%s'\n", myCfg), -1, nil)
 	}
-	lex := NewGetConfgShlex(strings.NewReader(content), mycfg, true, "", tolerant)
+	lex := NewGetConfigShlex(strings.NewReader(content), myCfg, true, "", tolerant)
 	lex.Wordchars = "abcdfeghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789~!@#$%*_\\:;?,./-+{}"
 	lex.Quotes = "\"'"
 	if allowSourcing {
@@ -904,9 +904,9 @@ var (
 	varexpandUnexpectedEofMsg = "unexpected EOF while looking for matching `}'"
 )
 
-func varExpand(myString string, mydict map[string]string, errorLeader string) string {
-	if mydict == nil {
-		mydict = map[string]string{}
+func varExpand(myString string, myDict map[string]string, errorLeader string) string {
+	if myDict == nil {
+		myDict = map[string]string{}
 	}
 	var numVars, inSingle, inDouble, pos int
 	length := len(myString)
@@ -1021,8 +1021,8 @@ func varExpand(myString string, mydict map[string]string, errorLeader string) st
 					return ""
 				}
 				numVars += 1
-				if _, ok := mydict[myVarName]; ok {
-					newString = append(newString, mydict[myVarName])
+				if _, ok := myDict[myVarName]; ok {
+					newString = append(newString, myDict[myVarName])
 				}
 			} else {
 				newString = append(newString, string(current))
@@ -1180,23 +1180,23 @@ func applyPermissions(filename string, uid, gid uint32, mode, mask os.FileMode, 
 }
 
 // -1, nil, true
-func apply_stat_permissions(filename string, newstat os.FileInfo, mask os.FileMode, stat_cached os.FileInfo, follow_links bool) bool {
-	st := newstat.Sys().(*syscall.Stat_t)
-	return apply_secpass_permissions(filename, st.Uid, st.Gid, newstat.Mode(), mask, stat_cached, follow_links)
+func apply_stat_permissions(filename string, newStat os.FileInfo, mask os.FileMode, statCached os.FileInfo, followLinks bool) bool {
+	st := newStat.Sys().(*syscall.Stat_t)
+	return apply_secpass_permissions(filename, st.Uid, st.Gid, newStat.Mode(), mask, statCached, followLinks)
 }
 
 // -1, -1, -1, -1, nil, true
-func apply_secpass_permissions(filename string, uid, gid uint32, mode, mask os.FileMode, stat_cached os.FileInfo, follow_links bool) bool {
+func apply_secpass_permissions(filename string, uid, gid uint32, mode, mask os.FileMode, statCached os.FileInfo, followLinks bool) bool {
 
-	if stat_cached == nil {
-		stat_cached, _ = doStat(filename, follow_links)
+	if statCached == nil {
+		statCached, _ = doStat(filename, followLinks)
 	}
 
-	all_applied := true
+	allApplied := true
 
 	if (int(uid) != -1 || int(gid) != -1) && secpass != nil && *secpass < 2 {
-		if int(uid) != -1 && uid != stat_cached.Sys().(*syscall.Stat_t).Uid {
-			all_applied = false
+		if int(uid) != -1 && uid != statCached.Sys().(*syscall.Stat_t).Uid {
+			allApplied = false
 			uid = -1
 		}
 		gs, _ := os.Getgroups()
@@ -1207,15 +1207,15 @@ func apply_secpass_permissions(filename string, uid, gid uint32, mode, mask os.F
 				break
 			}
 		}
-		if int(uid) != -1 && gid != stat_cached.Sys().(*syscall.Stat_t).Gid && !in {
-			all_applied = false
+		if int(uid) != -1 && gid != statCached.Sys().(*syscall.Stat_t).Gid && !in {
+			allApplied = false
 			gid = -1
 		}
 	}
 
 	applyPermissions(filename, uid, gid, mode, mask,
-		stat_cached, follow_links)
-	return all_applied
+		statCached, followLinks)
+	return allApplied
 }
 
 type atomic_ofstream struct {
@@ -1235,14 +1235,14 @@ func (a *atomic_ofstream) Write(s []byte) (int, error) {
 
 func (a *atomic_ofstream) Close() error {
 	f := a._file
-	real_name := a._real_name
+	realName := a._real_name
 	if err := f.Close(); err != nil {
 		return err
 	}
 	if !a._aborted {
-		st, _ := os.Stat(real_name)
+		st, _ := os.Stat(realName)
 		apply_stat_permissions(f.Name(), st, -1, nil, true)
-		if err := os.Rename(f.Name(), real_name); err != nil {
+		if err := os.Rename(f.Name(), realName); err != nil {
 			return err
 		}
 	}
@@ -1266,30 +1266,30 @@ func NewAtomic_ofstream(filename string, mode int, follow_links bool) *atomic_of
 	a := &atomic_ofstream{}
 
 	if follow_links {
-		canonical_path, _ := filepath.EvalSymlinks(filename)
-		a._real_name = canonical_path
-		tmp_name := fmt.Sprintf("%s.%i", canonical_path, os.Getpid())
+		canonicalPath, _ := filepath.EvalSymlinks(filename)
+		a._real_name = canonicalPath
+		tmpName := fmt.Sprintf("%s.%i", canonicalPath, os.Getpid())
 		var err error
-		a._file, err = os.OpenFile(tmp_name, mode, 0644)
+		a._file, err = os.OpenFile(tmpName, mode, 0644)
 		if err == nil {
 			return a
 		}
 		if err != nil {
-			if canonical_path == filename {
+			if canonicalPath == filename {
 				//raise
 			}
 		}
 	}
 	a._real_name = filename
-	tmp_name := fmt.Sprintf("%s.%i", filename, os.Getpid())
+	tmpName := fmt.Sprintf("%s.%i", filename, os.Getpid())
 
-	a._file, _ = os.OpenFile(tmp_name, mode, 0644)
+	a._file, _ = os.OpenFile(tmpName, mode, 0644)
 	return a
 }
 
 // 0 (i dont know), true
-func write_atomic(file_path string, content string, mode int, follow_links bool) {
-	f := NewAtomic_ofstream(file_path, mode, follow_links)
+func write_atomic(filePath string, content string, mode int, followLinks bool) {
+	f := NewAtomic_ofstream(filePath, mode, followLinks)
 	f.Write([]byte(content))
 	f.Close()
 	//except (IOError, OSError) as e:
@@ -1309,28 +1309,28 @@ func write_atomic(file_path string, content string, mode int, follow_links bool)
 }
 
 // -1,-1,-1,-1,nil,true
-func ensureDirs(dirpath string, uid, gid uint32, mode, mask os.FileMode, statCached os.FileInfo, followLinks bool) bool {
+func ensureDirs(dirPath string, uid, gid uint32, mode, mask os.FileMode, statCached os.FileInfo, followLinks bool) bool {
 	createdDir := false
-	if err := os.MkdirAll(dirpath, 0755); err == nil {
+	if err := os.MkdirAll(dirPath, 0755); err == nil {
 		createdDir = true
 	} // TODO check errno
 	permsModified := false
 	if int(uid) != -1 || int(gid) != -1 || int(mode) != -1 || int(mask) != -1 || statCached != nil || followLinks {
-		permsModified = applyPermissions(dirpath, uid, gid, mode, mask, statCached, followLinks)
+		permsModified = applyPermissions(dirPath, uid, gid, mode, mask, statCached, followLinks)
 	} else {
 		permsModified = false
 	}
 	return createdDir || permsModified
 }
 
-func NewProjectFilename(mydest, newmd5 string, force bool) string {
+func NewProjectFilename(myDest, newMd5 string, force bool) string {
 	protNum := -1
 	lastFile := ""
-	if _, err := os.Open(mydest); !force && !os.IsNotExist(err) {
-		return mydest
+	if _, err := os.Open(myDest); !force && !os.IsNotExist(err) {
+		return myDest
 	}
-	realFilename := path.Base(mydest)
-	realDirname := path.Dir(mydest)
+	realFilename := path.Base(myDest)
+	realDirname := path.Dir(myDest)
 	files, _ := ioutil.ReadDir(realDirname)
 	for _, pfile := range files {
 		if pfile.Name()[0:5] != "._cfg" {
@@ -1348,13 +1348,13 @@ func NewProjectFilename(mydest, newmd5 string, force bool) string {
 	protNum++
 	newPFile := NormalizePath(path.Join(realDirname, ".cfg"+fmt.Sprintf("%04s", string(protNum))+"_"+realFilename))
 	oldPFile := NormalizePath(path.Join(realDirname, lastFile))
-	if len(lastFile) != 0 && len(newmd5) != 0 {
+	if len(lastFile) != 0 && len(newMd5) != 0 {
 		oldPfileSt, err := os.Lstat(oldPFile)
 		if err != nil {
 			if oldPfileSt.Mode()&os.ModeSymlink != 0 {
 				pfileLink, err := os.Readlink(oldPFile)
 				if err != nil {
-					if pfileLink == newmd5 {
+					if pfileLink == newMd5 {
 						return oldPFile
 					}
 				}
@@ -1799,12 +1799,12 @@ func copyfile(src, dest string) error {
 	return ioutil.WriteFile(dest, a, 0644)
 }
 
-func _apply_stat(src_stat os.FileInfo, dest string) error {
-	err := os.Chown(dest, int(src_stat.Sys().(*syscall.Stat_t).Uid), int(src_stat.Sys().(*syscall.Stat_t).Gid))
+func _apply_stat(srcStat os.FileInfo, dest string) error {
+	err := os.Chown(dest, int(srcStat.Sys().(*syscall.Stat_t).Uid), int(srcStat.Sys().(*syscall.Stat_t).Gid))
 	if err != nil {
 		return err
 	}
-	return os.Chmod(dest, os.FileMode(src_stat.Sys().(*syscall.Stat_t).Mode))
+	return os.Chmod(dest, os.FileMode(srcStat.Sys().(*syscall.Stat_t).Mode))
 }
 
 func TextWrap(s string, n int) []string {
@@ -1914,22 +1914,22 @@ func _copyxattr(src, dest, excludeS string) error {
 }
 
 // true
-func cacheddir(my_original_path string, ignorecvs bool, ignorelist []string, EmptyOnError, followSymlinks bool) ([]string, []int) {
-	mypath := NormalizePath(my_original_path)
-	pathstat, err := os.Stat(mypath)
+func cacheddir(myOriginalPath string, ignoreCvs bool, ignoreList []string, EmptyOnError, followSymlinks bool) ([]string, []int) {
+	myPath := NormalizePath(myOriginalPath)
+	pathStat, err := os.Stat(myPath)
 	if err != nil {
 		//except EnvironmentError as e:
 		//if e.errno == PermissionDenied.errno:
-		//raise PermissionDenied(mypath)
+		//raise PermissionDenied(myPath)
 		//del e
 		//return [], []
 		//except PortageException:
 		return []string{}, []int{}
 	}
-	if !pathstat.IsDir() {
-		//raise DirectoryNotFound(mypath)
+	if !pathStat.IsDir() {
+		//raise DirectoryNotFound(myPath)
 	}
-	d, err := os.Open(mypath)
+	d, err := os.Open(myPath)
 	var fpaths []os.FileInfo
 	if err == nil {
 		fpaths, err = d.Readdir(-1)
@@ -1939,23 +1939,22 @@ func cacheddir(my_original_path string, ignorecvs bool, ignorelist []string, Emp
 		//if e.errno != errno.EACCES:
 		//raise
 		//del e
-		//raise PermissionDenied(mypath)
+		//raise PermissionDenied(myPath)
 	}
 	ftype := []int{}
 	for _, x := range fpaths {
-		var pathstat os.FileInfo
 		var err error
 		if followSymlinks {
-			pathstat, err = os.Stat(mypath + "/" + x.Name())
+			pathStat, err = os.Stat(myPath + "/" + x.Name())
 		} else {
-			pathstat, err = os.Lstat(mypath + "/" + x.Name())
+			pathStat, err = os.Lstat(myPath + "/" + x.Name())
 		}
 		if err == nil {
-			if pathstat.Mode()&syscall.S_IFREG != 0 { // is reg
+			if pathStat.Mode()&syscall.S_IFREG != 0 { // is reg
 				ftype = append(ftype, 0)
-			} else if pathstat.IsDir() {
+			} else if pathStat.IsDir() {
 				ftype = append(ftype, 1)
-			} else if pathstat.Mode()&syscall.S_IFLNK != 0 {
+			} else if pathStat.Mode()&syscall.S_IFLNK != 0 {
 				ftype = append(ftype, 2)
 			} else {
 				ftype = append(ftype, 3)
@@ -1968,32 +1967,32 @@ func cacheddir(my_original_path string, ignorecvs bool, ignorelist []string, Emp
 		}
 	}
 
-	ret_list := []string{}
-	ret_ftype := []int{}
-	if len(ignorelist) > 0 || ignorecvs {
-		for i, file_path := range fpaths {
-			file_type := ftype[i]
+	retList := []string{}
+	retFtype := []int{}
+	if len(ignoreList) > 0 || ignoreCvs {
+		for i, filePath := range fpaths {
+			fileType := ftype[i]
 
-			if Ins(ignorelist, file_path.Name()) {
-			} else if ignorecvs {
-				if file_path.Name()[:2] != ".#" && !(file_type == 1 && VcsDirs[file_path.Name()]) {
-					ret_list = append(ret_list, file_path.Name())
-					ret_ftype = append(ret_ftype, file_type)
+			if Ins(ignoreList, filePath.Name()) {
+			} else if ignoreCvs {
+				if filePath.Name()[:2] != ".#" && !(fileType == 1 && VcsDirs[filePath.Name()]) {
+					retList = append(retList, filePath.Name())
+					retFtype = append(retFtype, fileType)
 				}
 			}
 		}
 	} else {
 		for _, f := range fpaths {
-			ret_list = append(ret_list, f.Name())
+			retList = append(retList, f.Name())
 		}
-		ret_ftype = ftype
+		retFtype = ftype
 	}
-	return ret_list, ret_ftype
+	return retList, retFtype
 }
 
 // false, false, false, []string{}, true, false, false
-func listdir(mypath string, recursive, filesonly, ignorecvs bool, ignorelist []string, followSymlinks, EmptyOnError, dirsonly bool) []string {
-	fpaths, ftype := cacheddir(mypath, ignorecvs, ignorelist, EmptyOnError, followSymlinks)
+func listdir(myPath string, recursive, filesOnly, ignoreCvs bool, ignorelist []string, followSymlinks, EmptyOnError, dirsOnly bool) []string {
+	fpaths, ftype := cacheddir(myPath, ignoreCvs, ignorelist, EmptyOnError, followSymlinks)
 	if fpaths == nil {
 		fpaths = []string{}
 	}
@@ -2001,7 +2000,7 @@ func listdir(mypath string, recursive, filesonly, ignorecvs bool, ignorelist []s
 		ftype = []int{}
 	}
 
-	if !(filesonly || dirsonly || recursive) {
+	if !(filesOnly || dirsOnly || recursive) {
 		return fpaths
 	}
 
@@ -2021,41 +2020,41 @@ func listdir(mypath string, recursive, filesonly, ignorecvs bool, ignorelist []s
 		for len(stack) > 0 {
 			f := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
-			file_path, file_type := f.string, f.int
-			fpaths = append(fpaths, file_path)
-			ftype = append(ftype, file_type)
-			if file_type == 1 {
-				subdir_list, subdir_types := cacheddir(
-					filepath.Join(mypath, file_path), ignorecvs,
+			filePath, fileType := f.string, f.int
+			fpaths = append(fpaths, filePath)
+			ftype = append(ftype, fileType)
+			if fileType == 1 {
+				subdirList, subdirTypes := cacheddir(
+					filepath.Join(myPath, filePath), ignoreCvs,
 					ignorelist, EmptyOnError, followSymlinks)
-				for i := range subdir_list {
-					x := subdir_list[i]
-					x_type := subdir_types[i]
+				for i := range subdirList {
+					x := subdirList[i]
+					xType := subdirTypes[i]
 					stack = append(stack, struct {
 						string
 						int
-					}{filepath.Join(file_path, x), x_type})
+					}{filepath.Join(filePath, x), xType})
 				}
 			}
 		}
 	}
 
-	if filesonly {
+	if filesOnly {
 		f := []string{}
 		for i := range fpaths {
 			x := fpaths[i]
-			x_type := ftype[i]
-			if x_type == 0 {
+			xType := ftype[i]
+			if xType == 0 {
 				f = append(f, x)
 			}
 		}
 		fpaths = f
-	} else if dirsonly {
+	} else if dirsOnly {
 		f := []string{}
 		for i := range fpaths {
 			x := fpaths[i]
-			x_type := ftype[i]
-			if x_type == 1 {
+			xType := ftype[i]
+			if xType == 1 {
 				f = append(f, x)
 			}
 		}

@@ -510,7 +510,7 @@ func is_protected(argv []string) int {
 		strings.NewReader(settings.ValueDict["CONFIG_PROTECT_MASK"]), false, true)
 	protect_obj := atom.NewConfigProtect(root, protect, protect_mask,
 		settings.Features.Features["case-insensitive-fs"])
-	if protect_obj.Isprotected(f) {
+	if protect_obj.IsProtected(f) {
 		return 0
 	}
 	return 1
@@ -562,7 +562,7 @@ func filter_protected(argv []string) int {
 			continue
 		}
 
-		if protect_obj.Isprotected(f) {
+		if protect_obj.IsProtected(f) {
 			out.Write([]byte(fmt.Sprintf("%s\n", filename)))
 		}
 	}
