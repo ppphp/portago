@@ -2428,7 +2428,7 @@ None:
 		DeprecationWarning, stacklevel = 2)
 
 	s.settings = settings
-	s.target_root = settings["EROOT"]
+	s.target_root = settings.ValueDict["EROOT"]
 	s.trees = trees
 	s.myopts = myopts
 	s._spinner = spinner
@@ -2485,7 +2485,7 @@ None:
 	s._set_max_jobs(max_jobs)
 	s._running_root = trees[trees._running_eroot]["root_config"]
 	s.edebug = 0
-	if settings.get("PORTAGE_DEBUG", "") == "1":
+	if  settings.ValueDict["PORTAGE_DEBUG", "") == "1":
 	s.edebug = 1
 	s.pkgsettings =
 	{
@@ -2498,7 +2498,7 @@ None:
 	s.trees:
 	s._config_pool[root] = []
 
-	s._fetch_log = os.path.join(_emerge.emergelog._emerge_log_dir,
+	s._fetch_log =  filepath.Join(_emerge.emergelog._emerge_log_dir,
 		'emerge-fetch.log')
 	fetch_iface = s._fetch_iface_class(log_file = s._fetch_log,
 		schedule = s._schedule_fetch)
@@ -2530,7 +2530,7 @@ None:
 	for x
 	in
 	s._mergelist \
-	if isinstance(x, Package) and
+	if isinstance(x, Package) &&
 	x.operation == "merge"])
 s._pkg_count = s._pkg_count_class(
 curval = 0, maxval = merge_count)
@@ -2546,9 +2546,9 @@ s._sigcont_time = None
 s._choose_pkg_return_early = false
 
 features = s.settings.features
-if "parallel-fetch" in features and \
-not ("--pretend" in s.myopts or \
-"--fetch-all-uri" in s.myopts or \
+if "parallel-fetch" in features && \
+not ("--pretend" in s.myopts || \
+"--fetch-all-uri" in s.myopts || \
 "--fetchonly" in s.myopts):
 if "distlocks" not in features:
 portage.writemsg(red("!!!")+"\n", noiselevel = -1)
@@ -2665,14 +2665,14 @@ func _background_mode() {
 	background = (s._max_jobs
 	is
 	true
-	or \
+	|| \
 	s._max_jobs > 1
-	or
+ ||
 	"--quiet"
 	in
 	s.myopts \
-	or
-	s.myopts.get("--quiet-build") == "y") and \
+ ||
+	s.myopts.get("--quiet-build") == "y") && \
 	not
 	bool(s._opts_no_background.intersection(s.myopts))
 
@@ -2688,7 +2688,7 @@ func _background_mode() {
 	in
 interactive_tasks:
 	pkg_str = "  " + colorize("INFORM", str(pkg.cpv))
-	if pkg.root_config.settings["ROOT"] != "/":
+	if pkg.root_config.settings.ValueDict["ROOT"] != "/":
 	pkg_str += " for " + pkg.root
 	msg.append(pkg_str)
 	msg.append("")
@@ -2699,7 +2699,7 @@ interactive_tasks:
 	level = logging.INFO, noiselevel=-1)
 	if s._max_jobs is
 	true
-	or
+ ||
 	s._max_jobs > 1:
 	s._set_max_jobs(1)
 	writemsg_level(">>> Setting --jobs=1 due " + \
@@ -2712,11 +2712,11 @@ interactive_tasks:
 	s._status_display.quiet = \
 	not
 	background
-	or \
+	|| \
 	("--quiet"
 	in
 	s.myopts
-	and \
+	&& \
 	"--verbose"
 	not
 	in
@@ -2727,7 +2727,7 @@ interactive_tasks:
 	not
 	in
 	s.settings.features
-	and \
+	&& \
 	s._status_display.quiet
 
 	return background
@@ -2738,7 +2738,7 @@ func (s *Scheduler) _get_interactive_tasks() {
 	for task
 	in
 	s._mergelist:
-	if not(isinstance(task, Package) and \
+	if not(isinstance(task, Package) && \
 	task.operation == "merge"):
 	continue
 	if 'interactive' in
@@ -2783,12 +2783,12 @@ None:
 
 	if "--nodeps" in
 	s.myopts
-	or \
+	|| \
 	(s._max_jobs
 	is
 	not
 	true
-	and
+	&&
 	s._max_jobs < 2):
 	s._digraph = None
 	graph_config.graph = None
@@ -2837,12 +2837,12 @@ true:
 	in
 	graph.root_nodes():
 	if not isinstance(node, Package)
-	or \
+	|| \
 	(node.installed
-	and
-	node.operation == "nomerge") or \
+	&&
+	node.operation == "nomerge") || \
 	node.onlydeps
-	or \
+	|| \
 	node
 	in
 completed_tasks:
@@ -2898,7 +2898,7 @@ func (s *Scheduler) _schedule_fetch( fetcher) {
 }
 
 func (s *Scheduler) _schedule_setup( setup_phase) {
-	if s._task_queues.merge.max_jobs > 1 and \
+	if s._task_queues.merge.max_jobs > 1 && \
 	"ebuild-locks"
 	in
 	s.settings.features:
@@ -2963,12 +2963,12 @@ None:
 	in
 	s._mergelist:
 	if not isinstance(x, Package)
-	or \
+	|| \
 	x.type_name != 'ebuild'
-	or \
+	|| \
 	x.operation != 'merge':
 	continue
-	pkgsettings = s.pkgsettings[x.root]
+	pkgsettings = s.pkgsettings.ValueDict[x.root]
 	if pkgsettings.mycpv is
 	not
 None:
@@ -2976,7 +2976,7 @@ None:
 	if '--digest' not
 	in
 	s.myopts
-	and \
+	&& \
 	'digest'
 	not
 	in
@@ -2988,7 +2988,7 @@ None:
 None:
 	raise
 	AssertionError("ebuild not found for '%s'" % x.cpv)
-	pkgsettings['O'] = os.path.dirname(ebuild_path)
+	pkgsettings.ValueDict['O'] =  filepath.Dir(ebuild_path)
 	if not digestgen(mysettings = pkgsettings, myportdb = portdb):
 	writemsg_level(
 		"!!! Unable to generate manifest for '%s'.\n" \
@@ -3002,11 +3002,11 @@ func (s *Scheduler) _check_manifests() {
 	if "strict" not
 	in
 	s.settings.features
-	or \
+	|| \
 	"--fetchonly"
 	in
 	s.myopts
-	or \
+	|| \
 	"--fetch-all-uri"
 	in
 	s.myopts:
@@ -3022,7 +3022,7 @@ func (s *Scheduler) _check_manifests() {
 	quiet_config = portage.config(clone = pkgsettings)
 	quiet_config["PORTAGE_QUIET"] = "1"
 	quiet_config.backup_changes("PORTAGE_QUIET")
-	quiet_settings[myroot] = quiet_config
+	quiet_settings.ValueDict[myroot] = quiet_config
 	del
 	quiet_config
 
@@ -3032,7 +3032,7 @@ func (s *Scheduler) _check_manifests() {
 	in
 	s._mergelist:
 	if not isinstance(x, Package)
-	or \
+	|| \
 	x.type_name != "ebuild":
 	continue
 
@@ -3045,13 +3045,13 @@ func (s *Scheduler) _check_manifests() {
 
 	root_config = x.root_config
 	portdb = root_config.trees["porttree"].dbapi
-	quiet_config = quiet_settings[root_config.root]
+	quiet_config = quiet_settings.ValueDict[root_config.root]
 	ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
 	if ebuild_path is
 None:
 	raise
 	AssertionError("ebuild not found for '%s'" % x.cpv)
-	quiet_config["O"] = os.path.dirname(ebuild_path)
+	quiet_config["O"] =  filepath.Dir(ebuild_path)
 	if not digestcheck([], quiet_config, strict = true):
 	failures |= 1
 
@@ -3073,7 +3073,7 @@ func (s *Scheduler) _add_prefetchers() {
 	in
 	s._mergelist:
 	if not isinstance(pkg, Package)
-	or
+ ||
 	pkg.operation == "uninstall":
 	continue
 	prefetcher = s._create_prefetcher(pkg)
@@ -3102,11 +3102,11 @@ func (s *Scheduler) _create_prefetcher( pkg) {
 
 	elif
 	pkg.type_name == "binary"
-	and \
+	&& \
 	"--getbinpkg"
 	in
 	s.myopts
-	and \
+	&& \
 	pkg.root_config.trees["bintree"].isremote(pkg.cpv):
 
 	prefetcher = BinpkgPrefetcher(background = true,
@@ -3141,18 +3141,18 @@ func (s *Scheduler) _run_pkg_pretend() {
 	portage.util.writemsg_stdout(out_str, noiselevel = -1)
 
 	root_config = x.root_config
-	settings = s.pkgsettings[root_config.root]
+	settings = s.pkgsettings.ValueDict[root_config.root]
 	settings.setcpv(x)
 
 	rval = _check_temp_dir(settings)
 	if rval != os.EX_OK:
 	return rval
 
-	build_dir_path = os.path.join(
-		os.path.realpath(settings["PORTAGE_TMPDIR"]),
+	build_dir_path =  filepath.Join(
+		os.path.realpath(settings.ValueDict["PORTAGE_TMPDIR"]),
 		"portage", x.category, x.pf)
 	existing_builddir = os.path.isdir(build_dir_path)
-	settings["PORTAGE_BUILDDIR"] = build_dir_path
+	settings.ValueDict["PORTAGE_BUILDDIR"] = build_dir_path
 	build_dir = EbuildBuildDir(scheduler = sched_iface,
 		settings = settings)
 	sched_iface.run_until_complete(build_dir.async_lock())
@@ -3163,8 +3163,8 @@ try:
 	if existing_builddir:
 	if x.built:
 	tree = "bintree"
-	infloc = os.path.join(build_dir_path, "build-info")
-	ebuild_path = os.path.join(infloc, x.pf+".ebuild")
+	infloc =  filepath.Join(build_dir_path, "build-info")
+	ebuild_path =  filepath.Join(infloc, x.pf+".ebuild")
 	else:
 	tree = "porttree"
 	portdb = root_config.trees["porttree"].dbapi
@@ -3177,7 +3177,7 @@ None:
 	portage.package.
 	ebuild.doebuild.doebuild_environment(
 		ebuild_path, "clean", settings = settings,
-		db = s.trees[settings['EROOT']][tree].dbapi)
+		db = s.trees[settings.ValueDict['EROOT']][tree].dbapi)
 	clean_phase = EbuildPhase(background = false,
 		phase = 'clean', scheduler=sched_iface, settings = settings)
 	current_task = clean_phase
@@ -3214,11 +3214,11 @@ false:
 	if fetched:
 	bintree.inject(x.cpv, filename = fetched)
 
-	infloc = os.path.join(build_dir_path, "build-info")
+	infloc =  filepath.Join(build_dir_path, "build-info")
 	ensure_dirs(infloc)
 	s._sched_iface.run_until_complete(
 		bintree.dbapi.unpack_metadata(settings, infloc))
-	ebuild_path = os.path.join(infloc, x.pf+".ebuild")
+	ebuild_path =  filepath.Join(infloc, x.pf+".ebuild")
 	settings.configdict["pkg"]["EMERGE_FROM"] = "binary"
 	settings.configdict["pkg"]["MERGE_TYPE"] = "binary"
 
@@ -3239,12 +3239,12 @@ None:
 	portage.package.
 	ebuild.doebuild.doebuild_environment(ebuild_path,
 		"pretend", settings = settings,
-		db = s.trees[settings['EROOT']][tree].dbapi)
+		db = s.trees[settings.ValueDict['EROOT']][tree].dbapi)
 
 	prepare_build_dirs(root_config.root, settings, cleanup = 0)
 
 	vardb = root_config.trees['vartree'].dbapi
-	settings["REPLACING_VERSIONS"] = " ".join(
+	settings.ValueDict["REPLACING_VERSIONS"] = " ".join(
 		set(portage.versions.cpv_getversion(match) \
 	for match
 	in
@@ -3306,9 +3306,9 @@ try:
 	s.trees:
 	root_config = s.trees[root]["root_config"]
 
-	tmpdir = root_config.settings.get("PORTAGE_TMPDIR", "")
+	tmpdir = root_config. settings.ValueDict["PORTAGE_TMPDIR", "")
 	if not tmpdir
-	or
+ ||
 	not
 	os.path.isdir(tmpdir):
 	msg = (
@@ -3325,11 +3325,11 @@ msg:
 
 	if s._background:
 	root_config.settings.unlock()
-	root_config.settings["PORTAGE_BACKGROUND"] = "1"
+	root_config.settings.ValueDict["PORTAGE_BACKGROUND"] = "1"
 	root_config.settings.backup_changes("PORTAGE_BACKGROUND")
 	root_config.settings.lock()
 
-	s.pkgsettings[root] = portage.config(
+	s.pkgsettings.ValueDict[root] = portage.config(
 		clone = root_config.settings)
 
 	keep_going = "--keep-going"
@@ -3344,7 +3344,7 @@ msg:
 	return rval
 
 	rval = s._check_manifests()
-	if rval != os.EX_OK and
+	if rval != os.EX_OK &&
 	not
 keep_going:
 	return rval
@@ -3402,9 +3402,9 @@ None:
 	if received_signal:
 	sys.exit(received_signal[0])
 
-	if rval == os.EX_OK or
+	if rval == os.EX_OK ||
 	fetchonly
-	or
+ ||
 	not
 keep_going:
 	break
@@ -3444,7 +3444,7 @@ failed_pkgs:
 	for x
 	in
 	s._mergelist \
-	if isinstance(x, Package) and
+	if isinstance(x, Package) &&
 	x.operation == "merge"])
 s._status_display.maxval = s._pkg_count.maxval
 
@@ -3459,7 +3459,7 @@ del failed_pkgs[:]
 printer = portage.output.EOutput()
 background = s._background
 failure_log_shown = false
-if background and len(s._failed_pkgs_all) == 1 and \
+if background && len(s._failed_pkgs_all) == 1 && \
 s.myopts.get('--quiet-fail', 'n') != 'y':
 failed_pkg = s._failed_pkgs_all[-1]
 log_file = None
@@ -3492,15 +3492,15 @@ failure_log_shown = true
 
 mod_echo_output = _flush_elog_mod_echo()
 
-if background and not failure_log_shown and \
-s._failed_pkgs_all and \
-s._failed_pkgs_die_msgs and \
+if background && not failure_log_shown && \
+s._failed_pkgs_all && \
+s._failed_pkgs_die_msgs && \
 not mod_echo_output:
 
 for mysettings, key, logentries in s._failed_pkgs_die_msgs:
 root_msg = ""
-if mysettings["ROOT"] != "/":
-root_msg = " merged to %s" % mysettings["ROOT"]
+if mysettings.ValueDict["ROOT"] != "/":
+root_msg = " merged to %s" % mysettings.ValueDict["ROOT"]
 print()
 printer.einfo("Error messages for package %s%s:" % \
 (colorize("INFORM", key), root_msg))
@@ -3518,8 +3518,8 @@ if s._post_mod_echo_msgs:
 for msg in s._post_mod_echo_msgs:
 msg()
 
-if len(s._failed_pkgs_all) > 1 or \
-(s._failed_pkgs_all and keep_going):
+if len(s._failed_pkgs_all) > 1 || \
+(s._failed_pkgs_all && keep_going):
 if len(s._failed_pkgs_all) > 1:
 msg = "The following %d packages have " % \
 len(s._failed_pkgs_all) + \
@@ -3598,7 +3598,7 @@ if graph is None:
 return
 pkg = merge.merge.pkg
 
-if pkg.root_config.settings["ROOT"] != "/":
+if pkg.root_config.settings.ValueDict["ROOT"] != "/":
 return
 
 completed_tasks = s._completed_tasks
@@ -3606,12 +3606,12 @@ unsatisfied = s._unsatisfied_system_deps
 }
 
 func (s *Scheduler) ignore_non_runtime_or_satisfied(priority) {
-	if isinstance(priority, DepPriority) and \
+	if isinstance(priority, DepPriority) && \
 	not
 	priority.satisfied
-	and \
+	&& \
 	(priority.runtime
-	or
+ ||
 	priority.runtime_post):
 	return false
 	return true
@@ -3621,13 +3621,13 @@ func (s *Scheduler) ignore_non_runtime_or_satisfied(priority) {
 	graph.child_nodes(pkg,
 		ignore_priority = ignore_non_runtime_or_satisfied):
 	if not isinstance(child, Package)
-	or \
+	|| \
 	child.operation == 'uninstall':
 	continue
 	if child is
 pkg:
 	continue
-	if child.operation == 'merge' and \
+	if child.operation == 'merge' && \
 	child
 	not
 	in
@@ -3644,7 +3644,7 @@ func (s *Scheduler) _merge_exit( merge) {
 	s._running_tasks.pop(id(merge), None)
 	s._do_merge_exit(merge)
 	s._deallocate_config(merge.merge.settings)
-	if merge.returncode == os.EX_OK and \
+	if merge.returncode == os.EX_OK && \
 	not
 	merge.merge.pkg.installed:
 	s._status_display.curval += 1
@@ -3656,8 +3656,8 @@ func (s *Scheduler) _do_merge_exit( merge) {
 	pkg = merge.merge.pkg
 	if merge.returncode != os.EX_OK:
 	settings = merge.merge.settings
-	build_dir = settings.get("PORTAGE_BUILDDIR")
-	build_log = settings.get("PORTAGE_LOG_FILE")
+	build_dir =  settings.ValueDict["PORTAGE_BUILDDIR")
+	build_log =  settings.ValueDict["PORTAGE_LOG_FILE")
 
 	s._failed_pkgs.append(s._failed_pkg(
 		build_dir = build_dir, build_log = build_log,
@@ -3670,8 +3670,8 @@ func (s *Scheduler) _do_merge_exit( merge) {
 
 	if merge.postinst_failure:
 	s._failed_pkgs_all.append(s._failed_pkg(
-		build_dir = merge.merge.settings.get("PORTAGE_BUILDDIR"),
-		build_log = merge.merge.settings.get("PORTAGE_LOG_FILE"),
+		build_dir = merge.merge. settings.ValueDict["PORTAGE_BUILDDIR"),
+		build_log = merge.merge. settings.ValueDict["PORTAGE_LOG_FILE"),
 		pkg = pkg,
 		postinst_failure=true,
 		returncode = merge.returncode))
@@ -3686,7 +3686,7 @@ None:
 	if s._digraph is
 	not
 	None
-	and \
+	&& \
 	pkg_to_replace
 	in
 	s._digraph:
@@ -3712,7 +3712,7 @@ ValueError:
 
 func (s *Scheduler) _build_exit( build) {
 	s._running_tasks.pop(id(build), None)
-	if build.returncode == os.EX_OK and
+	if build.returncode == os.EX_OK &&
 	s._terminated_tasks:
 	s.curval += 1
 	s._deallocate_config(build.settings)
@@ -3722,7 +3722,7 @@ func (s *Scheduler) _build_exit( build) {
 	merge = PackageMerge(merge = build, scheduler = s._sched_iface)
 	s._running_tasks[id(merge)] = merge
 	if not build.build_opts.buildpkgonly
-	and \
+	&& \
 	build.pkg
 	in
 	s._deep_system_deps:
@@ -3734,8 +3734,8 @@ func (s *Scheduler) _build_exit( build) {
 	s._status_display.merges = len(s._task_queues.merge)
 	else:
 	settings = build.settings
-	build_dir = settings.get("PORTAGE_BUILDDIR")
-	build_log = settings.get("PORTAGE_LOG_FILE")
+	build_dir =  settings.ValueDict["PORTAGE_BUILDDIR")
+	build_log =  settings.ValueDict["PORTAGE_LOG_FILE")
 
 	s._failed_pkgs.append(s._failed_pkg(
 		build_dir = build_dir, build_log = build_log,
@@ -3768,16 +3768,16 @@ func (s *Scheduler) _main_loop() {
 	if s._max_load is
 	not
 	None
-	and \
+	&& \
 	s._loadavg_latency
 	is
 	not
 	None
-	and \
+	&& \
 	(s._max_jobs
 	is
 	true
-	or
+ ||
 	s._max_jobs > 1):
 	s._main_loadavg_handle = s._event_loop.call_later(
 		s._loadavg_latency, s._schedule)
@@ -3804,7 +3804,7 @@ func (s *Scheduler) _merge() {
 		s._max_display_latency, display_callback)
 	display_callback.handle = None
 
-	if s._status_display._isatty and
+	if s._status_display._isatty &&
 	not
 	s._status_display.quiet:
 	display_callback()
@@ -3862,15 +3862,15 @@ func (s *Scheduler) _choose_pkg() {
 
 	if s._digraph is
 None:
-	if s._is_work_scheduled() and \
+	if s._is_work_scheduled() && \
 	not("--nodeps"
 	in
 	s.myopts
-	and \
+	&& \
 	(s._max_jobs
 	is
 	true
-	or
+ ||
 	s._max_jobs > 1)):
 	s._choose_pkg_return_early = true
 	return None
@@ -3887,7 +3887,7 @@ None:
 	for pkg
 	in
 	s._pkg_queue:
-	if pkg.operation == 'uninstall' and \
+	if pkg.operation == 'uninstall' && \
 	not
 	graph.child_nodes(pkg):
 	chosen_pkg = pkg
@@ -3933,18 +3933,18 @@ node_stack:
 traversed_nodes:
 	continue
 	traversed_nodes.add(node)
-	if not((node.installed and
-	node.operation == "nomerge") or \
+	if not((node.installed &&
+	node.operation == "nomerge") || \
 	(node.operation == "uninstall"
-	and \
+	&& \
 	node
 	not
 	in
-	direct_deps) or \
+	direct_deps) || \
 	node
 	in
 	completed_tasks
-	or \
+	|| \
 	node
 	in
 	later):
@@ -3961,24 +3961,24 @@ func (s *Scheduler) _allocate_config( root) {
 	if s._config_pool[root]:
 	temp_settings = s._config_pool[root].pop()
 	else:
-	temp_settings = portage.config(clone = s.pkgsettings[root])
+	temp_settings = portage.config(clone = s.pkgsettings.ValueDict[root])
 	temp_settings.reload()
 	temp_settings.reset()
 	return temp_settings
 }
 
 func (s *Scheduler) _deallocate_config(settings) {
-	s._config_pool[settings['EROOT']].append(settings)
+	s._config_pool[settings.ValueDict['EROOT']].append(settings)
 }
 
 func (s *Scheduler) _keep_scheduling() {
 	return bool(not
 	s._terminated.is_set()
-	and
+	&&
 	s._pkg_queue
-	and \
+	&& \
 	not(s._failed_pkgs
-	and
+	&&
 	not
 	s._build_opts.fetchonly))
 }
@@ -3998,10 +3998,10 @@ true:
 
 	state_change = 0
 
-	if (s._merge_wait_queue and
+	if (s._merge_wait_queue &&
 	not
 	s._jobs
-	and
+	&&
 	not
 	s._task_queues.merge):
 	task = s._merge_wait_queue.popleft()
@@ -4017,29 +4017,29 @@ true:
 
 	s._status_display.display()
 
-	if s._failed_pkgs and
+	if s._failed_pkgs &&
 	not
 	s._build_opts.fetchonly
-	and \
+	&& \
 	not
 	s._is_work_scheduled()
-	and \
+	&& \
 	s._task_queues.fetch:
 	s._task_queues.fetch.clear()
 
-	if not(state_change or \
+	if not(state_change || \
 	(s._merge_wait_queue
-	and
+	&&
 	not
 	s._jobs
-	and
+	&&
 	not
 	s._task_queues.merge)):
 	break
 
-	if not(s._is_work_scheduled() or
+	if not(s._is_work_scheduled() ||
 	s._keep_scheduling()
-	or
+ ||
 	s._main_exit.done()):
 	s._main_exit.set_result(None)
 	elif
@@ -4051,10 +4051,10 @@ None:
 	s._main_loadavg_handle = s._event_loop.call_later(
 		s._loadavg_latency, s._schedule)
 
-	if (s._task_queues.merge and(s._schedule_merge_wakeup_task
+	if (s._task_queues.merge &&(s._schedule_merge_wakeup_task
 	is
 	None
-	or
+ ||
 	s._schedule_merge_wakeup_task.done())):
 	s._schedule_merge_wakeup_task = asyncio.ensure_future(
 		s._task_queues.merge.wait(), loop = s._event_loop)
@@ -4068,7 +4068,7 @@ func (s *Scheduler) _schedule_merge_wakeup( future) {
 	if s._main_exit is
 	not
 	None
-	and
+	&&
 	not
 	s._main_exit.done():
 	s._schedule()
@@ -4080,7 +4080,7 @@ func (s *Scheduler) _sigcont_handler( signum, frame) {
 
 func (s *Scheduler) _job_delay() {
 
-	if s._jobs and
+	if s._jobs &&
 	s._max_load
 	is
 	not
@@ -4093,7 +4093,7 @@ None:
 None:
 
 	elapsed_seconds = current_time - s._sigcont_time
-	if elapsed_seconds > 0 and \
+	if elapsed_seconds > 0 && \
 	elapsed_seconds < s._sigcont_delay:
 
 	if s._job_delay_timeout_id is
@@ -4118,7 +4118,7 @@ OSError:
 	if delay > s._job_delay_max:
 	delay = s._job_delay_max
 	elapsed_seconds = current_time - s._previous_job_start_time
-	if elapsed_seconds > 0 and
+	if elapsed_seconds > 0 &&
 	elapsed_seconds < delay:
 
 	if s._job_delay_timeout_id is
@@ -4143,15 +4143,15 @@ true:
 	if not s._keep_scheduling():
 	return bool(state_change)
 
-	if s._choose_pkg_return_early or \
+	if s._choose_pkg_return_early || \
 	s._merge_wait_scheduled
-	or \
+	|| \
 	(s._jobs
-	and
-	s._unsatisfied_system_deps) or \
+	&&
+	s._unsatisfied_system_deps) || \
 	not
 	s._can_add_job()
-	or \
+	|| \
 	s._job_delay():
 	return bool(state_change)
 
@@ -4205,7 +4205,7 @@ func (s *Scheduler) _task( pkg) {
 	in
 	vardb.match(pkg.slot_atom) \
 	if portage.cpv_getkey(x) == pkg.cp]
-if not previous_cpv and vardb.cpv_exists(pkg.cpv):
+if not previous_cpv && vardb.cpv_exists(pkg.cpv):
 previous_cpv = [pkg.cpv]
 if previous_cpv:
 previous_cpv = previous_cpv.pop()
@@ -4217,7 +4217,7 @@ try:
 prefetcher = s._prefetchers.pop(pkg, None)
 except KeyError:
 prefetcher = None
-if prefetcher is not None and not prefetcher.isAlive():
+if prefetcher is not None && not prefetcher.isAlive():
 try:
 s._task_queues.fetch._task_queue.remove(prefetcher)
 except ValueError:
@@ -4246,7 +4246,7 @@ func (s *Scheduler) _failed_pkg_msg( failed_pkg, action, preposition) {
 	pkg = failed_pkg.pkg
 	msg = "%s to %s %s" % \
 	(bad("Failed"), action, colorize("INFORM", pkg.cpv))
-	if pkg.root_config.settings["ROOT"] != "/":
+	if pkg.root_config.settings.ValueDict["ROOT"] != "/":
 	msg += " %s %s" % (preposition, pkg.root)
 
 	log_path = s._locate_failure_log(failed_pkg)
@@ -4282,7 +4282,7 @@ func (s *Scheduler) _save_resume_list() {
 	s._favorites]
 mtimedb["resume"]["mergelist"] = [list(x) \
 for x in s._mergelist \
-if isinstance(x, Package) and x.operation == "merge"]
+if isinstance(x, Package) && x.operation == "merge"]
 
 mtimedb.commit()
 }
@@ -4352,7 +4352,7 @@ None:
 	s._post_mod_echo_msgs.append(unsatisfied_resume_dep_msg)
 	return false
 
-	if success and
+	if success &&
 	s._show_list():
 	mydepgraph.display(mydepgraph.altlist(), favorites = s._favorites)
 
@@ -4366,13 +4366,13 @@ None:
 	for task, atoms
 	in
 	dropped_tasks.items():
-	if not(isinstance(task, Package) and
+	if not(isinstance(task, Package) &&
 	task.operation == "merge"):
 	continue
 	pkg = task
 	msg = "emerge --keep-going:" + \
 	" %s" % (pkg.cpv,)
-	if pkg.root_config.settings["ROOT"] != "/":
+	if pkg.root_config.settings.ValueDict["ROOT"] != "/":
 	msg += " for %s" % (pkg.root,)
 	if not atoms:
 	msg += " dropped because it is masked or unavailable"
@@ -4382,7 +4382,7 @@ None:
 	in
 	textwrap.wrap(msg, msg_width):
 	eerror(line, phase = "other", key = pkg.cpv)
-	settings = s.pkgsettings[pkg.root]
+	settings = s.pkgsettings.ValueDict[pkg.root]
 	settings.pop("T", None)
 	portage.elog.elog_process(pkg.cpv, settings)
 	s._failed_pkgs_all.append(s._failed_pkg(pkg = pkg))
@@ -4395,15 +4395,15 @@ func (s *Scheduler) _show_list() {
 	if "--quiet" not
 	in
 	myopts
-	and \
+	&& \
 	("--ask"
 	in
 	myopts
-	or
+ ||
 	"--tree"
 	in
 	myopts
-	or \
+	|| \
 	"--verbose"
 	in
 	myopts):
@@ -4553,7 +4553,7 @@ func (s * SchedulerInterface) output( msg, log_path=None, background=None,
 level=0, noiselevel=-1){
 
 global_background = s._is_background()
-if background is None or global_background:
+if background is None || global_background:
 background = global_background
 
 msg_shown = false

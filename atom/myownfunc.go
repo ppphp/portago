@@ -43,7 +43,7 @@ func CopyMSMASS(m map[string]map[*Atom][]string) map[string]map[*Atom][]string {
 	return r
 }
 
-func inmss(a map[string]string, b string) bool{
+func Inmss(a map[string]string, b string) bool{
 	for _ ,v := range a {
 		if b == v {
 			return true
