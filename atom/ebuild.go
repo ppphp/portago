@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"github.com/ppphp/shlex"
 	"golang.org/x/sys/unix"
+	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
+	"syscall"
 )
 
 var (
@@ -609,7 +611,7 @@ debug bool, use_cache=None, db *vardbapi) {
 }
 
 var (
-	_doebuild_manifest_cache = None
+	_doebuild_manifest_cache *Manifest= nil
 _doebuild_broken_ebuilds = map[string]bool{}
 _doebuild_broken_manifests = map[string]bool{}
 _doebuild_commands_without_builddir = []string{
@@ -621,7 +623,7 @@ _doebuild_commands_without_builddir = []string{
 // 0, 0, 0, 0, 1, 0, "", nil, nil, nil, nil, false
 func doebuild(myebuild, mydo string, settings *Config, debug, listonly,
 fetchonly, cleanup, use_cache, fetchall int, tree string,
-mydbapi DBAPI, vartree *varTree, prev_mtimes=None,
+mydbapi *vardbapi, vartree *varTree, prev_mtimes=None,
 fd_pipes=None, returnpid bool){
 if settings == nil{
 //raise TypeError("settings parameter is required")
@@ -699,7 +701,7 @@ if mydo == "fetchall" {
 	mydo = "fetch"
 }
 
-if !Ins(clean_phases,mydo) && ! os.path.exists(myebuild) {
+if !Ins(clean_phases,mydo) && ! pathExists(myebuild) {
 	WriteMsg(fmt.Sprintf("!!! doebuild: %s not found for %s\n", myebuild, mydo), -1, nil)
 	return 1
 }
@@ -713,14 +715,14 @@ repo_config = mysettings.Repositories.getRepoForLocation(
 filepath.Dir(filepath.Dir(pkgdir)))
 }
 
-mf = None
+var mf  *Manifest= nil
 if  features["strict"] &&
  ! features["digest"] &&
 tree == "porttree" &&
 ! repo_config.thinManifest &&
 ! Ins([]string{"digest", "manifest", "help"}, mydo) &&
 doebuildManifestExemptDepend==0 &&
-! (repo_config.allowMissingManifest && ! os.path.exists(manifest_path)) {
+! (repo_config.allowMissingManifest && ! pathExists(manifest_path)) {
 
 	if _doebuild_broken_ebuilds[myebuild]{
 		return 1
@@ -729,82 +731,117 @@ doebuildManifestExemptDepend==0 &&
 
 if _doebuild_manifest_cache == nil ||
 _doebuild_manifest_cache.getFullname() != manifest_path{
-_doebuild_manifest_cache = None
-if ! os.path.exists(manifest_path){
-out = portage.output.EOutput()
-out.eerror(fmt.Sprintf(("Manifest not found for '%s'") % (myebuild,))
+_doebuild_manifest_cache = nil
+if ! pathExists(manifest_path){
+out := NewEOutput(false)
+out.eerror(fmt.Sprintf(("Manifest not found for '%s'",myebuild,))
 _doebuild_broken_ebuilds[myebuild]=true
 return 1
 }
-mf = repo_config.load_manifest(pkgdir, mysettings.ValueDict["DISTDIR"])
+mf = repo_config.load_manifest(pkgdir, mysettings.ValueDict["DISTDIR"], nil, false)
 
-}else{
-mf = _doebuild_manifest_cache
+}else {
+	mf = _doebuild_manifest_cache
+}
 
-try{
-mf.checkFileHashes("EBUILD", filepath.Base(myebuild))
-except KeyError{
-if ! (mf.allow_missing and
-filepath.Base(myebuild) ! in mf.fhashdict["EBUILD"]){
-out = portage.output.EOutput()
-out.eerror(fmt.Sprintf(("Missing digest for '%s'") % (myebuild,))
-_doebuild_broken_ebuilds.add(myebuild)
-return 1
-except File!Found{
-out = portage.output.EOutput()
-out.eerror(fmt.Sprintf(("A file listed in the Manifest "
-"could not be found: '%s'") % (myebuild,))
-_doebuild_broken_ebuilds.add(myebuild)
-return 1
-except DigestException as e{
-out = portage.output.EOutput()
-out.eerror(_("Digest verification failed:"))
-out.eerror(fmt.Sprintf("%s" % e.value[0])
-out.eerror(fmt.Sprintf(("Reason: %s") % e.value[1])
-out.eerror(fmt.Sprintf(("Got: %s") % e.value[2])
-out.eerror(fmt.Sprintf(("Expected: %s") % e.value[3])
-_doebuild_broken_ebuilds.add(myebuild)
-return 1
+//try{
+mf.checkFileHashes("EBUILD", filepath.Base(myebuild), false, nil)
+//except KeyError{
+//if ! (mf.allow_missing and
+//filepath.Base(myebuild) ! in mf.fhashdict["EBUILD"]){
+//out = NewEOutput(false)
+//out.eerror(fmt.Sprintf(("Missing digest for '%s'") % (myebuild,))
+//_doebuild_broken_ebuilds.add(myebuild)
+//return 1
+//except File!Found{
+//out = NewEOutput(false)
+//out.eerror(fmt.Sprintf(("A file listed in the Manifest "
+//"could not be found: '%s'") % (myebuild,))
+//_doebuild_broken_ebuilds.add(myebuild)
+//return 1
+//except DigestException as e{
+//out = NewEOutput(false)
+//out.eerror(_("Digest verification failed:"))
+//out.eerror(fmt.Sprintf("%s" % e.value[0])
+//out.eerror(fmt.Sprintf(("Reason: %s") % e.value[1])
+//out.eerror(fmt.Sprintf(("Got: %s") % e.value[2])
+//out.eerror(fmt.Sprintf(("Expected: %s") % e.value[3])
+//_doebuild_broken_ebuilds.add(myebuild)
+//return 1
 
-if mf.getFullname() in _doebuild_broken_manifests{
-return 1
+if  _doebuild_broken_manifests[mf.getFullname() ] {
+	return 1
+}
 
-if mf is ! _doebuild_manifest_cache && ! mf.allow_missing{
-
-for f in os.listdir(pkgdir){
-pf = None
-if f[-7:] == ".ebuild"{
-pf = f[:-7]
-if pf != nil && ! mf.hasFile("EBUILD", f){
-f = filepath.Join(pkgdir, f)
-if f ! in _doebuild_broken_ebuilds{
-out = portage.output.EOutput()
-out.eerror(fmt.Sprintf(("A file is not listed in the "
-"Manifest: '%s'") % (f,))
-_doebuild_broken_manifests.add(manifest_path)
-return 1
+if mf != _doebuild_manifest_cache && ! mf.allow_missing {
+	fs, _ := ioutil.ReadDir(pkgdir)
+	for _, f := range fs {
+		pf := ""
+		if f.Name()[len(f.Name())-7:] == ".ebuild" {
+			pf = f.Name()[:len(f.Name())-7]
+			if pf != "" && !mf.hasFile("EBUILD", f.Name()) {
+				fn := filepath.Join(pkgdir, f.Name())
+				if !_doebuild_broken_ebuilds[fn] {
+					out := NewEOutput(false)
+					out.eerror(fmt.Sprintf(("A file is not listed in the " +
+						"Manifest: '%s'", fn, )))
+				}
+				_doebuild_broken_manifests[manifest_path] = true
+				return 1
+			}
+		}
+	}
+}
 
 _doebuild_manifest_cache = mf
 
-logfile=None
+logfile:=""
 builddir_lock = None
-tmpdir = None
-tmpdir_orig = None
+tmpdir := ""
+tmpdir_orig := ""
 
-try{
-if mydo in ("digest", "manifest", "help"){
+//try{
+defer func() {
 
-portage._doebuild_manifest_exempt_depend += 1
+	if builddir_lock != nil {
+		builddir_lock.scheduler.run_until_complete(
+			builddir_lock.async_unlock())
+	}
+	if tmpdir != "" {
+		mysettings.ValueDict["PORTAGE_TMPDIR"] = tmpdir_orig
+		os.RemoveAll(tmpdir)
+	}
 
-if ! returnpid && mydo in ("info",){
-tmpdir = tempfile.mkdtemp()
-tmpdir_orig = mysettings.ValueDict["PORTAGE_TMPDIR"]
-mysettings.ValueDict["PORTAGE_TMPDIR"] = tmpdir
+	delete(mysettings.ValueDict, "REPLACING_VERSIONS")
 
-doebuild_environment(myebuild, mydo, myroot, mysettings, debug,
+	if logfile != "" && !returnpid {
+		//try{
+		if st, _ := os.Stat(logfile); st != nil && st.Size() == 0 {
+			syscall.Unlink(logfile)
+		}
+		//except OSError{
+		//pass
+	}
+
+	if Ins([]string{"digest", "manifest", "help"}, mydo) {
+		doebuildManifestExemptDepend -= 1
+	}
+}()
+
+if Ins([]string{"digest", "manifest", "help"}, mydo) {
+	doebuildManifestExemptDepend += 1
+}
+
+if ! returnpid && mydo =="info" {
+	tmpdir = tempfile.mkdtemp()
+	tmpdir_orig = mysettings.ValueDict["PORTAGE_TMPDIR"]
+	mysettings.ValueDict["PORTAGE_TMPDIR"] = tmpdir
+}
+
+doebuild_environment(myebuild, mydo, myroot, mysettings, debug!= 0,
 use_cache, mydbapi)
 
-if mydo in clean_phases{
+if Ins( clean_phases, mydo){
 builddir_lock = None
 if ! returnpid &&
 "PORTAGE_BUILDDIR_LOCKED" ! in mysettings{
@@ -894,7 +931,7 @@ if tree != "porttree" ||
 mydo in _doebuild_commands_without_builddir{
 pass
 }else if "unpack" ! in phases_to_run{
-unpacked = os.path.exists(filepath.Join(
+unpacked = pathExists(filepath.Join(
 mysettings.ValueDict["PORTAGE_BUILDDIR"], ".unpacked"))
 }else{
 try{
@@ -903,7 +940,7 @@ except OSError{
 pass
 }else{
 newstuff = false
-if ! os.path.exists(filepath.Join(
+if ! pathExists(filepath.Join(
 mysettings.ValueDict["PORTAGE_BUILDDIR"], ".unpacked")){
 WriteMsgStdout(_(
 ">>> Not marked as unpacked; recreating WORKDIR...\n"))
@@ -1185,7 +1222,7 @@ if regular_actionmap_phase{
 pass
 }else if mydo == "qmerge"{
 
-if ! os.path.exists(
+if ! pathExists(
 filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"], ".installed")){
 atom.WriteMsg(_("!!! mydo=qmerge, but the install phase has not been run\n"),
 -1,nil)
@@ -1222,28 +1259,6 @@ WriteMsgStdout(fmt.Sprintf(("!!! Unknown mydo: %s\n") % mydo, -1,nil)
 return 1
 
 return retval
-
-finally{
-
-if builddir_lock != nil{
-builddir_lock.scheduler.run_until_complete(
-builddir_lock.async_unlock())
-if tmpdir{
-mysettings.ValueDict["PORTAGE_TMPDIR"] = tmpdir_orig
-shutil.rmtree(tmpdir)
-
-mysettings.pop("REPLACING_VERSIONS", None)
-
-if logfile && ! returnpid{
-try{
-if os.Stat(logfile).st_size == 0{
-os.unlink(logfile)
-except OSError{
-pass
-
-if mydo in ("digest", "manifest", "help"){
-
-portage._doebuild_manifest_exempt_depend -= 1
 
 func _check_temp_dir(settings *Config){
 if "PORTAGE_TMPDIR" ! in settings ||
@@ -1591,7 +1606,7 @@ return os.EX_OK
 if ! (mydo == "install" && "noauto" in mysettings.Features.Features[]){
 check_file = filepath.Join(
 mysettings.ValueDict["PORTAGE_BUILDDIR"], fmt.Sprintf(".%sed" % strings.TrimRight(mydo,"e"))
-if os.path.exists(check_file){
+if pathExists(check_file){
 WriteMsgStdout(fmt.Sprintf((">>> It appears that "
 "'%(action)s' has already executed for '%(pkg)s'; skipping.\n") %
 {"action":mydo, "pkg":mysettings.ValueDict["PF"]})
@@ -2341,7 +2356,7 @@ build_prefix = filepath.Join(settings.ValueDict["PORTAGE_TMPDIR"], "portage")
 portage.util.ensure_dirs(build_prefix)
 base_path_tmp = tempfile.mkdtemp(
 "", "._portage_reinstall_.", build_prefix)
-portage.process.atexit_register(shutil.rmtree, base_path_tmp)
+portage.process.atexit_register(os.RemoveAll, base_path_tmp)
 
 orig_bin_path = portage._bin_path
 portage._bin_path = filepath.Join(base_path_tmp, "bin")

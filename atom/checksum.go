@@ -160,7 +160,7 @@ func getHashOrigin(hashtype string) string {
 	}
 }
 
-func filterUnaccelaratedHashes(digests []string) []string {
+func filterUnaccelaratedHashes(digests map[string]string) map[string]string {
 	return digests
 }
 
@@ -193,7 +193,7 @@ func NewHashFilter(filterStr string) *hashFilter {
 	return &hashFilter{tokens == nil, tokens}
 }
 
-func applyHashFilter(digests map[string]interface{}, hashFilter hashFilter) map[string]interface{} {
+func applyHashFilter(digests map[string]string, hashFilter *hashFilter) map[string]string {
 	verifiableHashTypes := make(map[string]bool)
 	for v := range digests {
 		verifiableHashTypes[v] = true
@@ -227,6 +227,7 @@ func applyHashFilter(digests map[string]interface{}, hashFilter hashFilter) map[
 	}
 }
 
+// 0, 0
 func verifyAll(fname string, mydict map[string]string, calcPrelink int, strict int) (bool, string, string, string) {
 	fileIsOk := true
 	//reason := "Reason unknown"

@@ -359,7 +359,8 @@ type eOutput struct {
 	quiet                      bool
 }
 
-func NewEOutput(quiet bool) *eOutput { // false
+// false
+func NewEOutput(quiet bool) *eOutput {
 	e := &eOutput{}
 	e.__last_e_cmd = ""
 	e.__last_e_len = 0

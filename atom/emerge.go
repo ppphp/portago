@@ -2325,23 +2325,19 @@ func NewPollScheduler( main bool, event_loop=None)*PollScheduler {
 
 type  Scheduler struct {
 	*PollScheduler
+	_loadavg_latency, _max_display_latency                           int
+	_opts_ignore_blockers, _opts_no_background, _opts_no_self_update map[string]bool
+
+	settings    *Config
+	target_root string
+	trees       interface{}
+	myopts      interface{}
+	_spinner    interface{}
+	_mtimedb    int
+	_favorites  interface{}
+	_args_set   interface{}
+	_build_opts interface{}
 }
-
-_loadavg_latency = 30
-
-_max_display_latency = 3
-
-_opts_ignore_blockers = \
-frozenset(["--buildpkgonly",
-"--fetchonly", "--fetch-all-uri",
-"--nodeps", "--pretend"])
-
-_opts_no_background = \
-frozenset(["--pretend",
-"--fetchonly", "--fetch-all-uri"])
-
-_opts_no_self_update = frozenset(["--buildpkgonly",
-"--fetchonly", "--fetch-all-uri", "--pretend"])
 
 type  _iface_class struct {
 	*SchedulerInterface
@@ -2353,7 +2349,6 @@ type  _fetch_iface_class struct {
 	// slot
 	log_file,schedule string
 }(SlotObject):
-__slots__ = ("log_file", "schedule")
 
 _task_queues_class = slot_dict_class(
 ("merge", "jobs", "ebuild_locks", "fetch", "unpack"), prefix="")
@@ -2397,9 +2392,9 @@ type  _ConfigPool struct {
 
 func NewConfigPool(root, allocate, deallocate) *_ConfigPool {
 	c := &_ConfigPool{}
-	self._root = root
-	self._allocate = allocate
-	self._deallocate = deallocate
+	c._root = root
+	c._allocate = allocate
+	c._deallocate = deallocate
 	return c
 }
 func allocate(self):
@@ -2414,18 +2409,28 @@ func New_unknown_internal_error(value="") *_unknown_internal_error{
 	return u
 }
 
-func NewScheduler(settings, trees, mtimedb, myopts,
+func NewScheduler(settings *Config, trees, mtimedb, myopts,
 spinner, mergelist=None, favorites=None, graph_config=None)*Scheduler {
 	s := &Scheduler{}
+
+	s._loadavg_latency = 30
+	s._max_display_latency = 3
+	s._opts_ignore_blockers = map[string]bool{"--buildpkgonly": true,
+		"--fetchonly": true, "--fetch-all-uri": true,
+		"--nodeps": true, "--pretend": true,}
+	s._opts_no_background = map[string]bool{"--pretend": true,
+	"--fetchonly": true, "--fetch-all-uri": true}
+	s._opts_no_self_update = map[string]bool{"--buildpkgonly": true,
+	"--fetchonly": true, "--fetch-all-uri": true, "--pretend": true}
+
 	s.PollScheduler = NewPollScheduler(main, )
 
-	if mergelist is
-	not
-None:
-	warnings.warn("The mergelist parameter of the " + \
-	"_emerge.Scheduler constructor is now unused. Use " + \
-	"the graph_config parameter instead.",
-		DeprecationWarning, stacklevel = 2)
+	if mergelist != nil {
+		warnings.warn("The mergelist parameter of the " + \
+		"_emerge.Scheduler constructor is now unused. Use " + \
+		"the graph_config parameter instead.",
+			DeprecationWarning, stacklevel = 2)
+	}
 
 	s.settings = settings
 	s.target_root = settings.ValueDict["EROOT"]
@@ -2473,10 +2478,7 @@ None:
 	s._unsatisfied_system_deps = set()
 
 	s._status_display = JobStatusDisplay(
-		xterm_titles = ('notitles'
-	not
-	in
-	settings.features))
+		xterm_titles = (!settings.Features.Features["notitles"]))
 	s._max_load = myopts.get("--load-average")
 	max_jobs = myopts.get("--jobs")
 	if max_jobs is
@@ -2485,7 +2487,7 @@ None:
 	s._set_max_jobs(max_jobs)
 	s._running_root = trees[trees._running_eroot]["root_config"]
 	s.edebug = 0
-	if  settings.ValueDict["PORTAGE_DEBUG", "") == "1":
+	if  settings.ValueDict["PORTAGE_DEBUG"] == "1":
 	s.edebug = 1
 	s.pkgsettings =
 	{
@@ -2551,14 +2553,14 @@ not ("--pretend" in s.myopts || \
 "--fetch-all-uri" in s.myopts || \
 "--fetchonly" in s.myopts):
 if "distlocks" not in features:
-portage.writemsg(red("!!!")+"\n", noiselevel = -1)
-portage.writemsg(red("!!!")+" parallel-fetching " + \
+WriteMsg(red("!!!")+"\n", noiselevel = -1)
+WriteMsg(red("!!!")+" parallel-fetching " + \
 "requires the distlocks feature enabled"+"\n",
 noiselevel = -1)
-portage.writemsg(red("!!!")+" you have it disabled, " + \
+WriteMsg(red("!!!")+" you have it disabled, " + \
 "thus parallel-fetching is being disabled"+"\n",
 noiselevel = -1)
-portage.writemsg(red("!!!")+"\n", noiselevel = -1)
+WriteMsg(red("!!!")+"\n", noiselevel = -1)
 elif merge_count > 1:
 s._parallel_fetch = true
 
@@ -3285,7 +3287,7 @@ None:
 func (s *Scheduler) merge() {
 	if "--resume" in
 	s.myopts:
-	portage.writemsg_stdout(
+	WriteMsg_stdout(
 		colorize("GOOD", "*** Resuming merge...\n"), noiselevel = -1)
 	s._logger.log(" *** Resuming merge...")
 
@@ -4271,9 +4273,7 @@ func (s *Scheduler) _status_msg( msg) {
 func (s *Scheduler) _save_resume_list() {
 	mtimedb = s._mtimedb
 
-	mtimedb["resume"] =
-	{
-	}
+	mtimedb["resume"] = map[string]{}
 	mtimedb["resume"]["myopts"] = s.myopts.copy()
 
 	mtimedb["resume"]["favorites"] = [str(x)

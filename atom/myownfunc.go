@@ -61,6 +61,15 @@ func Ins(a []string, b string) bool{
 	return false
 }
 
+func Ini(a []int, b int) bool{
+	for _ ,v := range a {
+		if b== v {
+			return true
+		}
+	}
+	return false
+}
+
 func Mountpoint(path string) (string,error) {
 	pi, err := os.Stat(path)
 	if err != nil {

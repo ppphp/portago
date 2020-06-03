@@ -34,6 +34,7 @@ var (
 	portage1ProfilesAllowDirectories = map[string]bool{"portage-1-compat": true, "portage-1": true, "portage-2": true}
 )
 
+// 0, 0
 func findInvalidPathChar(path string, pos int, endpos int) int {
 	if endpos == 0 {
 		endpos = len(path)
@@ -45,15 +46,15 @@ func findInvalidPathChar(path string, pos int, endpos int) int {
 }
 
 type RepoConfig struct {
-	allowMissingManifest, AutoSync, cloneDepth, eapi, format, location, mainRepo, manifestHashes, manifestRequiredHashes, Name, syncDepth, syncOpenpgpKeyPath, syncOpenpgpKeyRefreshRetryCount, syncOpenpgpKeyRefreshRetryDelayExpBase, syncOpenpgpKeyRefreshRetryDelayMax, syncOpenpgpKeyRefreshRetryDelayMult, syncOpenpgpKeyRefreshRetryOverallTimeout, syncRcuStoreDir, SyncType, syncUmask, SyncUri, syncUser, userLocation string
-	eclassDb                                                                                                                                                                                                                                                                                                                                                                                                                     *cache
-	eapisBanned, eapisDeprecated, force, Aliases, eclassOverrides                                                                                                                                                                                                                                                                                                                                                                map[string]bool
-	cacheFormats, profileFormats, masters, eclassLocations, mastersOrig                                                                                                                                                                                                                                                                                                                                                          []string
-	mastersRepo                                                                                                                                                                                                                                                                                                                                                                                                                  []*RepoConfig
-	moduleSpecificOptions                                                                                                                                                                                                                                                                                                                                                                                                        map[string]string
-	localConfig, syncHooksOnlyOnChange, strictMiscDigests, syncAllowHardlinks, syncRcu, missingRepoName, signCommit, signManifest, thinManifest, allowProvideVirtual, createManifest, disableManifest, updateChangelog, portage1Profiles, portage1ProfilesCompat                                                                                                                                                                 bool
-	priority, syncRcuSpareSnapshots, syncRcuTtlDays                                                                                                                                                                                                                                                                                                                                                                              int
-	findInvalidPathChar                                                                                                                                                                                                                                                                                                                                                                                                          func(string, int, int) int
+	AutoSync, cloneDepth, eapi, format, location, mainRepo, Name, syncDepth, syncOpenpgpKeyPath, syncOpenpgpKeyRefreshRetryCount, syncOpenpgpKeyRefreshRetryDelayExpBase, syncOpenpgpKeyRefreshRetryDelayMax, syncOpenpgpKeyRefreshRetryDelayMult, syncOpenpgpKeyRefreshRetryOverallTimeout, syncRcuStoreDir, SyncType, syncUmask, SyncUri, syncUser, userLocation string
+	eclassDb                                                                                                                                                                                                                                                                                                                                                       *cache
+	eapisBanned, eapisDeprecated, force, Aliases, eclassOverrides, manifestHashes, manifestRequiredHashes                                                                                                                                                                                                                                                          map[string]bool
+	cacheFormats, profileFormats, masters, eclassLocations, mastersOrig                                                                                                                                                                                                                                                                                            []string
+	mastersRepo                                                                                                                                                                                                                                                                                                                                                    []*RepoConfig
+	moduleSpecificOptions                                                                                                                                                                                                                                                                                                                                          map[string]string
+	localConfig, syncHooksOnlyOnChange, strictMiscDigests, syncAllowHardlinks, syncRcu, missingRepoName, signCommit, signManifest, thinManifest, allowProvideVirtual, createManifest, disableManifest, updateChangelog, portage1Profiles, portage1ProfilesCompat, allowMissingManifest                                                                             bool
+	priority, syncRcuSpareSnapshots, syncRcuTtlDays                                                                                                                                                                                                                                                                                                                int
+	findInvalidPathChar                                                                                                                                                                                                                                                                                                                                            func(string, int, int) int
 }
 
 func (r *RepoConfig) setModuleSpecificOpt(opt, val string) {
@@ -97,30 +98,76 @@ return r.iterPregeneratedCaches(
 auxdbkeys, readonly, force)
 }
 
-func (r *RepoConfig) load_manifest(*args, **kwds) {
-	kwds['thin'] = r.thinManifest
-	kwds['allow_missing'] = r.allowMissingManifest
-	kwds['allow_create'] = r.createManifest
-	kwds['hashes'] = r.manifestHashes
-	kwds['required_hashes'] = r.manifestRequiredHashes
-	kwds['strict_misc_digests'] = r.strictMiscDigests
+// nil, false
+func (r *RepoConfig) load_manifest( pkgdir, distdir string, fetchlist_dict *FetchlistDict, from_scratch bool) *Manifest{
 	if r.disableManifest {
-		kwds['from_scratch'] = true
+		from_scratch = true
 	}
-	kwds['find_invalid_path_char'] = r.findInvalidPathChar
-	return manifest.Manifest(*args, **kwds)
+	return NewManifest(pkgdir, distdir, fetchlist_dict, from_scratch,
+		r.thinManifest, r.allowMissingManifest, r.createManifest,
+		r.manifestHashes,r.manifestRequiredHashes,
+		func(s string) int {return r.findInvalidPathChar(s, 0, 0)},
+		r.strictMiscDigests)
 }
 
 func (r *RepoConfig) update( new_repo *RepoConfig) {
 
-	keys := map[string]bool{}(r.__slots__)
-	delete(keys, "missing_repo_name")
-	for k := range keys {
-		v = getattr(new_repo, k, None)
-		if v != nil{
-			setattr(self, k, v)
-		}
-	}
+	r.Aliases = new_repo.Aliases
+	r.allowMissingManifest = new_repo.allowMissingManifest
+	r.allowProvideVirtual = new_repo.allowProvideVirtual
+	r.AutoSync = new_repo.AutoSync
+	r.cacheFormats = new_repo.cacheFormats
+	r.cloneDepth = new_repo.cloneDepth
+	r.createManifest = new_repo.createManifest
+	r.disableManifest = new_repo.disableManifest
+	r.eapi = new_repo.eapi
+	r.eclassDb = new_repo.eclassDb
+	r.eclassLocations = new_repo.eclassLocations
+	r.eclassOverrides = new_repo.eclassOverrides
+	r.findInvalidPathChar = new_repo.findInvalidPathChar
+	r.force = new_repo.force
+	r.format = new_repo.format
+	r.localConfig = new_repo.localConfig
+	r.location = new_repo.location
+	r.mainRepo = new_repo.mainRepo
+	r.manifestHashes = new_repo.manifestHashes
+	r.manifestRequiredHashes = new_repo.manifestRequiredHashes
+	r.masters = new_repo.masters
+	r.moduleSpecificOptions = new_repo.moduleSpecificOptions
+	r.Name = new_repo.Name
+	r.portage1Profiles = new_repo.portage1Profiles
+	r.portage1ProfilesCompat = new_repo.portage1ProfilesCompat
+	r.priority = new_repo.priority
+	r.profileFormats = new_repo.profileFormats
+	r.properties_allowed = new_repo.properties_allowed
+	r.restrict_allowed = new_repo.restrict_allowed
+	r.signCommit = new_repo.signCommit
+	r.signManifest = new_repo.signManifest
+	r.strictMiscDigests = new_repo.strictMiscDigests
+	r.syncAllowHardlinks = new_repo.syncAllowHardlinks
+	r.syncDepth = new_repo.syncDepth
+	r.syncHooksOnlyOnChange = new_repo.syncHooksOnlyOnChange
+	r.sync_openpgp_keyserver = new_repo.sync_openpgp_keyserver
+	r.syncOpenpgpKeyPath = new_repo.syncOpenpgpKeyPath
+	r.syncOpenpgpKeyRefreshRetryCount = new_repo.syncOpenpgpKeyRefreshRetryCount
+	r.syncOpenpgpKeyRefreshRetryDelayExpBase = new_repo.syncOpenpgpKeyRefreshRetryDelayExpBase
+	r.syncOpenpgpKeyRefreshRetryDelayMax = new_repo.syncOpenpgpKeyRefreshRetryDelayMax
+	r.syncOpenpgpKeyRefreshRetryDelayMult = new_repo.syncOpenpgpKeyRefreshRetryDelayMult
+	r.syncOpenpgpKeyRefreshRetryOverallTimeout = new_repo.syncOpenpgpKeyRefreshRetryOverallTimeout
+	r.syncRcu = new_repo.syncRcu
+	r.syncRcuSpareSnapshots = new_repo.syncRcuSpareSnapshots
+	r.syncRcuStoreDir = new_repo.syncRcuStoreDir
+	r.syncRcuTtlDays = new_repo.syncRcuTtlDays
+	r.SyncType = new_repo.SyncType
+	r.syncUmask = new_repo.syncUmask
+	r.SyncUri = new_repo.SyncUri
+	r.syncUser = new_repo.syncUser
+	r.thinManifest = new_repo.thinManifest
+	r.updateChangelog = new_repo.updateChangelog
+	r.userLocation = new_repo.userLocation
+	r.eapisBanned = new_repo.eapisBanned
+	r.eapisDeprecated = new_repo.eapisDeprecated
+	r.mastersOrig = new_repo.mastersOrig
 
 	if new_repo.Name != ""{
 	r.missingRepoName = new_repo.missingRepoName
@@ -350,12 +397,12 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *R
 	r.signCommit = false
 	r.signManifest = true
 	r.thinManifest = false
-	r.allowMissingManifest = ""
+	r.allowMissingManifest = false
 	r.allowProvideVirtual = false
 	r.createManifest = true
 	r.disableManifest = false
-	r.manifestHashes = ""
-	r.manifestRequiredHashes = ""
+	r.manifestHashes = nil
+	r.manifestRequiredHashes = nil
 	r.updateChangelog = false
 	r.cacheFormats = nil
 	r.portage1Profiles = true
