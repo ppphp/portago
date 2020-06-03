@@ -2222,21 +2222,21 @@ func(p*PollScheduler)  terminate() {
 
 // false
 func(p*PollScheduler)  _termination_check( retry bool) {
-	if p._terminated.is_set() &&!p._terminated_tasks:
-	if not p._scheduling:
-	p._scheduling = true
-try:
-	p._terminated_tasks = true
-	p._terminate_tasks()
-finally:
-	p._scheduling = false
-
-	elif
-retry:
-	with
-	p._term_rlock:
-	p._term_check_handle = p._event_loop.call_soon(
-		p._termination_check, true)
+	if p._terminated.is_set() &&!p._terminated_tasks{
+		if ! p._scheduling {
+			p._scheduling = true
+		//try:
+			p._terminated_tasks = true
+			p._terminate_tasks()
+		//finally:
+			p._scheduling = false
+		}else if retry {
+			p._term_rlock.Lock()
+			p._term_check_handle = p._event_loop.call_soon(
+				p._termination_check, true)
+			p._term_rlock.Unlock()
+		}
+	}
 }
 
 func(p*PollScheduler)  _terminate_tasks() {
@@ -2323,7 +2323,9 @@ func NewPollScheduler( main bool, event_loop=None)*PollScheduler {
 }
 
 
-class Scheduler(PollScheduler):
+type  Scheduler struct {
+	*PollScheduler
+}
 
 _loadavg_latency = 30
 
@@ -2341,888 +2343,1161 @@ frozenset(["--pretend",
 _opts_no_self_update = frozenset(["--buildpkgonly",
 "--fetchonly", "--fetch-all-uri", "--pretend"])
 
-class _iface_class(SchedulerInterface):
-__slots__ = ("fetch",
-"scheduleSetup", "scheduleUnpack")
+type  _iface_class struct {
+	*SchedulerInterface
+	// slot
+	fetch, scheduleSetup,scheduleUnpack string
+}
 
-class _fetch_iface_class(SlotObject):
+type  _fetch_iface_class struct {
+	// slot
+	log_file,schedule string
+}(SlotObject):
 __slots__ = ("log_file", "schedule")
 
 _task_queues_class = slot_dict_class(
 ("merge", "jobs", "ebuild_locks", "fetch", "unpack"), prefix="")
 
-class _build_opts_class(SlotObject):
-__slots__ = ("buildpkg", "buildpkg_exclude", "buildpkgonly",
-"fetch_all_uri", "fetchonly", "pretend")
+type  _build_opts_class struct {
+	// slot
+	buildpkg,buildpkg_exclude,buildpkgonly,
+	fetch_all_uri,fetchonly,pretend string
+}(SlotObject):
 
-class _binpkg_opts_class(SlotObject):
-__slots__ = ("fetchonly", "getbinpkg", "pretend")
+type  _binpkg_opts_class struct {
+	// slot
+	fetchonly,getbinpkg,pretend string
+}(SlotObject):
 
-class _pkg_count_class(SlotObject):
-__slots__ = ("curval", "maxval")
+type  _pkg_count_class struct {
+	// slot
+	curval, maxval string
+}(SlotObject):
 
-class _emerge_log_class(SlotObject):
-__slots__ = ("xterm_titles",)
+type  _emerge_log_class struct {
+	// slot
+	xterm_titles string
+}(SlotObject):
 
-def log(self, *pargs, **kwargs):
-if not self.xterm_titles:
-kwargs.pop("short_msg", None)
-emergelog(self.xterm_titles, *pargs, **kwargs)
+func (e *_emerge_log_class) log( *pargs, **kwargs) {
+	if not e.xterm_titles:
+	kwargs.pop("short_msg", None)
+	emergelog(self.xterm_titles, *pargs, **kwargs)
+}
 
-class _failed_pkg(SlotObject):
-__slots__ = ("build_dir", "build_log", "pkg",
-"postinst_failure", "returncode")
+type  _failed_pkg struct {
+	// slot
+	build_dir,build_log,pkg, postinst_failure,returncode string
+}(SlotObject):
 
-class _ConfigPool(object):
-__slots__ = ("_root", "_allocate", "_deallocate")
-def __init__(self, root, allocate, deallocate):
-self._root = root
-self._allocate = allocate
-self._deallocate = deallocate
-def allocate(self):
+type  _ConfigPool struct {
+	// slot
+	_root,_allocate,_deallocate string
+}
+
+func NewConfigPool(root, allocate, deallocate) *_ConfigPool {
+	c := &_ConfigPool{}
+	self._root = root
+	self._allocate = allocate
+	self._deallocate = deallocate
+	return c
+}
+func allocate(self):
 return self._allocate(self._root)
-def deallocate(self, settings):
+func deallocate(self, settings):
 self._deallocate(settings)
 
-class _unknown_internal_error(portage.exception.PortageException):
-def __init__(self, value=""):
-portage.exception.PortageException.__init__(self, value)
+type  _unknown_internal_error(portage.exception.PortageException):
+func New_unknown_internal_error(value="") *_unknown_internal_error{
+	u := &_unknown_internal_error{}
+	portage.exception.PortageException.__init__(self, value)
+	return u
+}
 
-def __init__(self, settings, trees, mtimedb, myopts,
-spinner, mergelist=None, favorites=None, graph_config=None):
-PollScheduler.__init__(self, main=true)
+func NewScheduler(settings, trees, mtimedb, myopts,
+spinner, mergelist=None, favorites=None, graph_config=None)*Scheduler {
+	s := &Scheduler{}
+	s.PollScheduler = NewPollScheduler(main, )
 
-if mergelist is not None:
-warnings.warn("The mergelist parameter of the " + \
-"_emerge.Scheduler constructor is now unused. Use " + \
-"the graph_config parameter instead.",
-DeprecationWarning, stacklevel=2)
+	if mergelist is
+	not
+None:
+	warnings.warn("The mergelist parameter of the " + \
+	"_emerge.Scheduler constructor is now unused. Use " + \
+	"the graph_config parameter instead.",
+		DeprecationWarning, stacklevel = 2)
 
-self.settings = settings
-self.target_root = settings["EROOT"]
-self.trees = trees
-self.myopts = myopts
-self._spinner = spinner
-self._mtimedb = mtimedb
-self._favorites = favorites
-self._args_set = InternalPackageSet(favorites, allow_repo=true)
-self._build_opts = self._build_opts_class()
+	s.settings = settings
+	s.target_root = settings["EROOT"]
+	s.trees = trees
+	s.myopts = myopts
+	s._spinner = spinner
+	s._mtimedb = mtimedb
+	s._favorites = favorites
+	s._args_set = InternalPackageSet(favorites, allow_repo = true)
+	s._build_opts = s._build_opts_class()
 
-for k in self._build_opts.__slots__:
-setattr(self._build_opts, k, myopts.get("--" + k.replace("_", "-")))
-self._build_opts.buildpkg_exclude = InternalPackageSet( \
-initial_atoms=" ".join(myopts.get("--buildpkg-exclude", [])).split(), \
-allow_wildcard=true, allow_repo=true)
-if "mirror" in self.settings.features:
-self._build_opts.fetch_all_uri = true
+	for k
+	in
+	s._build_opts.__slots__:
+	setattr(s._build_opts, k, myopts.get("--"+k.replace("_", "-")))
+	s._build_opts.buildpkg_exclude = InternalPackageSet( \
+	initial_atoms = " ".join(myopts.get("--buildpkg-exclude", [])).split(), \
+	allow_wildcard = true, allow_repo=true)
+	if "mirror" in
+	s.settings.features:
+	s._build_opts.fetch_all_uri = true
 
-self._binpkg_opts = self._binpkg_opts_class()
-for k in self._binpkg_opts.__slots__:
-setattr(self._binpkg_opts, k, "--" + k.replace("_", "-") in myopts)
+	s._binpkg_opts = s._binpkg_opts_class()
+	for k
+	in
+	s._binpkg_opts.__slots__:
+	setattr(s._binpkg_opts, k, "--"+k.replace("_", "-")
+	in
+	myopts)
 
-self.curval = 0
-self._logger = self._emerge_log_class()
-self._task_queues = self._task_queues_class()
-for k in self._task_queues.allowed_keys:
-setattr(self._task_queues, k,
-SequentialTaskQueue())
+	s.curval = 0
+	s._logger = s._emerge_log_class()
+	s._task_queues = s._task_queues_class()
+	for k
+	in
+	s._task_queues.allowed_keys:
+	setattr(s._task_queues, k,
+		SequentialTaskQueue())
 
-self._merge_wait_queue = deque()
-self._merge_wait_scheduled = []
+	s._merge_wait_queue = deque()
+	s._merge_wait_scheduled = []
 
-self._deep_system_deps = set()
+	s._deep_system_deps = set()
 
-self._unsatisfied_system_deps = set()
+	s._unsatisfied_system_deps = set()
 
-self._status_display = JobStatusDisplay(
-xterm_titles=('notitles' not in settings.features))
-self._max_load = myopts.get("--load-average")
-max_jobs = myopts.get("--jobs")
-if max_jobs is None:
-max_jobs = 1
-self._set_max_jobs(max_jobs)
-self._running_root = trees[trees._running_eroot]["root_config"]
-self.edebug = 0
-if settings.get("PORTAGE_DEBUG", "") == "1":
-self.edebug = 1
-self.pkgsettings = {}
-self._config_pool = {}
-for root in self.trees:
-self._config_pool[root] = []
+	s._status_display = JobStatusDisplay(
+		xterm_titles = ('notitles'
+	not
+	in
+	settings.features))
+	s._max_load = myopts.get("--load-average")
+	max_jobs = myopts.get("--jobs")
+	if max_jobs is
+None:
+	max_jobs = 1
+	s._set_max_jobs(max_jobs)
+	s._running_root = trees[trees._running_eroot]["root_config"]
+	s.edebug = 0
+	if settings.get("PORTAGE_DEBUG", "") == "1":
+	s.edebug = 1
+	s.pkgsettings =
+	{
+	}
+	s._config_pool =
+	{
+	}
+	for root
+	in
+	s.trees:
+	s._config_pool[root] = []
 
-self._fetch_log = os.path.join(_emerge.emergelog._emerge_log_dir,
-'emerge-fetch.log')
-fetch_iface = self._fetch_iface_class(log_file=self._fetch_log,
-schedule=self._schedule_fetch)
-self._sched_iface = self._iface_class(
-self._event_loop,
-is_background=self._is_background,
-fetch=fetch_iface,
-scheduleSetup=self._schedule_setup,
-scheduleUnpack=self._schedule_unpack)
+	s._fetch_log = os.path.join(_emerge.emergelog._emerge_log_dir,
+		'emerge-fetch.log')
+	fetch_iface = s._fetch_iface_class(log_file = s._fetch_log,
+		schedule = s._schedule_fetch)
+	s._sched_iface = s._iface_class(
+		s._event_loop,
+		is_background = s._is_background,
+		fetch = fetch_iface,
+		scheduleSetup=s._schedule_setup,
+		scheduleUnpack = s._schedule_unpack)
 
-self._prefetchers = weakref.WeakValueDictionary()
-self._pkg_queue = []
-self._jobs = 0
-self._running_tasks = {}
-self._completed_tasks = set()
-self._main_exit = None
-self._main_loadavg_handle = None
-self._schedule_merge_wakeup_task = None
+	s._prefetchers = weakref.WeakValueDictionary()
+	s._pkg_queue = []
+	s._jobs = 0
+	s._running_tasks =
+	{
+	}
+	s._completed_tasks = set()
+	s._main_exit = None
+	s._main_loadavg_handle = None
+	s._schedule_merge_wakeup_task = None
 
-self._failed_pkgs = []
-self._failed_pkgs_all = []
-self._failed_pkgs_die_msgs = []
-self._post_mod_echo_msgs = []
-self._parallel_fetch = false
-self._init_graph(graph_config)
-merge_count = len([x for x in self._mergelist \
-if isinstance(x, Package) and x.operation == "merge"])
-self._pkg_count = self._pkg_count_class(
-curval=0, maxval=merge_count)
-self._status_display.maxval = self._pkg_count.maxval
+	s._failed_pkgs = []
+	s._failed_pkgs_all = []
+	s._failed_pkgs_die_msgs = []
+	s._post_mod_echo_msgs = []
+	s._parallel_fetch = false
+	s._init_graph(graph_config)
+	merge_count = len([x
+	for x
+	in
+	s._mergelist \
+	if isinstance(x, Package) and
+	x.operation == "merge"])
+s._pkg_count = s._pkg_count_class(
+curval = 0, maxval = merge_count)
+s._status_display.maxval = s._pkg_count.maxval
 
-self._job_delay_max = 5
-self._previous_job_start_time = None
-self._job_delay_timeout_id = None
+s._job_delay_max = 5
+s._previous_job_start_time = None
+s._job_delay_timeout_id = None
 
-self._sigcont_delay = 5
-self._sigcont_time = None
+s._sigcont_delay = 5
+s._sigcont_time = None
 
-self._choose_pkg_return_early = false
+s._choose_pkg_return_early = false
 
-features = self.settings.features
+features = s.settings.features
 if "parallel-fetch" in features and \
-not ("--pretend" in self.myopts or \
-"--fetch-all-uri" in self.myopts or \
-"--fetchonly" in self.myopts):
+not ("--pretend" in s.myopts or \
+"--fetch-all-uri" in s.myopts or \
+"--fetchonly" in s.myopts):
 if "distlocks" not in features:
-portage.writemsg(red("!!!")+"\n", noiselevel=-1)
+portage.writemsg(red("!!!")+"\n", noiselevel = -1)
 portage.writemsg(red("!!!")+" parallel-fetching " + \
 "requires the distlocks feature enabled"+"\n",
-noiselevel=-1)
+noiselevel = -1)
 portage.writemsg(red("!!!")+" you have it disabled, " + \
 "thus parallel-fetching is being disabled"+"\n",
-noiselevel=-1)
-portage.writemsg(red("!!!")+"\n", noiselevel=-1)
+noiselevel = -1)
+portage.writemsg(red("!!!")+"\n", noiselevel = -1)
 elif merge_count > 1:
-self._parallel_fetch = true
+s._parallel_fetch = true
 
-if self._parallel_fetch:
+if s._parallel_fetch:
 try:
-open(self._fetch_log, 'w').close()
+open(s._fetch_log, 'w').close()
 except EnvironmentError:
 pass
 
-self._running_portage = None
-portage_match = self._running_root.trees["vartree"].dbapi.match(
+s._running_portage = None
+portage_match = s._running_root.trees["vartree"].dbapi.match(
 portage.const.PORTAGE_PACKAGE_ATOM)
 if portage_match:
 cpv = portage_match.pop()
-self._running_portage = self._pkg(cpv, "installed",
-self._running_root, installed=true)
+s._running_portage = s._pkg(cpv, "installed",
+s._running_root, installed = true)
+return s
+}
 
-def _handle_self_update(self):
+func (s *Scheduler) _handle_self_update() {
 
-if self._opts_no_self_update.intersection(self.myopts):
-return os.EX_OK
+	if s._opts_no_s_update.intersection(s.myopts):
+	return os.EX_OK
 
-for x in self._mergelist:
-if not isinstance(x, Package):
-continue
-if x.operation != "merge":
-continue
-if x.root != self._running_root.root:
-continue
-if not portage.dep.match_from_list(
-portage.const.PORTAGE_PACKAGE_ATOM, [x]):
-continue
-rval = _check_temp_dir(self.settings)
-if rval != os.EX_OK:
-return rval
-_prepare_self_update(self.settings)
-break
+	for x
+	in
+	s._mergelist:
+	if not isinstance(x, Package):
+	continue
+	if x.operation != "merge":
+	continue
+	if x.root != s._running_root.root:
+	continue
+	if not portage.dep.match_from_list(
+		portage.
+	const.PORTAGE_PACKAGE_ATOM, [x]):
+	continue
+	rval = _check_temp_dir(s.settings)
+	if rval != os.EX_OK:
+	return rval
+	_prepare_s_update(s.settings)
+	break
 
-return os.EX_OK
+	return os.EX_OK
+}
 
-def _terminate_tasks(self):
-self._status_display.quiet = true
-for task in list(self._running_tasks.values()):
-if task.isAlive():
-task.cancel()
-else:
-del self._running_tasks[id(task)]
+func (s*Scheduler)_terminate_tasks() {
+	s._status_display.quiet = true
+	for task
+	in
+	list(s._running_tasks.values()):
+	if task.isAlive():
+	task.cancel()
+	else:
+	del
+	s._running_tasks[id(task)]
 
-for q in self._task_queues.values():
-q.clear()
+	for q
+	in
+	s._task_queues.values():
+	q.clear()
+}
 
-def _init_graph(self, graph_config):
-self._set_graph_config(graph_config)
-self._blocker_db = {}
-depgraph_params = create_depgraph_params(self.myopts, None)
-dynamic_deps = "dynamic_deps" in depgraph_params
-ignore_built_slot_operator_deps = self.myopts.get(
-"--ignore-built-slot-operator-deps", "n") == "y"
-for root in self.trees:
-if graph_config is None:
-fake_vartree = FakeVartree(self.trees[root]["root_config"],
-pkg_cache=self._pkg_cache, dynamic_deps=dynamic_deps,
-ignore_built_slot_operator_deps=ignore_built_slot_operator_deps)
-fake_vartree.sync()
-else:
-fake_vartree = graph_config.trees[root]['vartree']
-self._blocker_db[root] = BlockerDB(fake_vartree)
+func _init_graph( graph_config) {
+	s._set_graph_config(graph_config)
+	s._blocker_db =
+	{
+	}
+	depgraph_params = create_depgraph_params(s.myopts, None)
+	dynamic_deps = "dynamic_deps"
+	in
+	depgraph_params
+	ignore_built_slot_operator_deps = s.myopts.get(
+		"--ignore-built-slot-operator-deps", "n") == "y"
+	for root
+	in
+	s.trees:
+	if graph_config is
+None:
+	fake_vartree = FakeVartree(s.trees[root]["root_config"],
+		pkg_cache = s._pkg_cache, dynamic_deps = dynamic_deps,
+		ignore_built_slot_operator_deps=ignore_built_slot_operator_deps)
+	fake_vartree.sync()
+	else:
+	fake_vartree = graph_config.trees[root]['vartree']
+	s._blocker_db[root] = BlockerDB(fake_vartree)
+}
 
-def _destroy_graph(self):
-self._blocker_db = None
-self._set_graph_config(None)
-gc.collect()
+func (s *Scheduler) _destroy_graph() {
+	s._blocker_db = None
+	s._set_graph_config(None)
+	gc.collect()
+}
 
-def _set_max_jobs(self, max_jobs):
-self._max_jobs = max_jobs
-self._task_queues.jobs.max_jobs = max_jobs
-if "parallel-install" in self.settings.features:
-self._task_queues.merge.max_jobs = max_jobs
+func (s *Scheduler) _set_max_jobs( max_jobs) {
+	s._max_jobs = max_jobs
+	s._task_queues.jobs.max_jobs = max_jobs
+	if "parallel-install" in
+	s.settings.features:
+	s._task_queues.merge.max_jobs = max_jobs
+}
 
-def _background_mode(self):
-background = (self._max_jobs is true or \
-self._max_jobs > 1 or "--quiet" in self.myopts \
-or self.myopts.get("--quiet-build") == "y") and \
-not bool(self._opts_no_background.intersection(self.myopts))
+func _background_mode() {
+	background = (s._max_jobs
+	is
+	true
+	or \
+	s._max_jobs > 1
+	or
+	"--quiet"
+	in
+	s.myopts \
+	or
+	s.myopts.get("--quiet-build") == "y") and \
+	not
+	bool(s._opts_no_background.intersection(s.myopts))
 
-if background:
-interactive_tasks = self._get_interactive_tasks()
-if interactive_tasks:
-background = false
-writemsg_level(">>> Sending package output to stdio due " + \
-"to interactive package(s):\n",
-level=logging.INFO, noiselevel=-1)
-msg = [""]
-for pkg in interactive_tasks:
-pkg_str = "  " + colorize("INFORM", str(pkg.cpv))
-if pkg.root_config.settings["ROOT"] != "/":
-pkg_str += " for " + pkg.root
-msg.append(pkg_str)
-msg.append("")
-writemsg_level("".join("%s\n" % (l,) for l in msg),
-level=logging.INFO, noiselevel=-1)
-if self._max_jobs is true or self._max_jobs > 1:
-self._set_max_jobs(1)
-writemsg_level(">>> Setting --jobs=1 due " + \
-"to the above interactive package(s)\n",
-level=logging.INFO, noiselevel=-1)
-writemsg_level(">>> In order to temporarily mask " + \
-"interactive updates, you may\n" + \
-">>> specify --accept-properties=-interactive\n",
-level=logging.INFO, noiselevel=-1)
-self._status_display.quiet = \
-not background or \
-("--quiet" in self.myopts and \
-"--verbose" not in self.myopts)
+	if background:
+	interactive_tasks = s._get_interactive_tasks()
+	if interactive_tasks:
+	background = false
+	writemsg_level(">>> Sending package output to stdio due " + \
+	"to interactive package(s):\n",
+		level = logging.INFO, noiselevel=-1)
+	msg = [""]
+	for pkg
+	in
+interactive_tasks:
+	pkg_str = "  " + colorize("INFORM", str(pkg.cpv))
+	if pkg.root_config.settings["ROOT"] != "/":
+	pkg_str += " for " + pkg.root
+	msg.append(pkg_str)
+	msg.append("")
+	writemsg_level("".join("%s\n" % (l, )
+	for l
+	in
+	msg),
+	level = logging.INFO, noiselevel=-1)
+	if s._max_jobs is
+	true
+	or
+	s._max_jobs > 1:
+	s._set_max_jobs(1)
+	writemsg_level(">>> Setting --jobs=1 due " + \
+	"to the above interactive package(s)\n",
+		level = logging.INFO, noiselevel=-1)
+	writemsg_level(">>> In order to temporarily mask " + \
+	"interactive updates, you may\n" + \
+	">>> specify --accept-properties=-interactive\n",
+		level = logging.INFO, noiselevel=-1)
+	s._status_display.quiet = \
+	not
+	background
+	or \
+	("--quiet"
+	in
+	s.myopts
+	and \
+	"--verbose"
+	not
+	in
+	s.myopts)
 
-self._logger.xterm_titles = \
-"notitles" not in self.settings.features and \
-self._status_display.quiet
+	s._logger.xterm_titles = \
+	"notitles"
+	not
+	in
+	s.settings.features
+	and \
+	s._status_display.quiet
 
-return background
+	return background
+}
 
-def _get_interactive_tasks(self):
-interactive_tasks = []
-for task in self._mergelist:
-if not (isinstance(task, Package) and \
-task.operation == "merge"):
-continue
-if 'interactive' in task.properties:
-interactive_tasks.append(task)
-return interactive_tasks
+func (s *Scheduler) _get_interactive_tasks() {
+	interactive_tasks = []
+	for task
+	in
+	s._mergelist:
+	if not(isinstance(task, Package) and \
+	task.operation == "merge"):
+	continue
+	if 'interactive' in
+	task.properties:
+	interactive_tasks.append(task)
+	return interactive_tasks
+}
 
-def _set_graph_config(self, graph_config):
+func _set_graph_config( graph_config) {
 
-if graph_config is None:
-self._graph_config = None
-self._pkg_cache = {}
-self._digraph = None
-self._mergelist = []
-self._world_atoms = None
-self._deep_system_deps.clear()
-return
+	if graph_config is
+None:
+	s._graph_config = None
+	s._pkg_cache =
+	{
+	}
+	s._digraph = None
+	s._mergelist = []
+	s._world_atoms = None
+	s._deep_system_deps.clear()
+	return
 
-self._graph_config = graph_config
-self._pkg_cache = graph_config.pkg_cache
-self._digraph = graph_config.graph
-self._mergelist = graph_config.mergelist
+	s._graph_config = graph_config
+	s._pkg_cache = graph_config.pkg_cache
+	s._digraph = graph_config.graph
+	s._mergelist = graph_config.mergelist
 
-self._world_atoms = {}
-for pkg in self._mergelist:
-if getattr(pkg, 'operation', None) != 'merge':
-continue
-atom = create_world_atom(pkg, self._args_set,
-pkg.root_config, before_install=true)
-if atom is not None:
-self._world_atoms[pkg] = atom
+	s._world_atoms =
+	{
+	}
+	for pkg
+	in
+	s._mergelist:
+	if getattr(pkg, 'operation', None) != 'merge':
+	continue
+	atom = create_world_atom(pkg, s._args_set,
+		pkg.root_config, before_install = true)
+	if atom is
+	not
+None:
+	s._world_atoms[pkg] = atom
 
-if "--nodeps" in self.myopts or \
-(self._max_jobs is not true and self._max_jobs < 2):
-self._digraph = None
-graph_config.graph = None
-graph_config.pkg_cache.clear()
-self._deep_system_deps.clear()
-for pkg in self._mergelist:
-self._pkg_cache[pkg] = pkg
-return
+	if "--nodeps" in
+	s.myopts
+	or \
+	(s._max_jobs
+	is
+	not
+	true
+	and
+	s._max_jobs < 2):
+	s._digraph = None
+	graph_config.graph = None
+	graph_config.pkg_cache.clear()
+	s._deep_system_deps.clear()
+	for pkg
+	in
+	s._mergelist:
+	s._pkg_cache[pkg] = pkg
+	return
 
-self._find_system_deps()
-self._prune_digraph()
-self._prevent_builddir_collisions()
-if '--debug' in self.myopts:
-writemsg("\nscheduler digraph:\n\n", noiselevel=-1)
-self._digraph.debug_print()
-writemsg("\n", noiselevel=-1)
+	s._find_system_deps()
+	s._prune_digraph()
+	s._prevent_builddir_collisions()
+	if '--debug' in
+	s.myopts:
+	writemsg("\nscheduler digraph:\n\n", noiselevel = -1)
+	s._digraph.debug_print()
+	writemsg("\n", noiselevel = -1)
+}
 
-def _find_system_deps(self):
-params = create_depgraph_params(self.myopts, None)
-if not params["implicit_system_deps"]:
-return
+func (s *Scheduler) _find_system_deps() {
+	params = create_depgraph_params(s.myopts, None)
+	if not params["implicit_system_deps"]:
+	return
 
-deep_system_deps = self._deep_system_deps
-deep_system_deps.clear()
-deep_system_deps.update(
-_find_deep_system_runtime_deps(self._digraph))
-deep_system_deps.difference_update([pkg for pkg in \
-deep_system_deps if pkg.operation != "merge"])
+	deep_system_deps = s._deep_system_deps
+	deep_system_deps.clear()
+	deep_system_deps.update(
+		_find_deep_system_runtime_deps(s._digraph))
+	deep_system_deps.difference_update([pkg
+	for pkg
+	in \
+	deep_system_deps
+	if pkg.operation != "merge"])
+}
 
-def _prune_digraph(self):
+func (s *Scheduler) _prune_digraph() {
 
-graph = self._digraph
-completed_tasks = self._completed_tasks
-removed_nodes = set()
-while true:
-for node in graph.root_nodes():
-if not isinstance(node, Package) or \
-(node.installed and node.operation == "nomerge") or \
-node.onlydeps or \
-node in completed_tasks:
-removed_nodes.add(node)
-if removed_nodes:
-graph.difference_update(removed_nodes)
-if not removed_nodes:
-break
-removed_nodes.clear()
+	graph = s._digraph
+	completed_tasks = s._completed_tasks
+	removed_nodes = set()
+	while
+true:
+	for node
+	in
+	graph.root_nodes():
+	if not isinstance(node, Package)
+	or \
+	(node.installed
+	and
+	node.operation == "nomerge") or \
+	node.onlydeps
+	or \
+	node
+	in
+completed_tasks:
+	removed_nodes.add(node)
+	if removed_nodes:
+	graph.difference_update(removed_nodes)
+	if not removed_nodes:
+	break
+	removed_nodes.clear()
+}
 
-def _prevent_builddir_collisions(self):
-cpv_map = {}
-for pkg in self._mergelist:
-if not isinstance(pkg, Package):
-continue
-if pkg.installed:
-continue
-if pkg.cpv not in cpv_map:
-cpv_map[pkg.cpv] = [pkg]
-continue
-for earlier_pkg in cpv_map[pkg.cpv]:
-self._digraph.add(earlier_pkg, pkg,
-priority=DepPriority(buildtime=true))
-cpv_map[pkg.cpv].append(pkg)
+func (s *Scheduler) _prevent_builddir_collisions() {
+	cpv_map =
+	{
+	}
+	for pkg
+	in
+	s._mergelist:
+	if not isinstance(pkg, Package):
+	continue
+	if pkg.installed:
+	continue
+	if pkg.cpv not
+	in
+cpv_map:
+	cpv_map[pkg.cpv] = [pkg]
+	continue
+	for earlier_pkg
+	in
+	cpv_map[pkg.cpv]:
+	s._digraph.add(earlier_pkg, pkg,
+		priority = DepPriority(buildtime = true))
+	cpv_map[pkg.cpv].append(pkg)
+}
 
-class _pkg_failure(portage.exception.PortageException):
+type  _pkg_failure struct {
+	PortageException
+}
 status = 1
-def __init__(self, *pargs):
-portage.exception.PortageException.__init__(self, pargs)
-if pargs:
-self.status = pargs[0]
+func New_pkg_failure(*pargs) *_pkg_failure{
+	p := &_pkg_failure{}
+	p.PortageException = NewPortageException(pargs)
+	if pargs:
+	p.status = pargs[0]
+	return p
+}
 
-def _schedule_fetch(self, fetcher):
-if self._max_jobs > 1:
-fetcher.start()
-else:
-self._task_queues.fetch.addFront(fetcher)
+func (s *Scheduler) _schedule_fetch( fetcher) {
+	if s._max_jobs > 1:
+	fetcher.start()
+	else:
+	s._task_queues.fetch.addFront(fetcher)
+}
 
-def _schedule_setup(self, setup_phase):
-if self._task_queues.merge.max_jobs > 1 and \
-"ebuild-locks" in self.settings.features:
-self._task_queues.ebuild_locks.add(setup_phase)
-else:
-self._task_queues.merge.add(setup_phase)
-self._schedule()
+func (s *Scheduler) _schedule_setup( setup_phase) {
+	if s._task_queues.merge.max_jobs > 1 and \
+	"ebuild-locks"
+	in
+	s.settings.features:
+	s._task_queues.ebuild_locks.add(setup_phase)
+	else:
+	s._task_queues.merge.add(setup_phase)
+	s._schedule()
+}
 
-def _schedule_unpack(self, unpack_phase):
-self._task_queues.unpack.add(unpack_phase)
+func (s *Scheduler) _schedule_unpack( unpack_phase) {
+	s._task_queues.unpack.add(unpack_phase)
+}
 
-def _find_blockers(self, new_pkg):
-def get_blockers():
-return self._find_blockers_impl(new_pkg)
-return get_blockers
+func (s *Scheduler) _find_blockers( new_pkg) {
+	func
+	get_blockers():
+	return s._find_blockers_impl(new_pkg)
+	return get_blockers
+}
 
-def _find_blockers_impl(self, new_pkg):
-if self._opts_ignore_blockers.intersection(self.myopts):
-return None
+func (s *Scheduler) _find_blockers_impl(new_pkg) {
+	if s._opts_ignore_blockers.intersection(s.myopts):
+	return None
 
-blocker_db = self._blocker_db[new_pkg.root]
+	blocker_db = s._blocker_db[new_pkg.root]
 
-blocked_pkgs = []
-for blocking_pkg in blocker_db.findInstalledBlockers(new_pkg):
-if new_pkg.slot_atom == blocking_pkg.slot_atom:
-continue
-if new_pkg.cpv == blocking_pkg.cpv:
-continue
-blocked_pkgs.append(blocking_pkg)
+	blocked_pkgs = []
+	for blocking_pkg
+	in
+	blocker_db.findInstalledBlockers(new_pkg):
+	if new_pkg.slot_atom == blocking_pkg.slot_atom:
+	continue
+	if new_pkg.cpv == blocking_pkg.cpv:
+	continue
+	blocked_pkgs.append(blocking_pkg)
 
-return blocked_pkgs
+	return blocked_pkgs
+}
 
-def _generate_digests(self):
+func (s *Scheduler) _generate_digests() {
 
-digest = '--digest' in self.myopts
-if not digest:
-for pkgsettings in self.pkgsettings.values():
-if pkgsettings.mycpv is not None:
-pkgsettings.reset()
-if 'digest' in pkgsettings.features:
-digest = true
-break
+	digest = '--digest'
+	in
+	s.myopts
+	if not digest:
+	for pkgsettings
+	in
+	s.pkgsettings.values():
+	if pkgsettings.mycpv is
+	not
+None:
+	pkgsettings.reset()
+	if 'digest' in
+	pkgsettings.features:
+	digest = true
+	break
 
-if not digest:
-return os.EX_OK
+	if not digest:
+	return os.EX_OK
 
-for x in self._mergelist:
-if not isinstance(x, Package) or \
-x.type_name != 'ebuild' or \
-x.operation != 'merge':
-continue
-pkgsettings = self.pkgsettings[x.root]
-if pkgsettings.mycpv is not None:
-pkgsettings.reset()
-if '--digest' not in self.myopts and \
-'digest' not in pkgsettings.features:
-continue
-portdb = x.root_config.trees['porttree'].dbapi
-ebuild_path = portdb.findname(x.cpv, myrepo=x.repo)
-if ebuild_path is None:
-raise AssertionError("ebuild not found for '%s'" % x.cpv)
-pkgsettings['O'] = os.path.dirname(ebuild_path)
-if not digestgen(mysettings=pkgsettings, myportdb=portdb):
-writemsg_level(
-"!!! Unable to generate manifest for '%s'.\n" \
-% x.cpv, level=logging.ERROR, noiselevel=-1)
-return FAILURE
+	for x
+	in
+	s._mergelist:
+	if not isinstance(x, Package)
+	or \
+	x.type_name != 'ebuild'
+	or \
+	x.operation != 'merge':
+	continue
+	pkgsettings = s.pkgsettings[x.root]
+	if pkgsettings.mycpv is
+	not
+None:
+	pkgsettings.reset()
+	if '--digest' not
+	in
+	s.myopts
+	and \
+	'digest'
+	not
+	in
+	pkgsettings.features:
+	continue
+	portdb = x.root_config.trees['porttree'].dbapi
+	ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
+	if ebuild_path is
+None:
+	raise
+	AssertionError("ebuild not found for '%s'" % x.cpv)
+	pkgsettings['O'] = os.path.dirname(ebuild_path)
+	if not digestgen(mysettings = pkgsettings, myportdb = portdb):
+	writemsg_level(
+		"!!! Unable to generate manifest for '%s'.\n" \
+	% x.cpv, level = logging.ERROR, noiselevel=-1)
+	return FAILURE
 
-return os.EX_OK
+	return os.EX_OK
+}
 
-def _check_manifests(self):
-if "strict" not in self.settings.features or \
-"--fetchonly" in self.myopts or \
-"--fetch-all-uri" in self.myopts:
-return os.EX_OK
+func (s *Scheduler) _check_manifests() {
+	if "strict" not
+	in
+	s.settings.features
+	or \
+	"--fetchonly"
+	in
+	s.myopts
+	or \
+	"--fetch-all-uri"
+	in
+	s.myopts:
+	return os.EX_OK
 
-shown_verifying_msg = false
-quiet_settings = {}
-for myroot, pkgsettings in self.pkgsettings.items():
-quiet_config = portage.config(clone=pkgsettings)
-quiet_config["PORTAGE_QUIET"] = "1"
-quiet_config.backup_changes("PORTAGE_QUIET")
-quiet_settings[myroot] = quiet_config
-del quiet_config
+	shown_verifying_msg = false
+	quiet_settings =
+	{
+	}
+	for myroot, pkgsettings
+	in
+	s.pkgsettings.items():
+	quiet_config = portage.config(clone = pkgsettings)
+	quiet_config["PORTAGE_QUIET"] = "1"
+	quiet_config.backup_changes("PORTAGE_QUIET")
+	quiet_settings[myroot] = quiet_config
+	del
+	quiet_config
 
-failures = 0
+	failures = 0
 
-for x in self._mergelist:
-if not isinstance(x, Package) or \
-x.type_name != "ebuild":
-continue
+	for x
+	in
+	s._mergelist:
+	if not isinstance(x, Package)
+	or \
+	x.type_name != "ebuild":
+	continue
 
-if x.operation == "uninstall":
-continue
+	if x.operation == "uninstall":
+	continue
 
-if not shown_verifying_msg:
-shown_verifying_msg = true
-self._status_msg("Verifying ebuild manifests")
+	if not shown_verifying_msg:
+	shown_verifying_msg = true
+	s._status_msg("Verifying ebuild manifests")
 
-root_config = x.root_config
-portdb = root_config.trees["porttree"].dbapi
-quiet_config = quiet_settings[root_config.root]
-ebuild_path = portdb.findname(x.cpv, myrepo=x.repo)
-if ebuild_path is None:
-raise AssertionError("ebuild not found for '%s'" % x.cpv)
-quiet_config["O"] = os.path.dirname(ebuild_path)
-if not digestcheck([], quiet_config, strict=true):
-failures |= 1
+	root_config = x.root_config
+	portdb = root_config.trees["porttree"].dbapi
+	quiet_config = quiet_settings[root_config.root]
+	ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
+	if ebuild_path is
+None:
+	raise
+	AssertionError("ebuild not found for '%s'" % x.cpv)
+	quiet_config["O"] = os.path.dirname(ebuild_path)
+	if not digestcheck([], quiet_config, strict = true):
+	failures |= 1
 
-if failures:
-return FAILURE
-return os.EX_OK
+	if failures:
+	return FAILURE
+	return os.EX_OK
+}
 
-def _add_prefetchers(self):
+func (s *Scheduler) _add_prefetchers() {
 
-if not self._parallel_fetch:
-return
+	if not s._parallel_fetch:
+	return
 
-if self._parallel_fetch:
+	if s._parallel_fetch:
 
-prefetchers = self._prefetchers
+	prefetchers = s._prefetchers
 
-for pkg in self._mergelist:
-if not isinstance(pkg, Package) or pkg.operation == "uninstall":
-continue
-prefetcher = self._create_prefetcher(pkg)
-if prefetcher is not None:
-prefetchers[pkg] = prefetcher
-self._task_queues.fetch.add(prefetcher)
+	for pkg
+	in
+	s._mergelist:
+	if not isinstance(pkg, Package)
+	or
+	pkg.operation == "uninstall":
+	continue
+	prefetcher = s._create_prefetcher(pkg)
+	if prefetcher is
+	not
+None:
+	prefetchers[pkg] = prefetcher
+	s._task_queues.fetch.add(prefetcher)
+}
 
-def _create_prefetcher(self, pkg):
-prefetcher = None
+func (s *Scheduler) _create_prefetcher( pkg) {
+	prefetcher = None
 
-if not isinstance(pkg, Package):
-pass
+	if not isinstance(pkg, Package):
+	pass
 
-elif pkg.type_name == "ebuild":
+	elif
+	pkg.type_name == "ebuild":
 
-prefetcher = EbuildFetcher(background=true,
-config_pool=self._ConfigPool(pkg.root,
-self._allocate_config, self._deallocate_config),
-fetchonly=1, fetchall=self._build_opts.fetch_all_uri,
-logfile=self._fetch_log,
-pkg=pkg, prefetch=true, scheduler=self._sched_iface)
+	prefetcher = EbuildFetcher(background = true,
+		config_pool = s._ConfigPool(pkg.root,
+		s._allocate_config, s._deallocate_config),
+		fetchonly=1, fetchall = s._build_opts.fetch_all_uri,
+		logfile=s._fetch_log,
+		pkg = pkg, prefetch=true, scheduler = s._sched_iface)
 
-elif pkg.type_name == "binary" and \
-"--getbinpkg" in self.myopts and \
-pkg.root_config.trees["bintree"].isremote(pkg.cpv):
+	elif
+	pkg.type_name == "binary"
+	and \
+	"--getbinpkg"
+	in
+	s.myopts
+	and \
+	pkg.root_config.trees["bintree"].isremote(pkg.cpv):
 
-prefetcher = BinpkgPrefetcher(background=true,
-pkg=pkg, scheduler=self._sched_iface)
+	prefetcher = BinpkgPrefetcher(background = true,
+		pkg = pkg, scheduler=s._sched_iface)
 
-return prefetcher
+	return prefetcher
+}
 
-def _run_pkg_pretend(self):
+func (s *Scheduler) _run_pkg_pretend() {
 
-failures = 0
-sched_iface = self._sched_iface
+	failures = 0
+	sched_iface = s._sched_iface
 
-for x in self._mergelist:
-if not isinstance(x, Package):
-continue
+	for x
+	in
+	s._mergelist:
+	if not isinstance(x, Package):
+	continue
 
-if x.operation == "uninstall":
-continue
+	if x.operation == "uninstall":
+	continue
 
-if x.eapi in ("0", "1", "2", "3"):
-continue
+	if x.eapi in("0", "1", "2", "3"):
+	continue
 
-if "pretend" not in x.defined_phases:
-continue
+	if "pretend" not
+	in
+	x.defined_phases:
+	continue
 
-out_str =">>> Running pre-merge checks for " + colorize("INFORM", x.cpv) + "\n"
-portage.util.writemsg_stdout(out_str, noiselevel=-1)
+	out_str = ">>> Running pre-merge checks for " + colorize("INFORM", x.cpv) + "\n"
+	portage.util.writemsg_stdout(out_str, noiselevel = -1)
 
-root_config = x.root_config
-settings = self.pkgsettings[root_config.root]
-settings.setcpv(x)
+	root_config = x.root_config
+	settings = s.pkgsettings[root_config.root]
+	settings.setcpv(x)
 
-rval = _check_temp_dir(settings)
-if rval != os.EX_OK:
-return rval
+	rval = _check_temp_dir(settings)
+	if rval != os.EX_OK:
+	return rval
 
-build_dir_path = os.path.join(
-os.path.realpath(settings["PORTAGE_TMPDIR"]),
-"portage", x.category, x.pf)
-existing_builddir = os.path.isdir(build_dir_path)
-settings["PORTAGE_BUILDDIR"] = build_dir_path
-build_dir = EbuildBuildDir(scheduler=sched_iface,
-settings=settings)
-sched_iface.run_until_complete(build_dir.async_lock())
-current_task = None
+	build_dir_path = os.path.join(
+		os.path.realpath(settings["PORTAGE_TMPDIR"]),
+		"portage", x.category, x.pf)
+	existing_builddir = os.path.isdir(build_dir_path)
+	settings["PORTAGE_BUILDDIR"] = build_dir_path
+	build_dir = EbuildBuildDir(scheduler = sched_iface,
+		settings = settings)
+	sched_iface.run_until_complete(build_dir.async_lock())
+	current_task = None
 
 try:
 
-if existing_builddir:
-if x.built:
-tree = "bintree"
-infloc = os.path.join(build_dir_path, "build-info")
-ebuild_path = os.path.join(infloc, x.pf + ".ebuild")
-else:
-tree = "porttree"
-portdb = root_config.trees["porttree"].dbapi
-ebuild_path = portdb.findname(x.cpv, myrepo=x.repo)
-if ebuild_path is None:
-raise AssertionError(
-"ebuild not found for '%s'" % x.cpv)
-portage.package.ebuild.doebuild.doebuild_environment(
-ebuild_path, "clean", settings=settings,
-db=self.trees[settings['EROOT']][tree].dbapi)
-clean_phase = EbuildPhase(background=false,
-phase='clean', scheduler=sched_iface, settings=settings)
-current_task = clean_phase
-clean_phase.start()
-clean_phase.wait()
+	if existing_builddir:
+	if x.built:
+	tree = "bintree"
+	infloc = os.path.join(build_dir_path, "build-info")
+	ebuild_path = os.path.join(infloc, x.pf+".ebuild")
+	else:
+	tree = "porttree"
+	portdb = root_config.trees["porttree"].dbapi
+	ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
+	if ebuild_path is
+None:
+	raise
+	AssertionError(
+		"ebuild not found for '%s'" % x.cpv)
+	portage.package.
+	ebuild.doebuild.doebuild_environment(
+		ebuild_path, "clean", settings = settings,
+		db = s.trees[settings['EROOT']][tree].dbapi)
+	clean_phase = EbuildPhase(background = false,
+		phase = 'clean', scheduler=sched_iface, settings = settings)
+	current_task = clean_phase
+	clean_phase.start()
+	clean_phase.wait()
 
-if x.built:
-tree = "bintree"
-bintree = root_config.trees["bintree"].dbapi.bintree
-fetched = false
+	if x.built:
+	tree = "bintree"
+	bintree = root_config.trees["bintree"].dbapi.bintree
+	fetched = false
 
-if bintree.isremote(x.cpv):
-fetcher = BinpkgFetcher(pkg=x,
-scheduler=sched_iface)
-fetcher.start()
-if fetcher.wait() != os.EX_OK:
-failures += 1
-continue
-fetched = fetcher.pkg_path
+	if bintree.isremote(x.cpv):
+	fetcher = BinpkgFetcher(pkg = x,
+		scheduler = sched_iface)
+	fetcher.start()
+	if fetcher.wait() != os.EX_OK:
+	failures += 1
+	continue
+	fetched = fetcher.pkg_path
 
-if fetched is false:
-filename = bintree.getname(x.cpv)
-else:
-filename = fetched
-verifier = BinpkgVerifier(pkg=x,
-scheduler=sched_iface, _pkg_path=filename)
-current_task = verifier
-verifier.start()
-if verifier.wait() != os.EX_OK:
-failures += 1
-continue
+	if fetched is
+false:
+	filename = bintree.getname(x.cpv)
+	else:
+	filename = fetched
+	verifier = BinpkgVerifier(pkg = x,
+		scheduler = sched_iface, _pkg_path=filename)
+	current_task = verifier
+	verifier.start()
+	if verifier.wait() != os.EX_OK:
+	failures += 1
+	continue
 
-if fetched:
-bintree.inject(x.cpv, filename=fetched)
+	if fetched:
+	bintree.inject(x.cpv, filename = fetched)
 
-infloc = os.path.join(build_dir_path, "build-info")
-ensure_dirs(infloc)
-self._sched_iface.run_until_complete(
-bintree.dbapi.unpack_metadata(settings, infloc))
-ebuild_path = os.path.join(infloc, x.pf + ".ebuild")
-settings.configdict["pkg"]["EMERGE_FROM"] = "binary"
-settings.configdict["pkg"]["MERGE_TYPE"] = "binary"
+	infloc = os.path.join(build_dir_path, "build-info")
+	ensure_dirs(infloc)
+	s._sched_iface.run_until_complete(
+		bintree.dbapi.unpack_metadata(settings, infloc))
+	ebuild_path = os.path.join(infloc, x.pf+".ebuild")
+	settings.configdict["pkg"]["EMERGE_FROM"] = "binary"
+	settings.configdict["pkg"]["MERGE_TYPE"] = "binary"
 
-else:
-tree = "porttree"
-portdb = root_config.trees["porttree"].dbapi
-ebuild_path = portdb.findname(x.cpv, myrepo=x.repo)
-if ebuild_path is None:
-raise AssertionError("ebuild not found for '%s'" % x.cpv)
-settings.configdict["pkg"]["EMERGE_FROM"] = "ebuild"
-if self._build_opts.buildpkgonly:
-settings.configdict["pkg"]["MERGE_TYPE"] = "buildonly"
-else:
-settings.configdict["pkg"]["MERGE_TYPE"] = "source"
+	else:
+	tree = "porttree"
+	portdb = root_config.trees["porttree"].dbapi
+	ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
+	if ebuild_path is
+None:
+	raise
+	AssertionError("ebuild not found for '%s'" % x.cpv)
+	settings.configdict["pkg"]["EMERGE_FROM"] = "ebuild"
+	if s._build_opts.buildpkgonly:
+	settings.configdict["pkg"]["MERGE_TYPE"] = "buildonly"
+	else:
+	settings.configdict["pkg"]["MERGE_TYPE"] = "source"
 
-portage.package.ebuild.doebuild.doebuild_environment(ebuild_path,
-"pretend", settings=settings,
-db=self.trees[settings['EROOT']][tree].dbapi)
+	portage.package.
+	ebuild.doebuild.doebuild_environment(ebuild_path,
+		"pretend", settings = settings,
+		db = s.trees[settings['EROOT']][tree].dbapi)
 
-prepare_build_dirs(root_config.root, settings, cleanup=0)
+	prepare_build_dirs(root_config.root, settings, cleanup = 0)
 
-vardb = root_config.trees['vartree'].dbapi
-settings["REPLACING_VERSIONS"] = " ".join(
-set(portage.versions.cpv_getversion(match) \
-for match in vardb.match(x.slot_atom) + \
-vardb.match('='+x.cpv)))
-pretend_phase = EbuildPhase(
-phase="pretend", scheduler=sched_iface,
-settings=settings)
+	vardb = root_config.trees['vartree'].dbapi
+	settings["REPLACING_VERSIONS"] = " ".join(
+		set(portage.versions.cpv_getversion(match) \
+	for match
+	in
+	vardb.match(x.slot_atom) + \
+	vardb.match('=' + x.cpv)))
+	pretend_phase = EbuildPhase(
+		phase = "pretend", scheduler = sched_iface,
+		settings=settings)
 
-current_task = pretend_phase
-pretend_phase.start()
-ret = pretend_phase.wait()
-if ret != os.EX_OK:
-failures += 1
-portage.elog.elog_process(x.cpv, settings)
+	current_task = pretend_phase
+	pretend_phase.start()
+	ret = pretend_phase.wait()
+	if ret != os.EX_OK:
+	failures += 1
+	portage.elog.elog_process(x.cpv, settings)
 finally:
 
-if current_task is not None:
-if current_task.isAlive():
-current_task.cancel()
-current_task.wait()
-if current_task.returncode == os.EX_OK:
-clean_phase = EbuildPhase(background=false,
-phase='clean', scheduler=sched_iface,
-settings=settings)
-clean_phase.start()
-clean_phase.wait()
+	if current_task is
+	not
+None:
+	if current_task.isAlive():
+	current_task.cancel()
+	current_task.wait()
+	if current_task.returncode == os.EX_OK:
+	clean_phase = EbuildPhase(background = false,
+		phase = 'clean', scheduler=sched_iface,
+		settings = settings)
+	clean_phase.start()
+	clean_phase.wait()
 
-sched_iface.run_until_complete(build_dir.async_unlock())
+	sched_iface.run_until_complete(build_dir.async_unlock())
 
-if failures:
-return FAILURE
-return os.EX_OK
+	if failures:
+	return FAILURE
+	return os.EX_OK
+}
 
-def merge(self):
-if "--resume" in self.myopts:
-portage.writemsg_stdout(
-colorize("GOOD", "*** Resuming merge...\n"), noiselevel=-1)
-self._logger.log(" *** Resuming merge...")
+func (s *Scheduler) merge() {
+	if "--resume" in
+	s.myopts:
+	portage.writemsg_stdout(
+		colorize("GOOD", "*** Resuming merge...\n"), noiselevel = -1)
+	s._logger.log(" *** Resuming merge...")
 
-self._save_resume_list()
+	s._save_resume_list()
 
 try:
-self._background = self._background_mode()
-except self._unknown_internal_error:
-return FAILURE
+	s._background = s._background_mode()
+	except
+	s._unknown_internal_error:
+	return FAILURE
 
-rval = self._handle_self_update()
-if rval != os.EX_OK:
-return rval
+	rval = s._handle_self_update()
+	if rval != os.EX_OK:
+	return rval
 
-for root in self.trees:
-root_config = self.trees[root]["root_config"]
+	for root
+	in
+	s.trees:
+	root_config = s.trees[root]["root_config"]
 
-tmpdir = root_config.settings.get("PORTAGE_TMPDIR", "")
-if not tmpdir or not os.path.isdir(tmpdir):
-msg = (
-'The directory specified in your PORTAGE_TMPDIR variable does not exist:',
-tmpdir,
-'Please create this directory or correct your PORTAGE_TMPDIR setting.',
+	tmpdir = root_config.settings.get("PORTAGE_TMPDIR", "")
+	if not tmpdir
+	or
+	not
+	os.path.isdir(tmpdir):
+	msg = (
+		'The directory specified in your PORTAGE_TMPDIR variable does not exist:',
+		tmpdir,
+		'Please create this directory or correct your PORTAGE_TMPDIR setting.',
 )
-out = portage.output.EOutput()
-for l in msg:
-out.eerror(l)
-return FAILURE
+	out = portage.output.EOutput()
+	for l
+	in
+msg:
+	out.eerror(l)
+	return FAILURE
 
-if self._background:
-root_config.settings.unlock()
-root_config.settings["PORTAGE_BACKGROUND"] = "1"
-root_config.settings.backup_changes("PORTAGE_BACKGROUND")
-root_config.settings.lock()
+	if s._background:
+	root_config.settings.unlock()
+	root_config.settings["PORTAGE_BACKGROUND"] = "1"
+	root_config.settings.backup_changes("PORTAGE_BACKGROUND")
+	root_config.settings.lock()
 
-self.pkgsettings[root] = portage.config(
-clone=root_config.settings)
+	s.pkgsettings[root] = portage.config(
+		clone = root_config.settings)
 
-keep_going = "--keep-going" in self.myopts
-fetchonly = self._build_opts.fetchonly
-mtimedb = self._mtimedb
-failed_pkgs = self._failed_pkgs
+	keep_going = "--keep-going"
+	in
+	s.myopts
+	fetchonly = s._build_opts.fetchonly
+	mtimedb = s._mtimedb
+	failed_pkgs = s._failed_pkgs
 
-rval = self._generate_digests()
-if rval != os.EX_OK:
-return rval
+	rval = s._generate_digests()
+	if rval != os.EX_OK:
+	return rval
 
-rval = self._check_manifests()
-if rval != os.EX_OK and not keep_going:
-return rval
+	rval = s._check_manifests()
+	if rval != os.EX_OK and
+	not
+keep_going:
+	return rval
 
-if not fetchonly:
-rval = self._run_pkg_pretend()
-if rval != os.EX_OK:
-return rval
+	if not fetchonly:
+	rval = s._run_pkg_pretend()
+	if rval != os.EX_OK:
+	return rval
 
-while true:
+	while
+true:
 
-received_signal = []
+	received_signal = []
 
-def sighandler(signum, frame):
-signal.signal(signal.SIGINT, signal.SIG_IGN)
-signal.signal(signal.SIGTERM, signal.SIG_IGN)
-portage.util.writemsg("\n\nExiting on signal %(signal)s\n" % \
-{"signal":signum})
-self.terminate()
-received_signal.append(128 + signum)
+	func
+	sighandler(signum, frame):
+	signal.signal(signal.SIGINT, signal.SIG_IGN)
+	signal.signal(signal.SIGTERM, signal.SIG_IGN)
+	portage.util.writemsg("\n\nExiting on signal %(signal)s\n" % \
+	{
+		"signal":signum
+	})
+	s.terminate()
+	received_signal.append(128 + signum)
 
-earlier_sigint_handler = signal.signal(signal.SIGINT, sighandler)
-earlier_sigterm_handler = signal.signal(signal.SIGTERM, sighandler)
-earlier_sigcont_handler = \
-signal.signal(signal.SIGCONT, self._sigcont_handler)
-signal.siginterrupt(signal.SIGCONT, false)
+	earlier_sigint_handler = signal.signal(signal.SIGINT, sighandler)
+	earlier_sigterm_handler = signal.signal(signal.SIGTERM, sighandler)
+	earlier_sigcont_handler = \
+	signal.signal(signal.SIGCONT, s._sigcont_handler)
+	signal.siginterrupt(signal.SIGCONT, false)
 
 try:
-rval = self._merge()
+	rval = s._merge()
 finally:
-if earlier_sigint_handler is not None:
-signal.signal(signal.SIGINT, earlier_sigint_handler)
-else:
-signal.signal(signal.SIGINT, signal.SIG_DFL)
-if earlier_sigterm_handler is not None:
-signal.signal(signal.SIGTERM, earlier_sigterm_handler)
-else:
-signal.signal(signal.SIGTERM, signal.SIG_DFL)
-if earlier_sigcont_handler is not None:
-signal.signal(signal.SIGCONT, earlier_sigcont_handler)
-else:
-signal.signal(signal.SIGCONT, signal.SIG_DFL)
+	if earlier_sigint_handler is
+	not
+None:
+	signal.signal(signal.SIGINT, earlier_sigint_handler)
+	else:
+	signal.signal(signal.SIGINT, signal.SIG_DFL)
+	if earlier_sigterm_handler is
+	not
+None:
+	signal.signal(signal.SIGTERM, earlier_sigterm_handler)
+	else:
+	signal.signal(signal.SIGTERM, signal.SIG_DFL)
+	if earlier_sigcont_handler is
+	not
+None:
+	signal.signal(signal.SIGCONT, earlier_sigcont_handler)
+	else:
+	signal.signal(signal.SIGCONT, signal.SIG_DFL)
 
-self._termination_check()
-if received_signal:
-sys.exit(received_signal[0])
+	s._termination_check()
+	if received_signal:
+	sys.exit(received_signal[0])
 
-if rval == os.EX_OK or fetchonly or not keep_going:
-break
-if "resume" not in mtimedb:
-break
-mergelist = self._mtimedb["resume"].get("mergelist")
-if not mergelist:
-break
+	if rval == os.EX_OK or
+	fetchonly
+	or
+	not
+keep_going:
+	break
+	if "resume" not
+	in
+mtimedb:
+	break
+	mergelist = s._mtimedb["resume"].get("mergelist")
+	if not mergelist:
+	break
 
-if not failed_pkgs:
-break
+	if not failed_pkgs:
+	break
 
-for failed_pkg in failed_pkgs:
-mergelist.remove(list(failed_pkg.pkg))
+	for failed_pkg
+	in
+failed_pkgs:
+	mergelist.remove(list(failed_pkg.pkg))
 
-self._failed_pkgs_all.extend(failed_pkgs)
-del failed_pkgs[:]
+	s._failed_pkgs_all.extend(failed_pkgs)
+	del
+	failed_pkgs[:]
 
-if not mergelist:
-break
+	if not mergelist:
+	break
 
-if not self._calc_resume_list():
-break
+	if not s._calc_resume_list():
+	break
 
-clear_caches(self.trees)
-if not self._mergelist:
-break
+	clear_caches(s.trees)
+	if not s._mergelist:
+	break
 
-self._save_resume_list()
-self._pkg_count.curval = 0
-self._pkg_count.maxval = len([x for x in self._mergelist \
-if isinstance(x, Package) and x.operation == "merge"])
-self._status_display.maxval = self._pkg_count.maxval
+	s._save_resume_list()
+	s._pkg_count.curval = 0
+	s._pkg_count.maxval = len([x
+	for x
+	in
+	s._mergelist \
+	if isinstance(x, Package) and
+	x.operation == "merge"])
+s._status_display.maxval = s._pkg_count.maxval
 
-self._cleanup()
+s._cleanup()
 
-self._logger.log(" *** Finished. Cleaning up...")
+s._logger.log(" *** Finished. Cleaning up...")
 
 if failed_pkgs:
-self._failed_pkgs_all.extend(failed_pkgs)
+s._failed_pkgs_all.extend(failed_pkgs)
 del failed_pkgs[:]
 
 printer = portage.output.EOutput()
-background = self._background
+background = s._background
 failure_log_shown = false
-if background and len(self._failed_pkgs_all) == 1 and \
-self.myopts.get('--quiet-fail', 'n') != 'y':
-failed_pkg = self._failed_pkgs_all[-1]
+if background and len(s._failed_pkgs_all) == 1 and \
+s.myopts.get('--quiet-fail', 'n') != 'y':
+failed_pkg = s._failed_pkgs_all[-1]
 log_file = None
 log_file_real = None
 
-log_path = self._locate_failure_log(failed_pkg)
+log_path = s._locate_failure_log(failed_pkg)
 if log_path is not None:
 try:
 log_file = open(_unicode_encode(log_path,
-encoding=_encodings['fs'], errors='strict'), mode='rb')
+encoding = _encodings['fs'], errors = 'strict'), mode ='rb')
 except IOError:
-pass
-else:
+pass else:
 if log_path.endswith('.gz'):
 log_file_real = log_file
-log_file =  gzip.GzipFile(filename='',
-mode='rb', fileobj=log_file)
+log_file = gzip.GzipFile(filename ='',
+mode = 'rb', fileobj = log_file)
 
 if log_file is not None:
 try:
 for line in log_file:
-writemsg_level(line, noiselevel=-1)
+writemsg_level(line, noiselevel =-1)
 except zlib.error as e:
-writemsg_level("%s\n" % (e,), level=logging.ERROR,
-noiselevel=-1)
+writemsg_level("%s\n" % (e, ), level = logging.ERROR,
+noiselevel = -1)
 finally:
 log_file.close()
 if log_file_real is not None:
 log_file_real.close()
 failure_log_shown = true
 
-mod_echo_output =  _flush_elog_mod_echo()
+mod_echo_output = _flush_elog_mod_echo()
 
 if background and not failure_log_shown and \
-self._failed_pkgs_all and \
-self._failed_pkgs_die_msgs and \
+s._failed_pkgs_all and \
+s._failed_pkgs_die_msgs and \
 not mod_echo_output:
 
-for mysettings, key, logentries in self._failed_pkgs_die_msgs:
+for mysettings, key, logentries in s._failed_pkgs_die_msgs:
 root_msg = ""
 if mysettings["ROOT"] != "/":
 root_msg = " merged to %s" % mysettings["ROOT"]
@@ -3239,15 +3514,15 @@ msgcontent = [msgcontent]
 for line in msgcontent:
 printer.eerror(line.strip("\n"))
 
-if self._post_mod_echo_msgs:
-for msg in self._post_mod_echo_msgs:
+if s._post_mod_echo_msgs:
+for msg in s._post_mod_echo_msgs:
 msg()
 
-if len(self._failed_pkgs_all) > 1 or \
-(self._failed_pkgs_all and keep_going):
-if len(self._failed_pkgs_all) > 1:
+if len(s._failed_pkgs_all) > 1 or \
+(s._failed_pkgs_all and keep_going):
+if len(s._failed_pkgs_all) > 1:
 msg = "The following %d packages have " % \
-len(self._failed_pkgs_all) + \
+len(s._failed_pkgs_all) + \
 "failed to build, install, or execute postinst:"
 else:
 msg = "The following package has " + \
@@ -3257,11 +3532,11 @@ printer.eerror("")
 for line in textwrap.wrap(msg, 72):
 printer.eerror(line)
 printer.eerror("")
-for failed_pkg in self._failed_pkgs_all:
-msg = " %s" % (failed_pkg.pkg,)
+for failed_pkg in s._failed_pkgs_all:
+msg = " %s" % (failed_pkg.pkg, )
 if failed_pkg.postinst_failure:
 msg += " (postinst failed)"
-log_path = self._locate_failure_log(failed_pkg)
+log_path = s._locate_failure_log(failed_pkg)
 if log_path is not None:
 msg += ", Log file:"
 printer.eerror(msg)
@@ -3269,46 +3544,56 @@ if log_path is not None:
 printer.eerror("  '%s'" % colorize('INFORM', log_path))
 printer.eerror("")
 
-if self._failed_pkgs_all:
+if s._failed_pkgs_all:
 return FAILURE
 return os.EX_OK
+}
 
-def _elog_listener(self, mysettings, key, logentries, fulltext):
-errors = portage.elog.filter_loglevels(logentries, ["ERROR"])
-if errors:
-self._failed_pkgs_die_msgs.append(
-(mysettings, key, errors))
+func (s *Scheduler) _elog_listener(mysettings, key, logentries, fulltext) {
+	errors = portage.elog.filter_loglevels(logentries, ["ERROR"])
+	if errors:
+	s._failed_pkgs_die_msgs.append(
+		(mysettings, key, errors))
+}
 
-def _locate_failure_log(self, failed_pkg):
+func (s *Scheduler) _locate_failure_log( failed_pkg) {
 
-log_paths = [failed_pkg.build_log]
+	log_paths = [failed_pkg.build_log]
 
-for log_path in log_paths:
-if not log_path:
-continue
+	for log_path
+	in
+log_paths:
+	if not log_path:
+	continue
 
 try:
-log_size = os.stat(log_path).st_size
-except OSError:
-continue
+	log_size = os.stat(log_path).st_size
+	except
+OSError:
+	continue
 
-if log_size == 0:
-continue
+	if log_size == 0:
+	continue
 
-return log_path
+	return log_path
 
-return None
+	return None
+}
 
-def _add_packages(self):
-pkg_queue = self._pkg_queue
-for pkg in self._mergelist:
-if isinstance(pkg, Package):
-pkg_queue.append(pkg)
-elif isinstance(pkg, Blocker):
-pass
+func (s *Scheduler) _add_packages() {
+	pkg_queue = s._pkg_queue
+	for pkg
+	in
+	s._mergelist:
+	if isinstance(pkg, Package):
+	pkg_queue.append(pkg)
+	elif
+	isinstance(pkg, Blocker):
+	pass
+}
 
-def _system_merge_started(self, merge):
-graph = self._digraph
+func (s *Scheduler) (s *Scheduler) _system_merge_started(merge){
+graph = s._digraph
 if graph is None:
 return
 pkg = merge.merge.pkg
@@ -3316,682 +3601,984 @@ pkg = merge.merge.pkg
 if pkg.root_config.settings["ROOT"] != "/":
 return
 
-completed_tasks = self._completed_tasks
-unsatisfied = self._unsatisfied_system_deps
+completed_tasks = s._completed_tasks
+unsatisfied = s._unsatisfied_system_deps
+}
 
-def ignore_non_runtime_or_satisfied(priority):
-if isinstance(priority, DepPriority) and \
-not priority.satisfied and \
-(priority.runtime or priority.runtime_post):
-return false
-return true
+func (s *Scheduler) ignore_non_runtime_or_satisfied(priority) {
+	if isinstance(priority, DepPriority) and \
+	not
+	priority.satisfied
+	and \
+	(priority.runtime
+	or
+	priority.runtime_post):
+	return false
+	return true
 
-for child in graph.child_nodes(pkg,
-ignore_priority=ignore_non_runtime_or_satisfied):
-if not isinstance(child, Package) or \
-child.operation == 'uninstall':
-continue
-if child is pkg:
-continue
-if child.operation == 'merge' and \
-child not in completed_tasks:
-unsatisfied.add(child)
+	for child
+	in
+	graph.child_nodes(pkg,
+		ignore_priority = ignore_non_runtime_or_satisfied):
+	if not isinstance(child, Package)
+	or \
+	child.operation == 'uninstall':
+	continue
+	if child is
+pkg:
+	continue
+	if child.operation == 'merge' and \
+	child
+	not
+	in
+completed_tasks:
+	unsatisfied.add(child)
+}
 
-def _merge_wait_exit_handler(self, task):
-self._merge_wait_scheduled.remove(task)
-self._merge_exit(task)
+func (s *Scheduler) _merge_wait_exit_handler( task) {
+	s._merge_wait_scheduled.remove(task)
+	s._merge_exit(task)
+}
 
-def _merge_exit(self, merge):
-self._running_tasks.pop(id(merge), None)
-self._do_merge_exit(merge)
-self._deallocate_config(merge.merge.settings)
-if merge.returncode == os.EX_OK and \
-not merge.merge.pkg.installed:
-self._status_display.curval += 1
-self._status_display.merges = len(self._task_queues.merge)
-self._schedule()
+func (s *Scheduler) _merge_exit( merge) {
+	s._running_tasks.pop(id(merge), None)
+	s._do_merge_exit(merge)
+	s._deallocate_config(merge.merge.settings)
+	if merge.returncode == os.EX_OK and \
+	not
+	merge.merge.pkg.installed:
+	s._status_display.curval += 1
+	s._status_display.merges = len(s._task_queues.merge)
+	s._schedule()
+}
 
-def _do_merge_exit(self, merge):
-pkg = merge.merge.pkg
-if merge.returncode != os.EX_OK:
-settings = merge.merge.settings
-build_dir = settings.get("PORTAGE_BUILDDIR")
-build_log = settings.get("PORTAGE_LOG_FILE")
+func (s *Scheduler) _do_merge_exit( merge) {
+	pkg = merge.merge.pkg
+	if merge.returncode != os.EX_OK:
+	settings = merge.merge.settings
+	build_dir = settings.get("PORTAGE_BUILDDIR")
+	build_log = settings.get("PORTAGE_LOG_FILE")
 
-self._failed_pkgs.append(self._failed_pkg(
-build_dir=build_dir, build_log=build_log,
-pkg=pkg,
-returncode=merge.returncode))
-if not self._terminated_tasks:
-self._failed_pkg_msg(self._failed_pkgs[-1], "install", "to")
-self._status_display.failed = len(self._failed_pkgs)
-return
+	s._failed_pkgs.append(s._failed_pkg(
+		build_dir = build_dir, build_log = build_log,
+		pkg = pkg,
+		returncode=merge.returncode))
+	if not s._terminated_tasks:
+	s._failed_pkg_msg(s._failed_pkgs[-1], "install", "to")
+	s._status_display.failed = len(s._failed_pkgs)
+	return
 
-if merge.postinst_failure:
-self._failed_pkgs_all.append(self._failed_pkg(
-build_dir=merge.merge.settings.get("PORTAGE_BUILDDIR"),
-build_log=merge.merge.settings.get("PORTAGE_LOG_FILE"),
-pkg=pkg,
-postinst_failure=true,
-returncode=merge.returncode))
-self._failed_pkg_msg(self._failed_pkgs_all[-1],
-"execute postinst for", "for")
+	if merge.postinst_failure:
+	s._failed_pkgs_all.append(s._failed_pkg(
+		build_dir = merge.merge.settings.get("PORTAGE_BUILDDIR"),
+		build_log = merge.merge.settings.get("PORTAGE_LOG_FILE"),
+		pkg = pkg,
+		postinst_failure=true,
+		returncode = merge.returncode))
+	s._failed_pkg_msg(s._failed_pkgs_all[-1],
+		"execute postinst for", "for")
 
-self._task_complete(pkg)
-pkg_to_replace = merge.merge.pkg_to_replace
-if pkg_to_replace is not None:
-if self._digraph is not None and \
-pkg_to_replace in self._digraph:
+	s._task_complete(pkg)
+	pkg_to_replace = merge.merge.pkg_to_replace
+	if pkg_to_replace is
+	not
+None:
+	if s._digraph is
+	not
+	None
+	and \
+	pkg_to_replace
+	in
+	s._digraph:
 try:
-self._pkg_queue.remove(pkg_to_replace)
-except ValueError:
-pass
-self._task_complete(pkg_to_replace)
-else:
-self._pkg_cache.pop(pkg_to_replace, None)
+	s._pkg_queue.remove(pkg_to_replace)
+	except
+ValueError:
+	pass
+	s._task_complete(pkg_to_replace)
+	else:
+	s._pkg_cache.pop(pkg_to_replace, None)
 
-if pkg.installed:
-return
+	if pkg.installed:
+	return
 
-mtimedb = self._mtimedb
-mtimedb["resume"]["mergelist"].remove(list(pkg))
-if not mtimedb["resume"]["mergelist"]:
-del mtimedb["resume"]
-mtimedb.commit()
+	mtimedb = s._mtimedb
+	mtimedb["resume"]["mergelist"].remove(list(pkg))
+	if not mtimedb["resume"]["mergelist"]:
+	del
+	mtimedb["resume"]
+	mtimedb.commit()
+}
 
-def _build_exit(self, build):
-self._running_tasks.pop(id(build), None)
-if build.returncode == os.EX_OK and self._terminated_tasks:
-self.curval += 1
-self._deallocate_config(build.settings)
-elif build.returncode == os.EX_OK:
-self.curval += 1
-merge = PackageMerge(merge=build, scheduler=self._sched_iface)
-self._running_tasks[id(merge)] = merge
-if not build.build_opts.buildpkgonly and \
-build.pkg in self._deep_system_deps:
-self._merge_wait_queue.append(merge)
-merge.addStartListener(self._system_merge_started)
-else:
-self._task_queues.merge.add(merge)
-merge.addExitListener(self._merge_exit)
-self._status_display.merges = len(self._task_queues.merge)
-else:
-settings = build.settings
-build_dir = settings.get("PORTAGE_BUILDDIR")
-build_log = settings.get("PORTAGE_LOG_FILE")
+func (s *Scheduler) _build_exit( build) {
+	s._running_tasks.pop(id(build), None)
+	if build.returncode == os.EX_OK and
+	s._terminated_tasks:
+	s.curval += 1
+	s._deallocate_config(build.settings)
+	elif
+	build.returncode == os.EX_OK:
+	s.curval += 1
+	merge = PackageMerge(merge = build, scheduler = s._sched_iface)
+	s._running_tasks[id(merge)] = merge
+	if not build.build_opts.buildpkgonly
+	and \
+	build.pkg
+	in
+	s._deep_system_deps:
+	s._merge_wait_queue.append(merge)
+	merge.addStartListener(s._system_merge_started)
+	else:
+	s._task_queues.merge.add(merge)
+	merge.addExitListener(s._merge_exit)
+	s._status_display.merges = len(s._task_queues.merge)
+	else:
+	settings = build.settings
+	build_dir = settings.get("PORTAGE_BUILDDIR")
+	build_log = settings.get("PORTAGE_LOG_FILE")
 
-self._failed_pkgs.append(self._failed_pkg(
-build_dir=build_dir, build_log=build_log,
-pkg=build.pkg,
-returncode=build.returncode))
-if not self._terminated_tasks:
-self._failed_pkg_msg(self._failed_pkgs[-1], "emerge", "for")
-self._status_display.failed = len(self._failed_pkgs)
-self._deallocate_config(build.settings)
-self._jobs -= 1
-self._status_display.running = self._jobs
-self._schedule()
+	s._failed_pkgs.append(s._failed_pkg(
+		build_dir = build_dir, build_log = build_log,
+		pkg = build.pkg,
+		returncode=build.returncode))
+	if not s._terminated_tasks:
+	s._failed_pkg_msg(s._failed_pkgs[-1], "emerge", "for")
+	s._status_display.failed = len(s._failed_pkgs)
+	s._deallocate_config(build.settings)
+	s._jobs -= 1
+	s._status_display.running = s._jobs
+	s._schedule()
+}
 
-def _extract_exit(self, build):
-self._build_exit(build)
+func (s *Scheduler) _extract_exit( build) {
+	s._build_exit(build)
+}
 
-def _task_complete(self, pkg):
-self._completed_tasks.add(pkg)
-self._unsatisfied_system_deps.discard(pkg)
-self._choose_pkg_return_early = false
-blocker_db = self._blocker_db[pkg.root]
-blocker_db.discardBlocker(pkg)
+func (s *Scheduler) _task_complete(pkg) {
+	s._completed_tasks.add(pkg)
+	s._unsatisfied_system_deps.discard(pkg)
+	s._choose_pkg_return_early = false
+	blocker_db = s._blocker_db[pkg.root]
+	blocker_db.discardBlocker(pkg)
+}
 
-def _main_loop(self):
-self._main_exit = self._event_loop.create_future()
+func (s *Scheduler) _main_loop() {
+	s._main_exit = s._event_loop.create_future()
 
-if self._max_load is not None and \
-self._loadavg_latency is not None and \
-(self._max_jobs is true or self._max_jobs > 1):
-self._main_loadavg_handle = self._event_loop.call_later(
-self._loadavg_latency, self._schedule)
+	if s._max_load is
+	not
+	None
+	and \
+	s._loadavg_latency
+	is
+	not
+	None
+	and \
+	(s._max_jobs
+	is
+	true
+	or
+	s._max_jobs > 1):
+	s._main_loadavg_handle = s._event_loop.call_later(
+		s._loadavg_latency, s._schedule)
 
-self._schedule()
-self._event_loop.run_until_complete(self._main_exit)
+	s._schedule()
+	s._event_loop.run_until_complete(s._main_exit)
+}
 
-def _merge(self):
+func (s *Scheduler) _merge() {
 
-if self._opts_no_background.intersection(self.myopts):
-self._set_max_jobs(1)
+	if s._opts_no_background.intersection(s.myopts):
+	s._set_max_jobs(1)
 
-self._add_prefetchers()
-self._add_packages()
-failed_pkgs = self._failed_pkgs
-portage.locks._quiet = self._background
-portage.elog.add_listener(self._elog_listener)
+	s._add_prefetchers()
+	s._add_packages()
+	failed_pkgs = s._failed_pkgs
+	portage.locks._quiet = s._background
+	portage.elog.add_listener(s._elog_listener)
 
-def display_callback():
-self._status_display.display()
-display_callback.handle = self._event_loop.call_later(
-self._max_display_latency, display_callback)
-display_callback.handle = None
+	func
+	display_callback():
+	s._status_display.display()
+	display_callback.handle = s._event_loop.call_later(
+		s._max_display_latency, display_callback)
+	display_callback.handle = None
 
-if self._status_display._isatty and not self._status_display.quiet:
-display_callback()
-rval = os.EX_OK
+	if s._status_display._isatty and
+	not
+	s._status_display.quiet:
+	display_callback()
+	rval = os.EX_OK
 
 try:
-self._main_loop()
+	s._main_loop()
 finally:
-self._main_loop_cleanup()
-portage.locks._quiet = false
-portage.elog.remove_listener(self._elog_listener)
-if display_callback.handle is not None:
-display_callback.handle.cancel()
-if failed_pkgs:
-rval = failed_pkgs[-1].returncode
+	s._main_loop_cleanup()
+	portage.locks._quiet = false
+	portage.elog.remove_listener(s._elog_listener)
+	if display_callback.handle is
+	not
+None:
+	display_callback.handle.cancel()
+	if failed_pkgs:
+	rval = failed_pkgs[-1].returncode
 
-return rval
+	return rval
+}
 
-def _main_loop_cleanup(self):
-del self._pkg_queue[:]
-self._completed_tasks.clear()
-self._deep_system_deps.clear()
-self._unsatisfied_system_deps.clear()
-self._choose_pkg_return_early = false
-self._status_display.reset()
-self._digraph = None
-self._task_queues.fetch.clear()
-self._prefetchers.clear()
-self._main_exit = None
-if self._main_loadavg_handle is not None:
-self._main_loadavg_handle.cancel()
-self._main_loadavg_handle = None
-if self._job_delay_timeout_id is not None:
-self._job_delay_timeout_id.cancel()
-self._job_delay_timeout_id = None
-if self._schedule_merge_wakeup_task is not None:
-self._schedule_merge_wakeup_task.cancel()
-self._schedule_merge_wakeup_task = None
+func (s *Scheduler) _main_loop_cleanup() {
+	del
+	s._pkg_queue[:]
+	s._completed_tasks.clear()
+	s._deep_system_deps.clear()
+	s._unsatisfied_system_deps.clear()
+	s._choose_pkg_return_early = false
+	s._status_display.reset()
+	s._digraph = None
+	s._task_queues.fetch.clear()
+	s._prefetchers.clear()
+	s._main_exit = None
+	if s._main_loadavg_handle is
+	not
+None:
+	s._main_loadavg_handle.cancel()
+	s._main_loadavg_handle = None
+	if s._job_delay_timeout_id is
+	not
+None:
+	s._job_delay_timeout_id.cancel()
+	s._job_delay_timeout_id = None
+	if s._schedule_merge_wakeup_task is
+	not
+None:
+	s._schedule_merge_wakeup_task.cancel()
+	s._schedule_merge_wakeup_task = None
+}
 
-def _choose_pkg(self):
+func (s *Scheduler) _choose_pkg() {
 
-if self._choose_pkg_return_early:
-return None
+	if s._choose_pkg_return_early:
+	return None
 
-if self._digraph is None:
-if self._is_work_scheduled() and \
-not ("--nodeps" in self.myopts and \
-(self._max_jobs is true or self._max_jobs > 1)):
-self._choose_pkg_return_early = true
-return None
-return self._pkg_queue.pop(0)
+	if s._digraph is
+None:
+	if s._is_work_scheduled() and \
+	not("--nodeps"
+	in
+	s.myopts
+	and \
+	(s._max_jobs
+	is
+	true
+	or
+	s._max_jobs > 1)):
+	s._choose_pkg_return_early = true
+	return None
+	return s._pkg_queue.pop(0)
 
-if not self._is_work_scheduled():
-return self._pkg_queue.pop(0)
+	if not s._is_work_scheduled():
+	return s._pkg_queue.pop(0)
 
-self._prune_digraph()
+	s._prune_digraph()
 
-chosen_pkg = None
+	chosen_pkg = None
 
-graph = self._digraph
-for pkg in self._pkg_queue:
-if pkg.operation == 'uninstall' and \
-not graph.child_nodes(pkg):
-chosen_pkg = pkg
-break
+	graph = s._digraph
+	for pkg
+	in
+	s._pkg_queue:
+	if pkg.operation == 'uninstall' and \
+	not
+	graph.child_nodes(pkg):
+	chosen_pkg = pkg
+	break
 
-if chosen_pkg is None:
-later = set(self._pkg_queue)
-for pkg in self._pkg_queue:
-later.remove(pkg)
-if not self._dependent_on_scheduled_merges(pkg, later):
-chosen_pkg = pkg
-break
+	if chosen_pkg is
+None:
+	later = set(s._pkg_queue)
+	for pkg
+	in
+	s._pkg_queue:
+	later.remove(pkg)
+	if not s._dependent_on_scheduled_merges(pkg, later):
+	chosen_pkg = pkg
+	break
 
-if chosen_pkg is not None:
-self._pkg_queue.remove(chosen_pkg)
+	if chosen_pkg is
+	not
+None:
+	s._pkg_queue.remove(chosen_pkg)
 
-if chosen_pkg is None:
-self._choose_pkg_return_early = true
+	if chosen_pkg is
+None:
+	s._choose_pkg_return_early = true
 
-return chosen_pkg
+	return chosen_pkg
+}
 
-def _dependent_on_scheduled_merges(self, pkg, later):
+func (s *Scheduler) _dependent_on_scheduled_merges( pkg, later) {
 
-graph = self._digraph
-completed_tasks = self._completed_tasks
+	graph = s._digraph
+	completed_tasks = s._completed_tasks
 
-dependent = false
-traversed_nodes = set([pkg])
-direct_deps = graph.child_nodes(pkg)
-node_stack = direct_deps
-direct_deps = frozenset(direct_deps)
-while node_stack:
-node = node_stack.pop()
-if node in traversed_nodes:
-continue
-traversed_nodes.add(node)
-if not ((node.installed and node.operation == "nomerge") or \
-(node.operation == "uninstall" and \
-node not in direct_deps) or \
-node in completed_tasks or \
-node in later):
-dependent = true
-break
+	dependent = false
+	traversed_nodes = set([pkg])
+	direct_deps = graph.child_nodes(pkg)
+	node_stack = direct_deps
+	direct_deps = frozenset(direct_deps)
+	while
+node_stack:
+	node = node_stack.pop()
+	if node in
+traversed_nodes:
+	continue
+	traversed_nodes.add(node)
+	if not((node.installed and
+	node.operation == "nomerge") or \
+	(node.operation == "uninstall"
+	and \
+	node
+	not
+	in
+	direct_deps) or \
+	node
+	in
+	completed_tasks
+	or \
+	node
+	in
+	later):
+	dependent = true
+	break
 
-if node.operation != "uninstall":
-node_stack.extend(graph.child_nodes(node))
+	if node.operation != "uninstall":
+	node_stack.extend(graph.child_nodes(node))
 
-return dependent
+	return dependent
+}
 
-def _allocate_config(self, root):
-if self._config_pool[root]:
-temp_settings = self._config_pool[root].pop()
-else:
-temp_settings = portage.config(clone=self.pkgsettings[root])
-temp_settings.reload()
-temp_settings.reset()
-return temp_settings
+func (s *Scheduler) _allocate_config( root) {
+	if s._config_pool[root]:
+	temp_settings = s._config_pool[root].pop()
+	else:
+	temp_settings = portage.config(clone = s.pkgsettings[root])
+	temp_settings.reload()
+	temp_settings.reset()
+	return temp_settings
+}
 
-def _deallocate_config(self, settings):
-self._config_pool[settings['EROOT']].append(settings)
+func (s *Scheduler) _deallocate_config(settings) {
+	s._config_pool[settings['EROOT']].append(settings)
+}
 
-def _keep_scheduling(self):
-return bool(not self._terminated.is_set() and self._pkg_queue and \
-not (self._failed_pkgs and not self._build_opts.fetchonly))
+func (s *Scheduler) _keep_scheduling() {
+	return bool(not
+	s._terminated.is_set()
+	and
+	s._pkg_queue
+	and \
+	not(s._failed_pkgs
+	and
+	not
+	s._build_opts.fetchonly))
+}
 
-def _is_work_scheduled(self):
-return bool(self._running_tasks)
+func (s *Scheduler) _is_work_scheduled() {
+	return bool(s._running_tasks)
+}
 
-def _running_job_count(self):
-return self._jobs
+func (s *Scheduler) _running_job_count() {
+	return s._jobs
+}
 
-def _schedule_tasks(self):
+func (s *Scheduler) _schedule_tasks() {
 
-while true:
+	while
+true:
 
-state_change = 0
+	state_change = 0
 
-if (self._merge_wait_queue and not self._jobs and
-not self._task_queues.merge):
-task = self._merge_wait_queue.popleft()
-task.scheduler = self._sched_iface
-self._merge_wait_scheduled.append(task)
-self._task_queues.merge.add(task)
-task.addExitListener(self._merge_wait_exit_handler)
-self._status_display.merges = len(self._task_queues.merge)
-state_change += 1
+	if (s._merge_wait_queue and
+	not
+	s._jobs
+	and
+	not
+	s._task_queues.merge):
+	task = s._merge_wait_queue.popleft()
+	task.scheduler = s._sched_iface
+	s._merge_wait_scheduled.append(task)
+	s._task_queues.merge.add(task)
+	task.addExitListener(s._merge_wait_exit_handler)
+	s._status_display.merges = len(s._task_queues.merge)
+	state_change += 1
 
-if self._schedule_tasks_imp():
-state_change += 1
+	if s._schedule_tasks_imp():
+	state_change += 1
 
-self._status_display.display()
+	s._status_display.display()
 
-if self._failed_pkgs and not self._build_opts.fetchonly and \
-not self._is_work_scheduled() and \
-self._task_queues.fetch:
-self._task_queues.fetch.clear()
+	if s._failed_pkgs and
+	not
+	s._build_opts.fetchonly
+	and \
+	not
+	s._is_work_scheduled()
+	and \
+	s._task_queues.fetch:
+	s._task_queues.fetch.clear()
 
-if not (state_change or \
-(self._merge_wait_queue and not self._jobs and
-not self._task_queues.merge)):
-break
+	if not(state_change or \
+	(s._merge_wait_queue
+	and
+	not
+	s._jobs
+	and
+	not
+	s._task_queues.merge)):
+	break
 
-if not (self._is_work_scheduled() or
-self._keep_scheduling() or self._main_exit.done()):
-self._main_exit.set_result(None)
-elif self._main_loadavg_handle is not None:
-self._main_loadavg_handle.cancel()
-self._main_loadavg_handle = self._event_loop.call_later(
-self._loadavg_latency, self._schedule)
+	if not(s._is_work_scheduled() or
+	s._keep_scheduling()
+	or
+	s._main_exit.done()):
+	s._main_exit.set_result(None)
+	elif
+	s._main_loadavg_handle
+	is
+	not
+None:
+	s._main_loadavg_handle.cancel()
+	s._main_loadavg_handle = s._event_loop.call_later(
+		s._loadavg_latency, s._schedule)
 
-if (self._task_queues.merge and (self._schedule_merge_wakeup_task is None
-or self._schedule_merge_wakeup_task.done())):
-self._schedule_merge_wakeup_task = asyncio.ensure_future(
-self._task_queues.merge.wait(), loop=self._event_loop)
-self._schedule_merge_wakeup_task.add_done_callback(
-self._schedule_merge_wakeup)
+	if (s._task_queues.merge and(s._schedule_merge_wakeup_task
+	is
+	None
+	or
+	s._schedule_merge_wakeup_task.done())):
+	s._schedule_merge_wakeup_task = asyncio.ensure_future(
+		s._task_queues.merge.wait(), loop = s._event_loop)
+	s._schedule_merge_wakeup_task.add_done_callback(
+		s._schedule_merge_wakeup)
+}
 
-def _schedule_merge_wakeup(self, future):
-if not future.cancelled():
-future.result()
-if self._main_exit is not None and not self._main_exit.done():
-self._schedule()
+func (s *Scheduler) _schedule_merge_wakeup( future) {
+	if not future.cancelled():
+	future.result()
+	if s._main_exit is
+	not
+	None
+	and
+	not
+	s._main_exit.done():
+	s._schedule()
+}
 
-def _sigcont_handler(self, signum, frame):
-self._sigcont_time = time.time()
+func (s *Scheduler) _sigcont_handler( signum, frame) {
+	s._sigcont_time = time.time()
+}
 
-def _job_delay(self):
+func (s *Scheduler) _job_delay() {
 
-if self._jobs and self._max_load is not None:
+	if s._jobs and
+	s._max_load
+	is
+	not
+None:
 
-current_time = time.time()
+	current_time = time.time()
 
-if self._sigcont_time is not None:
+	if s._sigcont_time is
+	not
+None:
 
-elapsed_seconds = current_time - self._sigcont_time
-if elapsed_seconds > 0 and \
-elapsed_seconds < self._sigcont_delay:
+	elapsed_seconds = current_time - s._sigcont_time
+	if elapsed_seconds > 0 and \
+	elapsed_seconds < s._sigcont_delay:
 
-if self._job_delay_timeout_id is not None:
-self._job_delay_timeout_id.cancel()
+	if s._job_delay_timeout_id is
+	not
+None:
+	s._job_delay_timeout_id.cancel()
 
-self._job_delay_timeout_id = self._event_loop.call_later(
-self._sigcont_delay - elapsed_seconds,
-self._schedule)
-return true
+	s._job_delay_timeout_id = s._event_loop.call_later(
+		s._sigcont_delay-elapsed_seconds,
+		s._schedule)
+	return true
 
-self._sigcont_time = None
+	s._sigcont_time = None
 
 try:
-avg1, avg5, avg15 = getloadavg()
-except OSError:
-return false
+	avg1, avg5, avg15 = getloadavg()
+	except
+OSError:
+	return false
 
-delay = self._job_delay_max * avg1 / self._max_load
-if delay > self._job_delay_max:
-delay = self._job_delay_max
-elapsed_seconds = current_time - self._previous_job_start_time
-if elapsed_seconds > 0 and elapsed_seconds < delay:
+	delay = s._job_delay_max * avg1 / s._max_load
+	if delay > s._job_delay_max:
+	delay = s._job_delay_max
+	elapsed_seconds = current_time - s._previous_job_start_time
+	if elapsed_seconds > 0 and
+	elapsed_seconds < delay:
 
-if self._job_delay_timeout_id is not None:
-self._job_delay_timeout_id.cancel()
+	if s._job_delay_timeout_id is
+	not
+None:
+	s._job_delay_timeout_id.cancel()
 
-self._job_delay_timeout_id = self._event_loop.call_later(
-delay - elapsed_seconds, self._schedule)
-return true
+	s._job_delay_timeout_id = s._event_loop.call_later(
+		delay-elapsed_seconds, s._schedule)
+	return true
 
-return false
+	return false
+}
 
-def _schedule_tasks_imp(self):
+func (s *Scheduler) _schedule_tasks_imp() {
 
-state_change = 0
+	state_change = 0
 
-while true:
+	while
+true:
 
-if not self._keep_scheduling():
-return bool(state_change)
+	if not s._keep_scheduling():
+	return bool(state_change)
 
-if self._choose_pkg_return_early or \
-self._merge_wait_scheduled or \
-(self._jobs and self._unsatisfied_system_deps) or \
-not self._can_add_job() or \
-self._job_delay():
-return bool(state_change)
+	if s._choose_pkg_return_early or \
+	s._merge_wait_scheduled
+	or \
+	(s._jobs
+	and
+	s._unsatisfied_system_deps) or \
+	not
+	s._can_add_job()
+	or \
+	s._job_delay():
+	return bool(state_change)
 
-pkg = self._choose_pkg()
-if pkg is None:
-return bool(state_change)
+	pkg = s._choose_pkg()
+	if pkg is
+None:
+	return bool(state_change)
 
-state_change += 1
+	state_change += 1
 
-if not pkg.installed:
-self._pkg_count.curval += 1
+	if not pkg.installed:
+	s._pkg_count.curval += 1
 
-task = self._task(pkg)
+	task = s._task(pkg)
 
-if pkg.installed:
-merge = PackageMerge(merge=task, scheduler=self._sched_iface)
-self._running_tasks[id(merge)] = merge
-self._task_queues.merge.addFront(merge)
-merge.addExitListener(self._merge_exit)
+	if pkg.installed:
+	merge = PackageMerge(merge = task, scheduler = s._sched_iface)
+	s._running_tasks[id(merge)] = merge
+	s._task_queues.merge.addFront(merge)
+	merge.addExitListener(s._merge_exit)
 
-elif pkg.built:
-self._jobs += 1
-self._previous_job_start_time = time.time()
-self._status_display.running = self._jobs
-self._running_tasks[id(task)] = task
-task.scheduler = self._sched_iface
-self._task_queues.jobs.add(task)
-task.addExitListener(self._extract_exit)
+	elif
+	pkg.built:
+	s._jobs += 1
+	s._previous_job_start_time = time.time()
+	s._status_display.running = s._jobs
+	s._running_tasks[id(task)] = task
+	task.scheduler = s._sched_iface
+	s._task_queues.jobs.add(task)
+	task.addExitListener(s._extract_exit)
 
-else:
-self._jobs += 1
-self._previous_job_start_time = time.time()
-self._status_display.running = self._jobs
-self._running_tasks[id(task)] = task
-task.scheduler = self._sched_iface
-self._task_queues.jobs.add(task)
-task.addExitListener(self._build_exit)
+	else:
+	s._jobs += 1
+	s._previous_job_start_time = time.time()
+	s._status_display.running = s._jobs
+	s._running_tasks[id(task)] = task
+	task.scheduler = s._sched_iface
+	s._task_queues.jobs.add(task)
+	task.addExitListener(s._build_exit)
 
-return bool(state_change)
+	return bool(state_change)
+}
 
-def _task(self, pkg):
+func (s *Scheduler) _task( pkg) {
 
-pkg_to_replace = None
-if pkg.operation != "uninstall":
-vardb = pkg.root_config.trees["vartree"].dbapi
-previous_cpv = [x for x in vardb.match(pkg.slot_atom) \
-if portage.cpv_getkey(x) == pkg.cp]
+	pkg_to_replace = None
+	if pkg.operation != "uninstall":
+	vardb = pkg.root_config.trees["vartree"].dbapi
+	previous_cpv = [x
+	for x
+	in
+	vardb.match(pkg.slot_atom) \
+	if portage.cpv_getkey(x) == pkg.cp]
 if not previous_cpv and vardb.cpv_exists(pkg.cpv):
 previous_cpv = [pkg.cpv]
 if previous_cpv:
 previous_cpv = previous_cpv.pop()
-pkg_to_replace = self._pkg(previous_cpv,
-"installed", pkg.root_config, installed=true,
-operation="uninstall")
+pkg_to_replace = s._pkg(previous_cpv,
+"installed", pkg.root_config, installed = true,
+operation = "uninstall")
 
 try:
-prefetcher = self._prefetchers.pop(pkg, None)
+prefetcher = s._prefetchers.pop(pkg, None)
 except KeyError:
 prefetcher = None
 if prefetcher is not None and not prefetcher.isAlive():
 try:
-self._task_queues.fetch._task_queue.remove(prefetcher)
+s._task_queues.fetch._task_queue.remove(prefetcher)
 except ValueError:
 pass
 prefetcher = None
 
-task = MergeListItem(args_set=self._args_set,
-background=self._background, binpkg_opts=self._binpkg_opts,
-build_opts=self._build_opts,
-config_pool=self._ConfigPool(pkg.root,
-self._allocate_config, self._deallocate_config),
-emerge_opts=self.myopts,
-find_blockers=self._find_blockers(pkg), logger=self._logger,
-mtimedb=self._mtimedb, pkg=pkg, pkg_count=self._pkg_count.copy(),
-pkg_to_replace=pkg_to_replace,
-prefetcher=prefetcher,
-scheduler=self._sched_iface,
-settings=self._allocate_config(pkg.root),
-statusMessage=self._status_msg,
-world_atom=self._world_atom)
+task = MergeListItem(args_set= s._args_set,
+background = s._background, binpkg_opts = s._binpkg_opts,
+build_opts = s._build_opts,
+config_pool = s._ConfigPool(pkg.root,
+s._allocate_config, s._deallocate_config),
+emerge_opts = s.myopts,
+find_blockers =s._find_blockers(pkg), logger = s._logger,
+mtimedb = s._mtimedb, pkg= pkg, pkg_count = s._pkg_count.copy(),
+pkg_to_replace = pkg_to_replace,
+prefetcher = prefetcher,
+scheduler = s._sched_iface,
+settings = s._allocate_config(pkg.root),
+statusMessage =s._status_msg,
+world_atom = s._world_atom)
 
 return task
+}
 
-def _failed_pkg_msg(self, failed_pkg, action, preposition):
-pkg = failed_pkg.pkg
-msg = "%s to %s %s" % \
-(bad("Failed"), action, colorize("INFORM", pkg.cpv))
-if pkg.root_config.settings["ROOT"] != "/":
-msg += " %s %s" % (preposition, pkg.root)
+func (s *Scheduler) _failed_pkg_msg( failed_pkg, action, preposition) {
+	pkg = failed_pkg.pkg
+	msg = "%s to %s %s" % \
+	(bad("Failed"), action, colorize("INFORM", pkg.cpv))
+	if pkg.root_config.settings["ROOT"] != "/":
+	msg += " %s %s" % (preposition, pkg.root)
 
-log_path = self._locate_failure_log(failed_pkg)
-if log_path is not None:
-msg += ", Log file:"
-self._status_msg(msg)
+	log_path = s._locate_failure_log(failed_pkg)
+	if log_path is
+	not
+None:
+	msg += ", Log file:"
+	s._status_msg(msg)
 
-if log_path is not None:
-self._status_msg(" '%s'" % (colorize("INFORM", log_path),))
+	if log_path is
+	not
+None:
+	s._status_msg(" '%s'" % (colorize("INFORM", log_path), ))
+}
 
-def _status_msg(self, msg):
-if not self._background:
-writemsg_level("\n")
-self._status_display.displayMessage(msg)
+func (s *Scheduler) _status_msg( msg) {
+	if not s._background:
+	writemsg_level("\n")
+	s._status_display.displayMessage(msg)
+}
 
-def _save_resume_list(self):
-mtimedb = self._mtimedb
+func (s *Scheduler) _save_resume_list() {
+	mtimedb = s._mtimedb
 
-mtimedb["resume"] = {}
-mtimedb["resume"]["myopts"] = self.myopts.copy()
+	mtimedb["resume"] =
+	{
+	}
+	mtimedb["resume"]["myopts"] = s.myopts.copy()
 
-mtimedb["resume"]["favorites"] = [str(x) for x in self._favorites]
+	mtimedb["resume"]["favorites"] = [str(x)
+	for x
+	in
+	s._favorites]
 mtimedb["resume"]["mergelist"] = [list(x) \
-for x in self._mergelist \
+for x in s._mergelist \
 if isinstance(x, Package) and x.operation == "merge"]
 
 mtimedb.commit()
+}
 
-def _calc_resume_list(self):
-print(colorize("GOOD", "*** Resuming merge..."))
+func (s *Scheduler) _calc_resume_list() {
+	print(colorize("GOOD", "*** Resuming merge..."))
 
-self._destroy_graph()
+	s._destroy_graph()
 
-myparams = create_depgraph_params(self.myopts, None)
-success = false
-e = None
+	myparams = create_depgraph_params(s.myopts, None)
+	success = false
+	e = None
 try:
-success, mydepgraph, dropped_tasks = resume_depgraph(
-self.settings, self.trees, self._mtimedb, self.myopts,
-myparams, self._spinner)
-except depgraph.UnsatisfiedResumeDep as exc:
-e = exc
-mydepgraph = e.depgraph
-dropped_tasks = {}
+	success, mydepgraph, dropped_tasks = resume_depgraph(
+		s.settings, s.trees, s._mtimedb, s.myopts,
+		myparams, s._spinner)
+	except
+	depgraph.UnsatisfiedResumeDep
+	as
+exc:
+	e = exc
+	mydepgraph = e.depgraph
+	dropped_tasks =
+	{
+	}
 
-if e is not None:
-def unsatisfied_resume_dep_msg():
-mydepgraph.display_problems()
-out = portage.output.EOutput()
-out.eerror("One or more packages are either masked or " + \
-"have missing dependencies:")
-out.eerror("")
-indent = "  "
-show_parents = set()
-for dep in e.value:
-if dep.parent in show_parents:
-continue
-show_parents.add(dep.parent)
-if dep.atom is None:
-out.eerror(indent + "Masked package:")
-out.eerror(2 * indent + str(dep.parent))
-out.eerror("")
-else:
-out.eerror(indent + str(dep.atom) + " pulled in by:")
-out.eerror(2 * indent + str(dep.parent))
-out.eerror("")
-msg = "The resume list contains packages " + \
-"that are either masked or have " + \
-"unsatisfied dependencies. " + \
-"Please restart/continue " + \
-"the operation manually, or use --skipfirst " + \
-"to skip the first package in the list and " + \
-"any other packages that may be " + \
-"masked or have missing dependencies."
-for line in textwrap.wrap(msg, 72):
-out.eerror(line)
-self._post_mod_echo_msgs.append(unsatisfied_resume_dep_msg)
-return false
+	if e is
+	not
+None:
+	func
+	unsatisfied_resume_dep_msg():
+	mydepgraph.display_problems()
+	out = portage.output.EOutput()
+	out.eerror("One or more packages are either masked or " + \
+	"have missing dependencies:")
+	out.eerror("")
+	indent = "  "
+	show_parents = set()
+	for dep
+	in
+	e.value:
+	if dep.parent in
+show_parents:
+	continue
+	show_parents.add(dep.parent)
+	if dep.atom is
+None:
+	out.eerror(indent + "Masked package:")
+	out.eerror(2*indent + str(dep.parent))
+	out.eerror("")
+	else:
+	out.eerror(indent + str(dep.atom) + " pulled in by:")
+	out.eerror(2*indent + str(dep.parent))
+	out.eerror("")
+	msg = "The resume list contains packages " + \
+	"that are either masked or have " + \
+	"unsatisfied dependencies. " + \
+	"Please restart/continue " + \
+	"the operation manually, or use --skipfirst " + \
+	"to skip the first package in the list and " + \
+	"any other packages that may be " + \
+	"masked or have missing dependencies."
+	for line
+	in
+	textwrap.wrap(msg, 72):
+	out.eerror(line)
+	s._post_mod_echo_msgs.append(unsatisfied_resume_dep_msg)
+	return false
 
-if success and self._show_list():
-mydepgraph.display(mydepgraph.altlist(), favorites=self._favorites)
+	if success and
+	s._show_list():
+	mydepgraph.display(mydepgraph.altlist(), favorites = s._favorites)
 
-if not success:
-self._post_mod_echo_msgs.append(mydepgraph.display_problems)
-return false
-mydepgraph.display_problems()
-self._init_graph(mydepgraph.schedulerGraph())
+	if not success:
+	s._post_mod_echo_msgs.append(mydepgraph.display_problems)
+	return false
+	mydepgraph.display_problems()
+	s._init_graph(mydepgraph.schedulerGraph())
 
-msg_width = 75
-for task, atoms in dropped_tasks.items():
-if not (isinstance(task, Package) and task.operation == "merge"):
-continue
-pkg = task
-msg = "emerge --keep-going:" + \
-" %s" % (pkg.cpv,)
-if pkg.root_config.settings["ROOT"] != "/":
-msg += " for %s" % (pkg.root,)
-if not atoms:
-msg += " dropped because it is masked or unavailable"
-else:
-msg += " dropped because it requires %s" % ", ".join(atoms)
-for line in textwrap.wrap(msg, msg_width):
-eerror(line, phase="other", key=pkg.cpv)
-settings = self.pkgsettings[pkg.root]
-settings.pop("T", None)
-portage.elog.elog_process(pkg.cpv, settings)
-self._failed_pkgs_all.append(self._failed_pkg(pkg=pkg))
+	msg_width = 75
+	for task, atoms
+	in
+	dropped_tasks.items():
+	if not(isinstance(task, Package) and
+	task.operation == "merge"):
+	continue
+	pkg = task
+	msg = "emerge --keep-going:" + \
+	" %s" % (pkg.cpv,)
+	if pkg.root_config.settings["ROOT"] != "/":
+	msg += " for %s" % (pkg.root,)
+	if not atoms:
+	msg += " dropped because it is masked or unavailable"
+	else:
+	msg += " dropped because it requires %s" % ", ".join(atoms)
+	for line
+	in
+	textwrap.wrap(msg, msg_width):
+	eerror(line, phase = "other", key = pkg.cpv)
+	settings = s.pkgsettings[pkg.root]
+	settings.pop("T", None)
+	portage.elog.elog_process(pkg.cpv, settings)
+	s._failed_pkgs_all.append(s._failed_pkg(pkg = pkg))
 
-return true
+	return true
+}
 
-def _show_list(self):
-myopts = self.myopts
-if "--quiet" not in myopts and \
-("--ask" in myopts or "--tree" in myopts or \
-"--verbose" in myopts):
-return true
-return false
+func (s *Scheduler) _show_list() {
+	myopts = s.myopts
+	if "--quiet" not
+	in
+	myopts
+	and \
+	("--ask"
+	in
+	myopts
+	or
+	"--tree"
+	in
+	myopts
+	or \
+	"--verbose"
+	in
+	myopts):
+	return true
+	return false
+}
 
-def _world_atom(self, pkg):
+func (s *Scheduler) _world_atom( pkg) {
 
-if set(("--buildpkgonly", "--fetchonly",
-"--fetch-all-uri",
-"--oneshot", "--onlydeps",
-"--pretend")).intersection(self.myopts):
-return
+	if set(("--buildpkgonly", "--fetchonly",
+		"--fetch-all-uri",
+		"--oneshot", "--onlydeps",
+		"--pretend")).intersection(s.myopts):
+	return
 
-if pkg.root != self.target_root:
-return
+	if pkg.root != s.target_root:
+	return
 
-args_set = self._args_set
-if not args_set.findAtomForPackage(pkg):
-return
+	args_set = s._args_set
+	if not args_set.findAtomForPackage(pkg):
+	return
 
-logger = self._logger
-pkg_count = self._pkg_count
-root_config = pkg.root_config
-world_set = root_config.sets["selected"]
-world_locked = false
-atom = None
+	logger = s._logger
+	pkg_count = s._pkg_count
+	root_config = pkg.root_config
+	world_set = root_config.sets["selected"]
+	world_locked = false
+	atom = None
 
-if pkg.operation != "uninstall":
-atom = self._world_atoms.get(pkg)
+	if pkg.operation != "uninstall":
+	atom = s._world_atoms.get(pkg)
 
 try:
 
-if hasattr(world_set, "lock"):
-world_set.lock()
-world_locked = true
+	if hasattr(world_set, "lock"):
+	world_set.lock()
+	world_locked = true
 
-if hasattr(world_set, "load"):
-world_set.load() # maybe it's changed on disk
+	if hasattr(world_set, "load"):
+	world_set.load() # maybe
+	it
+	's changed on disk
 
-if pkg.operation == "uninstall":
-if hasattr(world_set, "cleanPackage"):
-world_set.cleanPackage(pkg.root_config.trees["vartree"].dbapi,
-pkg.cpv)
-if hasattr(world_set, "remove"):
-for s in pkg.root_config.setconfig.active:
-world_set.remove(SETPREFIX+s)
-else:
-if atom is not None:
-if hasattr(world_set, "add"):
-self._status_msg(('Recording %s in "world" ' + \
-'favorites file...') % atom)
-logger.log(" === (%s of %s) Updating world file (%s)" % \
-(pkg_count.curval, pkg_count.maxval, pkg.cpv))
-world_set.add(atom)
-else:
-writemsg_level('\n!!! Unable to record %s in "world"\n' % \
-(atom,), level=logging.WARN, noiselevel=-1)
+	if pkg.operation == "uninstall":
+	if hasattr(world_set, "cleanPackage"):
+	world_set.cleanPackage(pkg.root_config.trees["vartree"].dbapi,
+		pkg.cpv)
+	if hasattr(world_set, "remove"):
+	for s
+	in
+	pkg.root_config.setconfig.active:
+	world_set.remove(SETPREFIX + s)
+	else:
+	if atom is
+	not
+None:
+	if hasattr(world_set, "add"):
+	s._status_msg(('Recording %s in "world" ' + \
+	'favorites file...') % atom)
+	logger.log(" === (%s of %s) Updating world file (%s)" % \
+	(pkg_count.curval, pkg_count.maxval, pkg.cpv))
+	world_set.add(atom)
+	else:
+	writemsg_level('\n!!! Unable to record %s in "world"\n' % \
+	(atom,), level = logging.WARN, noiselevel=-1)
 finally:
-if world_locked:
-world_set.unlock()
+	if world_locked:
+	world_set.unlock()
+}
 
-def _pkg(self, cpv, type_name, root_config, installed=false,
-operation=None, myrepo=None):
+func (s *Scheduler) _pkg( cpv, type_name, root_config, installed=false,
+operation=None, myrepo=None) {
 
-pkg = self._pkg_cache.get(Package._gen_hash_key(cpv=cpv,
-type_name=type_name, repo_name=myrepo, root_config=root_config,
-installed=installed, operation=operation))
+	pkg = s._pkg_cache.get(Package._gen_hash_key(cpv = cpv,
+		type_name = type_name, repo_name=myrepo, root_config = root_config,
+		installed=installed, operation = operation))
 
-if pkg is not None:
-return pkg
+	if pkg is
+	not
+None:
+	return pkg
 
-tree_type = depgraph.pkg_tree_map[type_name]
-db = root_config.trees[tree_type].dbapi
-db_keys = list(self.trees[root_config.root][
-tree_type].dbapi._aux_cache_keys)
-metadata = zip(db_keys, db.aux_get(cpv, db_keys, myrepo=myrepo))
-pkg = Package(built=(type_name != "ebuild"),
-cpv=cpv, installed=installed, metadata=metadata,
-root_config=root_config, type_name=type_name)
-self._pkg_cache[pkg] = pkg
-return pkg
+	tree_type = depgraph.pkg_tree_map[type_name]
+	db = root_config.trees[tree_type].dbapi
+	db_keys = list(s.trees[root_config.root][
+		tree_type].dbapi._aux_cache_keys)
+	metadata = zip(db_keys, db.aux_get(cpv, db_keys, myrepo = myrepo))
+	pkg = Package(built = (type_name != "ebuild"),
+		cpv = cpv, installed=installed, metadata = metadata,
+		root_config=root_config, type_name = type_name)
+	s._pkg_cache[pkg] = pkg
+	return pkg
+}
+
+type  SchedulerInterface struct {
+
+}(SlotObject):
+
+_event_loop_attrs = (
+"add_reader",
+"add_writer",
+"call_at",
+"call_exception_handler",
+"call_later",
+"call_soon",
+"call_soon_threadsafe",
+"close",
+"create_future",
+"default_exception_handler",
+"get_debug",
+"is_closed",
+"is_running",
+"remove_reader",
+"remove_writer",
+"run_in_executor",
+"run_until_complete",
+"set_debug",
+"time",
+
+"_asyncio_child_watcher",
+"_asyncio_wrapper",
+)
+
+__slots__ = _event_loop_attrs + ("_event_loop", "_is_background")
+
+func NewSchedulerInterface(event_loop, is_background=None, **kwargs)*SchedulerInterface {
+	s := &SchedulerInterface{}
+	SlotObject.__init__(s, **kwargs)
+	s._event_loop = event_loop
+	if is_background is
+None:
+	is_background = s._return_false
+	s._is_background = is_background
+	for k
+	in
+	s._event_loop_attrs:
+	setattr(s, k, getattr(event_loop, k))
+	return s
+}
+
+@staticmethod
+func (s * SchedulerInterface) _return_false() {
+	return false
+}
+
+func (s * SchedulerInterface) output( msg, log_path=None, background=None,
+level=0, noiselevel=-1){
+
+global_background = s._is_background()
+if background is None or global_background:
+background = global_background
+
+msg_shown = false
+if not background:
+writemsg_level(msg, level = level, noiselevel = noiselevel)
+msg_shown = true
+
+if log_path is not None:
+try:
+f = open(_unicode_encode(log_path,
+encoding = _encodings['fs'], errors = 'strict'),
+mode = 'ab')
+f_real = f
+except IOError as e:
+if e.errno not in (errno.ENOENT, errno.ESTALE):
+raise
+if not msg_shown:
+writemsg_level(msg, level = level, noiselevel = noiselevel)
+else:
+
+if log_path.endswith('.gz'):
+f = gzip.GzipFile(filename = '', mode = 'ab', fileobj = f)
+
+f.write(_unicode_encode(msg))
+f.close()
+if f_real is not f:
+f_real.close()
+}
