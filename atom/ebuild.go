@@ -125,6 +125,152 @@ func iterParents(p string) []string {
 	return d
 }
 
+type QueryCommand struct {
+	
+	phase string
+	settings *Config
+}
+
+var QueryCommand_db *TreesDict = nil
+
+func (q *QueryCommand) get_db() *TreesDict {
+	if QueryCommand_db != nil {
+		return QueryCommand_db
+	}
+	return Db()
+}
+
+func NewQueryCommand(settings *Config, phase string) *QueryCommand {
+	q := &QueryCommand{}
+	q.settings = settings
+	q.phase = phase
+	return q
+}
+
+func (q *QueryCommand) __call__( argv []string) {
+	cmd := argv[0]
+	root := argv[1]
+	args := argv[2:]
+
+	warnings := []string{}
+	warnings_str:= ""
+
+	db := q.get_db()
+	eapi := q.settings.ValueDict["EAPI"]
+
+	if root == "" {
+		root = string(os.PathSeparator)
+	}
+	root = strings.TrimRight(NormalizePath(root), string(os.PathSeparator)) + string(os.PathSeparator)
+	if _, ok := db.Values()[root]; !ok{
+		return ('', '%s: Invalid ROOT: %s\n' % (cmd, root), 3)
+	}
+
+	portdb := db.Values()[root].PortTree().dbapi
+	vardb := db.Values()[root].VarTree().dbapi
+
+	if cmd == "best_version" || cmd=="has_version"{
+		allow_repo := EapiHasRepoDeps(eapi)
+	try:
+		atom = Atom(args[0], allow_repo = allow_repo)
+		except
+	InvalidAtom:
+		return ('', '%s: Invalid atom: %s\n' % (cmd, args[0]), 2)
+
+	try:
+		atom = Atom(args[0], allow_repo = allow_repo, eapi = eapi)
+		except
+		InvalidAtom
+		as
+	e:
+		warnings.append("QA Notice: %s: %s"%(cmd, e))
+
+		use = q.settings.ValueDict['PORTAGE_BUILT_USE')
+		if use is
+	None:
+		use = q.settings['PORTAGE_USE']
+
+		use = frozenset(use.split())
+		atom = atom.evaluate_conditionals(use)
+	}
+
+	if warnings:
+	warnings_str = q._elog('eqawarn', warnings)
+
+	if cmd == 'has_version':
+	if vardb.match(atom):
+	returncode = 0
+	else:
+	returncode = 1
+	return ('', warnings_str, returncode)
+	else if
+	cmd == 'best_version':
+	m = best(vardb.match(atom))
+	return ('%s\n' % m, warnings_str, 0)
+	else if
+	cmd
+	in('master_repositories', 'repository_path', 'available_eclasses', 'eclass_path', 'license_path'):
+	repo = _repo_name_re.match(args[0])
+	if repo is
+None:
+	return ('', '%s: Invalid repository: %s\n' % (cmd, args[0]), 2)
+try:
+	repo = portdb.repositories[args[0]]
+	except
+KeyError:
+	return ('', warnings_str, 1)
+
+	if cmd == 'master_repositories':
+	return ('%s\n' % ' '.join(x.name
+	for x
+	in
+	repo.masters), warnings_str, 0)
+	else if
+	cmd == 'repository_path':
+	return ('%s\n' % repo.location, warnings_str, 0)
+	else if
+	cmd == 'available_eclasses':
+	return ('%s\n' % ' '.join(sorted(repo.eclass_db.eclasses)), warnings_str, 0)
+	else if
+	cmd == 'eclass_path':
+try:
+	eclass = repo.eclass_db.eclasses[args[1]]
+	except
+KeyError:
+	return ('', warnings_str, 1)
+	return ('%s\n' % eclass.location, warnings_str, 0)
+	else if
+	cmd == 'license_path':
+	paths = reversed([os.path.join(x.location, 'licenses', args[1])
+	for x
+	in
+	list(repo.masters) + [repo]])
+for path in paths:
+if pathExists(path):
+return ('%s\n' % path, warnings_str, 0)
+return ('', warnings_str, 1) else:
+return ('', 'Invalid command: %s\n' % cmd, 3)
+}
+
+func (q *QueryCommand) _elog( elog_funcname, lines) {
+	out = io.StringIO()
+	phase := q.phase
+	elog_func = getattr(elog_messages, elog_funcname)
+	global_havecolor := HaveColor
+try:
+	portage.output.havecolor = 
+	q.settings.ValueDict['NOCOLOR', 'false').lower()
+	in('no', 'false')
+	for line
+	in
+lines:
+	elog_func(line, phase = phase, key = q.settings.mycpv, out = out)
+finally:
+	portage.output.havecolor = global_havecolor
+	msg = out.getvalue()
+	return msg
+}
+
 // nil, nil, nil
 func digestgen(myarchives interface{}, mysettings *Config, myportdb *portdbapi) int {
 	if mysettings != nil|| myportdb == nil {
@@ -202,7 +348,11 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *portdbapi) 
 				missing_files = append(missing_files, myfile)
 				continue
 			}
-			if required_hash_types.difference(myhashes) {
+			rht := CopyMapSB(required_hash_types)
+			for k := range myhashes {
+				delete(rht, k)
+			}
+			if len(rht) != 0 {
 				missing_files = append(missing_files, myfile)
 				continue
 			}
@@ -222,8 +372,11 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *portdbapi) 
 			uris.update(myportdb.getFetchMap(
 				cpv, mytree = mytree)[myfile])
 			restrict = myportdb.aux_get(cpv, ['RESTRICT'], mytree = mytree)[0]
-			all_restrict.update(useReduce(restrict,
-				flat = true, matchnone = true))
+			for _, k := range useReduce(restrict, map[string]bool{},
+				[]string{}, false, []string{}, false, "",
+				false, true, nil, nil, true) {
+					all_restrict[k] = true
+			}
 
 			cat, pf := catsplit(cpv)[0], catsplit(cpv)[1]
 			mysettings.ValueDict["CATEGORY"] = cat
@@ -243,7 +396,7 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *portdbapi) 
 		myfile:
 			uris
 		}, mysettings):
-		myebuild = filepath.Join(mysettings.ValueDict["O"],
+		myebuild := filepath.Join(mysettings.ValueDict["O"],
 			catsplit(cpv)[1]+".ebuild")
 		spawn_nofetch(myportdb, myebuild)
 		WriteMsg(fmt.Sprintf("!!! Fetch failed for %s, can't update Manifest\n",
@@ -297,7 +450,7 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *portdbapi) 
 			WriteMsgStdout("  digest.assumed" + colorize("WARN",
 				fmt.Sprintf("%18d", len(auto_assumed))) + "\n", 0)
 			for _, pkg_key := range pkgs{
-				fetchlist = myportdb.getFetchMap(pkg_key, mytree = mytree)
+				fetchlist := myportdb.getFetchMap(pkg_key, mytree = mytree)
 				pv := strings.Split(pkg_key, "/")[1]
 				for _, filename := range auto_assumed {
 					if filename in
@@ -386,7 +539,7 @@ func _doebuild_spawn(phase string, settings *Config, actionmap=None, **kwargs)([
 
 		settings.ValueDict["EBUILD_PHASE"] = phase
 		defer delete(settings.ValueDict, "EBUILD_PHASE")
-		return spawn(cmd, settings, **kwargs)
+		return spawnE(cmd, settings, **kwargs)
 }
 
 // nil, false, nil,
@@ -398,9 +551,9 @@ logfile=None, **kwargs) ([]int, error){
 			returnpid = returnpid, logfile=logfile, **kwargs)
 	}
 
-	ebuild_phase := NewEbuildPhase(actionmap = actionmap, background = false,
-		phase=phase, scheduler = SchedulerInterface(asyncio._safe_loop()),
-		settings=settings, **kwargs)
+	ebuild_phase := NewEbuildPhase(actionmap, false,
+		phase, NewSchedulerInterface(asyncio._safe_loop()),
+		settings, **kwargs)
 
 	ebuild_phase.start()
 	ebuild_phase.wait()

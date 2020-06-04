@@ -215,7 +215,7 @@ func applyHashFilter(digests map[string]string, hashFilter *hashFilter) map[stri
 		}
 	}
 	if modified {
-		d := make(map[string]interface{})
+		d := make(map[string]string)
 		for k, v := range digests {
 			if k == "size" || verifiableHashTypes[k] {
 				d[k] = v

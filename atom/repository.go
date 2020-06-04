@@ -169,9 +169,9 @@ func (r *RepoConfig) update( new_repo *RepoConfig) {
 	r.eapisDeprecated = new_repo.eapisDeprecated
 	r.mastersOrig = new_repo.mastersOrig
 
-	if new_repo.Name != ""{
-	r.missingRepoName = new_repo.missingRepoName
-}
+	if new_repo.Name != "" {
+		r.missingRepoName = new_repo.missingRepoName
+	}
 }
 
 func (r *RepoConfig) writable() bool {

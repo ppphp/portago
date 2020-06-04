@@ -4158,6 +4158,58 @@ func NewBinaryTree(pkgDir string, settings *Config) *BinaryTree {
 	return b
 }
 
+type _better_cache struct {
+
+}
+
+func (b *_better_cache) __getitem__(catpkg) {
+	result = b._items.get(catpkg)
+	if result is
+	not
+None:
+	return result
+
+	cat, pkg = catsplit(catpkg)
+	if cat not
+	in
+	b._scanned_cats:
+	b._scan_cat(cat)
+	return b._items[catpkg]
+}
+
+func (b *_better_cache) _scan_cat( cat) {
+	for repo
+	in
+	b._repo_list:
+	cat_dir = repo.location + "/" + cat
+try:
+	pkg_list = os.listdir(cat_dir)
+	except
+	OSError
+	as
+e:
+	if e.errno not
+	in(errno.ENOTDIR, errno.ENOENT, errno.ESTALE):
+	raise
+	continue
+	for p
+	in
+pkg_list:
+	if os.path.isdir(cat_dir + "/" + p):
+	b._items[cat+"/"+p].append(repo)
+	b._scanned_cats.add(cat)
+}
+
+func NewBetterCache( repositories)*_better_cache{
+	b := &_better_cache{}
+b._items = collections.defaultdict(list)
+b._scanned_cats = set()
+
+b._repo_list = [repo for repo in reversed(list(repositories))
+if repo.location is not None]
+return b
+}
+
 type portdbapi struct {
 	*dbapi
 	_use_mutable            bool
@@ -4196,13 +4248,24 @@ func (p *portdbapi) _get_porttrees() []string {
 	return p.porttrees
 }
 
-func (p *portdbapi) _event_loop() {}
+func (p *portdbapi) _event_loop() {
+	return asyncio._safe_loop()
+}
 
 func (p *portdbapi) _create_pregen_cache(tree string) {
 	conf := p.repositories.getRepoForLocation(tree)
 	cache := conf.get_pregenerated_cache(p._known_keys, true,false)
 	if cache!= nil {
-
+	//try:
+		cache.ec = p.repositories.getRepoForLocation(tree).eclassDb
+		//except AttributeError:
+		//pass
+		if not cache.complete_eclass_entries {
+			//warnings.warn(
+			//	("Repository '%s' used deprecated 'pms' cache format. "
+			//"Please migrate to 'md5-dict' format.") % (conf.name,),
+			//DeprecationWarning)
+		}
 	}
 }
 
@@ -4211,21 +4274,60 @@ func (p *portdbapi) _init_cache_dirs() {
 		0o2070, 0o2, nil, true)
 }
 
-func (p *portdbapi) close_caches() {}
+func (p *portdbapi) close_caches() {
+	if p.auxdb == nil {
+		return
+	}
+	for x := range p.auxdb{
+		p.auxdb[x].sync()
+	}
+	p.auxdb = map[string]string{}
+}
 
-func (p *portdbapi) flush_cache() {}
+func (p *portdbapi) flush_cache() {
+	for _, x := range p.auxdb {
+		x.sync()
+	}
+}
 
-func (p *portdbapi) findLicensePath() {}
+func (p *portdbapi) findLicensePath(license_name string) string{
+	for _, x := range reversed(p.porttrees) {
+		license_path := filepath.Join(x, "licenses", license_name)
+		if os.access(license_path, os.R_OK) {
+			return license_path
+		}
+	}
+	return ""
+}
 
+// nil, nil
 func (p *portdbapi) findname(mycpv, mytree = None, myrepo = None) {
 	return p.findname2(mycpv, mytree, myrepo)[0]
 }
 
-func (p *portdbapi) getRepositoryPath() {}
+func (p *portdbapi) getRepositoryPath(repository_id string)string {
+	return p.treemap[repository_id]
+}
 
-func (p *portdbapi) getRepositoryName() {}
+func (p *portdbapi) getRepositoryName(canonical_repo_path string) string {
 
-func (p *portdbapi) getRepositories() {}
+//try:
+	return p.repositories.getNameForLocation(canonical_repo_path)
+	//except KeyError:
+	//return None
+}
+
+// nil
+func (p *portdbapi) getRepositories(catpkg=None) {
+
+	if catpkg != nil && p._better_cache != nil {
+		return [repo.name
+		for repo
+		in
+		p._better_cache[catpkg]]
+}
+	return p._ordered_repo_name_list
+}
 
 func (p *portdbapi) getMissingRepoNames() map[string]bool{
 	return p.settings.Repositories.missingRepoNames
@@ -4235,51 +4337,836 @@ func (p *portdbapi) getIgnoredRepos() []sss{
 	return p.settings.Repositories.ignoredRepos
 }
 
-func (p *portdbapi) findname2() {}
+// nil, nil
+func (p *portdbapi) findname2(mycpv, mytree=None, myrepo=None) {
+	if not mycpv:
+	return (None, 0)
 
-func (p *portdbapi) _write_cache() {}
+	if myrepo is not None:
+	mytree = p.treemap.get(myrepo)
+	if mytree is None:
+	return (None, 0)
+	elif mytree is not None:
+	myrepo = p.repositories.location_map.get(mytree)
 
-func (p *portdbapi) _pull_valid_cache() {}
+	mysplit = mycpv.split("/")
+	psplit = pkgsplit(mysplit[1])
+	if psplit is None or len(mysplit) != 2:
+	raise InvalidPackageName(mycpv)
 
-func (p *portdbapi) aux_get() {}
+try:
+	cp = mycpv.cp
+	except AttributeError:
+	cp = mysplit[0] + "/" + psplit[0]
 
-func (p *portdbapi) async_aux_get() {}
+	if p._better_cache is None:
+	if mytree:
+	mytrees = [mytree]
+	else:
+	mytrees = reversed(p.porttrees)
+	else:
+try:
+	repos = p._better_cache[cp]
+	except KeyError:
+	return (None, 0)
 
-func (p *portdbapi) _aux_get_cancel() {}
+	mytrees = []
+	for repo in repos:
+	if mytree is not None and mytree != repo.location:
+	continue
+	mytrees.append(repo.location)
 
-func (p *portdbapi) _aux_get_return() {}
+		encoding = _encodings['fs']
+	errors = 'strict'
 
-func (p *portdbapi) getFetchMap() {}
+	relative_path = mysplit[0] + _os.sep + psplit[0] + _os.sep + \
+	mysplit[1] + ".ebuild"
 
-func (p *portdbapi) async_fetch_map() {}
+	if (myrepo is not None and myrepo == getattr(mycpv, 'repo', None)
+	and p is getattr(mycpv, '_db', None)):
+	return (mytree + _os.sep + relative_path, mytree)
 
-func (p *portdbapi) getfetchsizes() {}
+	for x in mytrees:
+	filename = x + _os.sep + relative_path
+	if _os.access(_unicode_encode(filename,
+		encoding=encoding, errors=errors), _os.R_OK):
+	return (filename, x)
+	return (None, 0)
+}
 
-func (p *portdbapi) fetch_check() {}
+func (p *portdbapi) _write_cache(cpv, repo_path, metadata, ebuild_hash) {
+try:
+	cache = p.auxdb[repo_path]
+	chf = cache.validation_chf
+	metadata['_%s_' % chf] = getattr(ebuild_hash, chf)
+	except CacheError:
+		traceback.print_exc()
+	cache = None
 
-func (p *portdbapi) cpv_exists() {}
+	if cache is not None:
+try:
+	cache[cpv] = metadata
+	except CacheError:
+		traceback.print_exc()
+}
 
-func (p *portdbapi) cp_all() {}
+func (p *portdbapi) _pull_valid_cache(cpv, ebuild_path, repo_path) {
 
-func (p *portdbapi) cp_list() {}
+try:
+	ebuild_hash = eclass_cache.hashed_path(ebuild_path)
+	ebuild_hash.mtime
+	except FileNotFound:
+	writemsg(_("!!! aux_get(): ebuild for " \
+	"'%s' does not exist at:\n") % (cpv,), noiselevel=-1)
+	writemsg("!!!            %s\n" % ebuild_path, noiselevel=-1)
+	raise PortageKeyError(cpv)
 
-func (p *portdbapi) freeze() {}
+		auxdbs = []
+	pregen_auxdb = p._pregen_auxdb.get(repo_path)
+	if pregen_auxdb is not None:
+	auxdbs.append(pregen_auxdb)
+	ro_auxdb = p._ro_auxdb.get(repo_path)
+	if ro_auxdb is not None:
+	auxdbs.append(ro_auxdb)
+	auxdbs.append(p.auxdb[repo_path])
+	eclass_db = p.repositories.get_repo_for_location(repo_path).eclass_db
 
-func (p *portdbapi) melt() {}
+	for auxdb in auxdbs:
+try:
+	metadata = auxdb[cpv]
+	except KeyError:
+	continue
+	except CacheError:
+	if not auxdb.readonly:
+try:
+	del auxdb[cpv]
+	except (KeyError, CacheError):
+	pass
+	continue
+	eapi = metadata.get('EAPI', '').strip()
+	if not eapi:
+	eapi = '0'
+	metadata['EAPI'] = eapi
+	if not eapi_is_supported(eapi):
+	continue
+	if auxdb.validate_entry(metadata, ebuild_hash, eclass_db):
+	break
+	else:
+	metadata = None
 
-func (p *portdbapi) xmatch() {}
+	return (metadata, ebuild_hash)
+}
 
-func (p *portdbapi) async_xmatch() {}
+func (p *portdbapi) aux_get(mycpv, mylist, mytree=None, myrepo=None) {
+	loop = p._event_loop
+	return loop.run_until_complete(
+		p.async_aux_get(mycpv, mylist, mytree=mytree,
+		myrepo=myrepo, loop=loop))
+}
 
-func (p *portdbapi) match() {}
+func (p *portdbapi) async_aux_get(mycpv, mylist, mytree=None, myrepo=None, loop=None) {
 
-func (p *portdbapi) gvisible() {}
+	loop = asyncio._wrap_loop(loop)
+	future = loop.create_future()
+	cache_me = False
+	if myrepo is
+	not
+None:
+	mytree = p.treemap.get(myrepo)
+	if mytree is
+None:
+	future.set_exception(PortageKeyError(myrepo))
+	return future
 
-func (p *portdbapi) visible() {}
+	if mytree is
+	not
+	None
+	and
+	len(p.porttrees) == 1 \
+	and
+	mytree == p.porttrees[0]:
+	mytree = None
+	myrepo = None
 
-func (p *portdbapi) _iter_visible() {}
+	if mytree is
+None:
+	cache_me = True
+	if mytree is
+	None
+	and
+	not
+	p._known_keys.intersection(
+		mylist).difference(p._aux_cache_keys):
+	aux_cache = p._aux_cache.get(mycpv)
+	if aux_cache is
+	not
+None:
+	future.set_result([aux_cache.get(x, "")
+	for x
+	in
+	mylist])
+return future
+cache_me = True
 
-func (p *portdbapi) _visible() {}
+try:
+cat, pkg = mycpv.split("/", 1)
+except ValueError:
+future.set_exception(PortageKeyError(mycpv))
+return future
+
+myebuild, mylocation = p.findname2(mycpv, mytree)
+
+if not myebuild:
+writemsg("!!! aux_get(): %s\n" % \
+_("ebuild not found for '%s'") % mycpv, noiselevel= 1)
+future.set_exception(PortageKeyError(mycpv))
+return future
+
+mydata, ebuild_hash = p._pull_valid_cache(mycpv, myebuild, mylocation)
+
+if mydata is not None:
+p._aux_get_return(
+future, mycpv, mylist, myebuild, ebuild_hash,
+mydata, mylocation, cache_me, None)
+return future
+
+if myebuild in p._broken_ebuilds:
+future.set_exception(PortageKeyError(mycpv))
+return future
+
+proc = EbuildMetadataPhase(cpv =mycpv,
+ebuild_hash = ebuild_hash, portdb = p,
+repo_path = mylocation, scheduler = loop,
+settings =p.doebuild_settings)
+
+proc.addExitListener(functools.partial(p._aux_get_return,
+future, mycpv, mylist, myebuild, ebuild_hash, mydata, mylocation,
+cache_me))
+future.add_done_callback(functools.partial(p._aux_get_cancel, proc))
+proc.start()
+return future
+}
+
+func (p *portdbapi) _aux_get_cancel(proc, future) {
+	if future.cancelled() and
+	proc.returncode
+	is
+None:
+	proc.cancel()
+}
+
+func (p *portdbapi) _aux_get_return(future, mycpv, mylist, myebuild, ebuild_hash,
+	mydata, mylocation, cache_me, proc) {
+	if future.cancelled():
+	return
+	if proc is
+	not
+None:
+	if proc.returncode != os.EX_OK:
+	p._broken_ebuilds.add(myebuild)
+	future.set_exception(PortageKeyError(mycpv))
+	return
+	mydata = proc.metadata
+	mydata["repository"] = p.repositories.get_name_for_location(mylocation)
+	mydata["_mtime_"] = ebuild_hash.mtime
+	eapi = mydata.get("EAPI")
+	if not eapi:
+	eapi = "0"
+	mydata["EAPI"] = eapi
+	if eapi_is_supported(eapi):
+	mydata["INHERITED"] = " ".join(mydata.get("_eclasses_", []))
+
+	returnme = [mydata.get(x, "")
+	for x
+	in
+	mylist]
+
+if cache_me and p.frozen:
+aux_cache = {}
+for x in p._aux_cache_keys:
+aux_cache[x] = mydata.get(x, "")
+p._aux_cache[mycpv] = aux_cache
+
+future.set_result(returnme)
+
+}
+
+func (p *portdbapi) getFetchMap(mypkg, useflags=None, mytree=None) {
+	loop = p._event_loop
+	return loop.run_until_complete(
+		p.async_fetch_map(mypkg, useflags = useflags,
+		mytree = mytree, loop=loop))
+}
+
+func (p *portdbapi) async_fetch_map(mypkg, useflags=None, mytree=None, loop=None) {
+
+	loop = asyncio._wrap_loop(loop)
+	result = loop.create_future()
+
+	def
+	aux_get_done(aux_get_future):
+	if result.cancelled():
+	return
+	if aux_get_future.exception() is
+	not
+None:
+	if isinstance(aux_get_future.exception(), PortageKeyError):
+	result.set_exception(portage.exception.InvalidDependString(
+		"getFetchMap(): aux_get() error reading "
+	+ mypkg + "; aborting.")) else:
+	result.set_exception(future.exception())
+	return
+
+	eapi, myuris = aux_get_future.result()
+
+	if not eapi_is_supported(eapi):
+	result.set_exception(portage.exception.InvalidDependString(
+		"getFetchMap(): '%s' has unsupported EAPI: '%s'" % \
+	(mypkg, eapi)))
+	return
+
+try:
+	result.set_result(_parse_uri_map(mypkg,
+	{
+		'EAPI':eapi, 'SRC_URI':myuris
+	}, use = useflags))
+	except
+	Exception
+	as
+e:
+	result.set_exception(e)
+
+	aux_get_future = p.async_aux_get(
+		mypkg, ["EAPI", "SRC_URI"], mytree = mytree, loop = loop)
+result.add_done_callback(lambda result:
+aux_get_future.cancel() if result.cancelled() else None)
+aux_get_future.add_done_callback(aux_get_done)
+return result
+}
+
+func (p *portdbapi) getfetchsizes(mypkg, useflags=None, debug=0, myrepo=None) {
+	myebuild, mytree = p.findname2(mypkg, myrepo = myrepo)
+	if myebuild is
+None:
+	raise
+	AssertionError(_("ebuild not found for '%s'") % mypkg)
+	pkgdir = os.path.dirname(myebuild)
+	mf = p.repositories.get_repo_for_location(
+		os.path.dirname(os.path.dirname(pkgdir))).load_manifest(
+		pkgdir, p.settings["DISTDIR"])
+	checksums = mf.getDigests()
+	if not checksums:
+	if debug:
+	writemsg(_("[empty/missing/bad digest]: %s\n") % (mypkg, ))
+	return
+	{
+	}
+	filesdict =
+	{
+	}
+	myfiles = p.getFetchMap(mypkg, useflags = useflags, mytree = mytree)
+	for myfile
+	in
+myfiles:
+try:
+	fetch_size = int(checksums[myfile]["size"])
+	except(KeyError, ValueError):
+	if debug:
+	writemsg(_("[bad digest]: missing %(file)s for %(pkg)s\n") %
+	{
+		"file":myfile, "pkg":mypkg
+	})
+	continue
+	file_path = os.path.join(p.settings["DISTDIR"], myfile)
+	mystat = None
+try:
+	mystat = os.stat(file_path)
+	except
+OSError:
+	pass
+	else:
+	if mystat.st_size != fetch_size:
+	mystat = None
+
+	if mystat is
+None:
+try:
+	mystat = os.stat(file_path + _download_suffix)
+	except
+OSError:
+	pass
+
+	if mystat is
+None:
+	existing_size = 0
+	ro_distdirs = p.settings.get("PORTAGE_RO_DISTDIRS")
+	if ro_distdirs is
+	not
+None:
+	for x
+	in
+	shlex_split(ro_distdirs):
+try:
+	mystat = os.stat(os.path.join(x, myfile))
+	except
+OSError:
+	pass
+	else:
+	if mystat.st_size == fetch_size:
+	existing_size = fetch_size
+	break
+	else:
+	existing_size = mystat.st_size
+	remaining_size = fetch_size - existing_size
+	if remaining_size > 0:
+	filesdict[myfile] = remaining_size
+	elif
+	remaining_size < 0:
+	filesdict[myfile] = int(checksums[myfile]["size"])
+	return filesdict
+
+}
+
+func (p *portdbapi) fetch_check(mypkg, useflags=None, mysettings=None, all=False, myrepo=None) {
+
+	if all:
+	useflags = None
+	elif
+	useflags
+	is
+None:
+	if mysettings:
+	useflags = mysettings["USE"].split()
+	if myrepo is
+	not
+None:
+	mytree = p.treemap.get(myrepo)
+	if mytree is
+None:
+	return False
+	else:
+	mytree = None
+
+	myfiles = p.getFetchMap(mypkg, useflags = useflags, mytree = mytree)
+	myebuild = p.findname(mypkg, myrepo = myrepo)
+	if myebuild is
+None:
+	raise
+	AssertionError(_("ebuild not found for '%s'") % mypkg)
+	pkgdir = os.path.dirname(myebuild)
+	mf = p.repositories.get_repo_for_location(
+		os.path.dirname(os.path.dirname(pkgdir)))
+	mf = mf.load_manifest(pkgdir, p.settings["DISTDIR"])
+	mysums = mf.getDigests()
+
+	failures =
+	{
+	}
+	for x
+	in
+myfiles:
+	if not mysums
+	or
+	x
+	not
+	in
+mysums:
+	ok = False
+	reason = _("digest missing")
+	else:
+try:
+	ok, reason = portage.checksum.verify_all(
+		os.path.join(p.settings["DISTDIR"], x), mysums[x])
+	except
+	FileNotFound
+	as
+e:
+	ok = False
+	reason = _("File Not Found: '%s'") % (e,)
+	if not ok:
+	failures[x] = reason
+	if failures:
+	return False
+	return True
+}
+
+func (p *portdbapi) cpv_exists(mykey, myrepo=None) {
+	cps2 = mykey.split("/")
+	cps = catpkgsplit(mykey, silent = 0)
+	if not cps:
+	return 0
+	if p.findname(cps[0]+"/"+cps2[1], myrepo = myrepo):
+	return 1
+	else:
+	return 0
+}
+
+func (p *portdbapi) cp_all(categories=None, trees=None, reverse=False, sort=True) {
+
+	d =
+	{
+	}
+	if categories is
+None:
+	categories = p.settings.categories
+	if trees is
+None:
+	trees = p.porttrees
+	for x
+	in
+categories:
+	for oroot
+	in
+trees:
+	for y
+	in
+	listdir(oroot+"/"+x, EmptyOnError = 1, ignorecvs = 1, dirsonly = 1):
+try:
+	atom = Atom("%s/%s"%(x, y))
+	except
+InvalidAtom:
+	continue
+	if atom != atom.cp:
+	continue
+	d[atom.cp] = None
+	l = list(d)
+	if sort:
+	l.sort(reverse = reverse)
+	return l
+}
+
+func (p *portdbapi) cp_list(mycp, use_cache=1, mytree=None) {
+	if p.frozen and
+	mytree
+	is
+	not
+	None \
+	and
+	len(p.porttrees) == 1 \
+	and
+	mytree == p.porttrees[0]:
+	mytree = None
+
+	if p.frozen and
+	mytree
+	is
+None:
+	cachelist = p.xcache["cp-list"].get(mycp)
+	if cachelist is
+	not
+None:
+	p.xcache["match-all"]
+	[(mycp, mycp)] = cachelist
+return cachelist[:]
+mysplit = mycp.split("/")
+invalid_category = mysplit[0] not in p._categories
+if mytree is not None:
+if isinstance(mytree, basestring):
+repos = [p.repositories.get_repo_for_location(mytree)] else:
+repos = [p.repositories.get_repo_for_location(location)
+for location in mytree]
+elif p._better_cache is None:
+repos = p._porttrees_repos.values() else:
+repos = [repo for repo in reversed(p._better_cache[mycp])
+if repo.name in p._porttrees_repos]
+mylist = []
+for repo in repos:
+oroot = repo.location
+try:
+file_list = os.listdir(os.path.join(oroot, mycp))
+except OSError:
+continue
+for x in file_list:
+pf = None
+if x[-7:] == '.ebuild':
+pf = x[:-7]
+
+if pf is not None:
+ps = pkgsplit(pf)
+if not ps:
+writemsg(_("\nInvalid ebuild name: %s\n") % \
+os.path.join(oroot, mycp, x), noiselevel = -1)
+continue
+if ps[0] != mysplit[1]:
+writemsg(_("\nInvalid ebuild name: %s\n") % \
+os.path.join(oroot, mycp, x), noiselevel = -1)
+continue
+ver_match = ver_regexp.match("-".join(ps[1:]))
+if ver_match is None or not ver_match.groups():
+writemsg(_("\nInvalid ebuild version: %s\n") % \
+os.path.join(oroot, mycp, x), noiselevel= -1)
+continue
+mylist.append(_pkg_str(mysplit[0]+"/"+pf, db = p, repo = repo.name))
+if invalid_category and mylist:
+writemsg(_("\n!!! '%s' has a category that is not listed in " \
+"%setc/portage/categories\n") % \
+(mycp, p.settings["PORTAGE_CONFIGROOT"]), noiselevel = -1)
+mylist = []
+p._cpv_sort_ascending(mylist)
+if p.frozen and mytree is None:
+cachelist = mylist[:]
+p.xcache["cp-list"][mycp] = cachelist
+p.xcache["match-all"][(mycp, mycp)] = cachelist
+return mylist
+
+}
+
+func (p *portdbapi) freeze() {
+
+	for x in ("bestmatch-visible", "cp-list", "match-all",
+		"match-all-cpv-only", "match-visible", "minimum-all",
+		"minimum-all-ignore-profile", "minimum-visible"):
+	p.xcache[x]={}
+	p.frozen=1
+	p._better_cache = _better_cache(p.repositories)
+}
+
+func (p *portdbapi) melt() {
+
+	p.xcache =
+	{
+	}
+	p._aux_cache =
+	{
+	}
+	p._better_cache = None
+	p.frozen = 0
+}
+
+func (p *portdbapi) xmatch(level string, origdep) {
+
+	loop = p._event_loop
+	return loop.run_until_complete(
+		p.async_xmatch(level, origdep, loop=loop))
+}
+
+func (p *portdbapi) async_xmatch(level, origdep, loop=None) {
+	mydep = dep_expand(origdep, mydb = p, settings = p.settings)
+	mykey = mydep.cp
+
+	cache_key = None
+	if p.frozen:
+	cache_key = (mydep, mydep.unevaluated_atom)
+try:
+	coroutine_return(p.xcache[level][cache_key][:])
+	except
+KeyError:
+	pass
+
+	loop = asyncio._wrap_loop(loop)
+	myval = None
+	mytree = None
+	if mydep.repo is
+	not
+None:
+	mytree = p.treemap.get(mydep.repo)
+	if mytree is
+None:
+	if level.startswith("match-"):
+	myval = []
+	else:
+	myval = ""
+
+	if myval is
+	not
+None:
+	pass
+	elif
+	level == "match-all-cpv-only":
+	if mydep == mykey:
+	level = "match-all"
+	myval = p.cp_list(mykey, mytree = mytree) else:
+	myval = match_from_list(mydep,
+		p.cp_list(mykey, mytree = mytree))
+
+	elif
+	level
+	in("bestmatch-visible", "match-all",
+		"match-visible", "minimum-all", "minimum-all-ignore-profile",
+		"minimum-visible"):
+	if mydep == mykey:
+	mylist = p.cp_list(mykey, mytree = mytree) else:
+	mylist = match_from_list(mydep,
+		p.cp_list(mykey, mytree = mytree))
+
+	ignore_profile = level
+	in("minimum-all-ignore-profile", )
+	visibility_filter = level
+	not
+	in("match-all",
+		"minimum-all", "minimum-all-ignore-profile")
+	single_match = level
+	not
+	in("match-all", "match-visible")
+	myval = []
+	aux_keys = list(p._aux_cache_keys)
+	if level == "bestmatch-visible":
+	iterfunc = reversed
+	else:
+	iterfunc = iter
+
+	for cpv
+	in
+	iterfunc(mylist):
+try:
+	metadata = dict(zip(aux_keys, (yield
+	p.async_aux_get(cpv,
+		aux_keys, myrepo = cpv.repo, loop = loop))))
+	except
+KeyError:
+	continue
+
+try:
+	pkg_str = _pkg_str(cpv, metadata = metadata,
+		settings = p.settings, db=p)
+	except
+InvalidData:
+	continue
+
+	if visibility_filter and
+	not
+	p._visible(pkg_str, metadata):
+	continue
+
+	if mydep.slot is
+	not
+	None
+	and \
+	not
+	_match_slot(mydep, pkg_str):
+	continue
+
+	if mydep.unevaluated_atom.use is
+	not
+	None
+	and \
+	not
+	p._match_use(mydep, pkg_str, metadata,
+		ignore_profile = ignore_profile):
+	continue
+
+	myval.append(pkg_str)
+	if single_match:
+	break
+
+	if single_match:
+	if myval:
+	myval = myval[0]
+	else:
+	myval = ""
+
+	else:
+	raise
+	AssertionError(
+		"Invalid level argument: '%s'" % level)
+
+	if p.frozen:
+	xcache_this_level = p.xcache.get(level)
+	if xcache_this_level is
+	not
+None:
+	xcache_this_level[cache_key] = myval
+	if not isinstance(myval, _pkg_str):
+	myval = myval[:]
+
+	coroutine_return(myval)
+
+}
+
+func (p *portdbapi) match(mydep, use_cache=1) {
+	return p.xmatch("match-visible", mydep)
+}
+
+func (p *portdbapi) _iter_visible(cpv_iter, myrepo=None) {
+
+	aux_keys = list(p._aux_cache_keys)
+	metadata =
+	{
+	}
+
+	if myrepo is
+	not
+None:
+	repos = [myrepo]
+	else:
+	repos = []
+	for tree
+	in
+	reversed(p.porttrees):
+	repos.append(p.repositories.get_name_for_location(tree))
+
+	for mycpv
+	in
+cpv_iter:
+	for repo
+	in
+repos:
+	metadata.clear()
+try:
+	metadata.update(zip(aux_keys,
+		p.aux_get(mycpv, aux_keys, myrepo = repo)))
+	except
+KeyError:
+	continue
+	except
+	PortageException
+	as
+e:
+	writemsg("!!! Error: aux_get('%s', %s)\n"%
+		(mycpv, aux_keys), noiselevel = -1)
+	writemsg("!!! %s\n" % (e, ), noiselevel = -1)
+	del
+	e
+	continue
+
+	if not p._visible(mycpv, metadata):
+	continue
+
+	yield
+	mycpv
+	break
+}
+
+func (p *portdbapi) _visible(cpv, metadata) {
+	eapi = metadata["EAPI"]
+	if not eapi_is_supported(eapi):
+	return False
+	if _eapi_is_deprecated(eapi):
+	return False
+	if not metadata["SLOT"]:
+	return False
+
+	settings = p.settings
+	if settings._getMaskAtom(cpv, metadata):
+	return False
+	if settings._getMissingKeywords(cpv, metadata):
+	return False
+	if settings.local_config:
+	metadata['CHOST'] = settings.get('CHOST', '')
+	if not settings._accept_chost(cpv, metadata):
+	return False
+	metadata["USE"] = ""
+	if "?" in
+	metadata["LICENSE"]
+	or \
+	"?"
+	in
+	metadata["PROPERTIES"]:
+	p.doebuild_settings.setcpv(cpv, mydb = metadata)
+	metadata['USE'] = p.doebuild_settings['PORTAGE_USE']
+try:
+	if settings._getMissingLicenses(cpv, metadata):
+	return False
+	if settings._getMissingProperties(cpv, metadata):
+	return False
+	if settings._getMissingRestrict(cpv, metadata):
+	return False
+	except
+InvalidDependString:
+	return False
+
+	return True
+}
 
 // nil
 func NewPortDbApi(mysettings *Config) *portdbapi {
@@ -4403,23 +5290,43 @@ type PortageTree struct {
 	dbapi    *portdbapi
 }
 
-func (p *PortageTree) portroot() {}
+func (p *PortageTree) dep_bestmatch(mydep) {
+	mymatch = p.dbapi.xmatch("bestmatch-visible", mydep)
+	if mymatch is
+None:
+	return ""
+	return mymatch
+}
 
-func (p *PortageTree) root() {}
+func (p *PortageTree) dep_match(mydep) {
 
-func (p *PortageTree) virtual() {}
+	mymatch = p.dbapi.xmatch("match-visible", mydep)
+	if mymatch is
+None:
+	return []
+	return mymatch
+}
 
-func (p *PortageTree) dep_bestmatch() {}
+func (p *PortageTree) exists_specific(cpv) {
 
-func (p *PortageTree) dep_match() {}
+	return p.dbapi.cpv_exists(cpv)
+}
 
-func (p *PortageTree) exists_specific() {}
+func (p *PortageTree) getallnodes() {
+	return p.dbapi.cp_all()
 
-func (p *PortageTree) getallnodes() {}
+}
 
-func (p *PortageTree) getname() {}
+func (p *PortageTree) getslot(mycatpkg) {
 
-func (p *PortageTree) getslot() {}
+	myslot = ""
+try:
+	myslot = p.dbapi._pkg_str(mycatpkg, None).slot
+	except
+KeyError:
+	pass
+	return myslot
+}
 
 func NewPortageTree(settings *Config) *PortageTree {
 	p := &PortageTree{}
@@ -4437,17 +5344,30 @@ type FetchlistDict struct {
 	portdb             *portdbapi
 }
 
-func (f *FetchlistDict) __getitem__() {}
+func (f *FetchlistDict) __getitem__(pkg_key) {
+	return list(f.portdb.getFetchMap(pkg_key, mytree=f.mytree))
 
-func (f *FetchlistDict) __contains__() {}
+}
 
-func (f *FetchlistDict) has_key() {}
+func (f *FetchlistDict) __contains__(cpv) {
+	return cpv in f.__iter__()
 
-func (f *FetchlistDict) __iter__() {}
+}
 
-func (f *FetchlistDict) __len__() {}
+func (f *FetchlistDict) __iter__() {
+	return iter(f.portdb.cp_list(f.cp, mytree=f.mytree))
 
-func (f *FetchlistDict) keys() {}
+}
+
+func (f *FetchlistDict) __len__() {
+	return len(f.portdb.cp_list(f.cp, mytree=f.mytree))
+
+}
+
+func (f *FetchlistDict) keys() {
+	return f.portdb.cp_list(f.cp, mytree=f.mytree)
+
+}
 
 func NewFetchlistDict(pkgdir string, settings *Config, mydbapi *portdbapi) *FetchlistDict {
 	f := &FetchlistDict{}
@@ -4460,7 +5380,64 @@ func NewFetchlistDict(pkgdir string, settings *Config, mydbapi *portdbapi) *Fetc
 	return f
 }
 
-func _async_manifest_fetchlist() {}
+func _async_manifest_fetchlist(portdb, repo_config, cp, cpv_list=None,
+	max_jobs=None, max_load=None, loop=None) {
+	loop = asyncio._wrap_loop(loop)
+	result = loop.create_future()
+	cpv_list = (portdb.cp_list(cp, mytree = repo_config.location)
+	if cpv_list is
+	None else cpv_list)
+
+	gather_done := func(gather_result) {
+		e = None
+		if not gather_result.cancelled():
+		for future
+		in
+		gather_result.result():
+		if (future.done() and
+		not
+		future.cancelled()
+		and
+		future.exception()
+		is
+		not
+		None):
+		e = future.exception()
+	}
+
+	if result.cancelled():
+	return
+	elif
+	e
+	is
+None:
+	result.set_result(dict((k, list(v.result()))
+	for k, v
+	in
+	zip(cpv_list, gather_result.result()))) else:
+	result.set_exception(e)
+
+	gather_result = iter_gather(
+		(portdb.async_fetch_map(cpv, mytree = repo_config.location, loop = loop)
+	for cpv
+	in
+	cpv_list),
+	max_jobs = max_jobs,
+		max_load=max_load,
+		loop = loop,
+)
+
+	gather_result.add_done_callback(gather_done)
+	result.add_done_callback(lambda
+result:
+	gather_result.cancel()
+	if result.cancelled()
+	else
+	None)
+
+	return result
+
+}
 
 // ordered map
 // nil

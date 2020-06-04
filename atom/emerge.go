@@ -16,10 +16,12 @@ import (
 )
 
 type AsynchronousTask struct {
-	background, scheduler,_exit_listener_handles,_exit_listeners,_start_listeners string
-	_cancelled_returncode int
-	returncode *int
-	cancelled bool
+	background                                                bool
+	scheduler                                                 *SchedulerInterface
+	_exit_listener_handles, _exit_listeners, _start_listeners string
+	_cancelled_returncode                                     int
+	returncode                                                *int
+	cancelled                                                 bool
 }
 
 func (a *AsynchronousTask) start() {
@@ -1644,7 +1646,7 @@ type EbuildPhase struct {
 	_locked_phases    []string
 }
 
-func NewEbuildPhase() *EbuildPhase {
+func NewEbuildPhase(actionmap interface{}, background bool, phase string, scheduler *SchedulerInterface, settings *Config) *EbuildPhase {
 	e := &EbuildPhase{}
 	e._features_display = []string{
 		"ccache", "compressdebug", "distcc", "fakeroot",
@@ -1656,22 +1658,29 @@ func NewEbuildPhase() *EbuildPhase {
 	e._locked_phases = []string{
 		"setup", "preinst", "postinst", "prerm", "postrm",
 	}
+
+	e.actionmap = actionmap
+	e.background = background
+	e.phase = phase
+	e.scheduler = scheduler
+	e.settings = settings
+
 	return e
 }
 
 func (e *EbuildPhase) _start() {
 
-	need_builddir = e.phase
+	need_builddir := e.phase
 	not
 	in
 	EbuildProcess._phases_without_builddir
 
 	if need_builddir {
-		phase_completed_file =
+		phase_completed_file :=
 			filepath.Join(
 				e.settings.ValueDict["PORTAGE_BUILDDIR"],
 				fmt.Sprintf(".%sed", strings.TrimRight(e.phase,"e")))
-		if not os.path.exists(phase_completed_file) {
+		if ! pathExists(phase_completed_file) {
 
 			err := syscall.Unlink(filepath.Join(e.settings.ValueDict["T"],
 				"logging", e.phase))
@@ -1684,7 +1693,7 @@ func (e *EbuildPhase) _start() {
 
 	if e.phase =="nofetch" ||e.phase == "pretend"||e.phase == "setup" {
 		use := e.settings.ValueDict["PORTAGE_BUILT_USE"]
-		if use == nil {
+		if use == "" {
 			use = e.settings.ValueDict["PORTAGE_USE"]
 		}
 
@@ -1715,17 +1724,14 @@ func (e *EbuildPhase) _start() {
 		}
 
 		msg = append(msg, fmt.Sprintf("USE:        %s", use))
-		relevant_features = []
-		enabled_features = e.settings.features
-		for x
-			in
-		e._features_display {
-			if x in
-			enabled_features{
+		relevant_features := []string{}
+		enabled_features := e.settings.Features.Features
+		for _, x := range e._features_display {
+			if x := range enabled_features{
 				relevant_features = append(relevant_features, x)
 			}
 		}
-		if relevant_features {
+		if len(relevant_features) > 0 {
 			msg = append(msg, fmt.Sprintf("FEATURES:   %s", strings.Join(relevant_features, " ")))
 		}
 
