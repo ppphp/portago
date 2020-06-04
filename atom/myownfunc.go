@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -44,6 +45,24 @@ func CopyMSMASS(m map[string]map[*Atom][]string) map[string]map[*Atom][]string {
 }
 
 func Inmss(a map[string]string, b string) bool{
+	for v := range a {
+		if b == v {
+			return true
+		}
+	}
+	return false
+}
+
+func Inmsmss(a map[string]map[string]string, b string) bool{
+	for v := range a {
+		if b == v {
+			return true
+		}
+	}
+	return false
+}
+
+func Inmsss(a map[string][]string, b string) bool{
 	for _ ,v := range a {
 		if b == v {
 			return true
@@ -135,6 +154,11 @@ func pathExists(filename string) bool {
 	return st != nil
 }
 
+func pathIsDir(filename string) bool {
+	st, _ := os.Stat(filename)
+	return st != nil && st.IsDir()
+}
+
 func pathAccess(filename string) bool {
 	st, _ := os.Stat(filename)
 	if st == nil {
@@ -171,4 +195,12 @@ func getNamedRegexp(re *regexp.Regexp, target, name string) string {
 func toi(s string) int {
 	i, _ := strconv.Atoi(s)
 	return i
+}
+
+func joinMB(s map[string]bool, sep string)string{
+	r := []string{}
+	for k := range s {
+		r = append(r, k)
+	}
+	return strings.Join(r, sep)
 }

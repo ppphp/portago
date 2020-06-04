@@ -125,6 +125,193 @@ func iterParents(p string) []string {
 	return d
 }
 
+// nil, nil, nil
+func digestgen(myarchives interface{}, mysettings *Config, myportdb *portdbapi) int {
+	if mysettings != nil|| myportdb == nil {
+		//raise TypeError("portage.digestgen(): 'mysettings' and 'myportdb' parameter are required.")
+	}
+	doebuildManifestExemptDepend += 1
+	defer func() {doebuildManifestExemptDepend -= 1}()
+	distfiles_map := map[string][]string{}
+	fetchlist_dict := NewFetchlistDict(mysettings.ValueDict["O"], mysettings, myportdb)
+	for cpv:= range fetchlist_dict{
+			//try:
+		for myfile := range fetchlist_dict[cpv] {
+			distfiles_map[myfile] = append(distfiles_map[myfile], cpv)
+		}
+			//except InvalidDependString as e:
+			//	writemsg("!!! %s\n" % str(e), noiselevel=-1)
+			//	del e
+			//	return 0
+	}
+	mytree := filepath.Dir(filepath.Dir(mysettings.ValueDict["O"]))
+//try:
+	rc := mysettings.Repositories.getRepoForLocation(mytree)
+	//except KeyError:
+	//mytree = os.path.realpath(mytree)
+	//mf = mysettings.repositories.get_repo_for_location(mytree)
+
+	repo_required_hashes := rc.manifestRequiredHashes
+	if repo_required_hashes == nil {
+		repo_required_hashes = CopyMapSB(MANIFEST2_HASH_DEFAULTS)
+	}
+	mf := rc.load_manifest(mysettings.ValueDict["O"], mysettings.ValueDict["DISTDIR"],
+		fetchlist_dict, false)
+
+	if !mf.allow_create {
+		WriteMsgStdout(fmt.Sprintf(">>> Skipping creating Manifest for %s; "+
+		"repository is configured to not use them\n", mysettings.ValueDict["O"]), 0)
+		return 1
+	}
+
+	required_hash_types := map[string]bool{}
+	required_hash_types["size"] = true
+	for k := range repo_required_hashes {
+		required_hash_types[k]= true
+	}
+	dist_hashes := mf.fhashdict["DIST"]
+	if dist_hashes == nil {
+		dist_hashes = map[string]map[string]string{}
+	}
+
+	missing_files := []string{}
+	for myfile:= range distfiles_map {
+
+		myhashes := dist_hashes[myfile]
+		if len(myhashes) == 0 {
+			st, err := os.Stat(filepath.Join(mysettings.ValueDict["DISTDIR"], myfile))
+			if err != nil {
+				//except OSError:
+				//st = None
+			}
+			if st == nil || st.Size() == 0 {
+				missing_files = append(missing_files, myfile)
+			}
+			continue
+		}
+		size := myhashes["size"]
+
+		st, err := os.Stat(filepath.Join(mysettings.ValueDict["DISTDIR"], myfile))
+		if err != nil {
+			//except OSError as e:
+			if err != syscall.ENOENT {
+				//raise
+			}
+			//del e
+			if size == "" {
+				missing_files = append(missing_files, myfile)
+				continue
+			}
+			if required_hash_types.difference(myhashes) {
+				missing_files = append(missing_files, myfile)
+				continue
+			}
+		} else {
+
+			if st.Size() == 0 || size != "" && size != fmt.Sprint(st.Size()) {
+				missing_files = append(missing_files, myfile)
+				continue
+			}
+		}
+	}
+
+	for _, myfile := range missing_files{
+		uris := map[string]bool{}
+		all_restrict := map[string]bool{}
+		for _, cpv := range distfiles_map[myfile]{
+			uris.update(myportdb.getFetchMap(
+				cpv, mytree = mytree)[myfile])
+			restrict = myportdb.aux_get(cpv, ['RESTRICT'], mytree = mytree)[0]
+			all_restrict.update(useReduce(restrict,
+				flat = true, matchnone = true))
+
+			cat, pf := catsplit(cpv)[0], catsplit(cpv)[1]
+			mysettings.ValueDict["CATEGORY"] = cat
+			mysettings.ValueDict["PF"] = pf
+		}
+
+		mysettings.ValueDict["PORTAGE_RESTRICT"] = joinMB(all_restrict, " ")
+
+	//try:
+		st,err  := os.Stat(filepath.Join(mysettings.ValueDict["DISTDIR"], myfile))
+		if err != nil {
+			//except OSError:
+			//st = None
+		}
+		
+		if not fetch( {
+		myfile:
+			uris
+		}, mysettings):
+		myebuild = filepath.Join(mysettings.ValueDict["O"],
+			catsplit(cpv)[1]+".ebuild")
+		spawn_nofetch(myportdb, myebuild)
+		WriteMsg(fmt.Sprintf("!!! Fetch failed for %s, can't update Manifest\n",
+		 myfile),  -1, nil)
+		if Inmsmss(
+		dist_hashes, myfile)&& st!= nil&&st.Size() > 0{
+			cmd := colorize("INFORM", fmt.Sprintf("ebuild --force %s manifest", filepath.Base(myebuild)))
+			WriteMsg(fmt.Sprintf(
+				"!!! If you would like to forcefully replace the existing Manifest entry\n"+
+			"!!! for %s, use the following command:\n", myfile) +
+			 fmt.Sprintf("!!!    %s\n" , cmd),
+			 -1, nil)
+		}
+		return 0
+	}
+
+	WriteMsgStdout(fmt.Sprintf(">>> Creating Manifest for %s\n", mysettings.ValueDict["O"]), 0)
+//try:
+	mf.create(false, true,
+	mysettings.Features.Features["assume-digests"], nil)
+	//except FileNotFound as e:
+	//WriteMsg(_("!!! File %s doesn't exist, can't update Manifest\n")
+	//% e, noiselevel = -1)
+	//return 0
+	//except PortagePackageException as e:
+	//WriteMsg(("!!! %s\n") % (e, ), noiselevel = -1)
+	//return 0
+//try:
+	mf.write(false, false)
+	//except PermissionDenied as e:
+	//WriteMsg(_("!!! Permission Denied: %s\n") % (e, ), noiselevel = -1)
+	//return 0
+	if  !mysettings.Features.Features["assume-digests"]{
+		distlist := []string{}
+		for  k := range mf.fhashdict["DIST"]{
+			distlist =append(distlist, k)
+		}
+		sort.Strings(distlist)
+		auto_assumed:= []string{}
+		for _, filename:= range distlist {
+			if ! pathExists(
+				filepath.Join(mysettings.ValueDict["DISTDIR"], filename)) {
+				auto_assumed =append(auto_assumed, filename)
+			}
+		}
+		if len(auto_assumed) > 0{
+			sp := strings.Split(mysettings.ValueDict["O"],string(os.PathSeparator))
+			cp := strings.Join(sp[len(sp)-2:], string(os.PathSeparator))
+			pkgs := myportdb.cp_list(cp, mytree = mytree)
+			pkgs.sort()
+			WriteMsgStdout("  digest.assumed" + colorize("WARN",
+				fmt.Sprintf("%18d", len(auto_assumed))) + "\n", 0)
+			for _, pkg_key := range pkgs{
+				fetchlist = myportdb.getFetchMap(pkg_key, mytree = mytree)
+				pv := strings.Split(pkg_key, "/")[1]
+				for _, filename := range auto_assumed {
+					if filename in
+					fetchlist{
+						WriteMsgStdout(fmt.Sprintf(
+							"   %s::%s\n", pv, filename), 0)
+					}
+				}
+			}
+		}
+	}
+	return 1
+}
+
 var (
 	_unsandboxed_phases = map[string]bool{
 		"clean": true, "cleanrm": true, "config": true,
@@ -578,7 +765,7 @@ debug bool, use_cache=None, db *vardbapi) {
 		compression := _compressors[binpkg_compression]
 		//except KeyError as e{
 		//if binpkg_compression{
-		//atom.WriteMsg(fmt.Sprintf("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
+		//WriteMsg(fmt.Sprintf("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
 		//}else{
 
 		mysettings.ValueDict["PORTAGE_COMPRESSION_COMMAND"] = "cat"
@@ -587,7 +774,7 @@ debug bool, use_cache=None, db *vardbapi) {
 		compression_binarys, _ := shlex.Split(strings.NewReader(varExpand(compression["compress"], settings.ValueDict, "")), false, true)
 		compression_binary := compression_binarys[0]
 		//except IndexError as e{
-		//atom.WriteMsg(fmt.Sprintf("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
+		//WriteMsg(fmt.Sprintf("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
 		//}else{
 		if FindBinary(compression_binary) == "" {
 			missing_package := compression["package"]
@@ -624,7 +811,7 @@ _doebuild_commands_without_builddir = []string{
 func doebuild(myebuild, mydo string, settings *Config, debug, listonly,
 fetchonly, cleanup, use_cache, fetchall int, tree string,
 mydbapi *vardbapi, vartree *varTree, prev_mtimes=None,
-fd_pipes=None, returnpid bool){
+fd_pipes=None, returnpid bool) int {
 if settings == nil{
 //raise TypeError("settings parameter is required")
 }
@@ -706,7 +893,6 @@ if !Ins(clean_phases,mydo) && ! pathExists(myebuild) {
 	return 1
 }
 
-global _doebuild_manifest_cache
 pkgdir := filepath.Dir(myebuild)
 manifest_path := filepath.Join(pkgdir, "Manifest")
 var repo_config *RepoConfig = nil
@@ -724,76 +910,76 @@ tree == "porttree" &&
 doebuildManifestExemptDepend==0 &&
 ! (repo_config.allowMissingManifest && ! pathExists(manifest_path)) {
 
-	if _doebuild_broken_ebuilds[myebuild]{
+	if _doebuild_broken_ebuilds[myebuild] {
 		return 1
 	}
-}
 
-if _doebuild_manifest_cache == nil ||
-_doebuild_manifest_cache.getFullname() != manifest_path{
-_doebuild_manifest_cache = nil
-if ! pathExists(manifest_path){
-out := NewEOutput(false)
-out.eerror(fmt.Sprintf(("Manifest not found for '%s'",myebuild,))
-_doebuild_broken_ebuilds[myebuild]=true
-return 1
-}
-mf = repo_config.load_manifest(pkgdir, mysettings.ValueDict["DISTDIR"], nil, false)
+	if _doebuild_manifest_cache == nil ||
+		_doebuild_manifest_cache.getFullname() != manifest_path {
+		_doebuild_manifest_cache = nil
+		if !pathExists(manifest_path) {
+			out := NewEOutput(false)
+			out.eerror(fmt.Sprintf("Manifest not found for '%s'", myebuild, ))
+			_doebuild_broken_ebuilds[myebuild] = true
+			return 1
+		}
+		mf = repo_config.load_manifest(pkgdir, mysettings.ValueDict["DISTDIR"], nil, false)
 
-}else {
-	mf = _doebuild_manifest_cache
-}
+	} else {
+		mf = _doebuild_manifest_cache
+	}
 
-//try{
-mf.checkFileHashes("EBUILD", filepath.Base(myebuild), false, nil)
-//except KeyError{
-//if ! (mf.allow_missing and
-//filepath.Base(myebuild) ! in mf.fhashdict["EBUILD"]){
-//out = NewEOutput(false)
-//out.eerror(fmt.Sprintf(("Missing digest for '%s'") % (myebuild,))
-//_doebuild_broken_ebuilds.add(myebuild)
-//return 1
-//except File!Found{
-//out = NewEOutput(false)
-//out.eerror(fmt.Sprintf(("A file listed in the Manifest "
-//"could not be found: '%s'") % (myebuild,))
-//_doebuild_broken_ebuilds.add(myebuild)
-//return 1
-//except DigestException as e{
-//out = NewEOutput(false)
-//out.eerror(_("Digest verification failed:"))
-//out.eerror(fmt.Sprintf("%s" % e.value[0])
-//out.eerror(fmt.Sprintf(("Reason: %s") % e.value[1])
-//out.eerror(fmt.Sprintf(("Got: %s") % e.value[2])
-//out.eerror(fmt.Sprintf(("Expected: %s") % e.value[3])
-//_doebuild_broken_ebuilds.add(myebuild)
-//return 1
+	//try{
+	mf.checkFileHashes("EBUILD", filepath.Base(myebuild), false, nil)
+	//except KeyError{
+	//if ! (mf.allow_missing and
+	//filepath.Base(myebuild) ! in mf.fhashdict["EBUILD"]){
+	//out = NewEOutput(false)
+	//out.eerror(fmt.Sprintf(("Missing digest for '%s'") % (myebuild,))
+	//_doebuild_broken_ebuilds.add(myebuild)
+	//return 1
+	//except File!Found{
+	//out = NewEOutput(false)
+	//out.eerror(fmt.Sprintf(("A file listed in the Manifest "
+	//"could not be found: '%s'") % (myebuild,))
+	//_doebuild_broken_ebuilds.add(myebuild)
+	//return 1
+	//except DigestException as e{
+	//out = NewEOutput(false)
+	//out.eerror(_("Digest verification failed:"))
+	//out.eerror(fmt.Sprintf("%s" % e.value[0])
+	//out.eerror(fmt.Sprintf(("Reason: %s") % e.value[1])
+	//out.eerror(fmt.Sprintf(("Got: %s") % e.value[2])
+	//out.eerror(fmt.Sprintf(("Expected: %s") % e.value[3])
+	//_doebuild_broken_ebuilds.add(myebuild)
+	//return 1
 
-if  _doebuild_broken_manifests[mf.getFullname() ] {
-	return 1
-}
+	if _doebuild_broken_manifests[mf.getFullname()] {
+		return 1
+	}
 
-if mf != _doebuild_manifest_cache && ! mf.allow_missing {
-	fs, _ := ioutil.ReadDir(pkgdir)
-	for _, f := range fs {
-		pf := ""
-		if f.Name()[len(f.Name())-7:] == ".ebuild" {
-			pf = f.Name()[:len(f.Name())-7]
-			if pf != "" && !mf.hasFile("EBUILD", f.Name()) {
-				fn := filepath.Join(pkgdir, f.Name())
-				if !_doebuild_broken_ebuilds[fn] {
-					out := NewEOutput(false)
-					out.eerror(fmt.Sprintf(("A file is not listed in the " +
-						"Manifest: '%s'", fn, )))
+	if mf != _doebuild_manifest_cache && !mf.allow_missing {
+		fs, _ := ioutil.ReadDir(pkgdir)
+		for _, f := range fs {
+			pf := ""
+			if f.Name()[len(f.Name())-7:] == ".ebuild" {
+				pf = f.Name()[:len(f.Name())-7]
+				if pf != "" && !mf.hasFile("EBUILD", f.Name()) {
+					fn := filepath.Join(pkgdir, f.Name())
+					if !_doebuild_broken_ebuilds[fn] {
+						out := NewEOutput(false)
+						out.eerror(fmt.Sprintf("A file is not listed in the "+
+							"Manifest: '%s'", fn, ))
+					}
+					_doebuild_broken_manifests[manifest_path] = true
+					return 1
 				}
-				_doebuild_broken_manifests[manifest_path] = true
-				return 1
 			}
 		}
 	}
-}
 
-_doebuild_manifest_cache = mf
+	_doebuild_manifest_cache = mf
+}
 
 logfile:=""
 builddir_lock = None
@@ -841,395 +1027,452 @@ if ! returnpid && mydo =="info" {
 doebuild_environment(myebuild, mydo, myroot, mysettings, debug!= 0,
 use_cache, mydbapi)
 
-if Ins( clean_phases, mydo){
-builddir_lock = None
-if ! returnpid &&
-"PORTAGE_BUILDDIR_LOCKED" ! in mysettings{
-builddir_lock = EbuildBuildDir(
-scheduler=asyncio._safe_loop(),
-settings=mysettings)
-builddir_lock.scheduler.run_until_complete(
-builddir_lock.async_lock())
-try{
-return _spawn_phase(mydo, mysettings,
-fd_pipes=fd_pipes, returnpid=returnpid)
-finally{
-if builddir_lock != nil{
-builddir_lock.scheduler.run_until_complete(
-builddir_lock.async_unlock())
+if Ins( clean_phases, mydo) {
+	builddir_lock = nil
+	if !returnpid &&
+		!Inmss(mysettings.ValueDict, "PORTAGE_BUILDDIR_LOCKED") {
+		builddir_lock = EbuildBuildDir(
+			scheduler = asyncio._safe_loop(),
+			settings = mysettings)
+		builddir_lock.scheduler.run_until_complete(
+			builddir_lock.async_lock())
+	}
+	defer func() {
 
-if mydo == "depend":
-atom.WriteMsg(fmt.Sprintf("!!! DEBUG: dbkey: %s\n" % str(dbkey), 2)
-if returnpid{
-return _spawn_phase(mydo, mysettings,
-fd_pipes=fd_pipes, returnpid=returnpid)
-}else if dbkey && dbkey is ! DeprecationWarning{
-mysettings.ValueDict["dbkey"] = dbkey
-}else{
-mysettings.ValueDict["dbkey"] =
-filepath.Join(mysettings.depcachedir, "aux_db_key_temp")
+		if builddir_lock != nil {
+			builddir_lock.scheduler.run_until_complete(
+				builddir_lock.async_unlock())
+		}
+	}()
+	return _spawn_phase(mydo, mysettings,
+		fd_pipes = fd_pipes, returnpid = returnpid)
+}
 
-return _spawn_phase(mydo, mysettings,
-fd_pipes=fd_pipes, returnpid=returnpid)
+if mydo == "depend" {
+	WriteMsg(fmt.Sprintf("!!! DEBUG: dbkey: %s\n", dbkey), 2)
+	if returnpid {
+		return _spawn_phase(mydo, mysettings,
+			fd_pipes = fd_pipes, returnpid = returnpid)
+	} else if dbkey != ""{
+		mysettings.ValueDict["dbkey"] = dbkey
+	} else {
+		mysettings.ValueDict["dbkey"] =
+			filepath.Join(mysettings.depcachedir, "aux_db_key_temp")
+	}
 
-}else if mydo == "nofetch"{
+	return _spawn_phase(mydo, mysettings,
+		fd_pipes = fd_pipes, returnpid = returnpid)
 
-if returnpid{
-atom.WriteMsg(fmt.Sprintf("!!! doebuild: %s\n" %
-_("returnpid is not supported for phase '%s'\n" % mydo),
--1,nil)
+}else if mydo == "nofetch" {
 
-return spawn_nofetch(mydbapi, myebuild, settings=mysettings,
-fd_pipes=fd_pipes)
+	if returnpid {
+		WriteMsg(fmt.Sprintf("!!! doebuild: %s\n",
+			fmt.Sprintf("returnpid is not supported for phase '%s'\n", mydo)),
+			-1, nil)
+	}
+	return spawn_nofetch(mydbapi, myebuild, settings = mysettings,
+		fd_pipes = fd_pipes)
+}
 
-if tree == "porttree"{
+if tree == "porttree" {
+	if !returnpid {
+		rval := _validate_deps(mysettings, myroot, mydo, mydbapi)
+		if rval != 0 {
+			return rval
+		}
+	}
+}else {
 
-if ! returnpid{
-
-rval = _validate_deps(mysettings, myroot, mydo, mydbapi)
-if rval != os.EX_OK{
-return rval
-
-}else{
-
-if "noauto" in mysettings.Features.Features[]{
-mysettings.Features.Features[].discard("noauto")
+	if mysettings.Features.Features["noauto"] {
+		mysettings.Features.Discard("noauto")
+	}
+}
 
 if tmpdir == nil &&
-mydo ! in _doebuild_commands_without_builddir{
-rval = _check_temp_dir(mysettings)
-if rval != os.EX_OK{
-return rval
+ ! Ins( _doebuild_commands_without_builddir,mydo) {
+	rval := _check_temp_dir(mysettings)
+	if rval != 0 {
+		return rval
+	}
+}
 
-if mydo == "unmerge"{
-if returnpid{
-atom.WriteMsg(fmt.Sprintf("!!! doebuild: %s\n" %
-_("returnpid is not supported for phase '%s'\n" % mydo),
--1,nil)
-return unmerge(mysettings.ValueDict["CATEGORY"],
-mysettings.ValueDict["PF"], myroot, mysettings, vartree=vartree)
+if mydo == "unmerge" {
+	if returnpid {
+		WriteMsg(fmt.Sprintf("!!! doebuild: %s\n",
+			fmt.Sprintf("returnpid is not supported for phase '%s'\n", mydo)),
+			-1, nil)
+	}
+	return unmerge(mysettings.ValueDict["CATEGORY"],
+		mysettings.ValueDict["PF"], myroot, mysettings, vartree = vartree)
+}
 
-phases_to_run = set()
-if returnpid ||
-"noauto" in mysettings.Features.Features[] ||
-mydo ! in actionmap_deps{
-phases_to_run.add(mydo)
+phases_to_run := map[string]bool{}
+if returnpid || mysettings.Features.Features["noauto"] || ! Inmsss(actionmap_deps,mydo){
+phases_to_run[mydo]=true
 }else{
-phase_stack = [mydo]
-while phase_stack{
-x = phase_stack.pop()
-if x in phases_to_run{
-continue
-phases_to_run.add(x)
-phase_stack= append(actionmap_deps.get(x, []))
-del phase_stack
+		phase_stack := []string{mydo}
+		for len(phase_stack) > 0 {
+			x := phase_stack[len(phase_stack)-1]
+			phase_stack = phase_stack[:len(phase_stack)-1]
+			if phases_to_run[x] {
+				continue
+			}
+			phases_to_run[x] = true
+			phase_stack = append(phase_stack, actionmap_deps[x]...)
+		}
+	}
 
-alist = set(strings.Fields(mysettings.configDict["pkg"]["A"]))
+alist := map[string]bool{}
+for _ ,v := range strings.Fields(mysettings.configDict["pkg"]["A"]){
+alist[v]=true
+}
 
-unpacked = false
+unpacked := false
 if tree != "porttree" ||
-mydo in _doebuild_commands_without_builddir{
-pass
-}else if "unpack" ! in phases_to_run{
+ Ins( _doebuild_commands_without_builddir, mydo){
+//pass
+}else if !  phases_to_run["unpack" ]{
 unpacked = pathExists(filepath.Join(
 mysettings.ValueDict["PORTAGE_BUILDDIR"], ".unpacked"))
-}else{
-try{
-workdir_st = os.Stat(mysettings.ValueDict["WORKDIR"])
-except OSError{
-pass
-}else{
-newstuff = false
-if ! pathExists(filepath.Join(
-mysettings.ValueDict["PORTAGE_BUILDDIR"], ".unpacked")){
-WriteMsgStdout(_(
-">>> Not marked as unpacked; recreating WORKDIR...\n"))
-newstuff = true
-}else{
-for _, x := range  alist{
-WriteMsgStdout(fmt.Sprintf(">>> Checking %s's mtime...\n" % x)
-try{
-x_st = os.Stat(filepath.Join(
-mysettings.ValueDict["DISTDIR"], x))
-except OSError{
+}else {
+	workdir_st, err := os.Stat(mysettings.ValueDict["WORKDIR"])
+	if err != nil {
+		//except OSError{
+		//pass
+	} else {
+		newstuff := false
+		if !pathExists(filepath.Join(
+			mysettings.ValueDict["PORTAGE_BUILDDIR"], ".unpacked")) {
+			WriteMsgStdout(fmt.Sprintf(
+				">>> Not marked as unpacked; recreating WORKDIR...\n"), 0)
+			newstuff = true
+		} else {
+			for x := range alist {
+				WriteMsgStdout(fmt.Sprintf(">>> Checking %s's mtime...\n", x), 0)
+				x_st, err := os.Stat(filepath.Join(
+					mysettings.ValueDict["DISTDIR"], x))
+				if err != nil {
+					//except OSError{
+					x_st = nil
+				}
 
-x_st = None
+				if x_st != nil && x_st.ModTime().Nanosecond() > workdir_st.ModTime().Nanosecond() {
+					WriteMsgStdout(fmt.Sprintf(">>> Timestamp of "+
+						"%s has changed; recreating WORKDIR...\n", x), 0)
+					newstuff = true
+					break
+				}
+			}
+		}
 
-if x_st != nil && x_st.st_mtime > workdir_st.st_mtime{
-WriteMsgStdout(fmt.Sprintf((">>> Timestamp of "
-"%s has changed; recreating WORKDIR...\n") % x)
-newstuff = true
-break
+		if newstuff {
+			if builddir_lock == nil && !Inmss(mysettings.ValueDict, "PORTAGE_BUILDDIR_LOCKED") {
+				builddir_lock = EbuildBuildDir(
+					scheduler = asyncio._safe_loop(),
+					settings = mysettings)
+				builddir_lock.scheduler.run_until_complete(
+					builddir_lock.async_lock())
+			}
+			//try{
+			_spawn_phase("clean", mysettings)
+			//finally{
+			if builddir_lock != nil {
+				builddir_lock.scheduler.run_until_complete(
+					builddir_lock.async_unlock())
+				builddir_lock = nil
+			}
+		} else {
+			WriteMsgStdout((">>> WORKDIR is up-to-date, keeping...\n"), 0)
+			unpacked = true
+		}
+	}
+}
 
-if newstuff{
-if builddir_lock == nil &&
-"PORTAGE_BUILDDIR_LOCKED" ! in mysettings{
-builddir_lock = EbuildBuildDir(
-scheduler=asyncio._safe_loop(),
-settings=mysettings)
-builddir_lock.scheduler.run_until_complete(
-builddir_lock.async_lock())
-try{
-_spawn_phase("clean", mysettings)
-finally{
-if builddir_lock != nil{
-builddir_lock.scheduler.run_until_complete(
-builddir_lock.async_unlock())
-builddir_lock = None
-}else{
-WriteMsgStdout(_(">>> WORKDIR is up-to-date, keeping...\n"))
-unpacked = true
+have_build_dirs := false
+if ! Ins([]string{"digest", "fetch", "help", "manifest"}, mydo) {
+	if !returnpid && !Inmss(mysettings.ValueDict, "PORTAGE_BUILDDIR_LOCKED") {
+		builddir_lock = EbuildBuildDir(
+			scheduler = asyncio._safe_loop(),
+			settings = mysettings)
+		builddir_lock.scheduler.run_until_complete(
+			builddir_lock.async_lock())
+	}
+	mystatus := prepare_build_dirs(myroot, mysettings, cleanup)
+	if mystatus {
+		return mystatus
+	}
+	have_build_dirs = true
 
-have_build_dirs = false
-if mydo ! in ("digest", "fetch", "help", "manifest"){
-if ! returnpid &&
-"PORTAGE_BUILDDIR_LOCKED" ! in mysettings{
-builddir_lock = EbuildBuildDir(
-scheduler=asyncio._safe_loop(),
-settings=mysettings)
-builddir_lock.scheduler.run_until_complete(
-builddir_lock.async_lock())
-mystatus = prepare_build_dirs(myroot, mysettings, cleanup)
-if mystatus{
-return mystatus
-have_build_dirs = true
+	if !returnpid {
+		logfile = mysettings.ValueDict["PORTAGE_LOG_FILE"]
+	}
+}
 
-if ! returnpid{
+if have_build_dirs {
+	rval := _prepare_env_file(mysettings)
+	if rval != 0 {
+		return rval
+	}
+}
 
-logfile = mysettings.ValueDict["PORTAGE_LOG_FILE")
-
-if have_build_dirs{
-rval = _prepare_env_file(mysettings)
-if rval != os.EX_OK{
-return rval
-
-if eapi_exports_merge_type(mysettings.ValueDict["EAPI"]) &&
-"MERGE_TYPE" ! in mysettings.configDict["pkg"]{
-if tree == "porttree"{
-mysettings.configDict["pkg"]["MERGE_TYPE"] = "source"
-}else if tree == "bintree"{
-mysettings.configDict["pkg"]["MERGE_TYPE"] = "binary"
+if eapiExportsMergeType(mysettings.ValueDict["EAPI"]) &&
+ ! Inmss( mysettings.configDict["pkg"],"MERGE_TYPE") {
+	if tree == "porttree" {
+		mysettings.configDict["pkg"]["MERGE_TYPE"] = "source"
+	} else if tree == "bintree" {
+		mysettings.configDict["pkg"]["MERGE_TYPE"] = "binary"
+	}
+}
 
 if tree == "porttree"{
 mysettings.configDict["pkg"]["EMERGE_FROM"] = "ebuild"
-}else if tree == "bintree"{
-mysettings.configDict["pkg"]["EMERGE_FROM"] = "binary"
+}else if tree == "bintree" {
+	mysettings.configDict["pkg"]["EMERGE_FROM"] = "binary"
+}
 
-if eapi_exports_replace_vars(mysettings.ValueDict["EAPI"]) &&
-(mydo in ("postinst", "preinst", "pretend", "setup") ||
-("noauto" ! in features && ! returnpid &&
-(mydo in actionmap_deps || mydo in ("merge", "package", "qmerge")))){
+if eapiExportsReplaceVars(mysettings.ValueDict["EAPI"]) &&
+( Ins ([]string{"postinst", "preinst", "pretend", "setup"},mydo) ||
+( !  features["noauto"] && ! returnpid &&
+( insss(actionmap_deps,mydo) ||  Ins ([]string{"merge", "package", "qmerge"},mydo)))){
 if ! vartree{
-atom.WriteMsg("Warning: vartree not given to doebuild. " +
-"Cannot set REPLACING_VERSIONS in pkg_{pretend,setup}\n")
+WriteMsg("Warning: vartree not given to doebuild. " +
+"Cannot set REPLACING_VERSIONS in pkg_{pretend,setup}\n", 0 , nil)
 }else{
-vardb = vartree.dbapi
-cpv = mysettings.mycpv
-cpv_slot = fmt.Sprintf("%s%s%s" %
-(cpv.cp, portage.dep._slot_separator, cpv.slot)
-mysettings.ValueDict["REPLACING_VERSIONS"] = strings.Join(
+vardb := vartree.dbapi
+cpv := mysettings.mycpv
+cpv_slot := fmt.Sprintf("%s%s%s" , cpv.cp, portage.dep._slot_separator, cpv.slot)
+mysettings.ValueDict["REPLACING_VERSIONS"] := strings.Join(
 set(portage.versions.cpv_getversion(match)
 for match in vardb.match(cpv_slot) +
 vardb.match("="+cpv))," ")
+}
+}
 
-if mydo in ("config", "help", "info", "postinst",
-"preinst", "pretend", "postrm", "prerm"){
-if mydo in ("preinst", "postinst"){
-env_file = filepath.Join(filepath.Dir(mysettings.ValueDict["EBUILD"]),
-"environment.bz2")
-if os.path.isfile(env_file){
-mysettings.ValueDict["PORTAGE_UPDATE_ENV"] = env_file
-try{
-return _spawn_phase(mydo, mysettings,
-fd_pipes=fd_pipes, logfile=logfile, returnpid=returnpid)
-finally{
-mysettings.pop("PORTAGE_UPDATE_ENV", None)
+if Ins ([]string{"config", "help", "info", "postinst",
+"preinst", "pretend", "postrm", "prerm"}, mydo) {
+	if mydo == "preinst" || mydo == "postinst" {
+		env_file := filepath.Join(filepath.Dir(mysettings.ValueDict["EBUILD"]),
+			"environment.bz2")
+		if os.path.isfile(env_file) {
+			mysettings.ValueDict["PORTAGE_UPDATE_ENV"] = env_file
+		}
+	}
+	defer delete(mysettings, "PORTAGE_UPDATE_ENV")
+	return _spawn_phase(mydo, mysettings,
+		fd_pipes = fd_pipes, logfile = logfile, returnpid=returnpid)
+}
 
-mycpv = "/".join((mysettings.ValueDict["CATEGORY"], mysettings.ValueDict["PF"]))
+mycpv := (mysettings.ValueDict["CATEGORY"] + "/" + mysettings.ValueDict["PF"])
 
-need_distfiles = tree == "porttree" && ! unpacked &&
-(mydo in ("fetch", "unpack") ||
-mydo ! in ("digest", "manifest") && "noauto" ! in features)
+need_distfiles := tree == "porttree" && ! unpacked &&
+((mydo == "fetch"||mydo== "unpack") ||
+	(mydo != "digest"&&mydo != "manifest") &&  !  features["noauto"])
+if need_distfiles {
+	src_uri := mysettings.configDict["pkg"]["SRC_URI"]
+	if src_uri == "" {
+		src_uri, = mydbapi.aux_get(mysettings.mycpv,
+			map[string]bool{"SRC_URI": true}, mytree = filepath.Dir(filepath.Dir(
+			filepath.Dir(myebuild))))
+	}
+	metadata = map[string]string{
+		"EAPI":    mysettings.ValueDict["EAPI"],
+		"SRC_URI": src_uri,
+	}
+	use := map[string]bool{}
+	for _, v := range strings.Fields(mysettings.ValueDict["PORTAGE_USE"]) {
+		use[v] = true
+	}
+	//try{
+	alist := _parse_uri_map(mysettings.mycpv, metadata, use)
+	aalist := _parse_uri_map(mysettings.mycpv, metadata, nil)
+	//except InvalidDependString as e{
+	//WriteMsg(fmt.Sprintf("!!! %s\n" % str(e), -1,nil)
+	//WriteMsg(fmt.Sprintf(("!!! Invalid SRC_URI for '%s'.\n") % mycpv,
+	//-1,nil)
+	//del e
+	//return 1
+	var fetchme map[string]map[string]bool
+	if features["mirror"] || fetchall != 0 {
+		fetchme = aalist
+	} else {
+		fetchme = alist
+	}
+
+	var dist_digests map[string]map[string]string = nil
+	if mf != nil {
+		dist_digests = mf.getTypeDigests("DIST")
+	}
+
+	_fetch_subprocess := func(fetchme, mysettings *Config, listonly, dist_digests) {
+
+		if _want_userfetch(mysettings) {
+			_drop_privs_userfetch(mysettings)
+		}
+
+		return fetch(fetchme, mysettings, listonly = listonly,
+			fetchonly = fetchonly, allow_missing_digests=false,
+			digests = dist_digests)
+	}
+
+	loop = asyncio._safe_loop()
+	if loop.is_running() {
+
+		success = fetch(fetchme, mysettings, listonly = listonly,
+			fetchonly = fetchonly, allow_missing_digests=false,
+			digests = dist_digests)
+	} else {
+		success = loop.run_until_complete(
+			loop.run_in_executor(ForkExecutor(loop = loop),
+		_fetch_subprocess, fetchme, mysettings, listonly, dist_digests))
+	}
+	if !success {
+		if !listonly {
+			spawn_nofetch(mydbapi, myebuild, settings = mysettings,
+				fd_pipes = fd_pipes)
+		}
+		return 1
+	}
+}
+
+
+	checkme := map[string]map[string]bool{}
 if need_distfiles{
 
-src_uri = mysettings.configDict["pkg"].get("SRC_URI")
-if src_uri == nil{
-src_uri, = mydbapi.aux_get(mysettings.mycpv,
-["SRC_URI"], mytree=filepath.Dir(filepath.Dir(
-filepath.Dir(myebuild))))
-metadata = map[string]string{
-"EAPI"    : mysettings.ValueDict["EAPI"],
-"SRC_URI" : src_uri,
-}
-use = map[string]bool{}
-for_, v := range strings.Fields(mysettings.ValueDict["PORTAGE_USE"]){
-use[v]=true
-}
-try{
-alist = _parse_uri_map(mysettings.mycpv, metadata, use=use)
-aalist = _parse_uri_map(mysettings.mycpv, metadata)
-except InvalidDependString as e{
-atom.WriteMsg(fmt.Sprintf("!!! %s\n" % str(e), -1,nil)
-atom.WriteMsg(fmt.Sprintf(("!!! Invalid SRC_URI for '%s'.\n") % mycpv,
--1,nil)
-del e
-return 1
-
-if "mirror" in features || fetchall{
-fetchme = aalist
-}else{
-fetchme = alist
-
-dist_digests = None
-if mf != nil{
-dist_digests = mf.getTypeDigests("DIST")
-
-func _fetch_subprocess(fetchme, mysettings *Config, listonly, dist_digests){
-
-if _want_userfetch(mysettings){
-_drop_privs_userfetch(mysettings)
-
-return fetch(fetchme, mysettings, listonly=listonly,
-fetchonly=fetchonly, allow_missing_digests=false,
-digests=dist_digests)
-
-loop = asyncio._safe_loop()
-if loop.is_running(){
-
-success = fetch(fetchme, mysettings, listonly=listonly,
-fetchonly=fetchonly, allow_missing_digests=false,
-digests=dist_digests)
-}else{
-success = loop.run_until_complete(
-loop.run_in_executor(ForkExecutor(loop=loop),
-_fetch_subprocess, fetchme, mysettings, listonly, dist_digests))
-if ! success{
-
-if ! listonly{
-spawn_nofetch(mydbapi, myebuild, settings=mysettings,
-fd_pipes=fd_pipes)
-return 1
-
-if need_distfiles{
-
-checkme = []
+//checkme = []
 }else if unpacked{
 
-checkme = []
-}else{
-checkme = alist
+//checkme = []
+}else {
+	checkme = alist
+}
 
-if mydo == "fetch" && listonly{
-return 0
+if mydo == "fetch" && listonly!=0 {
+	return 0
+}
 
-try{
+//try{
 if mydo == "manifest"{
-mf = None
-_doebuild_manifest_cache = None
+mf = nil
+_doebuild_manifest_cache = nil
 return ! digestgen(mysettings=mysettings, myportdb=mydbapi)
 }else if mydo == "digest"{
-mf = None
-_doebuild_manifest_cache = None
+mf = nil
+_doebuild_manifest_cache = nil
 return ! digestgen(mysettings=mysettings, myportdb=mydbapi)
-}else if  mysettings.Features.Features["digest"]{
-mf = None
-_doebuild_manifest_cache = None
-digestgen(mysettings=mysettings, myportdb=mydbapi)
-except PermissionDenied as e{
-atom.WriteMsg(fmt.Sprintf(("!!! Permission Denied: %s\n") % (e,), -1,nil)
-if mydo =="digest" || mydo == "manifest"):
-return 1
-
-if mydo == "fetch"{
-
-return 0
-
-if tree == "porttree" &&
-! digestcheck(checkme, mysettings, "strict" in features, mf=mf){
-return 1
-
-if tree == "porttree" &&
-((mydo != "setup" && "noauto" ! in features)
-|| mydo == "install" ||mydo ==  "unpack")){
-_prepare_fake_distdir(mysettings, alist)
-
-actionmap = _spawn_actionmap(mysettings)
-
-for _, x := range  actionmap{
-if len(actionmap_deps.get(x, [])){
-actionmap[x]["dep"] = strings.Join(actionmap_deps[x]," ")
-
-regular_actionmap_phase = mydo in actionmap
-
-if regular_actionmap_phase{
-bintree = None
-if mydo == "package"{
-
-if hasattr(portage, "db"){
-bintree = portage.db[mysettings.ValueDict["EROOT"]]["bintree"]
-mysettings.ValueDict["PORTAGE_BINPKG_TMPFILE"] =
-bintree.getname(mysettings.mycpv) +
-		fmt.Sprintf(".%s" % (os.getpid(),)
-bintree._ensure_dir(filepath.Dir(
-mysettings.ValueDict["PORTAGE_BINPKG_TMPFILE"]))
-}else{
-parent_dir = filepath.Join(mysettings.ValueDict["PKGDIR"],
-mysettings.ValueDict["CATEGORY"])
-portage.util.ensure_dirs(parent_dir)
-if ! os.access(parent_dir, os.W_OK){
-raise PermissionDenied(
-"access('%s', os.W_OK)" % parent_dir)
-retval = spawnebuild(mydo,
-actionmap, mysettings, debug, logfile=logfile,
-fd_pipes=fd_pipes, returnpid=returnpid)
-
-if returnpid && isinstance(retval, list){
-return retval
-
-if retval == os.EX_OK{
-if mydo == "package" && bintree != nil{
-pkg = bintree.inject(mysettings.mycpv,
-filename=mysettings.ValueDict["PORTAGE_BINPKG_TMPFILE"])
-if pkg != nil{
-infoloc = filepath.Join(
-mysettings.ValueDict["PORTAGE_BUILDDIR"], "build-info")
-build_info = {
-"BINPKGMD5": fmt.Sprintf("%s\n" % pkg._metadata["MD5"],
+}else if  mysettings.Features.Features["digest"] {
+	mf = nil
+	_doebuild_manifest_cache = nil
+	digestgen(mysettings = mysettings, myportdb = mydbapi)
 }
-if pkg.build_id != nil{
-build_info["BUILD_ID"] = fmt.Sprintf("%s\n" % pkg.build_id
-for k, v in build_info.items(){
-with io.open(_unicode_encode(
-filepath.Join(infoloc, k),
-encoding=_encodings["fs"], errors="strict"),
-mode="w", encoding=_encodings["repo.content"],
-errors="strict") as f{
-f.write(v)
-}else{
-if "PORTAGE_BINPKG_TMPFILE" in mysettings{
-try{
-os.unlink(mysettings.ValueDict["PORTAGE_BINPKG_TMPFILE"])
-except OSError{
-pass
+//except PermissionDenied as e{
+//WriteMsg(fmt.Sprintf(("!!! Permission Denied: %s\n") % (e,), -1,nil)
+//if mydo =="digest" || mydo == "manifest"):
+//return 1
 
-}else if returnpid{
-atom.WriteMsg(fmt.Sprintf("!!! doebuild: %s\n" %
-fmt.Sprintf(("returnpid is not supported for phase '%s'\n" % mydo),
--1,nil)
+if mydo == "fetch" {
+	return 0
+}
 
-if regular_actionmap_phase{
+if tree == "porttree" && ! digestcheck(checkme, mysettings,   features["strict"], mf=mf){
+		return 1
+	}
 
-pass
+if tree == "porttree" && ((mydo != "setup" && ! features["noauto" ]) || mydo == "install" ||mydo ==  "unpack")){
+		_prepare_fake_distdir(mysettings, alist)
+	}
+
+actionmap := _spawn_actionmap(mysettings)
+
+for _, x := range  actionmap {
+	if len(actionmap_deps[x]) > 0 {
+		actionmap[x]["dep"] = strings.Join(actionmap_deps[x], " ")
+	}
+}
+
+regular_actionmap_phase := mydo in actionmap
+
+if len(regular_actionmap_phase) > 0 {
+	var bintree *BinaryTree
+	if mydo == "package" {
+
+		if Db() != nil {
+			bintree = Db().Values()[mysettings.ValueDict["EROOT"]].BinTree()
+			mysettings.ValueDict["PORTAGE_BINPKG_TMPFILE"] =
+				bintree.getname(mysettings.mycpv, false) +
+					fmt.Sprintf(".%s", os.Getpid(), )
+			bintree._ensure_dir(filepath.Dir(
+				mysettings.ValueDict["PORTAGE_BINPKG_TMPFILE"]))
+		} else {
+			parent_dir := filepath.Join(mysettings.ValueDict["PKGDIR"],
+				mysettings.ValueDict["CATEGORY"])
+			ensureDirs(parent_dir, -1, -1, -1, -1, nil, true)
+			if !os.access(parent_dir, os.W_OK) {
+				raise
+				PermissionDenied("access('%s', os.W_OK)" % parent_dir)
+			}
+		}
+	}
+	retval := spawnebuild(mydo,
+		actionmap, mysettings, debug, logfile = logfile,
+		fd_pipes = fd_pipes, returnpid=returnpid)
+
+	if returnpid && isinstance(retval, list) {
+		return retval
+	}
+
+	if retval == 0 {
+		if mydo == "package" && bintree != nil {
+			pkg = bintree.inject(mysettings.mycpv,
+				filename = mysettings.ValueDict["PORTAGE_BINPKG_TMPFILE"])
+			if pkg != nil {
+				infoloc := filepath.Join(
+					mysettings.ValueDict["PORTAGE_BUILDDIR"], "build-info")
+				build_info := map[string]string{
+					"BINPKGMD5": fmt.Sprintf("%s\n", pkg._metadata["MD5"]),
+				}
+				if pkg.build_id != nil {
+					build_info["BUILD_ID"] = fmt.Sprintf("%s\n", pkg.build_id)
+				}
+				for k, v := range build_info {
+					with
+					io.open(_unicode_encode(
+						filepath.Join(infoloc, k),
+						encoding = _encodings["fs"], errors = "strict"),
+					mode = "w", encoding=_encodings["repo.content"],
+						errors = "strict") as
+					f{
+						f.write(v)
+					}
+				}
+			}
+		}
+	} else {
+		if Inmss(mysettings.ValueDict, "PORTAGE_BINPKG_TMPFILE") {
+			if err := syscall.Unlink(mysettings.ValueDict["PORTAGE_BINPKG_TMPFILE"]); err != nil {
+				//except OSError{
+				//pass
+			}
+		}
+	}
+}else if returnpid {
+	WriteMsg(fmt.Sprintf("!!! doebuild: %s\n",
+		fmt.Sprintf("returnpid is not supported for phase '%s'\n", mydo)),
+		-1, nil)
+}
+
+if regular_actionmap_phase!= ""{
+//pass
 }else if mydo == "qmerge"{
 
-if ! pathExists(
-filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"], ".installed")){
-atom.WriteMsg(_("!!! mydo=qmerge, but the install phase has not been run\n"),
--1,nil)
-return 1
+if ! pathExists(filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"], ".installed")) {
+	WriteMsg(("!!! mydo=qmerge, but the install phase has not been run\n"),
+		-1, nil)
+	return 1
+}
 
-if  ! mysettings.Features.Features["noclean"]{
-mysettings.Features.Features["noclean"]=true
+if  ! mysettings.Features.Features["noclean"] {
+	mysettings.Features.Features["noclean"] = true
+}
 _handle_self_update(mysettings, vartree.dbapi)
 
 retval = merge(
@@ -1238,129 +1481,142 @@ filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"], "build-info"),
 myroot, mysettings, myebuild=mysettings.ValueDict["EBUILD"], mytree=tree,
 mydbapi=mydbapi, vartree=vartree, prev_mtimes=prev_mtimes,
 fd_pipes=fd_pipes)
-}else if mydo=="merge"{
-retval = spawnebuild("install", actionmap, mysettings, debug,
-alwaysdep=1, logfile=logfile, fd_pipes=fd_pipes,
-returnpid=returnpid)
-if retval != os.EX_OK{
-
-elog_process(mysettings.mycpv, mysettings)
-if retval == os.EX_OK{
-_handle_self_update(mysettings, vartree.dbapi)
-retval = merge(mysettings.ValueDict["CATEGORY"], mysettings.ValueDict["PF"],
-mysettings.ValueDict["D"], filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"],
-"build-info"), myroot, mysettings,
-myebuild=mysettings.ValueDict["EBUILD"], mytree=tree, mydbapi=mydbapi,
-vartree=vartree, prev_mtimes=prev_mtimes,
-fd_pipes=fd_pipes)
-
+}else if mydo=="merge" {
+	retval := spawnebuild("install", actionmap, mysettings, debug,
+		alwaysdep = 1, logfile = logfile, fd_pipes=fd_pipes,
+		returnpid = returnpid)
+	if retval != 0 {
+		elog_process(mysettings.mycpv, mysettings)
+	}
+	if retval == 0 {
+		_handle_self_update(mysettings, vartree.dbapi)
+		retval = merge(mysettings.ValueDict["CATEGORY"], mysettings.ValueDict["PF"],
+			mysettings.ValueDict["D"], filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"],
+				"build-info"), myroot, mysettings,
+			myebuild = mysettings.ValueDict["EBUILD"], mytree = tree, mydbapi=mydbapi,
+			vartree = vartree, prev_mtimes=prev_mtimes,
+			fd_pipes = fd_pipes)
+	}
 }else{
 WriteMsgStdout(fmt.Sprintf(("!!! Unknown mydo: %s\n") % mydo, -1,nil)
 return 1
+	}
 
 return retval
-
-func _check_temp_dir(settings *Config){
-if "PORTAGE_TMPDIR" ! in settings ||
-! os.path.isdir(settings.ValueDict["PORTAGE_TMPDIR"]){
-atom.WriteMsg(fmt.Sprintf(("The directory specified in your "
-"PORTAGE_TMPDIR variable, '%s',\n"
-"does not exist.  Please create this directory or "
-"correct your PORTAGE_TMPDIR setting.\n") %
-settings.ValueDict["PORTAGE_TMPDIR", ""), -1,nil)
-return 1
-
-checkdir = first_existing(filepath.Join(settings.ValueDict["PORTAGE_TMPDIR"], "portage"))
-
-if ! os.access(checkdir, os.W_OK){
-atom.WriteMsg(fmt.Sprintf(("%s is not writable.\n"
-"Likely cause is that you've mounted it as readonly.\n") % checkdir,
--1,nil)
-return 1
-
-with tempfile.NamedTemporaryFile(prefix="exectest-", dir=checkdir) as fd{
-os.chmod(fd.name, 0o755)
-if ! os.access(fd.name, os.X_OK){
-atom.WriteMsg(fmt.Sprintf(("Can not execute files in %s\n"
-"Likely cause is that you've mounted it with one of the\n"
-"following mount options: 'noexec', 'user', 'users'\n\n"
-"Please make sure that portage can execute files in this directory.\n") % checkdir,
--1,nil)
-return 1
-
-return os.EX_OK
-
-func _prepare_env_file(settings *Config){
-
-env_extractor = BinpkgEnvExtractor(background=false,
-scheduler=asyncio._safe_loop(),
-settings=settings)
-
-if env_extractor.dest_env_exists(){
-
-return os.EX_OK
-
-if ! env_extractor.saved_env_exists(){
-
-return os.EX_OK
-
-env_extractor.start()
-env_extractor.wait()
-return env_extractor.returncode
-
-func _spawn_actionmap(settings *Config){
-features := settings.Features.Features
-restrict := strings.Fields(settings.ValueDict["PORTAGE_RESTRICT"])
-nosandbox := (( features["userpriv"]) &&
-( ! in features["usersandbox"]) &&
- ! ins(restrict, "userpriv") &&
- ! ins(restrict, "nouserpriv"))
-
-if ! portage.process.sandbox_capable{
-nosandbox = true
-
-sesandbox = settings.selinux_enabled() &&
-features["sesandbox"]
-
-droppriv =  features["userpriv"] &&
-! ins( restrict, "userpriv") &&
-*secpass >= 2
-
-fakeroot := features[ "fakeroot"]
-
-portage_bin_path := settings.ValueDict["PORTAGE_BIN_PATH"]
-ebuild_sh_binary = filepath.Join(portage_bin_path,
-filepath.Base(EBUILD_SH_BINARY))
-misc_sh_binary = filepath.Join(portage_bin_path,
-filepath.Base(MISC_SH_BINARY))
-ebuild_sh = _shell_quote(ebuild_sh_binary) + " %s"
-misc_sh = _shell_quote(misc_sh_binary) + " __dyn_%s"
-
-actionmap = map[string]struct{cmd string; args map[string]interface{}}}{
-"pretend":  {cmd:ebuild_sh, args:{"droppriv":0, "free":1, "sesandbox":0, "fakeroot":0}},
-"setup":    {cmd:ebuild_sh, args:{"droppriv":0, "free":1, "sesandbox":0, "fakeroot":0}},
-"unpack":   {cmd:ebuild_sh, args:{"droppriv":droppriv, "free":0, "sesandbox":sesandbox, "fakeroot":0}},
-"prepare":  {cmd:ebuild_sh, args:{"droppriv":droppriv, "free":0, "sesandbox":sesandbox, "fakeroot":0}},
-"configure":{cmd:ebuild_sh, args:{"droppriv":droppriv, "free":nosandbox, "sesandbox":sesandbox, "fakeroot":0}},
-"compile":  {cmd:ebuild_sh, args:{"droppriv":droppriv, "free":nosandbox, "sesandbox":sesandbox, "fakeroot":0}},
-"test":     {cmd:ebuild_sh, args:{"droppriv":droppriv, "free":nosandbox, "sesandbox":sesandbox, "fakeroot":0}},
-"install":  {cmd:ebuild_sh, args:{"droppriv":0, "free":0, "sesandbox":sesandbox, "fakeroot":fakeroot}},
-"instprep": {cmd:misc_sh, args:{"droppriv":0, "free":0, "sesandbox":sesandbox, "fakeroot":fakeroot}},
-"rpm":      {cmd:misc_sh, args:{"droppriv":0, "free":0, "sesandbox":0, "fakeroot":fakeroot}},
-"package":  {cmd:misc_sh, args:{"droppriv":0, "free":0, "sesandbox":0, "fakeroot":fakeroot}},
 }
 
-return actionmap
+func _check_temp_dir(settings *Config) {
+	if !Inmss(settings.ValueDict, "PORTAGE_TMPDIR") ||
+		!pathIsDir(settings.ValueDict["PORTAGE_TMPDIR"]) {
+		WriteMsg(fmt.Sprintf(("The directory specified in your "+
+			"PORTAGE_TMPDIR variable, '%s',\n"+
+			"does not exist.  Please create this directory or "+
+			"correct your PORTAGE_TMPDIR setting.\n"),
+			settings.ValueDict["PORTAGE_TMPDIR"]), -1, nil)
+		return 1
+	}
+
+	checkdir := firstExisting(filepath.Join(settings.ValueDict["PORTAGE_TMPDIR"], "portage"))
+
+	if !os.access(checkdir, os.W_OK) {
+		WriteMsg(fmt.Sprintf("%s is not writable.\n"+
+			"Likely cause is that you've mounted it as readonly.\n", checkdir),
+			-1, nil)
+		return 1
+	}
+
+	with
+	tempfile.NamedTemporaryFile(prefix = "exectest-", dir = checkdir) as
+	fd{
+		os.Chmod(fd.name, 0755)
+		if ! os.access(fd.name, os.X_OK){
+		WriteMsg(fmt.Sprintf("Can not execute files in %s\n"+
+		"Likely cause is that you've mounted it with one of the\n"+
+		"following mount options: 'noexec', 'user', 'users'\n\n"+
+		"Please make sure that portage can execute files in this directory.\n", checkdir),
+		-1, nil)
+		return 1
+	}
+	}
+
+	return 0
+}
+
+func _prepare_env_file(settings *Config) {
+
+	env_extractor = BinpkgEnvExtractor(background = false,
+		scheduler = asyncio._safe_loop(),
+		settings=settings)
+
+	if env_extractor.dest_env_exists() {
+
+		return 0
+	}
+
+	if !env_extractor.saved_env_exists() {
+
+		return 0
+	}
+
+	env_extractor.start()
+	env_extractor.wait()
+	return env_extractor.returncode
+}
+
+func _spawn_actionmap(settings *Config) {
+	features := settings.Features.Features
+	restrict := strings.Fields(settings.ValueDict["PORTAGE_RESTRICT"])
+	nosandbox := ((features["userpriv"]) &&
+		(!features["usersandbox"]) &&
+		!Ins(restrict, "userpriv") &&
+		!Ins(restrict, "nouserpriv"))
+
+	if !sandbox_capable {
+		nosandbox = true
+	}
+
+	sesandbox := settings.selinux_enabled() &&
+		features["sesandbox"]
+
+	droppriv := features["userpriv"] &&
+		!Ins(restrict, "userpriv") &&
+		*secpass >= 2
+
+	fakeroot := features["fakeroot"]
+
+	portage_bin_path := settings.ValueDict["PORTAGE_BIN_PATH"]
+	ebuild_sh_binary := filepath.Join(portage_bin_path,
+		filepath.Base(EBUILD_SH_BINARY))
+	misc_sh_binary := filepath.Join(portage_bin_path,
+		filepath.Base(MISC_SH_BINARY))
+	ebuild_sh := ShellQuote(ebuild_sh_binary) + " %s"
+	misc_sh := ShellQuote(misc_sh_binary) + " __dyn_%s"
+
+	actionmap := map[string]struct {
+		cmd  string
+		args map[string]interface{}
+	}{
+		"pretend":   {cmd: ebuild_sh, args: {"droppriv": 0, "free": 1, "sesandbox": 0, "fakeroot": 0}},
+		"setup":     {cmd: ebuild_sh, args: {"droppriv": 0, "free": 1, "sesandbox": 0, "fakeroot": 0}},
+		"unpack":    {cmd: ebuild_sh, args: {"droppriv": droppriv, "free": 0, "sesandbox": sesandbox, "fakeroot": 0}},
+		"prepare":   {cmd: ebuild_sh, args: {"droppriv": droppriv, "free": 0, "sesandbox": sesandbox, "fakeroot": 0}},
+		"configure": {cmd: ebuild_sh, args: {"droppriv": droppriv, "free": nosandbox, "sesandbox": sesandbox, "fakeroot": 0}},
+		"compile":   {cmd: ebuild_sh, args: {"droppriv": droppriv, "free": nosandbox, "sesandbox": sesandbox, "fakeroot": 0}},
+		"test":      {cmd: ebuild_sh, args: {"droppriv": droppriv, "free": nosandbox, "sesandbox": sesandbox, "fakeroot": 0}},
+		"install":   {cmd: ebuild_sh, args: {"droppriv": 0, "free": 0, "sesandbox": sesandbox, "fakeroot": fakeroot}},
+		"instprep":  {cmd: misc_sh, args: {"droppriv": 0, "free": 0, "sesandbox": sesandbox, "fakeroot": fakeroot}},
+		"rpm":       {cmd: misc_sh, args: {"droppriv": 0, "free": 0, "sesandbox": 0, "fakeroot": fakeroot}},
+		"package":   {cmd: misc_sh, args: {"droppriv": 0, "free": 0, "sesandbox": 0, "fakeroot": fakeroot}},
+	}
+
+	return actionmap
 }
 
 func _validate_deps(mysettings *Config, myroot, mydo, mydbapi){
-
-invalid_dep_exempt_phases =
-set(["clean", "cleanrm", "help", "prerm", "postrm"])
-all_keys = set(Package.metadata_keys)
-all_keys.add("SRC_URI")
-all_keys = tuple(all_keys)
-metadata = mysettings.configDict["pkg"]
+invalid_dep_exempt_phases := map[string]bool{"clean":true, "cleanrm":true, "help":true, "prerm":true, "postrm":true}
+all_keys := CopyMapSB(NewPackage(false, nil, false, nil, nil, "").metadataKeys)
+all_keys["SRC_URI"]=true
+metadata := mysettings.configDict["pkg"]
 if all(k in metadata for k in ("PORTAGE_REPO_NAME", "SRC_URI")){
 metadata = dict(((k, metadata[k]) for k in all_keys if k in metadata),
 repository=metadata["PORTAGE_REPO_NAME"])
@@ -1373,11 +1629,9 @@ class FakeTree(object){
 func __init__(self, mydb){
 self.dbapi = mydb
 
-root_config = RootConfig(mysettings, {"porttree":FakeTree(mydbapi)}, None)
+root_config := NewRootConfig(mysettings, {"porttree":FakeTree(mydbapi)}, None)
 
-pkg = Package(built=false, cpv=mysettings.mycpv,
-metadata=metadata, root_config=root_config,
-type_name="ebuild")
+pkg := NewPackage(false, mysettings.mycpv, false, metadata, root_config, "ebuild")
 
 msgs = []
 if pkg.invalid{
@@ -1386,10 +1640,10 @@ for msg in v{
 msgs=append(fmt.Sprintf("  %s\n" % (msg,))
 
 if msgs{
-portage.util.writemsg_level(fmt.Sprintf(("Error(s) in metadata for '%s':\n") %
+WriteMsgLevel(fmt.Sprintf(("Error(s) in metadata for '%s':\n") %
 (mysettings.mycpv,), level=logging.ERROR, -1,nil)
 for _, x := range  msgs{
-portage.util.writemsg_level(x,
+WriteMsgLevel(x,
 level=logging.ERROR, -1,nil)
 if mydo ! in invalid_dep_exempt_phases{
 return 1
@@ -1402,23 +1656,23 @@ result = check_required_use(pkg._metadata["REQUIRED_USE"],
 pkg.use.enabled, pkg.iuse.is_valid_flag, eapi=pkg.eapi)
 if ! result{
 reduced_noise = result.tounicode()
-atom.WriteMsg(fmt.Sprintf("\n  %s\n" % _("The following REQUIRED_USE flag" +
+WriteMsg(fmt.Sprintf("\n  %s\n" % _("The following REQUIRED_USE flag" +
 " constraints are unsatisfied:"), -1,nil)
-atom.WriteMsg(fmt.Sprintf("    %s\n" % reduced_noise,
+WriteMsg(fmt.Sprintf("    %s\n" % reduced_noise,
 -1,nil)
 normalized_required_use =
 strings.Join(strings.Fields(pkg._metadata["REQUIRED_USE"])," ")
 if reduced_noise != normalized_required_use{
-atom.WriteMsg(fmt.Sprintf("\n  %s\n" % _("The above constraints " +
+WriteMsg(fmt.Sprintf("\n  %s\n" % _("The above constraints " +
 "are a subset of the following complete expression:"),
 -1,nil)
-atom.WriteMsg(fmt.Sprintf("    %s\n" %
+WriteMsg(fmt.Sprintf("    %s\n" %
 human_readable_required_use(normalized_required_use),
 -1,nil)
-atom.WriteMsg("\n", -1,nil)
+WriteMsg("\n", -1,nil)
 return 1
 
-return os.EX_OK
+return 0
 
 func spawn(mystring string, mysettings  *Config, debug=false, free=false, droppriv=false,
 sesandbox=false, fakeroot=false, networked=true, ipc=true,
@@ -1598,10 +1852,10 @@ return retval
 eapi = mysettings.ValueDict["EAPI"]
 
 if mydo in ("configure", "prepare") && ! eapi_has_src_prepare_and_src_configure(eapi){
-return os.EX_OK
+return 0
 
 if mydo == "pretend" && ! eapi_has_pkg_pretend(eapi){
-return os.EX_OK
+return 0
 
 if ! (mydo == "install" && "noauto" in mysettings.Features.Features[]){
 check_file = filepath.Join(
@@ -1612,7 +1866,7 @@ WriteMsgStdout(fmt.Sprintf((">>> It appears that "
 {"action":mydo, "pkg":mysettings.ValueDict["PF"]})
 WriteMsgStdout(fmt.Sprintf((">>> Remove '%(file)s' to force %(action)s.\n") %
 {"file":check_file, "action":mydo})
-return os.EX_OK
+return 0
 
 return _spawn_phase(mydo, mysettings,
 actionmap=actionmap, logfile=logfile,
@@ -2035,19 +2289,19 @@ except portage.exception.InvalidData as e{
 needs_update = false
 if ! fixlafiles_announced{
 fixlafiles_announced = true
-atom.WriteMsg("Fixing .la files\n", fd=out)
+WriteMsg("Fixing .la files\n", fd=out)
 
 msg = fmt.Sprintf("   %s is not a valid libtool archive, skipping\n" % fpath[len(destdir):]
 qa_msg = fmt.Sprintf("QA Notice: invalid .la file found: %s, %s" % (fpath[len(destdir):], e)
 if has_lafile_header{
-atom.WriteMsg(msg, fd=out)
+WriteMsg(msg, fd=out)
 eqawarn(qa_msg, key=mysettings.mycpv, out=out)
 
 if needs_update{
 if ! fixlafiles_announced{
 fixlafiles_announced = true
-atom.WriteMsg("Fixing .la files\n", fd=out)
-atom.WriteMsg(fmt.Sprintf("   %s\n" % fpath[len(destdir):], fd=out)
+WriteMsg("Fixing .la files\n", fd=out)
+WriteMsg(fmt.Sprintf("   %s\n" % fpath[len(destdir):], fd=out)
 
 write_atomic(_unicode_encode(fpath,
 encoding=_encodings["merge"], errors="strict"),

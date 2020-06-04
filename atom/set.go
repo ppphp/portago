@@ -88,7 +88,11 @@ func (s*SetConfig)_create_default_config() {
 	parser.GetSectionMap()["deprecated-live-rebuild"]= map[string]string{}
 	parser.GetSectionMap()["deprecated-live-rebuild"]["class"] = "portage.sets.dbapi.VariableSet"
 	parser.GetSectionMap()["deprecated-live-rebuild"]["variable"] = "INHERITED"
-	parser.GetSectionMap()["deprecated-live-rebuild"]["includes"] = " ".join(sorted(LIVE_ECLASSES))
+	le := []string{}
+	for k := range LIVE_ECLASSES{
+		le = append(le, k)
+	}
+	parser.GetSectionMap()["deprecated-live-rebuild"]["includes"] = strings.Join(sorted(le), " ")
 
 	delete(parser.GetSectionMap(),"module-rebuild")
 	parser.GetSectionMap()["module-rebuild"]= map[string]string{}
