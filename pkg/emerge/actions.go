@@ -49,7 +49,7 @@ func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, action 
 		filepath.Join(target_eroot, atom.CachePath, "mtimedb"))
 	emergeConfig.runningConfig = emergeConfig.Trees.Values()[
 		emergeConfig.Trees._running_eroot].RootConfig
-	QueryCommand._db = emergeConfig.Trees
+	atom.QueryCommand_db = emergeConfig.Trees
 
 	return emergeConfig
 }

@@ -399,7 +399,7 @@ func(s *SpawnProcess) _start(){
 	}
 
 	if _, ok := fd_pipes[0]; !ok {
-		fd_pipes[0] = string(getStdin().Fd())
+		fd_pipes[0] = int(getStdin().Fd())
 	}
 	if _, ok := fd_pipes[1]; !ok {
 		fd_pipes[1] = syscall.Stdout
@@ -1149,8 +1149,8 @@ func (a *AbstractEbuildProcess)_init_ipc_fifos()(string,string) {
 func (a *AbstractEbuildProcess)_start_ipc_daemon() {
 	a._exit_command = ExitCommand()
 	a._exit_command.reply_hook = a._exit_command_callback
-	query_command = QueryCommand(a.settings, a.phase)
-	commands := map[string]string{
+	query_command := NewQueryCommand(a.settings, a.phase)
+	commands := map[string]*QueryCommand{
 		"available_eclasses":  query_command,
 		"best_version":        query_command,
 		"eclass_path":         query_command,
@@ -1270,8 +1270,8 @@ func (a *AbstractEbuildProcess)_elog( elog_funcname, lines) {
 	HaveColor = global_havecolor
 	msg := out.String()
 	if msg != "" {
-		log_path = nil
-		if a.settings.Valuedict["PORTAGE_BACKGROUND"] != "subprocess" {
+		log_path := ""
+		if a.settings.ValueDict["PORTAGE_BACKGROUND"] != "subprocess" {
 			log_path = a.settings.ValueDict["PORTAGE_LOG_FILE"]
 		}
 		a.scheduler.output(msg, log_path = log_path)
@@ -2568,7 +2568,7 @@ WriteMsg(red("!!!")+" you have it disabled, " +
 "thus parallel-fetching is being disabled"+"\n",
 noiselevel = -1)
 WriteMsg(red("!!!")+"\n", noiselevel = -1)
-elif merge_count > 1:
+else if merge_count > 1:
 s._parallel_fetch = true
 
 if s._parallel_fetch:
@@ -3095,7 +3095,7 @@ func (s *Scheduler) _create_prefetcher( pkg) {
 	if not isinstance(pkg, Package):
 	pass
 
-	elif
+	else if
 	pkg.type_name == "ebuild":
 
 	prefetcher = EbuildFetcher(background = true,
@@ -3105,7 +3105,7 @@ func (s *Scheduler) _create_prefetcher( pkg) {
 		logfile=s._fetch_log,
 		pkg = pkg, prefetch=true, scheduler = s._sched_iface)
 
-	elif
+	else if
 	pkg.type_name == "binary"
 	&& 
 	"--getbinpkg"
@@ -3156,7 +3156,7 @@ func (s *Scheduler) _run_pkg_pretend() {
 	build_dir_path =  filepath.Join(
 		os.path.realpath(settings.ValueDict["PORTAGE_TMPDIR"]),
 		"portage", x.category, x.pf)
-	existing_builddir = os.path.isdir(build_dir_path)
+	existing_builddir = pathIsDir(build_dir_path)
 	settings.ValueDict["PORTAGE_BUILDDIR"] = build_dir_path
 	build_dir = EbuildBuildDir(scheduler = sched_iface,
 		settings = settings)
@@ -3241,10 +3241,9 @@ None:
 	else:
 	settings.configdict["pkg"]["MERGE_TYPE"] = "source"
 
-	portage.package.
-	ebuild.doebuild.doebuild_environment(ebuild_path,
-		"pretend", settings = settings,
-		db = s.trees[settings.ValueDict['EROOT']][tree].dbapi)
+	doebuild_environment(ebuild_path,
+		"pretend", nil, settings, false, nil,
+		s.trees[settings.ValueDict['EROOT']][tree].dbapi)
 
 	prepare_build_dirs(root_config.root, settings, cleanup = 0)
 
@@ -3290,8 +3289,8 @@ None:
 func (s *Scheduler) merge() {
 	if "--resume" in
 	s.myopts:
-	WriteMsg_stdout(
-		colorize("GOOD", "*** Resuming merge...\n"), noiselevel = -1)
+	WriteMsgStdout(
+		colorize("GOOD", "*** Resuming merge...\n"), -1)
 	s._logger.log(" *** Resuming merge...")
 
 	s._save_resume_list()
@@ -3311,12 +3310,9 @@ try:
 	s.trees:
 	root_config = s.trees[root]["root_config"]
 
-	tmpdir = root_config. settings.ValueDict["PORTAGE_TMPDIR", "")
-	if not tmpdir
- ||
-	not
-	os.path.isdir(tmpdir):
-	msg = (
+	tmpdir := root_config. settings.ValueDict["PORTAGE_TMPDIR"]
+	if tmpdir=="" || !pathIsDir(tmpdir):
+	msg := (
 		'The directory specified in your PORTAGE_TMPDIR variable does not exist:',
 		tmpdir,
 		'Please create this directory or correct your PORTAGE_TMPDIR setting.',
@@ -3534,7 +3530,7 @@ msg = "The following package has " +
 "failed to build, install, or execute postinst:"
 
 printer.eerror("")
-for line in textwrap.wrap(msg, 72):
+for line in SplitSubN(msg, 72):
 printer.eerror(line)
 printer.eerror("")
 for failed_pkg in s._failed_pkgs_all:
@@ -3592,7 +3588,7 @@ func (s *Scheduler) _add_packages() {
 	s._mergelist:
 	if isinstance(pkg, Package):
 	pkg_queue.append(pkg)
-	elif
+	else if
 	isinstance(pkg, Blocker):
 	pass
 }
@@ -3721,7 +3717,7 @@ func (s *Scheduler) _build_exit( build) {
 	s._terminated_tasks:
 	s.curval += 1
 	s._deallocate_config(build.settings)
-	elif
+	else if
 	build.returncode == os.EX_OK:
 	s.curval += 1
 	merge = PackageMerge(merge = build, scheduler = s._sched_iface)
@@ -4045,7 +4041,7 @@ func (s *Scheduler) _schedule_tasks() {
  ||
 	s._main_exit.done()):
 	s._main_exit.set_result(None)
-	elif
+	else if
 	s._main_loadavg_handle
 	is
 	not
@@ -4173,7 +4169,7 @@ func (s *Scheduler) _schedule_tasks_imp() {
 		s._task_queues.merge.addFront(merge)
 		merge.addExitListener(s._merge_exit)
 
-		elif
+		else if
 		pkg.built:
 		s._jobs += 1
 		s._previous_job_start_time = time.time()
@@ -4349,7 +4345,7 @@ None:
 			"masked or have missing dependencies."
 		for line
 			in
-		textwrap.wrap(msg, 72):
+		SplitSubN(msg, 72):
 		out.eerror(line)
 	}
 	s._post_mod_echo_msgs.append(unsatisfied_resume_dep_msg)
@@ -4383,7 +4379,7 @@ None:
 	msg += " dropped because it requires %s" % ", ".join(atoms)
 	for line
 	in
-	textwrap.wrap(msg, msg_width):
+	SplitSubN(msg, msg_width):
 	eerror(line, phase = "other", key = pkg.cpv)
 	settings = s.pkgsettings.ValueDict[pkg.root]
 	settings.pop("T", None)
@@ -4433,9 +4429,7 @@ try:
 	world_locked = true
 
 	if hasattr(world_set, "load"):
-	world_set.load() # maybe
-	it
-	's changed on disk
+	world_set.load()
 
 	if pkg.operation == "uninstall":
 	if hasattr(world_set, "cleanPackage"):

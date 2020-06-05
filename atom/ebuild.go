@@ -821,7 +821,7 @@ func _doebuild_path(settings *Config, eapi string) {
 
 // nil, nil, false, nil, nil
 func doebuild_environment(myebuild , mydo string, myroot=None, settings *Config,
-debug bool, use_cache=None, db *vardbapi) {
+debug bool, use_cache=None, db DBAPI) {
 
 	if settings == nil {
 		//raise TypeError("settings argument is required")
@@ -1833,7 +1833,7 @@ return 1
 return retval
 }
 
-func _check_temp_dir(settings *Config) {
+func _check_temp_dir(settings *Config)  int{
 	if !Inmss(settings.ValueDict, "PORTAGE_TMPDIR") ||
 		!pathIsDir(settings.ValueDict["PORTAGE_TMPDIR"]) {
 		WriteMsg(fmt.Sprintf(("The directory specified in your "+
@@ -1870,7 +1870,7 @@ func _check_temp_dir(settings *Config) {
 	return 0
 }
 
-func _prepare_env_file(settings *Config) {
+func _prepare_env_file(settings *Config) int {
 
 	env_extractor = BinpkgEnvExtractor(background = false,
 		scheduler = asyncio._safe_loop(),
@@ -1940,7 +1940,7 @@ func _spawn_actionmap(settings *Config) {
 	return actionmap
 }
 
-func _validate_deps(mysettings *Config, myroot, mydo, mydbapi){
+func _validate_deps(mysettings *Config, myroot, mydo string, mydbapi){
 invalid_dep_exempt_phases := map[string]bool{"clean":true, "cleanrm":true, "help":true, "prerm":true, "postrm":true}
 all_keys := CopyMapSB(NewPackage(false, nil, false, nil, nil, "").metadataKeys)
 all_keys["SRC_URI"]=true
@@ -1969,7 +1969,7 @@ msgs = []
 if pkg.invalid{
 for k, v in pkg.invalid.items(){
 for msg in v{
-msgs=append(fmt.Sprintf("  %s\n" % (msg,))
+msgs=append(msgs, fmt.Sprintf("  %s\n" ,msg,))
 		}
 	}
 }
@@ -1989,7 +1989,7 @@ if mydo ! in invalid_dep_exempt_phases{
 if ! pkg.built &&
 mydo ! in ("digest", "help", "manifest") &&
 pkg._metadata["REQUIRED_USE"] &&
-eapi_has_required_use(pkg.eapi) {
+eapiHasRequiredUse(pkg.eapi) {
 	result = check_required_use(pkg._metadata["REQUIRED_USE"],
 		pkg.use.enabled, pkg.iuse.is_valid_flag, eapi = pkg.eapi)
 	if !result {
@@ -2001,11 +2001,11 @@ eapi_has_required_use(pkg.eapi) {
 		normalized_required_use =
 			strings.Join(strings.Fields(pkg._metadata["REQUIRED_USE"]), " ")
 		if reduced_noise != normalized_required_use {
-			WriteMsg(fmt.Sprintf("\n  %s\n"%_("The above constraints "+
-				"are a subset of the following complete expression:")),
+			WriteMsg(fmt.Sprintf("\n  %s\n","The above constraints "+
+				"are a subset of the following complete expression:"),
 				-1, nil)
 			WriteMsg(fmt.Sprintf("    %s\n",
-				human_readable_required_use(normalized_required_use)),
+				humanReadableRequiredUse(normalized_required_use)),
 				-1, nil)
 		}
 		WriteMsg("\n", -1, nil)

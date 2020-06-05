@@ -4098,7 +4098,7 @@ func (d *dblink) _collision_protect(srcroot, destroot, mypkglist,
 	collision_ignore = []
 	for x in portage.util.shlex_split(
 		d.settings.ValueDict["COLLISION_IGNORE", "")):
-	if os.path.isdir(filepath.Join(d._eroot, x.lstrip(os.sep))):
+	if pathIsDir(filepath.Join(d._eroot, x.lstrip(os.sep))):
 	x = normalize_path(x)
 	x += "/*"
 	collision_ignore=append(,x)
@@ -4155,7 +4155,7 @@ func (d *dblink) _collision_protect(srcroot, destroot, mypkglist,
 	if x in dirs:
 	break
 	dirs.add(x)
-	if os.path.isdir(x):
+	if pathIsDir(x):
 	if not os.access(x, os.W_OK):
 	dirs_ro.add(x)
 	break
@@ -4423,7 +4423,7 @@ func (d *dblink) treewalk(srcroot, destroot, inforoot, myebuild, cleanup=0,
 	showMessage = d._display_merge
 	srcroot = normalize_path(srcroot).rstrip(string(os.PathSeparator)) + string(os.PathSeparator)
 
-	if not os.path.isdir(srcroot):
+	if not pathIsDir(srcroot):
 	showMessage(_("!!! Directory Not Found: D='%s'\n") % srcroot,
 		level=logging.ERROR, noiselevel=-1)
 	return 1
@@ -5382,7 +5382,7 @@ not os.access(mydest, os.W_OK):
 	return 1
 
 	if stat.S_ISDIR(mydmode) || 
-(stat.S_ISLNK(mydmode) && os.path.isdir(mydest)):
+(stat.S_ISLNK(mydmode) && pathIsDir(mydest)):
 		showMessage("--- %s/\n" % mydest)
 	if bsd_chflags:
 	bsd_chflags.lchflags(mydest, dflags)
@@ -5410,7 +5410,7 @@ not os.access(mydest, os.W_OK):
 	except OSError as e:
 				if err in (errno.EEXIST,):
 	pass
-	else if os.path.isdir(mydest):
+	else if pathIsDir(mydest):
 	pass
 	else:
 	raise
@@ -5430,7 +5430,7 @@ not os.access(mydest, os.W_OK):
 	except OSError as e:
 				if err in (errno.EEXIST,):
 	pass
-	else if os.path.isdir(mydest):
+	else if pathIsDir(mydest):
 	pass
 	else:
 	raise
@@ -5615,7 +5615,7 @@ try:
 		cleanup=cleanup, mydbapi=mydbapi, prev_mtimes=prev_mtimes,
 		counter=counter)
 
-				if os.path.isdir(d.settings.ValueDict['PORTAGE_BUILDDIR']):
+				if pathIsDir(d.settings.ValueDict['PORTAGE_BUILDDIR']):
 
 	if retval == os.EX_OK:
 	phase = 'success_hooks'
@@ -6000,7 +6000,7 @@ try:
 	live_path = path
 	if "dir" == contents_type &&
 not stat.S_ISDIR(lst.st_mode) &&
-os.path.isdir(live_path):
+pathIsDir(live_path):
 					live_path = os.path.realpath(live_path)
 	lst = os.Lstat(live_path)
 
@@ -6700,7 +6700,7 @@ func (b *BinaryTree) _ensure_dir(path string) {
 	pkgdir_grp_mode := 0o2070 & pkgdir_st.Mode()
 	ensureDirs(path, -1, pkgdir_gid, pkgdir_grp_mode, 0, nil, true)
 	//except PortageException:
-	//if not os.path.isdir(path):
+	//if not pathIsDir(path):
 	//raise
 }
 
@@ -8064,7 +8064,7 @@ e:
 	for p
 	in
 pkg_list:
-	if os.path.isdir(cat_dir + "/" + p):
+	if pathIsDir(cat_dir + "/" + p):
 	b._items[cat+"/"+p]=append(,repo)
 	b._scanned_cats[cat]=true
 }
