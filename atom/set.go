@@ -185,11 +185,9 @@ func(s*SetConfig) _parse( update bool) {
 				for x
 					in
 				newsets {
-					if x in
-					s.psets
-					&&!update{
-					s.errors = append(s.errors, fmt.Sprintf("Redefinition of set '%s' (sections: '%s', '%s')", x, s.psets[x].creator, sname))
-				}
+					if Inmss(s.psets,x) &&!update {
+						s.errors = append(s.errors, fmt.Sprintf("Redefinition of set '%s' (sections: '%s', '%s')", x, s.psets[x].creator, sname))
+					}
 					newsets[x].creator = sname
 					if parser.HasOption(sname, "world-candidate") && parser.getboolean(sname, "world-candidate") {
 						newsets[x].world_candidate = true

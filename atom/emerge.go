@@ -2,6 +2,7 @@ package atom
 
 import (
 	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -1470,7 +1471,7 @@ func (b *BlockerDB)findInstalledBlockers( new_pkg) {
 	}
 
 	blocker_atoms = InternalPackageSet(initial_atoms = blocker_atoms)
-	blocking_pkgs = set()
+	blocking_pkgs = map[string]string{}
 	for atom
 		in
 	blocker_atoms.iterAtomsForPackage(new_pkg)
@@ -2479,9 +2480,9 @@ spinner, mergelist=None, favorites=None, graph_config=None)*Scheduler {
 	s._merge_wait_queue = deque()
 	s._merge_wait_scheduled = []
 
-	s._deep_system_deps = set()
+	s._deep_system_deps = map[string]string{}
 
-	s._unsatisfied_system_deps = set()
+	s._unsatisfied_system_deps = map[string]string{}
 
 	s._status_display = JobStatusDisplay(
 		xterm_titles = (!settings.Features.Features["notitles"]))
@@ -2523,7 +2524,7 @@ None:
 	s._running_tasks =
 	{
 	}
-	s._completed_tasks = set()
+	s._completed_tasks = map[string]string{}
 	s._main_exit = None
 	s._main_loadavg_handle = None
 	s._schedule_merge_wakeup_task = None
@@ -2630,7 +2631,7 @@ func (s*Scheduler)_terminate_tasks() {
 	q.clear()
 }
 
-func _init_graph( graph_config) {
+func (s*Scheduler) _init_graph( graph_config) {
 	s._set_graph_config(graph_config)
 	s._blocker_db =
 	{
@@ -2661,15 +2662,15 @@ func (s *Scheduler) _destroy_graph() {
 	gc.collect()
 }
 
-func (s *Scheduler) _set_max_jobs( max_jobs) {
+func (s *Scheduler) _set_max_jobs( max_jobs int) {
 	s._max_jobs = max_jobs
 	s._task_queues.jobs.max_jobs = max_jobs
-	if "parallel-install" in
-	s.settings.features:
-	s._task_queues.merge.max_jobs = max_jobs
+	if s.settings.Features.Features["parallel-install"] {
+		s._task_queues.merge.max_jobs = max_jobs
+	}
 }
 
-func _background_mode() {
+func (s*Scheduler) _background_mode() {
 	background = (s._max_jobs
 	is
 	true
@@ -2757,17 +2758,17 @@ func (s *Scheduler) _get_interactive_tasks() {
 
 func _set_graph_config( graph_config) {
 
-	if graph_config is
-None:
-	s._graph_config = None
-	s._pkg_cache =
-	{
+	if graph_config == nil {
+		s._graph_config = None
+		s._pkg_cache =
+		{
+		}
+		s._digraph = None
+		s._mergelist = []
+		s._world_atoms = None
+		s._deep_system_deps.clear()
+		return
 	}
-	s._digraph = None
-	s._mergelist = []
-	s._world_atoms = None
-	s._deep_system_deps.clear()
-	return
 
 	s._graph_config = graph_config
 	s._pkg_cache = graph_config.pkg_cache
@@ -3996,50 +3997,48 @@ func (s *Scheduler) _running_job_count() {
 }
 
 func (s *Scheduler) _schedule_tasks() {
+	for {
+		state_change := 0
 
-	while
-true:
+		if (s._merge_wait_queue &&
+			not
+			s._jobs
+		&&
+		not
+		s._task_queues.merge):
+		task = s._merge_wait_queue.popleft()
+		task.scheduler = s._sched_iface
+		s._merge_wait_scheduled.append(task)
+		s._task_queues.merge.add(task)
+		task.addExitListener(s._merge_wait_exit_handler)
+		s._status_display.merges = len(s._task_queues.merge)
+		state_change += 1
 
-	state_change = 0
+		if s._schedule_tasks_imp():
+		state_change += 1
 
-	if (s._merge_wait_queue &&
-	not
-	s._jobs
-	&&
-	not
-	s._task_queues.merge):
-	task = s._merge_wait_queue.popleft()
-	task.scheduler = s._sched_iface
-	s._merge_wait_scheduled.append(task)
-	s._task_queues.merge.add(task)
-	task.addExitListener(s._merge_wait_exit_handler)
-	s._status_display.merges = len(s._task_queues.merge)
-	state_change += 1
+		s._status_display.display()
 
-	if s._schedule_tasks_imp():
-	state_change += 1
+		if s._failed_pkgs &&
+			not
+			s._build_opts.fetchonly
+		&&
+		not
+		s._is_work_scheduled()
+		&&
+		s._task_queues.fetch:
+		s._task_queues.fetch.clear()
 
-	s._status_display.display()
-
-	if s._failed_pkgs &&
-	not
-	s._build_opts.fetchonly
-	&& 
-	not
-	s._is_work_scheduled()
-	&& 
-	s._task_queues.fetch:
-	s._task_queues.fetch.clear()
-
-	if not(state_change || 
-	(s._merge_wait_queue
-	&&
-	not
-	s._jobs
-	&&
-	not
-	s._task_queues.merge)):
-	break
+		if not(state_change ||
+			(s._merge_wait_queue
+		&&
+		not
+		s._jobs
+		&&
+		not
+		s._task_queues.merge)):
+		break
+	}
 
 	if not(s._is_work_scheduled() ||
 	s._keep_scheduling()
@@ -4123,99 +4122,97 @@ OSError:
 	delay = s._job_delay_max
 	elapsed_seconds = current_time - s._previous_job_start_time
 	if elapsed_seconds > 0 &&
-	elapsed_seconds < delay:
+	elapsed_seconds < delay{
+		if s._job_delay_timeout_id is
+		not
+	None:
+		s._job_delay_timeout_id.cancel()
 
-	if s._job_delay_timeout_id is
-	not
-None:
-	s._job_delay_timeout_id.cancel()
-
-	s._job_delay_timeout_id = s._event_loop.call_later(
-		delay-elapsed_seconds, s._schedule)
-	return true
+		s._job_delay_timeout_id = s._event_loop.call_later(
+			delay-elapsed_seconds, s._schedule)
+		return true
+	}
 
 	return false
 }
 
 func (s *Scheduler) _schedule_tasks_imp() {
+	state_change := 0
 
-	state_change = 0
+	for {
+		if not s._keep_scheduling():
+		return bool(state_change)
 
-	while
-true:
+		if s._choose_pkg_return_early ||
+			s._merge_wait_scheduled
+		||
+		(s._jobs
+		&&
+		s._unsatisfied_system_deps) ||
+		not
+		s._can_add_job()
+		||
+		s._job_delay():
+		return bool(state_change)
 
-	if not s._keep_scheduling():
-	return bool(state_change)
+		pkg = s._choose_pkg()
+		if pkg is
+		None:
+		return bool(state_change)
 
-	if s._choose_pkg_return_early || 
-	s._merge_wait_scheduled
-	|| 
-	(s._jobs
-	&&
-	s._unsatisfied_system_deps) || 
-	not
-	s._can_add_job()
-	|| 
-	s._job_delay():
-	return bool(state_change)
+		state_change += 1
 
-	pkg = s._choose_pkg()
-	if pkg is
-None:
-	return bool(state_change)
+		if not pkg.installed:
+		s._pkg_count.curval += 1
 
-	state_change += 1
+		task = s._task(pkg)
 
-	if not pkg.installed:
-	s._pkg_count.curval += 1
+		if pkg.installed:
+		merge = PackageMerge(merge = task, scheduler = s._sched_iface)
+		s._running_tasks[id(merge)] = merge
+		s._task_queues.merge.addFront(merge)
+		merge.addExitListener(s._merge_exit)
 
-	task = s._task(pkg)
+		elif
+		pkg.built:
+		s._jobs += 1
+		s._previous_job_start_time = time.time()
+		s._status_display.running = s._jobs
+		s._running_tasks[id(task)] = task
+		task.scheduler = s._sched_iface
+		s._task_queues.jobs.add(task)
+		task.addExitListener(s._extract_exit)
 
-	if pkg.installed:
-	merge = PackageMerge(merge = task, scheduler = s._sched_iface)
-	s._running_tasks[id(merge)] = merge
-	s._task_queues.merge.addFront(merge)
-	merge.addExitListener(s._merge_exit)
-
-	elif
-	pkg.built:
-	s._jobs += 1
-	s._previous_job_start_time = time.time()
-	s._status_display.running = s._jobs
-	s._running_tasks[id(task)] = task
-	task.scheduler = s._sched_iface
-	s._task_queues.jobs.add(task)
-	task.addExitListener(s._extract_exit)
-
-	else:
-	s._jobs += 1
-	s._previous_job_start_time = time.time()
-	s._status_display.running = s._jobs
-	s._running_tasks[id(task)] = task
-	task.scheduler = s._sched_iface
-	s._task_queues.jobs.add(task)
-	task.addExitListener(s._build_exit)
-
-	return bool(state_change)
+		else:
+		s._jobs += 1
+		s._previous_job_start_time = time.time()
+		s._status_display.running = s._jobs
+		s._running_tasks[id(task)] = task
+		task.scheduler = s._sched_iface
+		s._task_queues.jobs.add(task)
+		task.addExitListener(s._build_exit)
+	}
+	return state_change== 0
 }
 
 func (s *Scheduler) _task( pkg) {
 
 	pkg_to_replace = None
-	if pkg.operation != "uninstall":
-	vardb = pkg.root_config.trees["vartree"].dbapi
-	previous_cpv = [x
-	for x
-	in
-	vardb.match(pkg.slot_atom) 
-	if portage.cpv_getkey(x) == pkg.cp]
-if not previous_cpv && vardb.cpv_exists(pkg.cpv):
-previous_cpv = [pkg.cpv]
-if previous_cpv:
-previous_cpv = previous_cpv.pop()
-pkg_to_replace = s._pkg(previous_cpv,
-"installed", pkg.root_config, installed = true,
-operation = "uninstall")
+	if pkg.operation != "uninstall"{
+		vardb := pkg.root_config.trees["vartree"].dbapi
+		previous_cpv = [x
+		for x
+			in
+		vardb.match(pkg.slot_atom)
+		if portage.cpv_getkey(x) == pkg.cp]
+		if not previous_cpv && vardb.cpv_exists(pkg.cpv):
+		previous_cpv = [pkg.cpv]
+		if previous_cpv:
+		previous_cpv = previous_cpv.pop()
+		pkg_to_replace = s._pkg(previous_cpv,
+		"installed", pkg.root_config, installed = true,
+		operation = "uninstall")
+	}
 
 try:
 prefetcher = s._prefetchers.pop(pkg, None)
@@ -4246,19 +4243,21 @@ world_atom = s._world_atom)
 return task
 }
 
-func (s *Scheduler) _failed_pkg_msg( failed_pkg, action, preposition) {
+func (s *Scheduler) _failed_pkg_msg(failed_pkg interface{}, action, preposition string) {
 	pkg = failed_pkg.pkg
-	msg = "%s to %s %s" % 
-	(bad("Failed"), action, colorize("INFORM", pkg.cpv))
-	if pkg.root_config.settings.ValueDict["ROOT"] != "/":
-	msg += " %s %s" % (preposition, pkg.root)
+	msg := fmt.Sprintf("%s to %s %s" ,
+	bad("Failed"), action, colorize("INFORM", pkg.cpv))
+	if pkg.root_config.settings.ValueDict["ROOT"] != "/" {
+		msg += fmt.Sprintf(" %s %s", preposition, pkg.root)
+	}
 
-	log_path = s._locate_failure_log(failed_pkg)
+	log_path := s._locate_failure_log(failed_pkg)
 	if log_path is
 	not
-None:
+None{
 	msg += ", Log file:"
 	s._status_msg(msg)
+}
 
 	if log_path is
 	not
@@ -4266,14 +4265,15 @@ None:
 	s._status_msg(" '%s'" % (colorize("INFORM", log_path), ))
 }
 
-func (s *Scheduler) _status_msg( msg) {
-	if not s._background:
-	WriteMsgLevel("\n")
+func (s *Scheduler) _status_msg( msg string) {
+	if not s._background {
+		WriteMsgLevel("\n")
+	}
 	s._status_display.displayMessage(msg)
 }
 
 func (s *Scheduler) _save_resume_list() {
-	mtimedb = s._mtimedb
+	mtimedb := s._mtimedb
 
 	mtimedb["resume"] = map[string]{}
 	mtimedb["resume"]["myopts"] = s.myopts.copy()
@@ -4294,8 +4294,8 @@ func (s *Scheduler) _calc_resume_list() {
 
 	s._destroy_graph()
 
-	myparams = create_depgraph_params(s.myopts, None)
-	success = false
+	myparams := create_depgraph_params(s.myopts, None)
+	success := false
 	e = None
 try:
 	success, mydepgraph, dropped_tasks = resume_depgraph(
@@ -4314,43 +4314,44 @@ exc:
 	if e is
 	not
 None:
-	func
-	unsatisfied_resume_dep_msg():
-	mydepgraph.display_problems()
-	out = portage.output.EOutput()
-	out.eerror("One or more packages are either masked or " + 
-	"have missing dependencies:")
-	out.eerror("")
-	indent = "  "
-	show_parents = set()
-	for dep
-	in
-	e.value:
-	if dep.parent in
-show_parents:
-	continue
-	show_parents.add(dep.parent)
-	if dep.atom is
-None:
-	out.eerror(indent + "Masked package:")
-	out.eerror(2*indent + str(dep.parent))
-	out.eerror("")
-	else:
-	out.eerror(indent + str(dep.atom) + " pulled in by:")
-	out.eerror(2*indent + str(dep.parent))
-	out.eerror("")
-	msg = "The resume list contains packages " + 
-	"that are either masked or have " + 
-	"unsatisfied dependencies. " + 
-	"Please restart/continue " + 
-	"the operation manually, or use --skipfirst " + 
-	"to skip the first package in the list and " + 
-	"any other packages that may be " + 
-	"masked or have missing dependencies."
-	for line
-	in
-	textwrap.wrap(msg, 72):
-	out.eerror(line)
+
+	unsatisfied_resume_dep_msg:= func(){
+		mydepgraph.display_problems()
+		out := NewEOutput(false)
+		out.eerror("One or more packages are either masked or " +
+			"have missing dependencies:")
+		out.eerror("")
+		indent := "  "
+		show_parents = map[string]string{}
+		for dep
+			in
+		e.value:
+		if dep.parent in
+	show_parents:
+		continue
+		show_parents.add(dep.parent)
+		if dep.atom is
+	None:
+		out.eerror(indent + "Masked package:")
+		out.eerror(2*indent + str(dep.parent))
+		out.eerror("")
+		else:
+		out.eerror(indent + str(dep.atom) + " pulled in by:")
+		out.eerror(2*indent + str(dep.parent))
+		out.eerror("")
+		msg = "The resume list contains packages " +
+			"that are either masked or have " +
+			"unsatisfied dependencies. " +
+			"Please restart/continue " +
+			"the operation manually, or use --skipfirst " +
+			"to skip the first package in the list and " +
+			"any other packages that may be " +
+			"masked or have missing dependencies."
+		for line
+			in
+		textwrap.wrap(msg, 72):
+		out.eerror(line)
+	}
 	s._post_mod_echo_msgs.append(unsatisfied_resume_dep_msg)
 	return false
 
@@ -4392,24 +4393,11 @@ None:
 	return true
 }
 
-func (s *Scheduler) _show_list() {
-	myopts = s.myopts
-	if "--quiet" not
-	in
-	myopts
-	&& 
-	("--ask"
-	in
-	myopts
- ||
-	"--tree"
-	in
-	myopts
-	|| 
-	"--verbose"
-	in
-	myopts):
-	return true
+func (s *Scheduler) _show_list() bool {
+	myopts := s.myopts
+	if  !Inmss(myopts, "--quiet")&& Inmss(myopts, "--ask")||Inmss(myopts, "--tree")||Inmss(myopts, "--verbose") {
+		return true
+	}
 	return false
 }
 
@@ -4501,35 +4489,56 @@ None:
 }
 
 type  SchedulerInterface struct {
+	// slot
+	add_reader,
+	add_writer,
+	call_at,
+	call_exception_handler,
+	call_later,
+	call_soon,
+	call_soon_threadsafe,
+	close,
+	create_future,
+	default_exception_handler,
+	get_debug,
+	is_closed,
+	is_running,
+	remove_reader,
+	remove_writer,
+	run_in_executor,
+	run_until_complete,
+	set_debug,
+	time,
+	_asyncio_child_watcher,
+	_asyncio_wrapper,
+	_event_loop,
+	_is_background string
+}
 
-}(SlotObject):
+var _event_loop_attrs = []string{
+	"add_reader",
+	"add_writer",
+	"call_at",
+	"call_exception_handler",
+	"call_later",
+	"call_soon",
+	"call_soon_threadsafe",
+	"close",
+	"create_future",
+	"default_exception_handler",
+	"get_debug",
+	"is_closed",
+	"is_running",
+	"remove_reader",
+	"remove_writer",
+	"run_in_executor",
+	"run_until_complete",
+	"set_debug",
+	"time",
 
-_event_loop_attrs = (
-"add_reader",
-"add_writer",
-"call_at",
-"call_exception_handler",
-"call_later",
-"call_soon",
-"call_soon_threadsafe",
-"close",
-"create_future",
-"default_exception_handler",
-"get_debug",
-"is_closed",
-"is_running",
-"remove_reader",
-"remove_writer",
-"run_in_executor",
-"run_until_complete",
-"set_debug",
-"time",
-
-"_asyncio_child_watcher",
-"_asyncio_wrapper",
-)
-
-__slots__ = _event_loop_attrs + ("_event_loop", "_is_background")
+	"_asyncio_child_watcher",
+	"_asyncio_wrapper",
+}
 
 func NewSchedulerInterface(event_loop, is_background=None, **kwargs)*SchedulerInterface {
 	s := &SchedulerInterface{}
@@ -4546,41 +4555,42 @@ None:
 	return s
 }
 
-@staticmethod
-func (s * SchedulerInterface) _return_false() {
+func (s * SchedulerInterface) _return_false() bool{
 	return false
 }
 
-func (s * SchedulerInterface) output( msg, log_path=None, background=None,
-level=0, noiselevel=-1){
+// "", nil, 0, -1
+func (s * SchedulerInterface) output( msg , log_path string, background interface{}, level, noiselevel int) {
 
-global_background = s._is_background()
-if background is None || global_background:
-background = global_background
+	global_background := s._is_background()
+	if background == nil || global_background {
+		background = global_background
+	}
 
-msg_shown = false
-if not background:
-WriteMsgLevel(msg, level = level, noiselevel = noiselevel)
-msg_shown = true
+	msg_shown := false
+	if not background {
+		WriteMsgLevel(msg, level, noiselevel)
+		msg_shown = true
+	}
 
-if log_path is not None:
-try:
-f = open(_unicode_encode(log_path,
-encoding = _encodings['fs'], errors = 'strict'),
-mode = 'ab')
-f_real = f
-except IOError as e:
-if e.errno not in (errno.ENOENT, errno.ESTALE):
-raise
-if not msg_shown:
-WriteMsgLevel(msg, level = level, noiselevel = noiselevel)
-else:
-
-if log_path.endswith('.gz'):
-f = gzip.GzipFile(filename = '', mode = 'ab', fileobj = f)
-
-f.write(_unicode_encode(msg))
-f.close()
-if f_real is not f:
-f_real.close()
+	if log_path != "" {
+		f, err := os.OpenFile(log_path, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0644)
+		if err != nil {
+			//except IOError as e:
+			if err!= syscall.ENOENT&& err!= syscall.ESTALE {
+				//raise
+			}
+			if !msg_shown {
+				WriteMsgLevel(msg, level, noiselevel)
+			}
+		} else{
+			if strings.HasSuffix(log_path,".gz") {
+				g := gzip.NewWriter(f)
+				g.Write([]byte(msg))
+			} else {
+				f.Write([]byte(msg))
+			}
+			f.Close()
+		}
+	}
 }

@@ -63,7 +63,7 @@ func Inmsmss(a map[string]map[string]string, b string) bool{
 }
 
 func Inmsss(a map[string][]string, b string) bool{
-	for _ ,v := range a {
+	for v := range a {
 		if b == v {
 			return true
 		}
