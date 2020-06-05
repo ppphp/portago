@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/md5"
+	"encoding/json"
 	"fmt"
 	"github.com/pkg/xattr"
 	"github.com/ppphp/shlex"
@@ -733,32 +734,35 @@ func (v *vdbMetadataDelta) load() {
 		return nil
 	}
 
-try:
-	with io.open(v._vardb._cache_delta_filename, 'r',
-		encoding=_encodings['repo.content'],
-		errors='strict') as f:
-	cache_obj = json.load(f)
-	except EnvironmentError as e:
-	if e.errno not in (errno.ENOENT, errno.ESTALE):
-	raise
-	except (SystemExit, KeyboardInterrupt):
-	raise
-	except Exception:
+	f, err := ioutil.ReadFile(v._vardb._cache_delta_filename)
+	cache_obj := map[string]interface{}{}
+	if err == nil {
+		err = json.Unmarshal(f, &cache_obj)
+	}
+	if err != nil {
+	//except EnvironmentError as e:
+	if err != syscall.ENOENT && err != syscall.ESTALE){
+			//raise
+		}
+	//except (SystemExit, KeyboardInterrupt):
+	//raise
+	//except Exception:
+	//	pass
+	}else {
+	try:
+		version = cache_obj["version"]
+		except KeyError:
 		pass
-	else:
-try:
-	version = cache_obj["version"]
-	except KeyError:
-	pass
-	else:
-	if version == v._format_version:
-try:
-	deltas = cache_obj["deltas"]
-	except KeyError:
-	cache_obj["deltas"] = deltas = []
+		else:
+		if version == v._format_version:
+	try:
+		deltas = cache_obj["deltas"]
+		except KeyError:
+		cache_obj["deltas"] = deltas = []
 
-	if isinstance(deltas, list):
-	return cache_obj
+		if isinstance(deltas, list):
+		return cache_obj
+	}
 
 	return nil
 
@@ -1247,7 +1251,7 @@ func (v *vardbapi) _iter_cpv_all(useCache, sort1 bool) []*PkgStr {
 			ss, err := ioutil.ReadDir(myPath)
 			if err != nil {
 				//except EnvironmentError as e:
-				//if e.errno == PermissionDenied.errno:
+				//if err == PermissionDenied.errno:
 				//raise PermissionDenied(p)
 				//del e
 				return []string{}
@@ -1457,7 +1461,7 @@ func (v *vardbapi) _aux_cache_init() {
 	//	raise
 	//except Exception as e:
 	//	if isinstance(e, EnvironmentError) && 
-//		getattr(e, 'errno', nil) in (errno.ENOENT, errno.EACCES):
+//		getattr(e, 'errno', nil) in (syscall.ENOENT, errno.EACCES):
 	//		pass
 	//	else:
 	//		writemsg(_("!!! Error loading '%s': %s\n") % 
@@ -1631,7 +1635,7 @@ func (v *vardbapi) _aux_get(myCpv string, wants map[string]bool, st os.FileInfo)
 			if err == syscall.ENOENT {
 				//raise KeyError(myCpv)
 			}
-			//else if e.errno == PermissionDenied.errno:
+			//else if err == PermissionDenied.errno:
 			//raise PermissionDenied(myDir)
 			//else:
 			//raise
@@ -1704,7 +1708,7 @@ func (v *vardbapi) _aux_env_search(cpv string, variables []string) map[string]st
 	cmd.Stdout = lines
 	if err := cmd.Run(); err != nil {
 		//except EnvironmentError as e:
-		//if e.errno != errno.ENOENT:
+		//if err != syscall.ENOENT:
 		//raise
 		//raise portage.exception.CommandNotFound(args[0])
 	}
@@ -1959,7 +1963,7 @@ func (v *vardbapi) removeFromContents(pkg *dblink, paths []string, relativePaths
 		}
 		if err != nil {
 			//except IOError as e:
-			//if e.errno not in(errno.ENOENT, errno.ESTALE):
+			//if err not in(syscall.ENOENT, syscall.ESTALE):
 			//raise
 		} else {
 			newNeeded = []*NeededEntry{}
@@ -3351,7 +3355,7 @@ not d.isprotected(obj):
 	try:
 	unlink(obj, lstatobj)
 	except EnvironmentError as e:
-	if e.errno not in ignored_unlink_errnos:
+	if err not in ignored_unlink_errnos:
 	raise
 	del e
 	show_unmerge("<<<", "", file_type, obj)
@@ -3410,7 +3414,7 @@ not d.isprotected(obj):
 	unlink(obj, lstatobj)
 	show_unmerge("<<<", "", file_type, obj)
 	except (OSError, IOError) as e:
-	if e.errno not in ignored_unlink_errnos:
+	if err not in ignored_unlink_errnos:
 	raise
 	del e
 	show_unmerge("!!!", "", file_type, obj)
@@ -3431,7 +3435,7 @@ not d.isprotected(obj):
 	try:
 	unlink(obj, lstatobj)
 	except (OSError, IOError) as e:
-	if e.errno not in ignored_unlink_errnos:
+	if err not in ignored_unlink_errnos:
 	raise
 	del e
 	show_unmerge("<<<", "", file_type, obj)
@@ -3549,7 +3553,7 @@ try:
 	unlink(obj, os.Lstat(obj))
 	show_unmerge("<<<", "", "sym", obj)
 	except (OSError, IOError) as e:
-	if e.errno not in ignored_unlink_errnos:
+	if err not in ignored_unlink_errnos:
 	raise
 	del e
 	show_unmerge("!!!", "", "sym", obj)
@@ -3599,7 +3603,7 @@ try:
 	unlink(child, lstatobj)
 	show_unmerge("<<<", "", "obj", child)
 	except EnvironmentError as e:
-	if e.errno not in ignored_unlink_errnos:
+	if err not in ignored_unlink_errnos:
 	raise
 	del e
 	show_unmerge("!!!", "", "obj", child)
@@ -3626,9 +3630,9 @@ finally:
 
 	show_unmerge("<<<", "", "dir", obj)
 	except EnvironmentError as e:
-	if e.errno not in ignored_rmdir_errnos:
+	if err not in ignored_rmdir_errnos:
 	raise
-	if e.errno != errno.ENOENT:
+	if err != syscall.ENOENT:
 	show_unmerge("---", unmerge_desc["!empty"], "dir", obj)
 	revisit[obj] = inode_key
 
@@ -3651,7 +3655,7 @@ try:
 	unlink(obj, os.Lstat(obj))
 	show_unmerge("<<<", "", "sym", obj)
 	except (OSError, IOError) as e:
-	if e.errno not in ignored_unlink_errnos:
+	if err not in ignored_unlink_errnos:
 	raise
 	del e
 	show_unmerge("!!!", "", "sym", obj)
@@ -4061,7 +4065,7 @@ func (d *dblink) _remove_preserved_libs(cpv_lib_map) {
 try:
 	syscall.Unlink(obj)
 	except OSError as e:
-	if e.errno != errno.ENOENT:
+	if err != syscall.ENOENT:
 	raise
 	del e
 	else:
@@ -4159,10 +4163,10 @@ func (d *dblink) _collision_protect(srcroot, destroot, mypkglist,
 try:
 	dest_lstat = os.Lstat(dest_path)
 	except EnvironmentError as e:
-	if e.errno == errno.ENOENT:
+	if err == syscall.ENOENT:
 	del e
 	continue
-	else if e.errno == errno.ENOTDIR:
+	else if err == errno.ENOTDIR:
 	del e
 				dest_lstat = nil
 	parent_path = dest_path
@@ -4172,7 +4176,7 @@ try:
 	dest_lstat = os.Lstat(parent_path)
 	break
 	except EnvironmentError as e:
-	if e.errno != errno.ENOTDIR:
+	if err != errno.ENOTDIR:
 	raise
 	del e
 	if not dest_lstat:
@@ -4252,7 +4256,7 @@ func (d *dblink) _lstat_inode_map(path_iter) {
 try:
 	st = os.Lstat(path)
 	except OSError as e:
-	if e.errno not in (errno.ENOENT, errno.ENOTDIR):
+	if err not in (syscall.ENOENT, errno.ENOTDIR):
 	raise
 	del e
 	continue
@@ -4298,7 +4302,7 @@ try:
 try:
 	s = os.Lstat(path)
 	except OSError as e:
-	if e.errno not in (errno.ENOENT, errno.ENOTDIR):
+	if err not in (syscall.ENOENT, errno.ENOTDIR):
 	raise
 	del e
 	continue
@@ -4445,7 +4449,7 @@ try:
 		errors='replace') as f:
 	val = f.readline().strip()
 	except EnvironmentError as e:
-	if e.errno != errno.ENOENT:
+	if err != syscall.ENOENT:
 	raise
 	del e
 	val = ""
@@ -4563,7 +4567,7 @@ settings_clone["PORTAGE_RESTRICT"].split():
 	except StopIteration:
 	break
 	except OSError as e:
-	if e.errno != errno.EAGAIN:
+	if err != errno.EAGAIN:
 	raise
 		eagain_error = true
 	break
@@ -4878,7 +4882,7 @@ d.settings.mycpv
 	syscall.Unlink(filepath.Join(
 	os.path.dirname(normalize_path(srcroot)), ".installed"))
 	except OSError as e:
-	if e.errno != errno.ENOENT:
+	if err != syscall.ENOENT:
 	raise
 	del e
 
@@ -5288,7 +5292,7 @@ os.path.basename(mydest).startswith(".keep"):
 	destmd5 = perform_md5(mydest,
 	calc_prelink=calc_prelink)
 	except (FileNotFound, OSError) as e:
-	if isinstance(e, OSError) && e.errno != errno.ENOENT:
+	if isinstance(e, OSError) && err != syscall.ENOENT:
 	raise
 		mydstat = nil
 	mydmode = nil
@@ -5404,7 +5408,7 @@ not os.access(mydest, os.W_OK):
 	else:
 	os.mkdir(mydest)
 	except OSError as e:
-				if e.errno in (errno.EEXIST,):
+				if err in (errno.EEXIST,):
 	pass
 	else if os.path.isdir(mydest):
 	pass
@@ -5424,7 +5428,7 @@ not os.access(mydest, os.W_OK):
 	else:
 	os.mkdir(mydest)
 	except OSError as e:
-				if e.errno in (errno.EEXIST,):
+				if err in (errno.EEXIST,):
 	pass
 	else if os.path.isdir(mydest):
 	pass
@@ -5982,7 +5986,7 @@ try:
 try:
 	lst = os.Lstat(path)
 	except OSError as e:
-	if e.errno != errno.ENOENT:
+	if err != syscall.ENOENT:
 	raise
 	del e
 	if onProgress:
@@ -7093,7 +7097,7 @@ try:
 finally:
 	f.close()
 	except EnvironmentError as e:
-	if e.errno != errno.ENOENT:
+	if err != syscall.ENOENT:
 	raise
 	local_timestamp = pkgindex.header.get("TIMESTAMP", nil)
 try:
@@ -7295,7 +7299,7 @@ func (b *BinaryTree) inject(cpv, filename=nil) {
 try:
 	s = os.Stat(full_path)
 	except OSError as e:
-	if e.errno != errno.ENOENT:
+	if err != syscall.ENOENT:
 	raise
 	del e
 	writemsg(_("!!! Binary package does not exist: '%s'\n") % full_path,
@@ -8053,8 +8057,8 @@ try:
 	OSError
 	as
 e:
-	if e.errno not
-	in(errno.ENOTDIR, errno.ENOENT, errno.ESTALE):
+	if err not
+	in(errno.ENOTDIR, syscall.ENOENT, syscall.ESTALE):
 	raise
 	continue
 	for p
