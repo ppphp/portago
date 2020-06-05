@@ -471,9 +471,9 @@ func digestcheck(myfiles, mysettings, strict=False, justmanifest=None, mf=None) 
 	if justmanifest is
 	not
 None:
-	warnings.warn("The justmanifest parameter of the " + \
-	"portage.package.ebuild.digestcheck.digestcheck()" + \
-	" function is now unused.",
+	warnings.warn("The justmanifest parameter of the " + 
+"portage.package.ebuild.digestcheck.digestcheck()" + 
+" function is now unused.",
 		DeprecationWarning, stacklevel = 2)
 	justmanifest = None
 
@@ -562,8 +562,8 @@ e:
 	and
 	not
 	mf.hasFile("EBUILD", f):
-	writemsg(_("!!! A file is not listed in the Manifest: '%s'\n") % \
-	os.path.join(pkgdir, f), noiselevel = -1)
+	writemsg(_("!!! A file is not listed in the Manifest: '%s'\n") % 
+os.path.join(pkgdir, f), noiselevel = -1)
 	if strict:
 	return 0
 	filesdir = os.path.join(pkgdir, "files")
@@ -579,8 +579,8 @@ UnicodeDecodeError:
 	parent = _unicode_decode(parent,
 		encoding = _encodings['fs'], errors = 'replace')
 	writemsg(_("!!! Path contains invalid "
-	"character(s) for encoding '%s': '%s'") \
-	% (_encodings['fs'], parent), noiselevel = -1)
+	"character(s) for encoding '%s': '%s'") 
+% (_encodings['fs'], parent), noiselevel = -1)
 	if strict:
 	return 0
 	continue
@@ -596,8 +596,8 @@ UnicodeDecodeError:
 	d = _unicode_decode(d,
 		encoding = _encodings['fs'], errors = 'replace')
 	writemsg(_("!!! Path contains invalid "
-	"character(s) for encoding '%s': '%s'") \
-	% (_encodings['fs'], os.path.join(parent, d)),
+	"character(s) for encoding '%s': '%s'") 
+% (_encodings['fs'], os.path.join(parent, d)),
 	noiselevel = -1)
 	if strict:
 	return 0
@@ -620,8 +620,8 @@ UnicodeDecodeError:
 	continue
 	f = os.path.join(parent, f)[len(filesdir)+1:]
 	writemsg(_("!!! File name contains invalid "
-	"character(s) for encoding '%s': '%s'") \
-	% (_encodings['fs'], f), noiselevel = -1)
+	"character(s) for encoding '%s': '%s'") 
+% (_encodings['fs'], f), noiselevel = -1)
 	if strict:
 	return 0
 	continue
@@ -632,8 +632,8 @@ UnicodeDecodeError:
 	if file_type != "AUX" and
 	not
 	f.startswith("digest-"):
-	writemsg(_("!!! A file is not listed in the Manifest: '%s'\n") % \
-	os.path.join(filesdir, f), noiselevel = -1)
+	writemsg(_("!!! A file is not listed in the Manifest: '%s'\n") % 
+os.path.join(filesdir, f), noiselevel = -1)
 	if strict:
 	return 0
 	return 1
