@@ -774,7 +774,7 @@ func (v *vdbMetadataDelta) loadRace() {
 	while tries:
 	tries -= 1
 	cache_delta = v.load()
-	if cache_delta != nil and 
+	if cache_delta != nil && 
 cache_delta.get("timestamp") != 
 v._vardb._aux_cache.get("timestamp", false):
 	v._vardb._aux_cache_obj = nil
@@ -805,8 +805,8 @@ try:
 	deltas_obj["deltas"]=append(deltas_obj["deltas"], delta_node)
 
 	filtered_list = []
-	slot_keys = set()
-	version_keys = set()
+	slot_keys := map[string]bool{}
+	version_keys := map[string]bool{}
 	for delta_node
 	in
 	reversed(deltas_obj["deltas"]):
@@ -870,9 +870,9 @@ deltas:
 	for cpv, delta
 	in
 	deltas.items():
-	if (cached_cpv.startswith(delta["package"]) and
+	if (cached_cpv.startswith(delta["package"]) &&
 	metadata.get("SLOT") == delta["slot"]
-	and
+	&&
 	cpv_getkey(cached_cpv) == delta["package"]):
 	removed = true
 	break
@@ -1395,9 +1395,9 @@ func (v *vardbapi) findname(myCpv string) string {
 }
 
 func (v *vardbapi) flush_cache() {		
-	if v._flush_cache_enabled and 
-v._aux_cache != nil and 
-secpass >= 2 and 
+	if v._flush_cache_enabled && 
+v._aux_cache != nil && 
+secpass >= 2 && 
 (len(v._aux_cache["modified"]) >= v._aux_cache_threshold||	not pathExists(v._cache_delta_filename)):
 
 	ensure_dirs(os.path.dirname(v._aux_cache_filename))
@@ -1420,7 +1420,7 @@ secpass >= 2 and
 	apply_secpass_permissions(
 		v._cache_delta_filename, mode=0o644)
 
-	v._aux_cache["modified"] = set()
+	v._aux_cache["modified"] = map[string]bool{}
 
 }
 
@@ -2518,7 +2518,7 @@ func (d *dblink) __hash__() {
 }
 
 func (d *dblink) __eq__() {
-	return isinstance(other, dblink) and 
+	return isinstance(other, dblink) && 
 d._hash_key == other._hash_key
 }
 
@@ -2816,136 +2816,136 @@ func (d *dblink) quickpkg(output_file, include_config, include_unmodified_config
 	return excluded_config_files
 }
 
-func (d *dblink) _prune_plib_registry(unmerge=false,
+// false, nil, nil
+func (d *dblink) _prune_plib_registry(unmerge bool,
 	needed=nil, preserve_paths=nil) {
-	if not(d._linkmap_broken||	d.vartree.dbapi._linkmap
-	is
-	nil
-||	d.vartree.dbapi._plib_registry
-	is
-	nil):
-	d.vartree.dbapi._fs_lock()
-	plib_registry = d.vartree.dbapi._plib_registry
-	plib_registry.lock()
-try:
-	plib_registry.load()
+	if !(d._linkmap_broken || d.vartree.dbapi._linkmap == nil || d.vartree.dbapi._plib_registry == nil) {
+		d.vartree.dbapi._fs_lock()
+		plib_registry:= d.vartree.dbapi._plib_registry
+		plib_registry.lock()
+	try:
+		plib_registry.load()
 
-	unmerge_with_replacement = 
-unmerge
-	and
-	preserve_paths
-	is
-	not
-	nil
-	if unmerge_with_replacement:
+		unmerge_with_replacement =
+			unmerge
+		and
+		preserve_paths
+		is
+		not
+		nil
+		if unmerge_with_replacement:
 		exclude_pkgs = (d.mycpv,) else:
-	exclude_pkgs = nil
+		exclude_pkgs = nil
 
-	d._linkmap_rebuild(exclude_pkgs = exclude_pkgs,
-		include_file = needed, preserve_paths = preserve_paths)
+		d._linkmap_rebuild(exclude_pkgs = exclude_pkgs,
+			include_file = needed, preserve_paths = preserve_paths)
 
-	if unmerge:
-	unmerge_preserve = nil
-	if not unmerge_with_replacement:
-	unmerge_preserve = 
-d._find_libs_to_preserve(unmerge = true)
-	counter = d.vartree.dbapi.cpv_counter(d.mycpv)
-try:
-	slot = d.mycpv.slot
-	except
-AttributeError:
-	slot = _pkg_str(d.mycpv, slot = d.settings.ValueDict["SLOT"]).slot
-	plib_registry.unregister(d.mycpv, slot, counter)
-	if unmerge_preserve:
-	for path
-	in
-	sorted(unmerge_preserve):
-	contents_key = d._match_contents(path)
-	if not contents_key:
-	continue
-	obj_type = d.getcontents()[contents_key][0]
-	d._display_merge(_(">>> needed   %s %s\n") % 
-(obj_type, contents_key), noiselevel = -1)
-	plib_registry.register(d.mycpv,
-		slot, counter, unmerge_preserve)
-	d.vartree.dbapi.removeFromContents(d,
-		unmerge_preserve)
+		if unmerge:
+		unmerge_preserve = nil
+		if not unmerge_with_replacement:
+		unmerge_preserve =
+			d._find_libs_to_preserve(unmerge = true)
+		counter = d.vartree.dbapi.cpv_counter(d.mycpv)
+	try:
+		slot = d.mycpv.slot
+		except
+	AttributeError:
+		slot = _pkg_str(d.mycpv, slot = d.settings.ValueDict["SLOT"]).slot
+		plib_registry.unregister(d.mycpv, slot, counter)
+		if unmerge_preserve:
+		for path
+			in
+		sorted(unmerge_preserve):
+		contents_key = d._match_contents(path)
+		if not contents_key:
+		continue
+		obj_type = d.getcontents()[contents_key][0]
+		d._display_merge(_(">>> needed   %s %s\n")%
+			(obj_type, contents_key), noiselevel = -1)
+		plib_registry.register(d.mycpv,
+			slot, counter, unmerge_preserve)
+		d.vartree.dbapi.removeFromContents(d,
+			unmerge_preserve)
 
-	unmerge_no_replacement = 
-unmerge
-	&&
-	not
-	unmerge_with_replacement
-	cpv_lib_map = d._find_unused_preserved_libs(
-		unmerge_no_replacement)
-	if cpv_lib_map:
-	d._remove_preserved_libs(cpv_lib_map)
-	d.vartree.dbapi.lock()
-try:
-	for cpv, removed
-	in
-	cpv_lib_map.items():
-	if not d.vartree.dbapi.cpv_exists(cpv):
-	continue
-	d.vartree.dbapi.removeFromContents(cpv, removed)
-finally:
-	d.vartree.dbapi.unlock()
+		unmerge_no_replacement =
+			unmerge
+		&&
+		not
+		unmerge_with_replacement
+		cpv_lib_map = d._find_unused_preserved_libs(
+			unmerge_no_replacement)
+		if cpv_lib_map:
+		d._remove_preserved_libs(cpv_lib_map)
+		d.vartree.dbapi.lock()
+	try:
+		for cpv, removed
+			in
+		cpv_lib_map.items():
+		if not d.vartree.dbapi.cpv_exists(cpv):
+		continue
+		d.vartree.dbapi.removeFromContents(cpv, removed)
+	finally:
+		d.vartree.dbapi.unlock()
 
-	plib_registry.store()
-finally:
-	plib_registry.unlock()
-	d.vartree.dbapi._fs_unlock()
+		plib_registry.store()
+	finally:
+		plib_registry.unlock()
+		d.vartree.dbapi._fs_unlock()
+	}
 
 }
 
+// nil, true, nil, nil, nil, nil
 // @_slot_locked
-func (d *dblink) unmerge(pkgfiles=nil, trimworld=nil, cleanup=true,
+func (d *dblink) unmerge(pkgfiles=nil, cleanup bool,
 	ldpath_mtimes=nil, others_in_slot=nil, needed=nil,
 	preserve_paths=nil) {
 
-	if trimworld != nil:
-	warnings.warn("The trimworld parameter of the " + 
-"portage.dbapi.vartree.dblink.unmerge()" + 
-" method is now unused.",
-		DeprecationWarning, stacklevel=2)
+	background := false
+	log_path := d.settings.ValueDict["PORTAGE_LOG_FILE"]
+	if d._scheduler == nil {
+		d._scheduler = NewSchedulerInterface(asyncio._safe_loop())
+	}
+	if d.settings.ValueDict["PORTAGE_BACKGROUND"] == "subprocess" {
 
-	background = false
-	log_path = d.settings.ValueDict["PORTAGE_LOG_FILE")
-	if d._scheduler == nil:
-				d._scheduler = SchedulerInterface(asyncio._safe_loop())
-	if d.settings.ValueDict["PORTAGE_BACKGROUND") == "subprocess":
-	if d.settings.ValueDict["PORTAGE_BACKGROUND_UNMERGE") == "1":
-	d.settings.ValueDict["PORTAGE_BACKGROUND"] = "1"
-	d.settings.backup_changes("PORTAGE_BACKGROUND")
-	background = true
-	else if d.settings.ValueDict["PORTAGE_BACKGROUND_UNMERGE") == "0":
-	d.settings.ValueDict["PORTAGE_BACKGROUND"] = "0"
-	d.settings.backup_changes("PORTAGE_BACKGROUND")
-	else if d.settings.ValueDict["PORTAGE_BACKGROUND") == "1":
-	background = true
+		if d.settings.ValueDict["PORTAGE_BACKGROUND_UNMERGE"] == "1" {
+			d.settings.ValueDict["PORTAGE_BACKGROUND"] = "1"
+			d.settings.BackupChanges("PORTAGE_BACKGROUND")
+			background = true
+		} else if d.settings.ValueDict["PORTAGE_BACKGROUND_UNMERGE"] == "0" {
+			d.settings.ValueDict["PORTAGE_BACKGROUND"] = "0"
+			d.settings.BackupChanges("PORTAGE_BACKGROUND")
+		}
+	} else if d.settings.ValueDict["PORTAGE_BACKGROUND"] == "1" {
+		background = true
+	}
 
 	d.vartree.dbapi._bump_mtime(d.mycpv)
-	showMessage = d._display_merge
-	if d.vartree.dbapi._categories != nil:
-	d.vartree.dbapi._categories = nil
+	showMessage := d._display_merge
+	if d.vartree.dbapi._categories != nil {
+		d.vartree.dbapi._categories = nil
+	}
 
-				caller_handles_backup = others_in_slot != nil
+	caller_handles_backup:= others_in_slot != nil
 
-				if others_in_slot == nil:
-	slot = d.vartree.dbapi._pkg_str(d.mycpv, nil).slot
-	slot_matches = d.vartree.dbapi.match(
-		"%s:%s" % (portage.cpv_getkey(d.mycpv), slot))
-	others_in_slot = []
-	for cur_cpv in slot_matches:
-	if cur_cpv == d.mycpv:
-	continue
-	others_in_slot=append(,dblink(d.cat, catsplit(cur_cpv)[1],
-		settings=d.settings, vartree=d.vartree,
-		treetype="vartree", pipe=d._pipe))
+	if others_in_slot == nil {
+		slot := d.vartree.dbapi._pkg_str(d.mycpv, "").slot
+		slot_matches := d.vartree.dbapi.match(
+			fmt.Sprintf("%s:%s", cpvGetKey(d.mycpv, ""), slot))
+		others_in_slot = []
+		for cur_cpv
+		in
+	slot_matches:
+		if cur_cpv == d.mycpv:
+		continue
+		others_in_slot = append(, dblink(d.cat, catsplit(cur_cpv)[1],
+			settings = d.settings, vartree = d.vartree,
+			treetype="vartree", pipe = d._pipe))
 
-	retval = d._security_check([d] + others_in_slot)
-	if retval:
-	return retval
+		retval = d._security_check([d] + others_in_slot)
+		if retval:
+		return retval
+	}
 
 	contents = d.getcontents()
 				myebuildpath = filepath.Join(d.dbdir, d.pkg + ".ebuild")
@@ -3050,7 +3050,7 @@ try:
 	msg_lines=append(,wrap(msg, 72))
 	msg_lines=append(,"")
 
-	ebuild_name = os.path.basename(myebuildpath)
+	ebuild_name = filepath.Base(myebuildpath)
 	ebuild_dir = os.path.dirname(myebuildpath)
 	msg = _("The problem occurred while executing "+
 	"the ebuild file named '%(ebuild_name)s' "+
@@ -3198,7 +3198,7 @@ func (d *dblink) _unmerge_pkgfiles(pkgfiles, others_in_slot) {
 	mykeys.sort()
 	mykeys.reverse()
 
-			mydirs = set()
+			mydirs = map[string]bool{}
 
 	uninstall_ignore = portage.util.shlex_split(
 		d.settings.ValueDict["UNINSTALL_IGNORE", ""))
@@ -3247,7 +3247,7 @@ try:
 	infodirs = frozenset(infodir for infodir in chain(
 	d.settings.ValueDict["INFOPATH", "").split(":"),
 	d.settings.ValueDict["INFODIR", "").split(":")) if infodir)
-	infodirs_inodes = set()
+	infodirs_inodes = map[string]bool{}
 	for infodir in infodirs:
 	infodir = filepath.Join(real_root, infodir.lstrip(os.sep))
 	try:
@@ -3259,7 +3259,7 @@ try:
 
 	for i, objkey in enumerate(mykeys):
 
-	obj = normalize_path(objkey)
+	obj = NormalizePath(objkey)
 	if os is _os_merge:
 	try:
 	_unicode_encode(obj,
@@ -3465,7 +3465,7 @@ not d.isprotected(obj):
 "with the directory that it points to."
 	lines = textwrap.wrap(msg, 72)
 	lines=append(,"")
-	flat_list = set()
+	flat_list = map[string]bool{}
 	flat_list.update(*protected_symlinks.values())
 	flat_list = sorted(flat_list)
 	for f in flat_list:
@@ -3490,7 +3490,7 @@ func (d *dblink) _unmerge_protected_symlinks(others_in_slot, infodirs_inodes,
 	show_unmerge = d._show_unmerge
 	ignored_unlink_errnos = d._ignored_unlink_errnos
 
-	flat_list = set()
+	flat_list = map[string]bool{}
 	flat_list.update(*protected_symlinks.values())
 	flat_list = sorted(flat_list)
 
@@ -3534,7 +3534,7 @@ finally:
 	"safe to remove. Removing them now..."))
 	msg=append(,"")
 	d._elog("elog", "postrm", msg)
-	dirs = set()
+	dirs = map[string]bool{}
 	for unmerge_syms in protected_symlinks.values():
 	for relative_path in unmerge_syms:
 	obj = filepath.Join(real_root,
@@ -3583,7 +3583,7 @@ try:
 	except IndexError:
 	break
 				if inode_key in infodirs_inodes || 
-os.path.basename(obj) == "info":
+filepath.Base(obj) == "info":
 try:
 	remaining = os.listdir(obj)
 	except OSError:
@@ -3790,7 +3790,7 @@ d.vartree.dbapi._linkmap == nil ||
 d.vartree.dbapi._plib_registry == nil || 
 (not unmerge && d._installed_instance == nil) ||
 not d._preserve_libs:
-	return set()
+	return map[string]bool{}
 
 	os = _os_merge
 	linkmap = d.vartree.dbapi._linkmap
@@ -3816,7 +3816,7 @@ not d._preserve_libs:
 	return node
 
 	consumer_map = {}
-	provider_nodes = set()
+	provider_nodes = map[string]bool{}
 		for f_abs in old_contents:
 
 	if os is _os_merge:
@@ -3853,7 +3853,7 @@ consumer_node not in provider_nodes:
 		continue
 	lib_graph.add(provider_node, consumer_node)
 
-					preserve_nodes = set()
+					preserve_nodes = map[string]bool{}
 	for consumer_node in lib_graph.root_nodes():
 	if consumer_node in provider_nodes:
 	continue
@@ -3865,10 +3865,10 @@ consumer_node not in provider_nodes:
 	preserve_nodes.add(provider_node)
 	node_stack=append(,lib_graph.child_nodes(provider_node))
 
-	preserve_paths = set()
+	preserve_paths = map[string]bool{}
 	for preserve_node in preserve_nodes:
-					hardlinks = set()
-	soname_symlinks = set()
+					hardlinks = map[string]bool{}
+	soname_symlinks = map[string]bool{}
 	soname = linkmap.getSoname(next(iter(preserve_node.alt_paths)))
 	have_replacement_soname_link = false
 	have_replacement_hardlink = false
@@ -3879,9 +3879,9 @@ try:
 	hardlinks.add(f)
 	if not unmerge && d.isowner(f):
 	have_replacement_hardlink = true
-	if os.path.basename(f) == soname:
+	if filepath.Base(f) == soname:
 	have_replacement_soname_link = true
-	else if os.path.basename(f) == soname:
+	else if filepath.Base(f) == soname:
 	soname_symlinks.add(f)
 	if not unmerge && d.isowner(f):
 	have_replacement_soname_link = true
@@ -3950,8 +3950,8 @@ not d.vartree.dbapi._plib_registry.hasEntries():
 				plib_dict = d.vartree.dbapi._plib_registry.getPreservedLibs()
 	linkmap = d.vartree.dbapi._linkmap
 	lib_graph = digraph()
-	preserved_nodes = set()
-	preserved_paths = set()
+	preserved_nodes = map[string]bool{}
+	preserved_paths = map[string]bool{}
 	path_cpv_map = {}
 	path_node_map = {}
 	root = d.settings.ValueDict["ROOT"]
@@ -4022,7 +4022,7 @@ not d.vartree.dbapi._plib_registry.hasEntries():
 	if not root_nodes:
 	break
 	lib_graph.difference_update(root_nodes)
-	unlink_list = set()
+	unlink_list = map[string]bool{}
 	for node in root_nodes:
 	unlink_list.update(node.alt_paths)
 	unlink_list = sorted(unlink_list)
@@ -4035,7 +4035,7 @@ not d.vartree.dbapi._plib_registry.hasEntries():
 	continue
 	removed = cpv_lib_map.get(cpv)
 	if removed == nil:
-	removed = set()
+	removed = map[string]bool{}
 	cpv_lib_map[cpv] = removed
 	removed.add(obj)
 
@@ -4047,14 +4047,14 @@ func (d *dblink) _remove_preserved_libs(cpv_lib_map) {
 
 	os = _os_merge
 
-	files_to_remove = set()
+	files_to_remove = map[string]bool{}
 	for files in cpv_lib_map.values():
 	files_to_remove.update(files)
 	files_to_remove = sorted(files_to_remove)
 	showMessage = d._display_merge
 	root = d.settings.ValueDict["ROOT"]
 
-	parent_dirs = set()
+	parent_dirs = map[string]bool{}
 	for obj in files_to_remove:
 	obj = filepath.Join(root, obj.lstrip(os.sep))
 	parent_dirs.add(os.path.dirname(obj))
@@ -4099,7 +4099,7 @@ func (d *dblink) _collision_protect(srcroot, destroot, mypkglist,
 	for x in portage.util.shlex_split(
 		d.settings.ValueDict["COLLISION_IGNORE", "")):
 	if pathIsDir(filepath.Join(d._eroot, x.lstrip(os.sep))):
-	x = normalize_path(x)
+	x = NormalizePath(x)
 	x += "/*"
 	collision_ignore=append(,x)
 
@@ -4110,7 +4110,7 @@ func (d *dblink) _collision_protect(srcroot, destroot, mypkglist,
 	else:
 	plib_dict = d.vartree.dbapi._plib_registry.getPreservedLibs()
 	plib_cpv_map = {}
-	plib_paths = set()
+	plib_paths = map[string]bool{}
 	for cpv, paths in plib_dict.items():
 	plib_paths.update(paths)
 	for f in paths:
@@ -4122,8 +4122,8 @@ func (d *dblink) _collision_protect(srcroot, destroot, mypkglist,
 	showMessage = d._display_merge
 	stopmerge = false
 	collisions = []
-	dirs = set()
-	dirs_ro = set()
+	dirs = map[string]bool{}
+	dirs_ro = map[string]bool{}
 	symlink_collisions = []
 	destroot = d.settings.ValueDict["ROOT"]
 	totfiles = len(file_list) + len(symlink_list)
@@ -4142,10 +4142,10 @@ func (d *dblink) _collision_protect(srcroot, destroot, mypkglist,
 	previous = current
 	progress_shown = true
 
-	dest_path = normalize_path(filepath.Join(destroot, f.lstrip(string(os.PathSeparator))))
+	dest_path = NormalizePath(filepath.Join(destroot, f.lstrip(string(os.PathSeparator))))
 
 		real_relative_path = filepath.Join(os.path.realpath(os.path.dirname(dest_path)),
-		os.path.basename(dest_path))[len(destroot):]
+		filepath.Base(dest_path))[len(destroot):]
 
 	real_relative_paths.setdefault(real_relative_path, [])=append(,f.lstrip(string(os.PathSeparator)))
 
@@ -4204,7 +4204,7 @@ try:
 	cpv = plib_cpv_map[path]
 	paths = plib_collisions.get(cpv)
 	if paths == nil:
-	paths = set()
+	paths = map[string]bool{}
 	plib_collisions[cpv] = paths
 	paths.add(path)
 				continue
@@ -4232,8 +4232,8 @@ try:
 		if len(files) >= 2:
 	files.sort()
 	for i in range(len(files) - 1):
-	file1 = normalize_path(filepath.Join(srcroot, files[i]))
-	file2 = normalize_path(filepath.Join(srcroot, files[i+1]))
+	file1 = NormalizePath(filepath.Join(srcroot, files[i]))
+	file2 = NormalizePath(filepath.Join(srcroot, files[i+1]))
 		differences = compare_files(file1, file2, skipped_types=("atime", "mtime", "ctime"))
 	if differences:
 	internal_collisions.setdefault(real_relative_path, {})[(files[i], files[i+1])] = differences
@@ -4249,7 +4249,7 @@ func (d *dblink) _lstat_inode_map(path_iter) {
 
 	os = _os_merge
 
-	root = d.settings.ValueDict["ROOT"]
+	root := d.settings.ValueDict["ROOT"]
 	inode_map = {}
 	for f in path_iter:
 	path = filepath.Join(root, f.lstrip(os.sep))
@@ -4263,7 +4263,7 @@ try:
 	key = (st.st_dev, st.st_ino)
 	paths = inode_map.get(key)
 	if paths == nil:
-	paths = set()
+	paths = map[string]bool{}
 	inode_map[key] = paths
 	paths.add(f)
 	return inode_map
@@ -4279,11 +4279,11 @@ func (d *dblink) _security_check(installed_instances) {
 
 	showMessage = d._display_merge
 
-	file_paths = set()
+	file_paths = map[string]bool{}
 	for dblnk in installed_instances:
 	file_paths.update(dblnk.getcontents())
 	inode_map = {}
-	real_paths = set()
+	real_paths = map[string]bool{}
 	for i, path in enumerate(file_paths):
 
 	if os is _os_merge:
@@ -4370,77 +4370,84 @@ func (d *dblink) _elog(funcname, phase, lines) {
 
 }
 
-func (d *dblink) _elog_process(phasefilter=nil) {
+// nil
+func (d *dblink) _elog_process(phasefilter) {
 	cpv = d.mycpv
-	if d._pipe == nil:
-	elog_process(cpv, d.settings, phasefilter=phasefilter)
-	else:
-	logdir = filepath.Join(d.settings.ValueDict["T"], "logging")
-	ebuild_logentries = collect_ebuild_messages(logdir)
-					py_logentries = collect_messages(key=cpv, phasefilter=phasefilter).get(cpv, {})
-	logentries = _merge_logentries(py_logentries, ebuild_logentries)
-	funcnames = {
-		"INFO": "einfo",
-			"LOG": "elog",
-			"WARN": "ewarn",
-			"QA": "eqawarn",
-			"ERROR": "eerror"
+	if d._pipe == nil {
+		elog_process(cpv, d.settings, phasefilter = phasefilter)
+	}else {
+		logdir := filepath.Join(d.settings.ValueDict["T"], "logging")
+		ebuild_logentries := collect_ebuild_messages(logdir)
+		py_logentries := collect_messages(cpv, phasefilter).get(cpv,
+		{
+		})
+		logentries := _merge_logentries(py_logentries, ebuild_logentries)
+		funcnames := map[string]string{
+			"INFO":  "einfo",
+			"LOG":   "elog",
+			"WARN":  "ewarn",
+			"QA":    "eqawarn",
+			"ERROR": "eerror",
+		}
+		str_buffer = []
+		for phase, messages
+		in
+		logentries.items():
+		for key, lines
+		in
+	messages:
+		funcname = funcnames[key]
+		if isinstance(lines, basestring):
+		lines = [lines]
+		for line
+		in
+	lines:
+		for line
+		in
+		line.split("\n"):
+		fields = (funcname, phase, cpv, line)
+		str_buffer = append(, " ".join(fields))
+		str_buffer = append(, "\n")
+		if str_buffer:
+		str_buffer = _unicode_encode("".join(str_buffer))
+		while
+	str_buffer:
+		str_buffer = str_buffer[os.write(d._pipe, str_buffer):]
 	}
-	str_buffer = []
-	for phase, messages in logentries.items():
-	for key, lines in messages:
-	funcname = funcnames[key]
-	if isinstance(lines, basestring):
-	lines = [lines]
-	for line in lines:
-	for line in line.split("\n"):
-	fields = (funcname, phase, cpv, line)
-	str_buffer=append(," ".join(fields))
-	str_buffer=append(,"\n")
-	if str_buffer:
-	str_buffer = _unicode_encode("".join(str_buffer))
-	while str_buffer:
-	str_buffer = str_buffer[os.write(d._pipe, str_buffer):]
-
 
 }
 
 func (d *dblink) _emerge_log(msg) {emergelog(false, msg)}
 
-func (d *dblink) treewalk(srcroot, destroot, inforoot, myebuild, cleanup=0,
+// 0, nil, nil, nil
+func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
 	mydbapi=nil, prev_mtimes=nil, counter=nil) {
 
 	os = _os_merge
 
-	srcroot = _unicode_decode(srcroot,
-		encoding=_encodings['content'], errors='strict')
-	destroot = d.settings.ValueDict["ROOT"]
-	inforoot = _unicode_decode(inforoot,
-		encoding=_encodings['content'], errors='strict')
-	myebuild = _unicode_decode(myebuild,
-		encoding=_encodings['content'], errors='strict')
+	destroot := d.settings.ValueDict["ROOT"]
 
-	showMessage = d._display_merge
-	srcroot = normalize_path(srcroot).rstrip(string(os.PathSeparator)) + string(os.PathSeparator)
+	showMessage := d._display_merge
+	srcroot = strings.TrimRight(NormalizePath(srcroot), string(os.PathSeparator)) + string(os.PathSeparator)
 
-	if not pathIsDir(srcroot):
-	showMessage(_("!!! Directory Not Found: D='%s'\n") % srcroot,
-		level=logging.ERROR, noiselevel=-1)
-	return 1
+	if ! pathIsDir(srcroot) {
+		showMessage(fmt.Sprintf("!!! Directory Not Found: D='%s'\n",srcroot), 40,  -1)
+		return 1
+	}
 
-		doebuild_environment(myebuild, "instprep",
-		settings=d.settings, db=mydbapi)
-	phase = EbuildPhase(background=false, phase="instprep",
-		scheduler=d._scheduler, settings=d.settings)
+		doebuild_environment(myebuild, "instprep", nil, d.settings,false , mydbapi)
+	phase := NewEbuildPhase(nil, false, "instprep",
+		d._scheduler, d.settings)
 	phase.start()
-	if phase.wait() != os.EX_OK:
-	showMessage(_("!!! instprep failed\n"),
-		level=logging.ERROR, noiselevel=-1)
-	return 1
+	if phase.wait() != 0 {
+		showMessage("!!! instprep failed\n",
+			40, -1)
+		return 1
+	}
 
-	is_binpkg = d.settings.ValueDict["EMERGE_FROM") == "binary"
-	slot = ""
-	for var_name in ("CHOST", "SLOT"):
+	is_binpkg := d.settings.ValueDict["EMERGE_FROM"] == "binary"
+	slot := ""
+	for _, var_name := range []string{"CHOST", "SLOT"}{
 try:
 	with io.open(_unicode_encode(
 		filepath.Join(inforoot, var_name),
@@ -4469,6 +4476,7 @@ try:
 	d._eqawarn("preinst",
 		[_("QA Notice: Expected %(var_name)s='%(expected_value)s', got '%(actual_value)s'\n") % 
 {"var_name":var_name, "expected_value":d.settings.ValueDict[var_name, ""), "actual_value":val}])
+}
 
 	def eerror(lines):
 	d._eerror("preinst", lines)
@@ -4880,7 +4888,7 @@ d.settings.mycpv
 
 			try:
 	syscall.Unlink(filepath.Join(
-	os.path.dirname(normalize_path(srcroot)), ".installed"))
+	os.path.dirname(NormalizePath(srcroot)), ".installed"))
 	except OSError as e:
 	if err != syscall.ENOENT:
 	raise
@@ -4959,7 +4967,7 @@ vercmp(d.mycpv.version,
 	linkmap = d.vartree.dbapi._linkmap
 	plib_registry = d.vartree.dbapi._plib_registry
 					
-	preserve_paths = set()
+	preserve_paths = map[string]bool{}
 	needed = nil
 	if not (d._linkmap_broken || linkmap == nil||	plib_registry == nil):
 	d.vartree.dbapi._fs_lock()
@@ -4998,7 +5006,7 @@ match_from_list(PORTAGE_PACKAGE_ATOM, [d.mycpv]):
 	emerge_log(_(" === Unmerging... (%s)") % (dblnk.mycpv,))
 	others_in_slot.remove(dblnk) 	dblnk._linkmap_broken = d._linkmap_broken
 	dblnk.settings.ValueDict["REPLACED_BY_VERSION"] = portage.versions.cpv_getversion(d.mycpv)
-	dblnk.settings.backup_changes("REPLACED_BY_VERSION")
+	dblnk.settings.BackupChanges("REPLACED_BY_VERSION")
 	unmerge_rval = dblnk.unmerge(ldpath_mtimes=prev_mtimes,
 	others_in_slot=others_in_slot, needed=needed,
 	preserve_paths=preserve_paths)
@@ -5105,7 +5113,7 @@ plib_registry._data.items():
 
 		d.settings.ValueDict["PORTAGE_UPDATE_ENV"] = 
 filepath.Join(d.dbpkgdir, "environment.bz2")
-	d.settings.backup_changes("PORTAGE_UPDATE_ENV")
+	d.settings.BackupChanges("PORTAGE_UPDATE_ENV")
 	try:
 	phase = EbuildPhase(background=false, phase="postinst",
 	scheduler=d._scheduler, settings=d.settings)
@@ -5212,8 +5220,8 @@ func (d *dblink) mergeme(srcroot, destroot, outfile, secondhand, stufftomerge, c
 	os = _os_merge
 	sep = os.sep
 	join = filepath.Join
-	srcroot = normalize_path(srcroot).rstrip(sep) + sep
-	destroot = normalize_path(destroot).rstrip(sep) + sep
+	srcroot = NormalizePath(srcroot).rstrip(sep) + sep
+	destroot = NormalizePath(destroot).rstrip(sep) + sep
 	calc_prelink = "prelink-checksums" in d.settings.features
 
 	protect_if_modified = 
@@ -5268,7 +5276,7 @@ os.listdir(join(srcroot, stufftomerge))]
 
 	if stat.S_ISREG(mymode) &&
 mystat.st_size == 0 &&
-os.path.basename(mydest).startswith(".keep"):
+filepath.Base(mydest).startswith(".keep"):
 	protected = false
 
 	destmd5 = nil
@@ -5318,7 +5326,7 @@ os.path.basename(mydest).startswith(".keep"):
 	if d.settings && d.settings.ValueDict["D"]:
 	if myto.startswith(d.settings.ValueDict["D"]):
 	myto = myto[len(d.settings.ValueDict["D"])-1:]
-			myrealto = normalize_path(filepath.Join(destroot, myabsto))
+			myrealto = NormalizePath(filepath.Join(destroot, myabsto))
 	if mydmode != nil && stat.S_ISDIR(mydmode):
 	if not protected:
 		newdest = d._new_backup_path(mydest)
@@ -5973,7 +5981,7 @@ try:
 	encoding = _encodings['fs']
 
 	tar.encoding = encoding
-	root = normalize_path(root).rstrip(string(os.PathSeparator)) + string(os.PathSeparator)
+	root = NormalizePath(root).rstrip(string(os.PathSeparator)) + string(os.PathSeparator)
 	id_strings = {}
 	maxval = len(contents)
 	curval = 0
@@ -6562,7 +6570,7 @@ try:
 	raise portage.exception.InvalidSignature(
 		"SIZE: %s" % metadata["SIZE"])
 	else:
-	filesdict[os.path.basename(self.bintree.getname(pkg))] = size
+	filesdict[filepath.Base(self.bintree.getname(pkg))] = size
 
 	return filesdict
 
@@ -6892,7 +6900,7 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex {
 				continue
 			}
 			chain := []string{}
-			for _, v := range b.dbapi._aux_cache_keys {
+			for v := range b.dbapi.auxCacheKeys {
 				chain = append(chain, v)
 			}
 			chain = append(chain, "PF", "CATEGORY")
@@ -7347,7 +7355,7 @@ try:
 	_movefile(filename, new_filename, mysettings=self.settings)
 	full_path = new_filename
 
-	basename = os.path.basename(full_path)
+	basename = filepath.Base(full_path)
 	pf = catsplit(cpv)[1]
 	if (build_id == nil && not fetched &&
 	basename.endswith(".xpak")):
@@ -7696,17 +7704,18 @@ func (b *BinaryTree) getname(cpvS string, allocate_new bool) string {
 	return filename
 }
 
-func (b *BinaryTree) _is_specific_instance(cpv) {
+func (b *BinaryTree) _is_specific_instance(cpv) bool {
 
-	specific = true
+	specific := true
 try:
-	build_time = cpv.build_time
+	build_time := cpv.build_time
 	build_id = cpv.build_id
 	except AttributeError:
 	specific = false
 	else:
-	if build_time == nil || build_id == nil:
-	specific = false
+	if build_time == nil || build_id == nil {
+		specific = false
+	}
 	return specific
 }
 
@@ -7778,7 +7787,7 @@ func (b *BinaryTree) get_pkgindex_uri(cpv) {
 func (b *BinaryTree) gettbz2(pkgname) {
 	instance_key = self.dbapi._instance_key(pkgname)
 	tbz2_path = self.getname(pkgname)
-	tbz2name = os.path.basename(tbz2_path)
+	tbz2name = filepath.Base(tbz2_path)
 	resume = false
 	if pathExists(tbz2_path):
 	if tbz2name[:-5] not in self.invalids:
@@ -8470,7 +8479,8 @@ future.set_result(returnme)
 
 }
 
-func (p *portdbapi) getFetchMap(mypkg, useflags=nil, mytree=nil) {
+// nil, nil
+func (p *portdbapi) getFetchMap(mypkg, useflags, mytree) {
 	loop = p._event_loop
 	return loop.run_until_complete(
 		p.async_fetch_map(mypkg, useflags = useflags,
@@ -8542,7 +8552,7 @@ nil:
 	filesdict =
 	{
 	}
-	myfiles = p.getFetchMap(mypkg, useflags = useflags, mytree = mytree)
+	myfiles = p.getFetchMap(mypkg, useflags, mytree)
 	for myfile
 	in
 myfiles:

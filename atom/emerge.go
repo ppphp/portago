@@ -4132,63 +4132,55 @@ OSError:
 	return false
 }
 
-func (s *Scheduler) _schedule_tasks_imp() {
+func (s *Scheduler) _schedule_tasks_imp() bool{
 	state_change := 0
 
 	for {
-		if not s._keep_scheduling():
-		return bool(state_change)
+		if ! s._keep_scheduling(){
+			return state_change!= 0
+		}
 
-		if s._choose_pkg_return_early ||
-			s._merge_wait_scheduled
-		||
-		(s._jobs
-		&&
-		s._unsatisfied_system_deps) ||
-		not
-		s._can_add_job()
-		||
-		s._job_delay():
-		return bool(state_change)
+		if s._choose_pkg_return_early || s._merge_wait_scheduled || (s._jobs && s._unsatisfied_system_deps) || ! s._can_add_job() || s._job_delay() {
+			return state_change!= 0
+		}
 
 		pkg = s._choose_pkg()
 		if pkg is
 		None:
-		return bool(state_change)
+			return state_change!= 0
 
 		state_change += 1
 
-		if not pkg.installed:
-		s._pkg_count.curval += 1
+		if not pkg.installed {
+			s._pkg_count.curval += 1
+		}
 
 		task = s._task(pkg)
 
-		if pkg.installed:
-		merge = PackageMerge(merge = task, scheduler = s._sched_iface)
-		s._running_tasks[id(merge)] = merge
-		s._task_queues.merge.addFront(merge)
-		merge.addExitListener(s._merge_exit)
-
-		else if
-		pkg.built:
-		s._jobs += 1
-		s._previous_job_start_time = time.time()
-		s._status_display.running = s._jobs
-		s._running_tasks[id(task)] = task
-		task.scheduler = s._sched_iface
-		s._task_queues.jobs.add(task)
-		task.addExitListener(s._extract_exit)
-
-		else:
-		s._jobs += 1
-		s._previous_job_start_time = time.time()
-		s._status_display.running = s._jobs
-		s._running_tasks[id(task)] = task
-		task.scheduler = s._sched_iface
-		s._task_queues.jobs.add(task)
-		task.addExitListener(s._build_exit)
+		if pkg.installed {
+			merge = PackageMerge(merge = task, scheduler = s._sched_iface)
+			s._running_tasks[id(merge)] = merge
+			s._task_queues.merge.addFront(merge)
+			merge.addExitListener(s._merge_exit)
+		} else if pkg.built{
+			s._jobs += 1
+			s._previous_job_start_time = time.time()
+			s._status_display.running = s._jobs
+			s._running_tasks[id(task)] = task
+			task.scheduler = s._sched_iface
+			s._task_queues.jobs.add(task)
+			task.addExitListener(s._extract_exit)
+		} else{
+			s._jobs += 1
+			s._previous_job_start_time = time.time()
+			s._status_display.running = s._jobs
+			s._running_tasks[id(task)] = task
+			task.scheduler = s._sched_iface
+			s._task_queues.jobs.add(task)
+			task.addExitListener(s._build_exit)
+		}
 	}
-	return state_change== 0
+	return state_change!= 0
 }
 
 func (s *Scheduler) _task( pkg) {

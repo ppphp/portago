@@ -15,7 +15,7 @@ for msgtype, msgcontent in logentries[phase]:
 if msgtype.upper() in loglevels or "*" in loglevels:
 if phase not in rValue:
 rValue[phase] = []
-rValue[phase].append((msgtype, msgcontent))
+rValue[phase]=append(,(msgtype, msgcontent))
 return rValue
 }
 
@@ -72,16 +72,16 @@ logentries:
 	logentries[phase]:
 	if previous_type != msgtype:
 	previous_type = msgtype
-	rValue.append("%s: %s"%(msgtype, phase))
+	rValue=append(,"%s: %s"%(msgtype, phase))
 	if isinstance(msgcontent, basestring):
-	rValue.append(msgcontent.rstrip("\n"))
+	rValue=append(,msgcontent.rstrip("\n"))
 	else:
 	for line
 	in
 msgcontent:
-	rValue.append(line.rstrip("\n"))
+	rValue=append(,line.rstrip("\n"))
 	if rValue:
-	rValue.append("")
+	rValue=append(,"")
 	return "\n".join(rValue)
 }
 
@@ -103,7 +103,7 @@ None:
 
 _elog_listeners = []
 func add_listener(listener) {
-	_elog_listeners.append(listener)
+	_elog_listeners=append(,listener)
 }
 
 func remove_listener(listener) {
@@ -210,7 +210,7 @@ finally:
 	m.finalize
 	in
 _elog_atexit_handlers:
-	_elog_atexit_handlers.append(m.finalize)
+	_elog_atexit_handlers=append(,m.finalize)
 	atexit_register(m.finalize)
 	except(ImportError, AttributeError)
 	as
@@ -287,15 +287,15 @@ None:
 	lastmsgtype = msgtype
 
 	if msgtype == lastmsgtype:
-	msgcontent.append(msg)
+	msgcontent=append(,msg)
 	else:
 	if msgcontent:
-	logentries[msgfunction].append((lastmsgtype, msgcontent))
+	logentries[msgfunction]=append(,(lastmsgtype, msgcontent))
 	msgcontent = [msg]
 	lastmsgtype = msgtype
 	f.close()
 	if msgcontent:
-	logentries[msgfunction].append((lastmsgtype, msgcontent))
+	logentries[msgfunction]=append(,(lastmsgtype, msgcontent))
 
 	for f
 	in
@@ -345,7 +345,7 @@ _msgbuffer:
 	in
 	_msgbuffer[key]:
 	_msgbuffer[key][phase] = []
-	_msgbuffer[key][phase].append((level, msg))
+	_msgbuffer[key][phase]=append(,(level, msg))
 }
 
 func collect_messages(key=None, phasefilter=None) {
@@ -456,7 +456,7 @@ func process(mysettings, key, logentries, fulltext) {
 	in
 	mysettings):
 	logfile = mysettings["PORTAGE_LOG_FILE"]
-	_items.append((mysettings["ROOT"], key, logentries, logfile))
+	_items=append(,(mysettings["ROOT"], key, logentries, logfile))
 }
 
 func finalize() {
