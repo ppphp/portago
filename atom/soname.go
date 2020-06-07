@@ -89,7 +89,7 @@ type ELFHeader struct {
 	EType    uint16
 }
 
-func ReadELFHeader(f os.File) ELFHeader {
+func ReadELFHeader(f *os.File) ELFHeader {
 	f.Seek(EI_CLASS, 0)
 	oneByte := make([]byte, 1)
 	f.Read(oneByte)

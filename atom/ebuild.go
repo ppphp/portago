@@ -1555,14 +1555,14 @@ mysettings.configDict["pkg"]["EMERGE_FROM"] = "ebuild"
 if eapiExportsReplaceVars(mysettings.ValueDict["EAPI"]) &&
 ( Ins ([]string{"postinst", "preinst", "pretend", "setup"},mydo) ||
 ( !  features["noauto"] && ! returnpid &&
-( insss(actionmap_deps,mydo) ||  Ins ([]string{"merge", "package", "qmerge"},mydo)))){
+( Inmsmss(actionmap_deps,mydo) ||  Ins ([]string{"merge", "package", "qmerge"},mydo)))){
 if ! vartree{
 WriteMsg("Warning: vartree not given to doebuild. " +
 "Cannot set REPLACING_VERSIONS in pkg_{pretend,setup}\n", 0 , nil)
 }else{
 vardb := vartree.dbapi
 cpv := mysettings.mycpv
-cpv_slot := fmt.Sprintf("%s%s%s" , cpv.cp, portage.dep._slot_separator, cpv.slot)
+cpv_slot := fmt.Sprintf("%s%s%s" , cpv.cp, slotSeparator, cpv.slot)
 mysettings.ValueDict["REPLACING_VERSIONS"] := strings.Join(
 set(portage.versions.cpv_getversion(match)
 for match in vardb.match(cpv_slot) +
@@ -2064,11 +2064,11 @@ if ! networked && mysettings.ValueDict["EBUILD_PHASE"] != "nofetch" &&
 	}
 }
 
-fakeroot = fakeroot && uid != 0 && portage.process.fakeroot_capable
+fakeroot = fakeroot && uid != 0 && fakeroot_capable
 portage_build_uid := os.Getuid()
 portage_build_gid := os.Getgid()
 logname = None
-if uid == 0 && portage_uid && portage_gid && hasattr(os, "setgroups") {
+if uid == 0 && portage_uid!=0 && portage_gid!=0 && hasattr(os, "setgroups") {
 	if droppriv {
 		logname := *_portage_username
 		keywords.update(
@@ -2111,9 +2111,9 @@ if uid == 0 && portage_uid && portage_gid && hasattr(os, "setgroups") {
 	}
 }
 
-if "PORTAGE_BUILD_USER" ! in mysettings{
-		user = None
-		try{
+if  ! Inmss(mysettings.ValueDict,"PORTAGE_BUILD_USER" ) {
+	user = None
+	try{
 		user = pwd.getpwuid(portage_build_uid).pw_name
 	}except KeyError{
 		if portage_build_uid == 0{
@@ -2122,10 +2122,10 @@ if "PORTAGE_BUILD_USER" ! in mysettings{
 		user = portage.data._portage_username
 	}
 	}
-		if user != nil{
+	if user != nil {
 		mysettings.ValueDict["PORTAGE_BUILD_USER"] = user
 	}
-	}
+}
 
 if  ! Inmss( mysettings.ValueDict, "PORTAGE_BUILD_GROUP"){
 		group = None
@@ -2224,10 +2224,10 @@ logfile=None, fd_pipes=None, returnpid bool) int {
 		if "dep" in
 		actionmap[mydo]
 		{
-			retval = spawnebuild(actionmap[mydo]["dep"], actionmap,
+			retval := spawnebuild(actionmap[mydo]["dep"], actionmap,
 				mysettings, debug, alwaysdep = alwaysdep, logfile = logfile,
 			fd_pipes=fd_pipes, returnpid = returnpid)
-			if retval {
+			if retval!= 0 {
 				return retval
 			}
 		}
@@ -2659,7 +2659,7 @@ try{
 	qa_desktop_file = f.read()
 }
 }except IOError as e{
-		if e.errno ! in (errno.ENOENT, errno.ESTALE){
+		if err ! in (syscall.ENOENT, syscall.ESTALE){
 		raise
 	}
 	}
@@ -2852,288 +2852,253 @@ ShellQuote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
 }
 }
 
-func _post_src_install_soname_symlinks(mysettings *Config, out){
+func _post_src_install_soname_symlinks(mysettings *Config, out) {
 
-image_dir := mysettings.ValueDict["D"]
-needed_filename := filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"],
-"build-info", "NEEDED.ELF.2")
+	image_dir := mysettings.ValueDict["D"]
+	needed_filename := filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"],
+		"build-info", "NEEDED.ELF.2")
 
-f = None
-try{
-	f = io.open(_unicode_encode(needed_filename,
-	encoding = _encodings["fs"], errors = "strict"),
-	mode = "r", encoding = _encodings["repo.content"],
-	errors = "replace")
-	lines = f.readlines()
-}except IOError as e{
-		if e.errno ! in (errno.ENOENT, errno.ESTALE){
-		raise
-	}
-		return
-	}finally{
-		if f != nil{
-		f.close()
-	}
+	f, err := ioutil.ReadFile(needed_filename)
+	if err != nil {
+		//}except IOError as e{
+		if err != syscall.ENOENT && err != syscall.ESTALE {
+			//raise
+		}
 	}
 
-metadata = {}
-for k in ("QA_PREBUILT", "QA_SONAME_NO_SYMLINK")
-	{
-		try{
-			with io.open(_unicode_encode(filepath.Join(
-			mysettings.ValueDict["PORTAGE_BUILDDIR"],
-			"build-info", k),
-			encoding = _encodings["fs"], errors = "strict"),
-			mode = "r", encoding = _encodings["repo.content"],
-			errors = "replace") as f{
-			v = f.read()
-		}
-		}
-		except
-		IOError
-		as
-		e{
-			if e.errno ! in (errno.ENOENT, errno.ESTALE){
-			raise
-		}
+	lines := strings.Split(string(f), "\n")
+
+	metadata := map[string]string{}
+	for _, k := range []string{"QA_PREBUILT", "QA_SONAME_NO_SYMLINK"} {
+		f, err := ioutil.ReadFile(filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"], "build-info", k))
+		if err != nil {
+			//except IOError as e{
+			if err != syscall.ENOENT && err != syscall.ESTALE {
+				//raise
+			}
 		} else {
-		metadata[k] = v
+			metadata[k] = string(f)
+		}
 	}
+
+	qa_prebuilt := strings.TrimSpace(metadata["QA_PREBUILT"])
+
+	if qa_prebuilt != "" {
+		ss, _ := shlex.Split(strings.NewReader(qa_prebuilt), false, true)
+		ms := []string{}
+		for _, x := range ss {
+			ms = append(ms, fnmatch.translate(strings.TrimLeft(x, string(os.PathSeparator))))
+		}
+		qa_prebuilt = regexp.MustCompile(strings.Join(ms, "|"))
 	}
 
-qa_prebuilt = metadata.get("QA_PREBUILT", "").strip()
-if qa_prebuilt {
-	qa_prebuilt = re.compile("|".join(
-		fnmatch.translate(strings.TrimLeft(x, string(os.PathSeparator)))
-	for _, x := range portage.util.shlex_split(qa_prebuilt)))
-}
+	qa_soname_no_symlink := strings.Fields(metadata["QA_SONAME_NO_SYMLINK"])
+	var qsnsRe *regexp.Regexp
+	if len(qa_soname_no_symlink) > 0 {
+		qsnss := ""
+		if len(qa_soname_no_symlink) > 1 {
+			qsns := []string{}
+			for _, x := range qa_soname_no_symlink {
+				qsns = append(qsns, fmt.Sprintf("(%s)", x))
+			}
+			qsnss = strings.Join(qsns, "|")
+			qsnss = fmt.Sprintf("^(%s)$", qsnss)
+		} else {
+			qsnss = fmt.Sprintf("^%s$", qa_soname_no_symlink[0])
+		}
+		qsnsRe = regexp.MustCompile(qsnss)
+	}
 
-qa_soname_no_symlink = strings.Fields(metadata["QA_SONAME_NO_SYMLINK"])
-if qa_soname_no_symlink{
-if len(qa_soname_no_symlink) > 1{
-qa_soname_no_symlink = "|".join(fmt.Sprintf("(%s)" % x for _, x := range  qa_soname_no_symlink)
-qa_soname_no_symlink = fmt.Sprintf("^(%s)$" % qa_soname_no_symlink
-}else{
-qa_soname_no_symlink = fmt.Sprintf("^%s$" % qa_soname_no_symlink[0]
-}
-qa_soname_no_symlink = re.compile(qa_soname_no_symlink)
-}
-
-libpaths := map[string]bool{}
+	libpaths := map[string]bool{}
 	for _, k := range getLibPaths(
-		mysettings.ValueDict["ROOT"], mysettings.ValueDict){
-		libpaths[k]= true
+		mysettings.ValueDict["ROOT"], mysettings.ValueDict) {
+		libpaths[k] = true
 	}
-libpath_inodes := map[string]bool{}
-for libpath := range libpaths{
+	libpath_inodes := map[[2]uint64]bool{}
+	for libpath := range libpaths {
 		libdir := filepath.Join(mysettings.ValueDict["ROOT"], strings.TrimLeft(libpath, string(os.PathSeparator)))
-		try{
-		s = os.Stat(libdir)
-	}except OSError{
-		continue
-	} else{
-		libpath_inodes.add((s.st_dev, s.st_ino))
-	}
-	}
-
-is_libdir_cache = {}
-
-is_libdir:= func(obj_parent) {
-	try{
-		return is_libdir_cache[obj_parent]
-	}
-	except
-	KeyError{
-		pass
-	}
-
-	rval = false
-	if obj_parent in
-	libpaths{
-		rval = true
-	} else {
-		parent_path = filepath.Join(mysettings.ValueDict["ROOT"],
-			strings.TrimLeft(obj_parent, string(os.PathSeparator)))
-		try{
-			s = os.Stat(parent_path)
-		}
-		except
-		OSError{
-			pass
+		s, err := os.Stat(libdir)
+		if err != nil {
+			//}except OSError{
+			continue
 		} else {
-			if (s.st_dev, s.st_ino) in
-			libpath_inodes{
-				rval = true
+			libpath_inodes[[2]uint64{s.Sys().(*syscall.Stat_t).Dev, s.Sys().(*syscall.Stat_t).Ino}] = true
+		}
+	}
+
+	is_libdir_cache := map[string]bool{}
+
+	is_libdir := func(obj_parent string) bool {
+		if v, ok := is_libdir_cache[obj_parent]; ok {
+			return v
+		}
+
+		rval := false
+		if libpaths[obj_parent] {
+			rval = true
+		} else {
+			parent_path := filepath.Join(mysettings.ValueDict["ROOT"],
+				strings.TrimLeft(obj_parent, string(os.PathSeparator)))
+			s, err := os.Stat(parent_path)
+
+			if err != nil {
+				//except OSError{
+				//	pass
+			} else {
+				if libpath_inodes[[2]uint64{s.Sys().(*syscall.Stat_t).Dev, s.Sys().(*syscall.Stat_t).Ino}] {
+					rval = true
+				}
 			}
 		}
+
+		is_libdir_cache[obj_parent] = rval
+		return rval
 	}
 
-	is_libdir_cache[obj_parent] = rval
-	return rval
-}
-
-build_info_dir = filepath.Join(
-mysettings.ValueDict["PORTAGE_BUILDDIR"], "build-info")
-try{
-with io.open(_unicode_encode(filepath.Join(build_info_dir,
-"PROVIDES_EXCLUDE"), encoding=_encodings["fs"],
-errors="strict"), mode="r", encoding=_encodings["repo.content"],
-errors="replace") as f{
-	provides_exclude = f.read()
-}
-	}except IOError as e{
-		if e.errno ! in (errno.ENOENT, errno.ESTALE){
-		raise
-	}
+	build_info_dir := filepath.Join(
+		mysettings.ValueDict["PORTAGE_BUILDDIR"], "build-info")
+	f, err = ioutil.ReadFile(filepath.Join(build_info_dir,
+		"PROVIDES_EXCLUDE"))
+	provides_exclude := string(f)
+	if err != nil {
+		//except IOError as e{
+		if err != syscall.ENOENT && err != syscall.ESTALE {
+			//raise
+		}
 		provides_exclude = ""
 	}
 
-try{
-with io.open(_unicode_encode(filepath.Join(build_info_dir,
-"REQUIRES_EXCLUDE"), encoding=_encodings["fs"],
-errors="strict"), mode="r", encoding=_encodings["repo.content"],
-errors="replace") as f{
-	requires_exclude = f.read()
-	}
-	}except IOError as e{
-		if e.errno ! in (errno.ENOENT, errno.ESTALE){
-		raise
-	}
+	f, err = ioutil.ReadFile(filepath.Join(build_info_dir,
+		"REQUIRES_EXCLUDE"))
+	requires_exclude := string(f)
+	if err != nil {
+		//except IOError as e{
+		if err != syscall.ENOENT && err != syscall.ESTALE {
+			//raise
+		}
 		requires_exclude = ""
 	}
 
-missing_symlinks = []
-unrecognized_elf_files = []
-soname_deps = SonameDepsProcessor(
-provides_exclude, requires_exclude)
+	missing_symlinks := []
+	unrecognized_elf_files := []*NeededEntry{}
+	soname_deps := SonameDepsProcessor(provides_exclude, requires_exclude)
 
-needed_file = portage.util.atomic_ofstream(needed_filename,
-encoding=_encodings["repo.content"], errors="strict")
+	needed_file := NewAtomic_ofstream(needed_filename, os.O_RDWR|os.O_CREATE, 0644)
 
-for l in lines{
-l = strings.TrimRight(l,"\n")
-if ! l{
-		continue
+	for _, l := range lines {
+		l = strings.TrimRight(l, "\n")
+		if l == "" {
+			continue
 		}
-try{
-		entry = NeededEntry.parse(needed_filename, l)
-		}except InvalidData as e{
-portage.util.WriteMsg_level(fmt.Sprintf("\n%s\n\n" % (e,),
-level=logging.ERROR, -1,nil)
-continue
+		entry, err := NewNeededEntry().parse(needed_filename, l)
+		if err != nil {
+			//}except InvalidData as e{
+			WriteMsgLevel(fmt.Sprintf("\n%s\n\n", err, ),
+				40, -1)
+			continue
 		}
 
-filename = filepath.Join(image_dir,
-strings.TrimLeft(entry.filename,string(os.PathSeparator)))
-with open(_unicode_encode(filename, encoding=_encodings["fs"],
-errors="strict"), "rb") as f{
-		elf_header = ELFHeader.read(f)
+		filename := filepath.Join(image_dir,
+			strings.TrimLeft(entry.filename, string(os.PathSeparator)))
+		f, _ := os.Open(filename)
+		elf_header := ReadELFHeader(f)
+
+		entry.multilib_category = compute_multilib_category(elf_header)
+		needed_file.Write([]byte(entry.__str__()))
+
+		if entry.multilib_category == "" {
+			if !qa_prebuilt || qa_prebuilt.match(
+				entry.filename[len(strings.TrimLeft(mysettings.ValueDict["EPREFIX"])):],
+				string(os.PathSeparator)) == nil {
+				unrecognized_elf_files = append(unrecognized_elf_files, entry)
+			}
+		} else {
+			soname_deps.add(entry)
 		}
 
-entry.multilib_category = compute_multilib_category(elf_header)
-needed_file.write(_unicode(entry))
+		obj := entry.filename
+		soname := entry.soname
 
-if entry.multilib_category == nil{
-if ! qa_prebuilt || qa_prebuilt.match(
-entry.filename[len(strings.TrimLeft(mysettings.ValueDict["EPREFIX"]):],
-string(os.PathSeparator))) == nil{
-		unrecognized_elf_files = append(entry)
+		if !soname {
+			continue
 		}
-}else{
-		soname_deps.add(entry)
+		if !is_libdir(filepath.Dir(obj)) {
+			continue
 		}
-
-obj = entry.filename
-soname = entry.soname
-
-if ! soname{
-		continue
-		}
-if ! is_libdir(filepath.Dir(obj)){
-		continue
-		}
-if qa_soname_no_symlink && qa_soname_no_symlink.match(obj.strip(string(os.PathSeparator))) != nil{
-		continue
+		if qsnsRe != nil && qsnsRe.MatchString(strings.Trim(obj, string(os.PathSeparator))) {
+			continue
 		}
 
-obj_file_path = filepath.Join(image_dir, strings.TrimLeft(obj,string(os.PathSeparator)))
-sym_file_path = filepath.Join(filepath.Dir(obj_file_path), soname)
-try{
-		os.Lstat(sym_file_path)
-		}except OSError as e{
-if e.errno ! in (errno.ENOENT, errno.ESTALE){
-		raise
-		}
-}else{
-		continue
+		obj_file_path := filepath.Join(image_dir, strings.TrimLeft(obj, string(os.PathSeparator)))
+		sym_file_path := filepath.Join(filepath.Dir(obj_file_path), soname)
+		if _, err := os.Lstat(sym_file_path); err != nil {
+			//}except OSError as e{
+			if err != syscall.ENOENT && err == syscall.ESTALE {
+				//raise
+			}
+		} else {
+			continue
 		}
 
-missing_symlinks=append((obj, soname))
+		missing_symlinks = append(missing_symlinks, (obj, soname))
 	}
 
-needed_file.close()
+	needed_file.Close()
 
-if soname_deps.requires != nil {
-	with
-	io.open(_unicode_encode(filepath.Join(build_info_dir,
-		"REQUIRES"), encoding = _encodings["fs"], errors = "strict"),
-	mode = "w", encoding=_encodings["repo.content"],
-		errors = "strict") as
-	f{
-		f.write(soname_deps.requires)
+	if soname_deps.requires != nil {
+		f, err := os.OpenFile(filepath.Join(build_info_dir,
+			"REQUIRES"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+		if err == nil {
+			f.Write(soname_deps.requires)
+		}
 	}
-}
 
-if soname_deps.provides != nil {
-	with
-	io.open(_unicode_encode(filepath.Join(build_info_dir,
-		"PROVIDES"), encoding = _encodings["fs"], errors = "strict"),
-	mode = "w", encoding=_encodings["repo.content"],
-		errors = "strict") as
-	f{
-		f.write(soname_deps.provides)
+	if soname_deps.provides != nil {
+		f, _ := os.OpenFile(filepath.Join(build_info_dir,
+			"PROVIDES"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+		f.Write(soname_deps.provides)
 	}
-}
 
-if unrecognized_elf_files{
-qa_msg := []string{"QA Notice: Unrecognized ELF file(s):"}
-qa_msg=append(qa_msg,"")
-qa_msg= append(qa_msg, fmt.Sprintf("\t%s" % strings.TrimRight(_unicode(entry), "")
-for entry in unrecognized_elf_files)
-qa_msg=append(qa_msg, "")
-for _, line := range qa_msg{
+	if len(unrecognized_elf_files) > 0 {
+		qa_msg := []string{"QA Notice: Unrecognized ELF file(s):"}
+		qa_msg = append(qa_msg, "")
+		for _, entry := range unrecognized_elf_files {
+			qa_msg = append(qa_msg, fmt.Sprintf("\t%s", strings.TrimRight(entry, "")))
+		}
+		qa_msg = append(qa_msg, "")
+		for _, line := range qa_msg {
+			eqawarn(line, key = mysettings.mycpv, out = out)
+		}
+	}
+
+	if len(missing_symlinks) == 0 {
+		return
+	}
+
+	qa_msg := []string{"QA Notice: Missing soname symlink(s):"}
+	qa_msg = append(qa_msg, "")
+	for obj, soname := range missing_symlinks {
+		qa_msg = append(qa_msg, fmt.Sprintf("\t%s -> %s", filepath.Join(
+			strings.TrimLeft(filepath.Dir(obj), string(os.PathSeparator)), soname),
+			filepath.Base(obj)))
+	}
+	qa_msg = append(qa_msg, "")
+	for _, line := range qa_msg {
 		eqawarn(line, key = mysettings.mycpv, out = out)
 	}
 }
 
-if ! missing_symlinks {
-	return
-}
-
-qa_msg := []string{"QA Notice: Missing soname symlink(s):"}
-qa_msg=append(qa_msg,"")
-for obj, soname := range missing_symlinks {
-	qa_msg = append(qa_msg, fmt.Sprintf("\t%s -> %s", filepath.Join(
-		strings.TrimLeft(filepath.Dir(obj), string(os.PathSeparator)), soname),
-		filepath.Base(obj)))
-}
-qa_msg=append(qa_msg, "")
-for _, line := range qa_msg{
-		eqawarn(line, key = mysettings.mycpv, out = out)
-	}
-}
-
-func _merge_desktopfile_error(errors []string) []string{
+func _merge_desktopfile_error(errors []string) []string {
 	lines := []string{}
 
 	msg := "QA Notice: This package installs one or more .desktop files " +
-	"that do not pass validation."
+		"that do not pass validation."
 	lines = append(lines, SplitSubN(msg, 72)...)
 
 	lines = append(lines, "")
 	sort.Strings(errors)
 	for _, x := range errors {
-		lines = append(lines, "\t" + x)
+		lines = append(lines, "\t"+x)
 	}
 
 	lines = append(lines, "")

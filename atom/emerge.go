@@ -358,12 +358,14 @@ type SpawnProcess struct {
 	_CGROUP_CLEANUP_RETRY_MAX int
 
 	// slot
-	args, env, opt_name,
+	opt_name,
 	uid, gid, groups, umask, logfile,
 	path_lookup, pre_exec, close_fds, cgroup,
 	unshare_ipc, unshare_mount, unshare_pid, unshare_net,
 	_pipe_logger, _selinux_type string
 	fd_pipes map[int]int
+	args     []string
+	env      map[string]string
 }
 
 var _spawn_kwarg_names = []string{"env", "opt_name", "fd_pipes",
@@ -588,8 +590,13 @@ func(s *SpawnProcess) _elog(elog_funcname, lines){
 	}
 }
 
-func NewSpawnProcess() *SpawnProcess {
+func NewSpawnProcess(args []string, background bool, env map[string]string, scheduler, logfile string) *SpawnProcess {
 	s := &SpawnProcess{}
+	s.args =args
+	s.background = background
+	s.env = env
+	s.scheduler = scheduler
+	s.logfile = logfile
 	s._CGROUP_CLEANUP_RETRY_MAX = 8
 	s.SubProcess = NewSubProcess()
 	return s
@@ -2416,8 +2423,9 @@ func New_unknown_internal_error(value="") *_unknown_internal_error{
 	return u
 }
 
+// nil, nil, nil
 func NewScheduler(settings *Config, trees, mtimedb, myopts,
-spinner, mergelist=None, favorites=None, graph_config=None)*Scheduler {
+spinner, mergelist, favorites, graph_config)*Scheduler {
 	s := &Scheduler{}
 
 	s._loadavg_latency = 30
@@ -3551,10 +3559,11 @@ return os.EX_OK
 }
 
 func (s *Scheduler) _elog_listener(mysettings, key, logentries, fulltext) {
-	errors = portage.elog.filter_loglevels(logentries, ["ERROR"])
-	if errors:
-	s._failed_pkgs_die_msgs.append(
-		(mysettings, key, errors))
+	errors := filter_loglevels(logentries, ["ERROR"])
+	if errors {
+		s._failed_pkgs_die_msgs = append(_failed_pkgs_die_msgs
+			(mysettings, key, errors))
+	}
 }
 
 func (s *Scheduler) _locate_failure_log( failed_pkg) {
@@ -3568,7 +3577,7 @@ log_paths:
 	continue
 
 try:
-	log_size = os.stat(log_path).st_size
+	log_size = os.Stat(log_path).st_size
 	except
 OSError:
 	continue
@@ -3593,29 +3602,31 @@ func (s *Scheduler) _add_packages() {
 	pass
 }
 
-func (s *Scheduler) (s *Scheduler) _system_merge_started(merge){
-graph = s._digraph
-if graph is None:
-return
-pkg = merge.merge.pkg
+func (s *Scheduler) _system_merge_started(merge) {
+	graph := s._digraph
+	if graph == nil {
+		return
+	}
+	pkg = merge.merge.pkg
 
-if pkg.root_config.settings.ValueDict["ROOT"] != "/":
-return
+	if pkg.root_config.settings.ValueDict["ROOT"] != "/" {
+		return
+	}
 
-completed_tasks = s._completed_tasks
-unsatisfied = s._unsatisfied_system_deps
-}
-
-func (s *Scheduler) ignore_non_runtime_or_satisfied(priority) {
-	if isinstance(priority, DepPriority) && 
-	not
-	priority.satisfied
-	&& 
-	(priority.runtime
- ||
-	priority.runtime_post):
-	return false
+	completed_tasks := s._completed_tasks
+	unsatisfied := s._unsatisfied_system_deps
+	ignore_non_runtime_or_satisfied := func(priority) {
+		if isinstance(priority, DepPriority) &&
+			not
+			priority.satisfied
+		&&
+		(priority.runtime
+	||
+		priority.runtime_post){
+		return false
+	}
 	return true
+}
 
 	for child
 	in
@@ -3641,14 +3652,15 @@ func (s *Scheduler) _merge_wait_exit_handler( task) {
 	s._merge_exit(task)
 }
 
-func (s *Scheduler) _merge_exit( merge) {
+func (s *Scheduler) _merge_exit(merge) {
 	s._running_tasks.pop(id(merge), None)
 	s._do_merge_exit(merge)
 	s._deallocate_config(merge.merge.settings)
 	if merge.returncode == os.EX_OK && 
 	not
-	merge.merge.pkg.installed:
-	s._status_display.curval += 1
+	merge.merge.pkg.installed {
+		s._status_display.curval += 1
+	}
 	s._status_display.merges = len(s._task_queues.merge)
 	s._schedule()
 }
@@ -3796,7 +3808,7 @@ func (s *Scheduler) _merge() {
 	s._add_packages()
 	failed_pkgs = s._failed_pkgs
 	portage.locks._quiet = s._background
-	portage.elog.add_listener(s._elog_listener)
+	add_listener(s._elog_listener)
 
 	func
 	display_callback():
@@ -3816,7 +3828,7 @@ try:
 finally:
 	s._main_loop_cleanup()
 	portage.locks._quiet = false
-	portage.elog.remove_listener(s._elog_listener)
+	remove_listener(s._elog_listener)
 	if display_callback.handle is
 	not
 None:
@@ -4534,7 +4546,7 @@ func NewSchedulerInterface(event_loop, is_background=None, **kwargs)*SchedulerIn
 None:
 	is_background = s._return_false
 	s._is_background = is_background
-	for k
+	for kfilter_loglevels
 	in
 	s._event_loop_attrs:
 	setattr(s, k, getattr(event_loop, k))

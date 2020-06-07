@@ -2,7 +2,7 @@ package atom
 
 import "log/syslog"
 
-func filter_loglevels(logentries, loglevels) {
+func filter_loglevels(logentries, loglevels []string) {
 	rValue =
 	{
 	}
@@ -101,16 +101,21 @@ None:
 	return m
 }
 
-_elog_listeners = []
+var _elog_listeners = []
 func add_listener(listener) {
-	_elog_listeners=append(,listener)
+	_elog_listeners=append(_elog_listeners,listener)
 }
 
 func remove_listener(listener) {
-	_elog_listeners.remove(listener)
+	el:= []{}
+	for _, e :=range _elog_listeners{
+		for e != listener {
+			el =append(el, e)
+		}
+	}
 }
 
-_elog_atexit_handlers = []
+var _elog_atexit_handlers = []
 
 func elog_process(cpv, mysettings, phasefilter=None) {
 	global
@@ -403,7 +408,7 @@ type _make_msgfunction struct{
 	_color, _level string
 }
 
-func NewMakeMsgFunction(, level, color)*_make_msgfunction{
+func NewMakeMsgFunction(level, color)*_make_msgfunction{
 	m := &_make_msgfunction{}
 self._level = level
 self._color = color

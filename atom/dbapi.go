@@ -1400,7 +1400,7 @@ v._aux_cache != nil &&
 secpass >= 2 && 
 (len(v._aux_cache["modified"]) >= v._aux_cache_threshold||	not pathExists(v._cache_delta_filename)):
 
-	ensure_dirs(os.path.dirname(v._aux_cache_filename))
+	ensure_dirs(filepath.Dir(v._aux_cache_filename))
 
 	v._owners.populate() 	valid_nodes = set(v.cpv_all())
 	for cpv in list(v._aux_cache["packages"]):
@@ -1464,7 +1464,7 @@ func (v *vardbapi) _aux_cache_init() {
 //		getattr(e, 'errno', nil) in (syscall.ENOENT, errno.EACCES):
 	//		pass
 	//	else:
-	//		writemsg(_("!!! Error loading '%s': %s\n") % 
+	//		WriteMsg(_("!!! Error loading '%s': %s\n") % 
 //			(v._aux_cache_filename, e), noiselevel=-1)
 	//	del e
 
@@ -2947,73 +2947,80 @@ func (d *dblink) unmerge(pkgfiles=nil, cleanup bool,
 		return retval
 	}
 
-	contents = d.getcontents()
-				myebuildpath = filepath.Join(d.dbdir, d.pkg + ".ebuild")
-	failures = 0
-	ebuild_phase = "prerm"
-	mystuff = os.listdir(d.dbdir)
-	for x in mystuff:
-	if x.endswith(".ebuild"):
-	if x[:-7] != d.pkg:
-			os.rename(filepath.Join(d.dbdir, x), myebuildpath)
-	write_atomic(filepath.Join(d.dbdir, "PF"), d.pkg+"\n")
-	break
+	contents := d.getcontents()
+	myebuildpath := filepath.Join(d.dbdir, d.pkg + ".ebuild")
+	failures := 0
+	ebuild_phase := "prerm"
+	mystuff, _ := listDir(d.dbdir)
+	for _, x := range mystuff {
+		if strings.HasSuffix(x,".ebuild") {
+			if x[:len(x)-7] != d.pkg {
+				os.Rename(filepath.Join(d.dbdir, x), myebuildpath)
+				write_atomic(filepath.Join(d.dbdir, "PF"), d.pkg+"\n", 0 ,true)
+			}
+			break
+		}
+	}
 
-	if d.mycpv != d.settings.mycpv || 
-"EAPI" not in d.settings.configdict["pkg"]:
-				d.settings.setcpv(d.mycpv, mydb=d.vartree.dbapi)
-
-	eapi_unsupported = false
-try:
+	if d.mycpv.string != d.settings.mycpv.string ||  ! Inmss( d.settings.configDict["pkg"], "EAPI"){
+		d.settings.SetCpv(d.mycpv, d.vartree.dbapi)
+	}
+	eapi_unsupported := false
+//try:
 	doebuild_environment(myebuildpath, "prerm",
-		settings=d.settings, db=d.vartree.dbapi)
-	except UnsupportedAPIException as e:
-	eapi_unsupported = e
+		nil,d.settings,false, nil, d.vartree.dbapi)
+	//except UnsupportedAPIException as e:
+	//eapi_unsupported = e
 
-	if d._preserve_libs && "preserve-libs" in
-d.settings.ValueDict["PORTAGE_RESTRICT"].split():
-	d._preserve_libs = false
+	if d._preserve_libs &&  Ins(
+strings.Fields(d.settings.ValueDict["PORTAGE_RESTRICT"]), "preserve-libs") {
+		d._preserve_libs = false
+	}
 
 	builddir_lock = nil
-	scheduler = d._scheduler
-	retval = os.EX_OK
+	scheduler := d._scheduler
+	retval :=
 try:
-			if "PORTAGE_BUILDDIR_LOCKED" not in d.settings:
+			if  !Inmss(d.settings.ValueDict,"PORTAGE_BUILDDIR_LOCKED"){
 	builddir_lock = EbuildBuildDir(
 		scheduler=scheduler,
 		settings=d.settings)
 	scheduler.run_until_complete(builddir_lock.async_lock())
 	prepare_build_dirs(settings=d.settings, cleanup=true)
 	log_path = d.settings.ValueDict["PORTAGE_LOG_FILE")
-
-				if not caller_handles_backup:
-	retval = d._pre_unmerge_backup(background)
-	if retval != os.EX_OK:
-	showMessage(_("!!! FAILED prerm: quickpkg: %s\n") % retval,
-		level=logging.ERROR, noiselevel=-1)
-	return retval
+			}
+			if not caller_handles_backup {
+					retval = d._pre_unmerge_backup(background)
+					if retval != 0 {
+						showMessage(fmt.Sprintf("!!! FAILED prerm: quickpkg: %s\n".retval),
+							40, -1)
+						return retval
+					}
+				}
 
 	d._prune_plib_registry(unmerge=true, needed=needed,
 		preserve_paths=preserve_paths)
 
-			if eapi_unsupported:
-			failures += 1
-	showMessage(_("!!! FAILED prerm: %s\n") % 
-filepath.Join(d.dbdir, "EAPI"),
-		level=logging.ERROR, noiselevel=-1)
-	showMessage("%s\n" % (eapi_unsupported,),
-		level=logging.ERROR, noiselevel=-1)
-	else if os.path.isfile(myebuildpath):
-	phase = EbuildPhase(background=background,
-		phase=ebuild_phase, scheduler=scheduler,
-		settings=d.settings)
-	phase.start()
-	retval = phase.wait()
+			if eapi_unsupported {
+				failures += 1
+				showMessage(_("!!! FAILED prerm: %s\n")%
+					filepath.Join(d.dbdir, "EAPI"),
+					level = logging.ERROR, noiselevel = -1)
+				showMessage("%s\n"%(eapi_unsupported, ),
+					level = logging.ERROR, noiselevel = -1)
+			}else if os.path.isfile(myebuildpath) {
+				phase = EbuildPhase(background = background,
+					phase = ebuild_phase, scheduler=scheduler,
+					settings = d.settings)
+				phase.start()
+				retval = phase.wait()
 
-		if retval != os.EX_OK:
-	failures += 1
-	showMessage(_("!!! FAILED prerm: %s\n") % retval,
-		level=logging.ERROR, noiselevel=-1)
+				if retval != 0 {
+					failures += 1
+					showMessage(fmt.Sprintf("!!! FAILED prerm: %s\n",retval),
+						40, -1)
+				}
+			}
 
 	d.vartree.dbapi._fs_lock()
 try:
@@ -3051,7 +3058,7 @@ try:
 	msg_lines=append(,"")
 
 	ebuild_name = filepath.Base(myebuildpath)
-	ebuild_dir = os.path.dirname(myebuildpath)
+	ebuild_dir = filepath.Dir(myebuildpath)
 	msg = _("The problem occurred while executing "+
 	"the ebuild file named '%(ebuild_name)s' "+
 	"located in the '%(ebuild_dir)s' directory. "+
@@ -3122,7 +3129,7 @@ try:
 	env_update(target_root=d.settings.ValueDict["ROOT"],
 		prev_mtimes=ldpath_mtimes,
 		contents=contents, env=d.settings,
-		writemsg_level=d._display_merge, vardbapi=d.vartree.dbapi)
+		WriteMsg_level=d._display_merge, vardbapi=d.vartree.dbapi)
 
 	unmerge_with_replacement = preserve_paths != nil
 	if not unmerge_with_replacement:
@@ -3137,7 +3144,7 @@ func (d *dblink) _display_merge(msg string, level, noiselevel int{
 	if not d._verbose && noiselevel >= 0 && level < logging.WARN:
 	return
 	if d._scheduler == nil:
-	writemsg_level(msg, level=level, noiselevel=noiselevel)
+	WriteMsg_level(msg, level=level, noiselevel=noiselevel)
 	else:
 	log_path = nil
 	if d.settings.ValueDict["PORTAGE_BACKGROUND") != "subprocess":
@@ -3146,7 +3153,7 @@ func (d *dblink) _display_merge(msg string, level, noiselevel int{
 
 	if background && log_path == nil:
 	if level >= logging.WARN:
-	writemsg_level(msg, level=level, noiselevel=noiselevel)
+	WriteMsg_level(msg, level=level, noiselevel=noiselevel)
 	else:
 	d._scheduler.output(msg,
 		log_path=log_path, background=background,
@@ -3208,7 +3215,7 @@ func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot)
 	if bsd_chflags:
 	if lstatobj.st_flags != 0:
 	bsd_chflags.lchflags(file_name, 0)
-	parent_name = os.path.dirname(file_name)
+	parent_name = filepath.Dir(file_name)
 				pflags = os.Stat(parent_name).st_flags
 	if pflags != 0:
 	bsd_chflags.chflags(parent_name, 0)
@@ -3540,7 +3547,7 @@ finally:
 	for relative_path in unmerge_syms:
 	obj = filepath.Join(real_root,
 		relative_path.lstrip(os.sep))
-	parent = os.path.dirname(obj)
+	parent = filepath.Dir(obj)
 	while len(parent) > len(d._eroot):
 try:
 	lstatobj = os.Lstat(parent)
@@ -3549,7 +3556,7 @@ try:
 	else:
 	dirs.add((parent,
 		(lstatobj.st_dev, lstatobj.st_ino)))
-	parent = os.path.dirname(parent)
+	parent = filepath.Dir(parent)
 try:
 	unlink(obj, os.Lstat(obj))
 	show_unmerge("<<<", "", "sym", obj)
@@ -3610,7 +3617,7 @@ try:
 	show_unmerge("!!!", "", "obj", child)
 
 try:
-	parent_name = os.path.dirname(obj)
+	parent_name = filepath.Dir(obj)
 	parent_stat = os.Stat(parent_name)
 
 	if bsd_chflags:
@@ -3661,14 +3668,14 @@ try:
 	del e
 	show_unmerge("!!!", "", "sym", obj)
 	else:
-	parents=append(,os.path.dirname(obj))
+	parents=append(,filepath.Dir(obj))
 
 	if parents:
 		recursive_parents = []
 	for parent in set(parents):
 	while parent in revisit:
 	recursive_parents=append(,parent)
-	parent = os.path.dirname(parent)
+	parent = filepath.Dir(parent)
 	if parent == "/":
 	break
 
@@ -3918,11 +3925,11 @@ func (d *dblink) _add_preserve_libs_to_contents(preserve_paths) {
 	obj_type = contents_entry[0]
 	showMessage(_(">>> needed    %s %s\n") % (obj_type, f_abs),
 		noiselevel=-1)
-			parent_dir = os.path.dirname(f_abs)
+			parent_dir = filepath.Dir(f_abs)
 		while len(parent_dir) > len(root):
 	new_contents[parent_dir] = ["dir"]
 	prev = parent_dir
-	parent_dir = os.path.dirname(parent_dir)
+	parent_dir = filepath.Dir(parent_dir)
 	if prev == parent_dir:
 	break
 	outfile = atomic_ofstream(filepath.Join(d.dbtmpdir, "CONTENTS"))
@@ -4050,7 +4057,7 @@ func (d *dblink) _remove_preserved_libs(cpv_lib_map) {
 	parent_dirs = map[string]bool{}
 	for obj in files_to_remove:
 	obj = filepath.Join(root, obj.lstrip(os.sep))
-	parent_dirs.add(os.path.dirname(obj))
+	parent_dirs.add(filepath.Dir(obj))
 	if os.path.islink(obj):
 	obj_type = _("sym")
 	else:
@@ -4073,7 +4080,7 @@ try:
 	except OSError:
 	break
 	prev = x
-	x = os.path.dirname(x)
+	x = filepath.Dir(x)
 	if x == prev:
 	break
 
@@ -4137,12 +4144,12 @@ func (d *dblink) _collision_protect(srcroot, destroot, mypkglist,
 
 	dest_path = NormalizePath(filepath.Join(destroot, f.lstrip(string(os.PathSeparator))))
 
-		real_relative_path = filepath.Join(os.path.realpath(os.path.dirname(dest_path)),
+		real_relative_path = filepath.Join(os.path.realpath(filepath.Dir(dest_path)),
 		filepath.Base(dest_path))[len(destroot):]
 
 	real_relative_paths.setdefault(real_relative_path, [])=append(,f.lstrip(string(os.PathSeparator)))
 
-	parent = os.path.dirname(dest_path)
+	parent = filepath.Dir(dest_path)
 	if parent not in dirs:
 	for x in iter_parents(parent):
 	if x in dirs:
@@ -4164,7 +4171,7 @@ try:
 				dest_lstat = nil
 	parent_path = dest_path
 	while len(parent_path) > len(destroot):
-	parent_path = os.path.dirname(parent_path)
+	parent_path = filepath.Dir(parent_path)
 try:
 	dest_lstat = os.Lstat(parent_path)
 	break
@@ -4414,7 +4421,7 @@ func (d *dblink) _emerge_log(msg) {emergelog(false, msg)}
 
 // 0, nil, nil, nil
 func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
-	mydbapi=nil, prev_mtimes=nil, counter=nil) {
+	mydbapi DBAPI, prev_mtimes=nil, counter=nil) {
 
 	os = _os_merge
 
@@ -4428,7 +4435,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
 		return 1
 	}
 
-		doebuild_environment(myebuild, "instprep", nil, d.settings,false , mydbapi)
+	doebuild_environment(myebuild, "instprep", nil, d.settings,false , nil,  mydbapi)
 	phase := NewEbuildPhase(nil, false, "instprep",
 		d._scheduler, d.settings)
 	phase.start()
@@ -4881,7 +4888,7 @@ d.settings.mycpv
 
 			try:
 	syscall.Unlink(filepath.Join(
-	os.path.dirname(NormalizePath(srcroot)), ".installed"))
+	filepath.Dir(NormalizePath(srcroot)), ".installed"))
 	except OSError as e:
 	if err != syscall.ENOENT:
 	raise
@@ -5126,7 +5133,7 @@ filepath.Join(d.dbpkgdir, "environment.bz2")
 		env_update(
 	target_root=d.settings.ValueDict["ROOT"], prev_mtimes=prev_mtimes,
 	contents=contents, env=d.settings,
-	writemsg_level=d._display_merge, vardbapi=d.vartree.dbapi)
+	WriteMsg_level=d._display_merge, vardbapi=d.vartree.dbapi)
 
 			d._prune_plib_registry()
 	d._post_merge_sync()
@@ -5208,7 +5215,7 @@ try:
 func (d *dblink) mergeme(srcroot, destroot, outfile, secondhand, stufftomerge, cfgfiledict, thismtime) {
 
 	showMessage = d._display_merge
-	writemsg = d._display_merge
+	WriteMsg = d._display_merge
 
 	os = _os_merge
 	sep = os.sep
@@ -5375,11 +5382,11 @@ filepath.Base(mydest).startswith(".keep"):
 	if not stat.S_ISLNK(mydmode) &&
 not os.access(mydest, os.W_OK):
 	pkgstuff = pkgsplit(d.pkg)
-	writemsg(_("\n!!! Cannot write to '%s'.\n") % mydest, noiselevel=-1)
-	writemsg(_("!!! Please check permissions and directories for broken symlinks.\n"))
-	writemsg(_("!!! You may start the merge process again by using ebuild:\n"))
-	writemsg("!!! ebuild "+d.settings.ValueDict["PORTDIR"]+"/"+d.cat+"/"+pkgstuff[0]+"/"+d.pkg+".ebuild merge\n")
-	writemsg(_("!!! And finish by running this: env-update\n\n"))
+	WriteMsg(_("\n!!! Cannot write to '%s'.\n") % mydest, noiselevel=-1)
+	WriteMsg(_("!!! Please check permissions and directories for broken symlinks.\n"))
+	WriteMsg(_("!!! You may start the merge process again by using ebuild:\n"))
+	WriteMsg("!!! ebuild "+d.settings.ValueDict["PORTDIR"]+"/"+d.cat+"/"+pkgstuff[0]+"/"+d.pkg+".ebuild merge\n")
+	WriteMsg(_("!!! And finish by running this: env-update\n\n"))
 	return 1
 
 	if stat.S_ISDIR(mydmode) || 
@@ -5671,14 +5678,12 @@ func (d *dblink) copyfile(fname string) {
 	copyfile(fname, d.dbdir+"/"+filepath.Base(fname))
 }
 
-func (d *dblink) getfile(fname) {
-	if not pathExists(d.dbdir+"/"+fname):
-	return ""
-	with io.open(_unicode_encode(filepath.Join(d.dbdir, fname),
-		encoding=_encodings['fs'], errors='strict'),
-	mode='r', encoding=_encodings['repo.content'], errors='replace'
-	) as f:
-	return f.read()
+func (d *dblink) getfile(fname string) string {
+	if ! pathExists(d.dbdir+"/"+fname) {
+		return ""
+	}
+	f, _ := ioutil.ReadFile(filepath.Join(d.dbdir, fname))
+	return string(f)
 }
 
 func (d *dblink) setfile(fname, data string) {
@@ -5727,73 +5732,79 @@ func (d *dblink) _pre_merge_backup(backup_dblink, downgrade) {
 
 }
 
-func (d *dblink) _pre_unmerge_backup(background) {
-
-	if "unmerge-backup" in d.settings.features :
-	logfile = nil
-	if d.settings.ValueDict["PORTAGE_BACKGROUND") != "subprocess":
-	logfile = d.settings.ValueDict["PORTAGE_LOG_FILE")
-	return d._quickpkg_dblink(d, background, logfile)
-
-	return os.EX_OK
-
+func (d *dblink) _pre_unmerge_backup(background bool) int {
+	if d.settings.Features.Features[ "unmerge-backup"] {
+		logfile := ""
+		if d.settings.ValueDict["PORTAGE_BACKGROUND"] != "subprocess" {
+			logfile = d.settings.ValueDict["PORTAGE_LOG_FILE"]
+		}
+		return d._quickpkg_dblink(d, background, logfile)
+	}
+	return 0
 }
 
-func (d *dblink) _quickpkg_dblink(backup_dblink, background, logfile) {
+func (d *dblink) _quickpkg_dblink(backup_dblink *dblink, background bool, logfile string) int {
 
-	build_time = backup_dblink.getfile('BUILD_TIME')
-try:
-	build_time = long(build_time.strip())
-	except ValueError:
-	build_time = 0
+	build_timeS := backup_dblink.getfile("BUILD_TIME")
+	build_time, _ := strconv.Atoi(strings.TrimSpace(build_timeS))
+	//except ValueError:
+	//build_time = 0
 
-	trees = QueryCommand.get_db()[d.settings.ValueDict["EROOT"]]
-	bintree = trees["bintree"]
+	trees := NewQueryCommand(nil, "").get_db().Values()[d.settings.ValueDict["EROOT"]]
+	bintree := trees.BinTree()
 
-	for binpkg in reversed(
-		bintree.dbapi.match("={}".format(backup_dblink.mycpv))):
-	if binpkg.build_time == build_time:
-	return os.EX_OK
+	bdm := []*PkgStr{}
+	for _, v := range bintree.dbapi.match(fmt.Sprintf("=%v", backup_dblink.mycpv), 1) {
+		bdm = append([]*PkgStr{v}, bdm...)
+	}
+	for _, binpkg := range bdm {
+		if binpkg.buildTime == build_time {
+			return 0
+		}
+	}
 
 	d.lockdb()
-try:
+	defer d.unlockdb()
 
-	if not backup_dblink.exists():
-		return os.EX_OK
+	if !backup_dblink.exists() {
+		return 0
+	}
 
-			quickpkg_binary = filepath.Join(d.settings.ValueDict["PORTAGE_BIN_PATH"],
-		"quickpkg")
+	quickpkg_binary := filepath.Join(d.settings.ValueDict["PORTAGE_BIN_PATH"], "quickpkg")
 
-	if not os.access(quickpkg_binary, os.X_OK):
-			quickpkg_binary = find_binary("quickpkg")
-	if quickpkg_binary == nil:
-	d._display_merge(
-		_("%s: command not found") % "quickpkg",
-		level=logging.ERROR, noiselevel=-1)
-	return 127
+	if st, _ := os.Stat(quickpkg_binary); st == nil || st.Mode()&0111 == 0 {
+		quickpkg_binary := FindBinary("quickpkg")
+		if quickpkg_binary == "" {
+			d._display_merge(fmt.Sprintf("%s: command not found", "quickpkg"),
+				40, -1)
+			return 127
+		}
+	}
 
-		env = dict(d.vartree.settings.items())
+	env := CopyMapSS(d.vartree.settings.ValueDict)
 	env["__PORTAGE_INHERIT_VARDB_LOCK"] = "1"
 
-	pythonpath = [x for x in env.get("PYTHONPATH", "").split(":") if x]
-	if not pythonpath || 
-not os.path.samefile(pythonpath[0], portage._pym_path):
-	pythonpath.insert(0, portage._pym_path)
-	env["PYTHONPATH"] = ":".join(pythonpath)
+	pythonpath := []string{}
+	for _, x := range strings.Split(env["PYTHONPATH"], ":") {
+		if x != "" {
+			pythonpath = append(pythonpath, x)
+		}
+	}
+	if len(pythonpath) == 0 ||
+		not os.path.samefile(pythonpath[0], portage._pym_path) {
+		pythonpath.insert(0, portage._pym_path)
+	}
+	env["PYTHONPATH"] = strings.Join(pythonpath, ":")
 
-	quickpkg_proc = SpawnProcess(
-	args=[portage._python_interpreter, quickpkg_binary,
-	"=%s" % (backup_dblink.mycpv,)],
-	background=background, env=env,
-	scheduler=d._scheduler, logfile=logfile)
+	quickpkg_proc := NewSpawnProcess(
+		[]string{_python_interpreter, quickpkg_binary,
+		fmt.Sprintf("=%s" , backup_dblink.mycpv.string)},
+		background, env,
+		d._scheduler, logfile)
 	quickpkg_proc.start()
 
-	return quickpkg_proc.wait()
-
-	finally:
-	d.unlockdb()
-
-	}
+	return *quickpkg_proc.wait()
+}
 
 // "", nil, "", nil, nil, nil, nil
 func NewDblink(cat, pkg, myroot string, settings *Config, treetype string,
@@ -5875,7 +5886,7 @@ func merge(mycat, mypkg, pkgloc, infloc,
 	if settings == nil:
 	raise TypeError("settings argument is required")
 	if not os.access(settings.ValueDict["EROOT"], os.W_OK):
-	writemsg(_("Permission denied: access('%s', W_OK)\n") % settings.ValueDict["EROOT"],
+	WriteMsg(_("Permission denied: access('%s', W_OK)\n") % settings.ValueDict["EROOT"],
 		noiselevel=-1)
 	return errno.EACCES
 	background = (settings.ValueDict["PORTAGE_BACKGROUND") == "1")
@@ -5892,6 +5903,7 @@ func merge(mycat, mypkg, pkgloc, infloc,
 	return retcode
 }
 
+// nil, nil, nil, nil, nil, nil
 func unmerge(cat, pkg, myroot=nil, settings=nil,
 	mytrimworld=nil, vartree=nil,
 	ldpath_mtimes=nil, scheduler=nil) {
@@ -6140,8 +6152,8 @@ func (f *fakedbapi) _clear_cache() {
 }
 
 // 1
-func (f *fakedbapi) match(origdep *Atom, use_cache int) []*PkgStr {
-	atom := dep_expand(origdep, f.dbapi, 1, f.settings)
+func (f *fakedbapi) match(origdep string, use_cache int) []*PkgStr {
+	atom := dep_expandS(origdep, f.dbapi, 1, f.settings)
 	cacheKey := [2]string{atom.value, atom.unevaluatedAtom.value}
 	result := f._match_cache[cacheKey]
 	if result != nil {
@@ -6330,7 +6342,7 @@ func (b *bindbapi) writable() bool {
 }
 
 // 1
-func (b *bindbapi) match(origdep *Atom, use_cache int) []*PkgStr {
+func (b *bindbapi) match(origdep string, use_cache int) []*PkgStr {
 	if b.bintree != nil && !b.bintree.populated {
 		b.bintree.Populate(false, true, []string{})
 	}
@@ -7197,11 +7209,11 @@ try:
 	if not remote_timestamp: 	remote_timestamp = rmt_idx.header.get("TIMESTAMP", nil)
 	if not remote_timestamp:
 		pkgindex = nil
-	writemsg(_("\n\n!!! Binhost package index " 
+	WriteMsg(_("\n\n!!! Binhost package index " 
 " has no TIMESTAMP field.\n"), noiselevel=-1)
 	else:
 	if not self._pkgindex_version_supported(rmt_idx):
-	writemsg(_("\n\n!!! Binhost package index version" 
+	WriteMsg(_("\n\n!!! Binhost package index version" 
 " is not supported: '%s'\n") % 
 rmt_idx.header.get("VERSION"), noiselevel=-1)
 	pkgindex = nil
@@ -7216,24 +7228,24 @@ rmt_idx.header.get("VERSION"), noiselevel=-1)
 	finally:
 	AlarmSignal.unregister()
 	except AlarmSignal:
-	writemsg("\n\n!!! %s\n" % 
+	WriteMsg("\n\n!!! %s\n" % 
 _("Timed out while closing connection to binhost"),
 	noiselevel=-1)
 	except UseCachedCopyOfRemoteIndex:
-	writemsg_stdout("\n")
-	writemsg_stdout(
+	WriteMsg_stdout("\n")
+	WriteMsg_stdout(
 	colorize("GOOD", _("Local copy of remote index is up-to-date and will be used.")) + 
 "\n")
 	rmt_idx = pkgindex
 	except EnvironmentError as e:
-			writemsg(_("\n\n!!! Error fetching binhost package" 
+			WriteMsg(_("\n\n!!! Error fetching binhost package" 
 " info from '%s'\n") % _hide_url_passwd(base_url))
 				try:
 	error_msg = _unicode(e)
 	except UnicodeDecodeError as uerror:
 	error_msg = _unicode(uerror.object,
 	encoding='utf_8', errors='replace')
-	writemsg("!!! %s\n\n" % error_msg)
+	WriteMsg("!!! %s\n\n" % error_msg)
 	del e
 	pkgindex = nil
 	if proc != nil:
@@ -7249,12 +7261,12 @@ _("Timed out while closing connection to binhost"),
 	if pkgindex is rmt_idx:
 	pkgindex.modified = false 	pkgindex.header["DOWNLOAD_TIMESTAMP"] = "%d" % time.time()
 	try:
-	ensure_dirs(os.path.dirname(pkgindex_file))
+	ensure_dirs(filepath.Dir(pkgindex_file))
 	f = atomic_ofstream(pkgindex_file)
 	pkgindex.write(f)
 	f.close()
 	except (IOError, PortageException):
-	if os.access(os.path.dirname(pkgindex_file), os.W_OK):
+	if os.access(filepath.Dir(pkgindex_file), os.W_OK):
 	raise
 			if pkgindex:
 	remote_base_uri = pkgindex.header.get("URI", base_url)
@@ -7303,7 +7315,7 @@ try:
 	if err != syscall.ENOENT:
 	raise
 	del e
-	writemsg(_("!!! Binary package does not exist: '%s'\n") % full_path,
+	WriteMsg(_("!!! Binary package does not exist: '%s'\n") % full_path,
 		noiselevel=-1)
 	return
 	metadata = self._read_metadata(full_path, s)
@@ -7313,7 +7325,7 @@ try:
 	except portage.exception.InvalidDependString:
 	invalid_depend = true
 	if invalid_depend || not metadata.get("SLOT"):
-	writemsg(_("!!! Invalid binary package: '%s'\n") % full_path,
+	WriteMsg(_("!!! Invalid binary package: '%s'\n") % full_path,
 		noiselevel=-1)
 	return
 
@@ -7344,7 +7356,7 @@ try:
 	except OSError:
 	samefile = false
 	if not samefile:
-	self._ensure_dir(os.path.dirname(new_filename))
+	self._ensure_dir(filepath.Dir(new_filename))
 	_movefile(filename, new_filename, mysettings=self.settings)
 	full_path = new_filename
 
@@ -7529,7 +7541,7 @@ func (b *BinaryTree) _propagate_config(config) {
 	return false
 
 	self._merge_pkgindex_header(self._pkgindex_header,
-		config.configdict["defaults"])
+		config.configDict["defaults"])
 	config.regenerate()
 	config._init_iuse()
 	return true
@@ -7615,7 +7627,7 @@ func (b *BinaryTree) _eval_use_flags(metadata map[string]string) {
 		deps1 := useReduce(deps, use, []string{}, false, []string{}, false, "", false, false, nil, token_class, false)
 		deps2 := parenEncloses(deps1, false, false)
 		//except portage.exception.InvalidDependString as e:
-		//writemsg("%s: %s\n" % (k, e), noiselevel=-1)
+		//WriteMsg("%s: %s\n" % (k, e), noiselevel=-1)
 		//raise
 		metadata[k] = deps2
 	}
@@ -7787,10 +7799,10 @@ func (b *BinaryTree) gettbz2(pkgname) {
 	return
 	else:
 	resume = true
-	writemsg(_("Resuming download of this tbz2, but it is possible that it is corrupt.\n"),
+	WriteMsg(_("Resuming download of this tbz2, but it is possible that it is corrupt.\n"),
 		noiselevel=-1)
 
-	mydest = os.path.dirname(self.getname(pkgname))
+	mydest = filepath.Dir(self.getname(pkgname))
 	self._ensure_dir(mydest)
 		if self._remote_has_index:
 	rel_url = self._remotepkgs[instance_key].get("PATH")
@@ -7863,7 +7875,7 @@ try:
 try:
 	digests["size"] = int(metadata["SIZE"])
 	except ValueError:
-	writemsg(_("!!! Malformed SIZE attribute in remote " 
+	WriteMsg(_("!!! Malformed SIZE attribute in remote " 
 "metadata for '%s'\n") % cpv)
 
 	return digests
@@ -8297,9 +8309,9 @@ try:
 	ebuild_hash = eclass_cache.hashed_path(ebuild_path)
 	ebuild_hash.mtime
 	except FileNotFound:
-	writemsg(_("!!! aux_get(): ebuild for " 
+	WriteMsg(_("!!! aux_get(): ebuild for " 
 "'%s' does not exist at:\n") % (cpv,), noiselevel=-1)
-	writemsg("!!!            %s\n" % ebuild_path, noiselevel=-1)
+	WriteMsg("!!!            %s\n" % ebuild_path, noiselevel=-1)
 	raise PortageKeyError(cpv)
 
 		auxdbs = []
@@ -8398,7 +8410,7 @@ return future
 myebuild, mylocation = p.findname2(mycpv, mytree)
 
 if not myebuild:
-writemsg("!!! aux_get(): %s\n" % 
+WriteMsg("!!! aux_get(): %s\n" % 
 _("ebuild not found for '%s'") % mycpv, noiselevel= 1)
 future.set_exception(PortageKeyError(mycpv))
 return future
@@ -8473,7 +8485,7 @@ future.set_result(returnme)
 }
 
 // nil, nil
-func (p *portdbapi) getFetchMap(mypkg, useflags, mytree) {
+func (p *portdbapi) getFetchMap(mypkg string, useflags []string, mytree string) {
 	loop = p._event_loop
 	return loop.run_until_complete(
 		p.async_fetch_map(mypkg, useflags = useflags,
@@ -8525,27 +8537,25 @@ aux_get_future.add_done_callback(aux_get_done)
 return result
 }
 
-func (p *portdbapi) getfetchsizes(mypkg, useflags=nil, debug=0, myrepo=nil) {
-	myebuild, mytree = p.findname2(mypkg, myrepo = myrepo)
-	if myebuild is
-nil:
-	raise
-	AssertionError(_("ebuild not found for '%s'") % mypkg)
-	pkgdir = os.path.dirname(myebuild)
-	mf = p.repositories.get_repo_for_location(
-		os.path.dirname(os.path.dirname(pkgdir))).load_manifest(
-		pkgdir, p.settings.ValueDict["DISTDIR"])
-	checksums = mf.getDigests()
-	if not checksums:
-	if debug:
-	writemsg(_("[empty/missing/bad digest]: %s\n") % (mypkg, ))
-	return
-	{
+// nil, 0, nil
+func (p *portdbapi) getfetchsizes(mypkg, useflags=nil, debug int, myrepo=nil) {
+	myebuild, mytree := p.findname2(mypkg, myrepo = myrepo)
+	if myebuild == nil {
+		//raise AssertionError(_("ebuild not found for '%s'") % mypkg)
 	}
-	filesdict =
-	{
+	pkgdir := filepath.Dir(myebuild)
+	mf := p.repositories.getRepoForLocation(
+		filepath.Dir(filepath.Dir(pkgdir))).load_manifest(
+		pkgdir, p.settings.ValueDict["DISTDIR"], nil, false)
+	checksums := mf.getDigests()
+	if len(checksums) == 0 {
+		if debug != 0 {
+			WriteMsg(fmt.Sprintf("[empty/missing/bad digest]: %s\n", mypkg, ), -1, nil)
+		}
+		return {}
 	}
-	myfiles = p.getFetchMap(mypkg, useflags, mytree)
+	filesdict :={}
+	myfiles := p.getFetchMap(mypkg, useflags, mytree)
 	for myfile
 	in
 myfiles:
@@ -8553,7 +8563,7 @@ try:
 	fetch_size = int(checksums[myfile]["size"])
 	except(KeyError, ValueError):
 	if debug:
-	writemsg(_("[bad digest]: missing %(file)s for %(pkg)s\n") %
+	WriteMsg(_("[bad digest]: missing %(file)s for %(pkg)s\n") %
 	{
 		"file":myfile, "pkg":mypkg
 	})
@@ -8608,35 +8618,33 @@ OSError:
 
 }
 
-func (p *portdbapi) fetch_check(mypkg, useflags=nil, mysettings=nil, all=false, myrepo=nil) {
+// nil, nil, false, ""
+func (p *portdbapi) fetch_check(mypkg string, useflags []string, mysettings *Config, all bool, myrepo string) {
 
-	if all:
-	useflags = nil
-	else if
-	useflags
-	is
-nil:
-	if mysettings:
-	useflags = mysettings.ValueDict["USE"].split()
-	if myrepo is
-	not
-nil:
-	mytree = p.treemap.get(myrepo)
-	if mytree is
-nil:
-	return false
-	else:
-	mytree = nil
+	if all {
+		useflags = nil
+	}else if useflags == nil {
+		if mysettings != nil {
+			useflags = strings.Fields(mysettings.ValueDict["USE"])
+		}
+	}
+	mytree :=""
+	if myrepo != "" {
+		mytree := p.treemap[myrepo]
+		if mytree == "" {
+			return false
+		}
+	}
 
-	myfiles = p.getFetchMap(mypkg, useflags = useflags, mytree = mytree)
-	myebuild = p.findname(mypkg, myrepo = myrepo)
+	myfiles := p.getFetchMap(mypkg, useflags, mytree)
+	myebuild := p.findname(mypkg, myrepo = myrepo)
 	if myebuild is
 nil:
 	raise
 	AssertionError(_("ebuild not found for '%s'") % mypkg)
-	pkgdir = os.path.dirname(myebuild)
+	pkgdir = filepath.Dir(myebuild)
 	mf = p.repositories.get_repo_for_location(
-		os.path.dirname(os.path.dirname(pkgdir)))
+		filepath.Dir(filepath.Dir(pkgdir)))
 	mf = mf.load_manifest(pkgdir, p.settings.ValueDict["DISTDIR"])
 	mysums = mf.getDigests()
 
@@ -8762,21 +8770,21 @@ pf = x[:-7]
 if pf != nil:
 ps = pkgsplit(pf)
 if not ps:
-writemsg(_("\nInvalid ebuild name: %s\n") % 
+WriteMsg(_("\nInvalid ebuild name: %s\n") % 
 filepath.Join(oroot, mycp, x), noiselevel = -1)
 continue
 if ps[0] != mysplit[1]:
-writemsg(_("\nInvalid ebuild name: %s\n") % 
+WriteMsg(_("\nInvalid ebuild name: %s\n") % 
 filepath.Join(oroot, mycp, x), noiselevel = -1)
 continue
 ver_match = ver_regexp.match("-".join(ps[1:]))
 if ver_match == nil || not ver_match.groups():
-writemsg(_("\nInvalid ebuild version: %s\n") % 
+WriteMsg(_("\nInvalid ebuild version: %s\n") % 
 filepath.Join(oroot, mycp, x), noiselevel= -1)
 continue
 mylist=append(,_pkg_str(mysplit[0]+"/"+pf, db = p, repo = repo.name))
 if invalid_category && mylist:
-writemsg(_("\n!!! '%s' has a category that is not listed in " 
+WriteMsg(_("\n!!! '%s' has a category that is not listed in " 
 "%setc/portage/categories\n") % 
 (mycp, p.settings.ValueDict["PORTAGE_CONFIGROOT"]), noiselevel = -1)
 mylist = []
@@ -8990,9 +8998,9 @@ KeyError:
 	PortageException
 	as
 e:
-	writemsg("!!! Error: aux_get('%s', %s)\n"%
+	WriteMsg("!!! Error: aux_get('%s', %s)\n"%
 		(mycpv, aux_keys), noiselevel = -1)
-	writemsg("!!! %s\n" % (e, ), noiselevel = -1)
+	WriteMsg("!!! %s\n" % (e, ), noiselevel = -1)
 	del
 	e
 	continue
