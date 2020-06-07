@@ -2,11 +2,15 @@ package atom
 
 import (
 	"fmt"
+	"github.com/ppphp/shlex"
+	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -414,28 +418,28 @@ func DisableLegacyGlobals() {
 
 var ignored_dbentries = map[string]bool{"CONTENTS": true, "environment.bz2": true}
 
-func update_dbentry(updateCmd []*Atom, mycontent string, eapi string, parent *PkgStr) string { // "", nil
+func update_dbentry(updateCmd []string, mycontent string, eapi string, parent *PkgStr) string { // "", nil
 	if parent != nil {
 		eapi = parent.eapi
 	}
-	if updateCmd[0].value == "move" {
+	if updateCmd[0] == "move" {
 		oldValue := updateCmd[1]
 		newValue := updateCmd[2]
-		if strings.Contains(mycontent, oldValue.value) && isValidAtom(newValue.value, false, false, false, "", false) {
+		if strings.Contains(mycontent, oldValue) && isValidAtom(newValue, false, false, false, "", false) {
 			splitContent := regexp.MustCompile("(\\s+)").Split(mycontent, -1)
 			modified := false
 			for i, token := range splitContent {
-				if !strings.Contains(token, oldValue.value) {
+				if !strings.Contains(token, oldValue) {
 					continue
 				}
 				atom, err := NewAtom(token, nil, false, nil, nil, eapi, nil, nil)
 				if err != nil {
 					continue
 				}
-				if atom.cp != oldValue.value {
+				if atom.cp != oldValue {
 					continue
 				}
-				newAtom, _ := NewAtom(strings.Replace(token, oldValue.value, newValue.value, 1), nil, false, nil, nil, eapi, nil, nil)
+				newAtom, _ := NewAtom(strings.Replace(token, oldValue, newValue.value, 1), nil, false, nil, nil, eapi, nil, nil)
 				if newAtom.Blocker != nil && parent != nil && parent.cp == newAtom.cp && len(matchFromList(newAtom, []*PkgStr{parent})) > 0 {
 					continue
 				}
@@ -447,7 +451,7 @@ func update_dbentry(updateCmd []*Atom, mycontent string, eapi string, parent *Pk
 				mycontent = strings.Join(splitContent, "")
 			}
 		}
-	} else if updateCmd[0].value == "slotmove" && updateCmd[1].Operator == "" {
+	} else if updateCmd[0] == "slotmove" && updateCmd[1].Operator == "" {
 		origAtom, origslot, newslot := updateCmd[1], updateCmd[2], updateCmd[3]
 		origCp := origAtom.cp
 		if origAtom.version == "" && strings.Contains(mycontent, origCp) {
@@ -493,7 +497,7 @@ func update_dbentry(updateCmd []*Atom, mycontent string, eapi string, parent *Pk
 }
 
 // "", nil
-func update_dbentries(updateIter [][]*Atom, mydata map[string]string, eapi string, parent *PkgStr) map[string]string {
+func update_dbentries(updateIter [][]string, mydata map[string]string, eapi string, parent *PkgStr) map[string]string {
 	updatedItems := map[string]string{}
 	for k, mycontent := range mydata {
 		if !ignored_dbentries[k] {
@@ -509,293 +513,287 @@ func update_dbentries(updateIter [][]*Atom, mydata map[string]string, eapi strin
 	return updatedItems
 }
 
-func fixdbentries(update_iter, dbdir, eapi=None, parent=None) {
-
-	warnings.warn("portage.update.fixdbentries() is deprecated",
-		DeprecationWarning, stacklevel = 2)
-
-	mydata =
-	{
+// nil
+func grab_updates(updpath string, prev_mtimes map[string]string) []struct{p string; s os.FileInfo; c string} {
+	mylist, err := listDir(updpath)
+	if err != nil {
+		//except OSError as oe:
+		if err == syscall.ENOENT {
+			//raise DirectoryNotFound(updpath)
+		}
+		//raise
 	}
-	for myfile
-	in
-	[f
-	for f
-	in
-	os.listdir(dbdir)
-	if f not
-	in
-	ignored_dbentries]:
-file_path = os.path.join(dbdir, myfile)
-with io.open(_unicode_encode(file_path,
-encoding = _encodings['fs'], errors = 'strict'),
-mode = 'r', encoding= _encodings['repo.content'],
-errors = 'replace') as f:
-mydata[myfile] = f.read()
-updated_items = update_dbentries(update_iter, mydata,
-eapi = eapi, parent = parent)
-for myfile, mycontent in updated_items.items():
-file_path = os.path.join(dbdir, myfile)
-write_atomic(file_path, mycontent, encoding = _encodings['repo.content'])
-return len(updated_items) > 0
+	if prev_mtimes == nil {
+		prev_mtimes = map[string]string{}
+	}
+
+	ml := []string{}
+	for _, myfile := range mylist {
+		if len(myfile) == 7 && myfile[1:3] == "Q-" {
+			ml = append(ml, myfile)
+		}
+	}
+	mylist = ml
+	if len(mylist) == 0 {
+		return []struct {
+			p string
+			s os.FileInfo
+			c string
+		}{}
+	}
+
+	sort.Slice(mylist, func(i, j int) bool {
+		if mylist[i][3:] < mylist[j][3:] {
+			return true
+		} else if mylist[i][3:] > mylist[j][3:] {
+			return false
+		} else {
+			if mylist[i][:2] < mylist[j][:2] {
+				return true
+			} else {
+				return false
+			}
+		}
+	})
+
+	update_data := []struct {
+		p string
+		s os.FileInfo
+		c string
+	}{}
+	for _, myfile := range mylist {
+		file_path := filepath.Join(updpath, myfile)
+		mystat, _ := os.Stat(file_path)
+		if len(update_data) > 0 || !Inmss(prev_mtimes, file_path) ||
+			prev_mtimes[file_path] != fmt.Sprint(mystat.ModTime().UnixNano()) {
+			f, _ := os.Open(file_path)
+			content, _ := ioutil.ReadAll(f)
+			f.Close()
+			update_data = append(update_data, struct {
+				p string;
+				s os.FileInfo;
+				c string
+			}{file_path, mystat, string(content)})
+		}
+	}
+	return update_data
 }
 
-func grab_updates(updpath, prev_mtimes=None) {
-try:
-	mylist = os.listdir(updpath)
-	except
-	OSError
-	as
-oe:
-	if oe.errno == errno.ENOENT:
-	raise
-	DirectoryNotFound(updpath)
-	raise
-	if prev_mtimes is
-None:
-	prev_mtimes =
-	{
+func parse_updates(mycontent string) ([][]string, []string) {
+	eapi_attrs := getEapiAttrs("")
+	slot_re := getSlotRe(eapi_attrs)
+	myupd := [][]string{}
+	errors := []string{}
+	mylines := strings.Split(mycontent, "\n")
+	for _, myline := range mylines {
+		mysplit := strings.Fields(myline)
+		if len(mysplit) == 0 {
+			continue
+		}
+		if mysplit[0] != "move" && mysplit[0] != "slotmove" {
+			errors = append(errors, fmt.Sprintf("ERROR: Update type not recognized '%s'", myline))
+			continue
+		}
+		if mysplit[0] == "move" {
+			if len(mysplit) != 3 {
+				errors = append(errors, fmt.Sprintf("ERROR: Update command invalid '%s'", myline))
+				continue
+			}
+			valid := true
+			for _, i := range []int{1, 2} {
+				atom1, err := NewAtom(mysplit[i], nil, false, nil, nil, "", nil, nil)
+				if err != nil {
+					//except InvalidAtom:
+				} else {
+					if atom1.Blocker != nil || atom1.value != atom1.cp {
+						atom1 = nil
+					}
+				}
+				if atom1 != nil {
+					mysplit[i] = atom1
+				} else {
+					errors = append(errors, fmt.Sprintf("ERROR: Malformed update entry '%s'", myline))
+					valid = false
+					break
+				}
+			}
+			if !valid {
+				continue
+			}
+		}
+
+		if mysplit[0] == "slotmove" {
+			if len(mysplit) != 4 {
+				errors = append(errors, fmt.Sprintf("ERROR: Update command invalid '%s'", myline))
+				continue
+			}
+			pkg, origslot, newslot := mysplit[1], mysplit[2], mysplit[3]
+			atom1, err := NewAtom(pkg, nil, false, nil, nil, "", nil, nil)
+			if err != nil {
+				//except InvalidAtom:
+			} else {
+				if atom1.Blocker != nil {
+					atom1 = nil
+				}
+			}
+			if atom1 != nil {
+				mysplit[1] = atom1
+			} else {
+				errors = append(errors, fmt.Sprintf("ERROR: Malformed update entry '%s'", myline))
+				continue
+			}
+
+			invalid_slot := false
+			for _, slot := range []string{origslot, newslot} {
+				if !slot_re.MatchString(slot) {
+					invalid_slot = true
+					break
+				}
+				if strings.Contains(slot, "/") {
+					invalid_slot = true
+					break
+				}
+			}
+
+			if invalid_slot {
+				errors = append(errors, fmt.Sprintf("ERROR: Malformed update entry '%s'", myline))
+				continue
+			}
+		}
+
+		myupd = append(myupd, mysplit)
 	}
-	mylist = [myfile
-	for myfile
-	in
-	mylist
-	if len(myfile) == 7 and
-	myfile[1:3] == "Q-"]
-if len(mylist) == 0:
-return []
-
-mylist.sort(key = lambda x: (x[3:], x[:2]))
-
-update_data = []
-for myfile in mylist:
-file_path = os.path.join(updpath, myfile)
-mystat = os.stat(file_path)
-if update_data or \
-file_path not in prev_mtimes or \
-long(prev_mtimes[file_path]) != mystat[stat.ST_MTIME]:
-f = io.open(_unicode_encode(file_path,
-encoding = _encodings['fs'], errors = 'strict'),
-mode = 'r', encoding = _encodings['repo.content'], errors = 'replace')
-content = f.read()
-f.close()
-update_data.append((file_path, mystat, content))
-return update_data
-}
-
-func parse_updates(mycontent) {
-	eapi_attrs = _get_eapi_attrs(None)
-	slot_re = _get_slot_re(eapi_attrs)
-	myupd = []
-	errors = []
-	mylines = mycontent.splitlines()
-	for myline
-	in
-mylines:
-	mysplit = myline.split()
-	if len(mysplit) == 0:
-	continue
-	if mysplit[0] not
-	in("move", "slotmove"):
-	errors.append(_("ERROR: Update type not recognized '%s'") % myline)
-	continue
-	if mysplit[0] == "move":
-	if len(mysplit) != 3:
-	errors.append(_("ERROR: Update command invalid '%s'") % myline)
-	continue
-	valid = True
-	for i
-	in(1, 2):
-try:
-	atom = Atom(mysplit[i])
-	except
-InvalidAtom:
-	atom = None
-	else:
-	if atom.blocker or
-	atom != atom.cp:
-	atom = None
-	if atom is
-	not
-None:
-	mysplit[i] = atom
-	else:
-	errors.append(
-		_("ERROR: Malformed update entry '%s'") % myline)
-	valid = False
-	break
-	if not valid:
-	continue
-
-	if mysplit[0] == "slotmove":
-	if len(mysplit) != 4:
-	errors.append(_("ERROR: Update command invalid '%s'") % myline)
-	continue
-	pkg, origslot, newslot = mysplit[1], mysplit[2], mysplit[3]
-try:
-	atom = Atom(pkg)
-	except
-InvalidAtom:
-	atom = None
-	else:
-	if atom.blocker:
-	atom = None
-	if atom is
-	not
-None:
-	mysplit[1] = atom
-	else:
-	errors.append(_("ERROR: Malformed update entry '%s'") % myline)
-	continue
-
-	invalid_slot = False
-	for slot
-	in(origslot, newslot):
-	m = slot_re.match(slot)
-	if m is
-None:
-	invalid_slot = True
-	break
-	if "/" in
-slot:
-	invalid_slot = True
-	break
-
-	if invalid_slot:
-	errors.append(_("ERROR: Malformed update entry '%s'") % myline)
-	continue
-
-	myupd.append(mysplit)
 	return myupd, errors
 }
 
-func update_config_files(config_root, protect, protect_mask, update_iter,
-match_callback=None, case_insensitive=False) {
-
-	repo_dict = None
-	if isinstance(update_iter, dict):
-	repo_dict = update_iter
-	if match_callback is
-None:
-	def
-	match_callback(repo_name, atoma, atomb):
-	return True
-	config_root = normalize_path(config_root)
-	update_files =
-	{
+// nil, false
+func update_config_files(config_root string, protect, protect_mask []string, update_iter map[string][][]*Atom ,
+match_callback func(string,string,string)bool, case_insensitive bool) {
+	repo_dict := update_iter
+	if match_callback == nil {
+		match_callback = func(repo_name, atoma, atomb string) bool {
+			return true
+		}
 	}
-	file_contents =
-	{
-	}
-	myxfiles = [
+	config_root = NormalizePath(config_root)
+	update_files := map[string] int {}
+	file_contents := map[string][]{}
+	myxfiles := []string{
 		"package.accept_keywords", "package.env",
 		"package.keywords", "package.license",
 		"package.mask", "package.properties",
-		"package.unmask", "package.use", "sets"
-]
-myxfiles += [os.path.join("profile", x) for x in (
-"packages", "package.accept_keywords",
-"package.keywords", "package.mask",
-"package.unmask", "package.use",
-"package.use.force", "package.use.mask",
-"package.use.stable.force", "package.use.stable.mask"
-)]
-abs_user_config = os.path.join(config_root, USER_CONFIG_PATH)
-recursivefiles = []
-for x in myxfiles:
-config_file = os.path.join(abs_user_config, x)
-if os.path.isdir(config_file):
-for parent, dirs, files in os.walk(config_file):
-try:
-parent = _unicode_decode(parent,
-encoding= _encodings['fs'], errors = 'strict')
-except UnicodeDecodeError:
-continue
-for y_enc in list(dirs):
-try:
-y = _unicode_decode(y_enc,
-encoding = _encodings['fs'], errors= 'strict')
-except UnicodeDecodeError:
-dirs.remove(y_enc)
-continue
-if y.startswith(".") or y in VCS_DIRS:
-dirs.remove(y_enc)
-for y in files:
-try:
-y = _unicode_decode(y,
-encoding =_encodings['fs'], errors = 'strict')
-except UnicodeDecodeError:
-continue
-if y.startswith("."):
-continue
-recursivefiles.append(
-os.path.join(parent, y)[len(abs_user_config) + 1:])
-else:
-recursivefiles.append(x)
-myxfiles = recursivefiles
-for x in myxfiles:
-f = None
-try:
-f = io.open(
-_unicode_encode(os.path.join(abs_user_config, x),
-encoding = _encodings['fs'], errors = 'strict'),
-mode = 'r', encoding= _encodings['content'],
-errors = 'replace')
-file_contents[x] = f.readlines()
-except IOError:
-continue
-finally:
-if f is not None:
-f.close()
+		"package.unmask", "package.use", "sets",
+	}
+	for _, x := range []string{
+		"packages", "package.accept_keywords",
+		"package.keywords", "package.mask",
+		"package.unmask", "package.use",
+		"package.use.force", "package.use.mask",
+		"package.use.stable.force", "package.use.stable.mask",
+	} {
+		myxfiles = append(myxfiles, filepath.Join("profile", x))
+	}
+	abs_user_config := filepath.Join(config_root, UserConfigPath)
+	recursivefiles := []string{}
+	for _, x := range myxfiles {
+		config_file := filepath.Join(abs_user_config, x)
+		if pathIsDir(config_file) {
+			filepath.Walk(config_file, func(path string, info os.FileInfo, err error) error {
+				if info.IsDir() {
+					if strings.HasPrefix(info.Name(), ".") || VcsDirs[info.Name()] {
+						return filepath.SkipDir
+					}
+				} else {
+					if strings.HasPrefix(info.Name(), ".") {
+						return nil
+					}
+					recursivefiles = append(recursivefiles,
+						filepath.Join(path, info.Name())[len(abs_user_config)+1:])
+				}
+				return nil
+			})
+		} else {
+			recursivefiles = append(recursivefiles, x)
+		}
+	}
+	myxfiles = recursivefiles
+	for _, x := range myxfiles {
+		f, err := ioutil.ReadFile(filepath.Join(abs_user_config, x))
+		if err != nil {
+			//except IOError:
+			continue
+		}
+		file_contents[x] = strings.Split(string(f), "\n")
+	}
 
-ignore_line_re = re.compile(r'^#|^\s*$')
-if repo_dict is None:
-update_items = [(None, update_iter)] else:
-update_items = [x for x in repo_dict.items() if x[0] != 'DEFAULT']
-for repo_name, update_iter in update_items:
-for update_cmd in update_iter:
-for x, contents in file_contents.items():
-skip_next = False
-for pos, line in enumerate(contents):
-if skip_next:
-skip_next = False
-continue
-if ignore_line_re.match(line):
-continue
-atom = line.split()[0]
-if atom[:1] == "-":
-atom = atom[1:]
-if atom[:1] == "*":
-atom = atom[1:]
-if not isvalidatom(atom):
-continue
-new_atom = update_dbentry(update_cmd, atom)
-if atom != new_atom:
-if match_callback(repo_name, atom, new_atom):
-contents[pos] = "# %s\n" % \
-" ".join("%s" % (x,) for x in update_cmd)
-contents.insert(pos + 1,
-line.replace("%s" % (atom, ),
-"%s" % (new_atom, ), 1))
-skip_next = True
-update_files[x] = 1
-sys.stdout.write("p")
-sys.stdout.flush()
+	ignore_line_re := regexp.MustCompile("^#|^\\s*$")
+	update_items := [][]{}
+	if repo_dict == nil {
+		update_items = [][]{nil, update_iter}
+	} else {
+		for x:= range repo_dict {
+			if x[0] != "DEFAULT" {
+				update_items = append(update_items, x)
+			}
+		}
+	}
+	for repo_name, update_iter := range update_items {
+		for _, update_cmd := range update_iter {
+			for x, contents := range file_contents {
+				skip_next := false
+				for pos, line := range contents {
+					if skip_next {
+						skip_next = false
+						continue
+					}
+					if ignore_line_re.MatchString(line) {
+						continue
+					}
+					atom1 := strings.Fields(line)[0]
+					if atom1[:1] == "-" {
+						atom1 = atom1[1:]
+					}
+					if atom1[:1] == "*" {
+						atom1 = atom1[1:]
+					}
+					if !isValidAtom(atom1, false, false, false, "", false) {
+						continue
+					}
+					new_atom := update_dbentry(update_cmd, atom1)
+					if atom1 != new_atom {
+						if match_callback(repo_name, atom1, new_atom string()) {
+							contents[pos] = "# %s\n" %
+								" ".join("%s"%(x, )
+							for x
+								in
+							update_cmd)
+							contents.insert(pos+1,
+								strings.ReplaceAll(line, atom,
+								new_atom, 1))
+							skip_next = true
+							update_files[x] = 1
+							os.Stdout.Write([]byte("p"))
+						}
+					}
+				}
+			}
+		}
+	}
 
-protect_obj = ConfigProtect(
-config_root, protect, protect_mask,
-case_insensitive = case_insensitive)
-for x in update_files:
-updating_file = os.path.join(abs_user_config, x)
-if protect_obj.isprotected(updating_file):
-updating_file = new_protect_filename(updating_file)
-try:
-write_atomic(updating_file, "".join(file_contents[x]))
-except PortageException as e:
-writemsg("\n!!! %s\n" % str(e), noiselevel = -1)
-writemsg(_("!!! An error occurred while updating a config file:") + \
-" '%s'\n" % updating_file, noiselevel = -1)
-continue
+	protect_obj := NewConfigProtect(config_root, protect, protect_mask, case_insensitive)
+	for x := range update_files {
+		updating_file := filepath.Join(abs_user_config, x)
+		if protect_obj.IsProtected(updating_file) {
+			updating_file = new_protect_filename(updating_file, "", false)
+		}
+		//try:
+		write_atomic(updating_file, strings.Join(file_contents[x], ""), 0, true)
+		//except PortageException as e:
+		//writemsg("\n!!! %s\n"%str(e), noiselevel = -1)
+		//writemsg(_("!!! An error occurred while updating a config file:") + false
+		//" '%s'\n" % updating_file, noiselevel = -1)
+		//continue
+	}
 }
 
 func dep_transform(mydep, oldkey, newkey string)  string {
@@ -806,18 +804,16 @@ func dep_transform(mydep, oldkey, newkey string)  string {
 }
 
 // false, true
-func _global_updates(trees *TreesDict, prev_mtimes, quiet, if_mtime_changed bool) bool {
-
+func _global_updates(trees *TreesDict, prev_mtimes map[string]string, quiet, if_mtime_changed bool) bool {
 	if _, ok := os.LookupEnv("SANDBOX_ACTIVE"); *secpass < 2 ||  ok ||len(trees.Values()) != 1{
 		return false
 	}
-
 	return _do_global_updates(trees, prev_mtimes,
 		quiet, if_mtime_changed)
 }
 
 // false, true
-func _do_global_updates(trees *TreesDict, prev_mtimes, quiet, if_mtime_changed bool) {
+func _do_global_updates(trees *TreesDict, prev_mtimes map[string]string, quiet, if_mtime_changed bool) bool {
 	root := trees._running_eroot
 	mysettings := trees.Values()[root].VarTree().settings
 	portdb := trees.Values()[root].PortTree().dbapi
@@ -827,10 +823,12 @@ func _do_global_updates(trees *TreesDict, prev_mtimes, quiet, if_mtime_changed b
 	world_file := filepath.Join(mysettings.ValueDict["EROOT"], WorldFile)
 	world_list := grabFile(world_file, 0, false, false)
 	world_modified := false
-	world_warnings := map[string]bool{}
-	updpath_map :=map[string][]{}
-	repo_map :=map[string]{}
-	timestamps :={}
+	world_warnings := map[[2]*Atom]bool{}
+	updpath_map := map[string][]{}
+	repo_map := map[string][][]*Atom{}
+	timestamps :=
+	{
+	}
 
 	retupd := false
 	update_notice_printed := false
@@ -839,69 +837,73 @@ func _do_global_updates(trees *TreesDict, prev_mtimes, quiet, if_mtime_changed b
 	portdb.getRepositories() {
 		repo := portdb.getRepositoryPath(repo_name)
 		updpath := filepath.Join(repo, "profiles", "updates")
-		if ! pathIsDir(updpath) {
+		if !pathIsDir(updpath) {
 			continue
 		}
 
 		if updpath in
-	updpath_map{
-		repo_map[repo_name] = updpath_map[updpath]
-		continue
-	}
+		updpath_map{
+			repo_map[repo_name] = updpath_map[updpath]
+			continue
+		}
 
-	//try:
+		//try:
+		var update_data []struct {
+			p string
+			s os.FileInfo
+			c string
+		}
 		if if_mtime_changed {
-			update_data := grab_updates(updpath, prev_mtimes = prev_mtimes)
+			update_data = grab_updates(updpath, prev_mtimes)
 		} else {
-			update_data := grab_updates(updpath)
+			update_data = grab_updates(updpath, nil)
 		}
 		//except
-	//DirectoryNotFound:
-	//	continue
-		myupd := []
+		//DirectoryNotFound:
+		//	continue
+		myupd := [][]*Atom{}
 		updpath_map[updpath] = myupd
 		repo_map[repo_name] = myupd
-		if len(update_data) > 0{
-			for mykey, mystat, mycontent
-				in
-			update_data{
-				if ! update_notice_printed{
+		if len(update_data) > 0 {
+			for _, v := range update_data {
+				mykey, mystat, mycontent := v.p, v.s, v.c
+				if !update_notice_printed {
 					update_notice_printed = true
-					WriteMsgStdout("\n",0)
-					WriteMsgStdout(colorize("GOOD", "Performing Global Updates\n"),0)
+					WriteMsgStdout("\n", 0)
+					WriteMsgStdout(colorize("GOOD", "Performing Global Updates\n"), 0)
 					WriteMsgStdout("(Could take a couple of minutes if you have a lot of binary packages.)\n", 0)
-					if ! quiet{
-						WriteMsgStdout(_("  %s='update pass'  %s='binary update'  "
-						"%s='/var/db update'  %s='/var/db move'\n"
-						"  %s='/var/db SLOT move'  %s='binary move'  "
-						"%s='binary SLOT move'\n  %s='update /etc/portage/package.*'\n") %
-						(Bold("."), Bold("*"), Bold("#"), Bold("@"), Bold("s"), Bold("%"), Bold("S"), Bold("p")))
+					if !quiet {
+						WriteMsgStdout(fmt.Sprintf("  %s='update pass'  %s='binary update'  "+
+							"%s='/var/db update'  %s='/var/db move'\n"+
+							"  %s='/var/db SLOT move'  %s='binary move'  "+
+							"%s='binary SLOT move'\n  %s='update /etc/portage/package.*'\n",
+							Bold("."), Bold("*"), Bold("#"), Bold("@"), Bold("s"), Bold("%"), Bold("S"), Bold("p")), 0)
 					}
 				}
-				valid_updates, errors = parse_updates(mycontent)
-				myupd =append(myupd, valid_updates...)
-				if ! quiet {
-					WriteMsgStdout(Bold(mykey))
-					WriteMsgStdout(len(valid_updates)*"." + "\n")
+				valid_updates, errors := parse_updates(mycontent)
+				myupd = append(myupd, valid_updates...)
+				if !quiet {
+					WriteMsgStdout(Bold(mykey), 0)
+					WriteMsgStdout(strings.Repeat(".", len(valid_updates))+"\n", 0)
 				}
 				if len(errors) == 0 {
-					timestamps[mykey] = mystat[stat.ST_MTIME]
-				}else{
+					timestamps[mykey] = mystat.ModTime()
+				} else {
 					for _, msg := range errors {
 						WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
 					}
 				}
 			}
-			if len(myupd) > 0{
+			if len(myupd) > 0 {
 				retupd = true
 			}
 		}
 	}
 
-	if retupd{
-		if os.access(bindb.bintree.pkgdir, os.W_OK) {
+	if retupd {
+		if st, _ := os.Stat(bindb.bintree.pkgdir); st != nil && st.Mode()&os.ModePerm != 0 {
 			bindb.bintree.Populate(false, true, []string{})
-		}else {
+		} else {
 			bindb = nil
 		}
 	}
@@ -911,80 +913,79 @@ func _do_global_updates(trees *TreesDict, prev_mtimes, quiet, if_mtime_changed b
 	if master_repoO != nil {
 		master_repo = master_repoO.Name
 	}
-	if master_repo in
-repo_map{
-	repo_map["DEFAULT"] = repo_map[master_repo]
-}
+	if _, ok := repo_map[master_repo]; ok {
+		repo_map["DEFAULT"] = repo_map[master_repo]
+	}
 
 	for repo_name, myupd := range repo_map {
 		if repo_name == "DEFAULT" {
 			continue
 		}
-		if not myupd {
+		if len(myupd) == 0 {
 			continue
 		}
 
-		repo_match:=func (repository) {
-			return repository == repo_name
-			||
-			(repo_name == master_repo
-			&&
-			repository
-			not
-			in
-			repo_map)
+		repo_match := func(repository string) bool {
+			_, ok := repo_map[repository]
+			return repository == repo_name || (repo_name == master_repo && !ok)
 		}
 
-		_world_repo_match:=func(atoma, atomb) {
-			matches = vardb.match(atoma)
-			if not matches:
-			matches = vardb.match(atomb)
-			if matches &&
-			repo_match(vardb.aux_get(best(matches), ['repository'])[0]) {
-				if portdb.match(atoma) {
-					world_warnings.add((atoma, atomb))
+		_world_repo_match := func(atoma, atomb *Atom) bool {
+			matches := vardb.match(atoma, 1)
+			if len(matches) == 0 {
+				matches = vardb.match(atomb, 1)
+			}
+			if len(matches) > 0 && repo_match(vardb.aux_get(Best(matches), map[string]bool{"repository": true}, "")[0]) {
+				if portdb.match(atoma, "") {
+					world_warnings[[2]*Atom{atoma, atomb}] = true
 				}
 				return true
-			}else {
+			} else {
 				return false
+			}
+		}
+
+		for _, update_cmd := range myupd {
+			for pos, atom := range world_list {
+				new_atom := update_dbentry(update_cmd, atom)
+				if atom != new_atom {
+					if _world_repo_match(atom, new_atom) {
+						world_list[pos] = new_atom
+						world_modified = true
+					}
+				}
 			}
 		}
 
 		for update_cmd
 			in
-		myupd:
-		for pos, atom
-			in
-		enumerate(world_list):
-		new_atom = update_dbentry(update_cmd, atom)
-		if atom != new_atom:
-		if _world_repo_match(atom, new_atom):
-		world_list[pos] = new_atom
-		world_modified = true
-
-		for update_cmd
-			in
-		myupd:
-		if update_cmd[0] == "move":
-		moves = vardb.move_ent(update_cmd, repo_match = repo_match)
-		if moves:
-		WriteMsgStdout(moves * "@")
-		if bindb:
-		moves = bindb.move_ent(update_cmd, repo_match = repo_match)
-		if moves:
-		WriteMsgStdout(moves * "%")
-		elif
-		update_cmd[0] == "slotmove":
-		moves = vardb.move_slot_ent(update_cmd, repo_match = repo_match)
-		if moves:
-		WriteMsgStdout(moves * "s")
-		if bindb:
-		moves = bindb.move_slot_ent(update_cmd, repo_match = repo_match)
-		if moves:
-		WriteMsgStdout(moves * "S")
-
+		myupd {
+			if update_cmd[0] == "move" {
+				moves := vardb.move_ent(update_cmd,  repo_match)
+				if moves > 0 {
+					WriteMsgStdout(strings.Repeat("@", moves))
+				}
+				if bindb != nil {
+					moves = bindb.move_ent(update_cmd,  repo_match)
+					if moves > 0 {
+						WriteMsgStdout(strings.Repeat("%", moves))
+					}
+				}
+			} else if update_cmd[0] == "slotmove" {
+				moves := vardb.move_slot_ent(update_cmd, repo_match)
+				if moves > 0 {
+					WriteMsgStdout(strings.Repeat("s", moves), 0)
+				}
+				if bindb != nil {
+					moves = bindb.move_slot_ent(update_cmd, repo_match)
+					if moves > 0 {
+						WriteMsgStdout(strings.Repeat("S", moves), 0)
+					}
+				}
+			}
+		}
 	}
-	if world_modified{
+	if world_modified {
 
 		world_list.sort()
 		write_atomic(world_file,
@@ -992,69 +993,72 @@ repo_map{
 		for x
 			in
 		world_list))
-		if world_warnings:
-		pass
+		if len(world_warnings) > 0 {
+			//pass
+		}
 	}
 
-	if retupd{
-
-		def
-		_config_repo_match(repo_name, atoma, atomb):
-		matches = vardb.match(atoma)
-		if not matches:
-		matches = vardb.match(atomb)
-		if not matches:
-		return false
-		repository = vardb.aux_get(best(matches), ['repository'])[0]
-		return repository == repo_name
-		or
-		(repo_name == master_repo
-		and
-		repository
-		not
-		in
-		repo_map)
-
-		update_config_files(root,
-			shlex_split(mysettings.get("CONFIG_PROTECT", "")),
-			shlex_split(mysettings.get("CONFIG_PROTECT_MASK", "")),
-			repo_map, match_callback = _config_repo_match,
-			case_insensitive = "case-insensitive-fs"
-		in
-		mysettings.features)
-
-		if timestamps:
-		for mykey, mtime
+	if retupd {
+		_config_repo_match := func(repo_name, atoma, atomb string) bool {
+			matches := vardb.match(atoma)
+			if len(matches) == 0 {
+				matches = vardb.match(atomb)
+				if len(matches) == 0 {
+					return false
+				}
+			}
+			repository := vardb.aux_get(Best(matches, ""), map[string]bool{"repository": true}, "")[0]
+			return repository == repo_name ||
+				(repo_name == master_repo &&
+					repository
+			not
 			in
-		timestamps.items():
-		prev_mtimes[mykey] = mtime
+			repo_map)
+		}
+		s1, _ := shlex.Split(strings.NewReader(mysettings.ValueDict["CONFIG_PROTECT"]), false, true)
+		s2, _ := shlex.Split(strings.NewReader(mysettings.ValueDict["CONFIG_PROTECT_MASK"]), false, true)
 
-		do_upgrade_packagesmessage = false
-		def
-		onUpdate(_maxval, curval):
-		if curval > 0:
-		WriteMsgStdout("#")
-		if quiet:
-		onUpdate = None
-		vardb.update_ents(repo_map, onUpdate = onUpdate)
-		if bindb:
-		def
-		onUpdate(_maxval, curval):
-		if curval > 0:
-		WriteMsgStdout("*")
-		if quiet:
-		onUpdate = None
-		bindb.update_ents(repo_map, onUpdate = onUpdate)
+		update_config_files(root, s1, s2,
+			repo_map, _config_repo_match,
+			mysettings.Features.Features["case-insensitive-fs"])
 
-		WriteMsgStdout("\n\n")
+		if timestamps {
+			for mykey, mtime
+				in
+			timestamps.items() {
+				prev_mtimes[mykey] = mtime
+			}
+		}
 
-		if do_upgrade_packagesmessage and
-		bindb
-		and
-		bindb.cpv_all():
-		WriteMsgStdout(_(" ** Skipping packages. Run 'fixpackages' or set it in FEATURES to fix the tbz2's in the packages directory.\n"))
-		WriteMsgStdout(Bold(_("Note: This can take a very long time.")))
-		WriteMsgStdout("\n")
+		do_upgrade_packagesmessage := false
+		onUpdate := func(_maxval, curval int) {
+			if curval > 0 {
+				WriteMsgStdout("#", 0)
+			}
+		}
+		if quiet {
+			onUpdate = nil
+		}
+		vardb.update_ents(repo_map, nil, onUpdate)
+		if bindb != nil {
+			onUpdate := func(_maxval, curval int) {
+				if curval > 0 {
+					WriteMsgStdout("*", 0)
+				}
+			}
+			if quiet {
+				onUpdate = nil
+			}
+			bindb.update_ents(repo_map, nil, onUpdate)
+		}
+
+		WriteMsgStdout("\n\n", 0)
+
+		if do_upgrade_packagesmessage && bindb != nil && len(bindb.cpv_all()) > 0 {
+			WriteMsgStdout(" ** Skipping packages. Run 'fixpackages' or set it in FEATURES to fix the tbz2's in the packages directory.\n", 0)
+			WriteMsgStdout(Bold(_("Note: This can take a very long time.")), 0)
+			WriteMsgStdout("\n", 0)
+		}
 
 	}
 

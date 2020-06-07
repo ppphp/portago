@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"github.com/ppphp/shlex"
 	"golang.org/x/sys/unix"
+	"golang.org/x/text/unicode/rangetable"
+	"io"
 	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -149,7 +152,7 @@ func NewQueryCommand(settings *Config, phase string) *QueryCommand {
 	return q
 }
 
-func (q *QueryCommand) __call__( argv []string) {
+func (q *QueryCommand) __call__( argv []string) (string,string,int) {
 	cmd := argv[0]
 	root := argv[1]
 	args := argv[2:]
@@ -165,7 +168,7 @@ func (q *QueryCommand) __call__( argv []string) {
 	}
 	root = strings.TrimRight(NormalizePath(root), string(os.PathSeparator)) + string(os.PathSeparator)
 	if _, ok := db.Values()[root]; !ok{
-		return ('', '%s: Invalid ROOT: %s\n' % (cmd, root), 3)
+		return "", fmt.Sprintf("%s: Invalid ROOT: %s\n",cmd, root), 3
 	}
 
 	portdb := db.Values()[root].PortTree().dbapi
@@ -207,7 +210,7 @@ func (q *QueryCommand) __call__( argv []string) {
 	return ('', warnings_str, returncode)
 	else if
 	cmd == 'best_version':
-	m = best(vardb.match(atom))
+	m = Best(vardb.match(atom))
 	return ('%s\n' % m, warnings_str, 0)
 	else if
 	cmd
@@ -243,33 +246,32 @@ KeyError:
 	return ('%s\n' % eclass.location, warnings_str, 0)
 	else if
 	cmd == 'license_path':
-	paths = reversed([filepath.Join(x.location, 'licenses', args[1])
+	paths = reversed([]{filepath.Join(x.location, 'licenses', args[1])
 	for x
 	in
-	list(repo.masters) + [repo]])
+	list(repo.masters) + []{repo}})
 for path in paths:
 if pathExists(path):
 return ('%s\n' % path, warnings_str, 0)
 return ('', warnings_str, 1) else:
-return ('', 'Invalid command: %s\n' % cmd, 3)
+return "", fmt.Sprintf("Invalid command: %s\n" , cmd), 3
 }
 
-func (q *QueryCommand) _elog( elog_funcname, lines) {
+func (q *QueryCommand) _elog( elog_funcname, lines) string {
 	out = io.StringIO()
 	phase := q.phase
 	elog_func = getattr(elog_messages, elog_funcname)
 	global_havecolor := HaveColor
-try:
-	portage.output.havecolor = 
-	q.settings.ValueDict['NOCOLOR', 'false').lower()
-	in('no', 'false')
+//try:
+	HaveColor = strings.ToLower(q.settings.ValueDict["NOCOLOR"])== "no " || strings.ToLower(q.settings.ValueDict["NOCOLOR"]) == "false" ||strings.ToLower(q.settings.ValueDict["NOCOLOR"]) =="" 
 	for line
 	in
-lines:
-	elog_func(line, phase = phase, key = q.settings.mycpv, out = out)
-finally:
-	portage.output.havecolor = global_havecolor
-	msg = out.getvalue()
+lines {
+		elog_func(line, phase = phase, key = q.settings.mycpv, out = out)
+	}
+//finally:
+	HaveColor = global_havecolor
+	msg := out.getvalue()
 	return msg
 }
 
@@ -288,7 +290,7 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *portdbapi) 
 			distfiles_map[myfile] = append(distfiles_map[myfile], cpv)
 		}
 			//except InvalidDependString as e:
-			//	writemsg("!!! %s\n" % str(e), noiselevel=-1)
+			//	WriteMsg("!!! %s\n" % str(e), noiselevel=-1)
 			//	del e
 			//	return 0
 	}
@@ -468,65 +470,64 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *portdbapi) 
 }
 
 // false, nil, nil
-func digestcheck(myfiles, mysettings *Config, strict bool, mf=None) {
+func digestcheck(myfiles, mysettings *Config, strict bool, mf *Manifest) {
 
-	if mysettings.get("EBUILD_SKIP_MANIFEST") == "1":
-	return 1
-	pkgdir = mysettings["O"]
-	hash_filter = _hash_filter(mysettings.get("PORTAGE_CHECKSUM_FILTER", ""))
-	if hash_filter.transparent:
-	hash_filter = None
-	if mf is
-None:
-	mf = mysettings.repositories.get_repo_for _location(
-		os.path.dirname(os.path.dirname(pkgdir)))
-	mf = mf.load_manifest(pkgdir, mysettings["DISTDIR"])
-	eout = EOutput()
-	eout.quiet = mysettings.get("PORTAGE_QUIET", None) == "1"
+	if mysettings.ValueDict["EBUILD_SKIP_MANIFEST"] == "1" {
+		return 1
+	}
+	pkgdir := mysettings.ValueDict["O"]
+	hash_filter := NewHashFilter(mysettings.ValueDict["PORTAGE_CHECKSUM_FILTER"])
+	if hash_filter.trasparent {
+		hash_filter = nil
+	}
+	if mf == nil {
+		rc := mysettings.Repositories.getRepoForLocation(
+			filepath.Dir(filepath.Dir(pkgdir)))
+		mf = rc.load_manifest(pkgdir, mysettings.ValueDict["DISTDIR"],nil, false)
+	}
+	eout := NewEOutput(false)
+	eout.quiet = mysettings.ValueDict["PORTAGE_QUIET"] == "1"
 try:
-	if not mf.thin
-	and
-	strict
-	and
-	"PORTAGE_PARALLEL_FETCHONLY"
-	not
-	in
-mysettings:
-	if mf.fhashdict.get("EBUILD"):
-	eout.ebegin(_("checking ebuild checksums ;-)"))
-	mf.checkTypeHashes("EBUILD", hash_filter = hash_filter)
-	eout.eend(0)
-	if mf.fhashdict.get("AUX"):
-	eout.ebegin(_("checking auxfile checksums ;-)"))
-	mf.checkTypeHashes("AUX", hash_filter = hash_filter)
-	eout.eend(0)
-	if mf.strict_misc_digests and
-	mf.fhashdict.get("MISC"):
-	eout.ebegin(_("checking miscfile checksums ;-)"))
-	mf.checkTypeHashes("MISC", ignoreMissingFiles = True,
-		hash_filter = hash_filter)
-	eout.eend(0)
+	if !mf.thin&& strict && !Inmss(mysettings.ValueDict,"PORTAGE_PARALLEL_FETCHONLY") {
+		if _, ok:= mf.fhashdict["EBUILD"]; ok {
+			eout.ebegin("checking ebuild checksums ;-)")
+			mf.checkTypeHashes("EBUILD", false, hash_filter)
+			eout.eend(0)
+		}
+		if _, ok := mf.fhashdict["AUX"]; ok {
+			eout.ebegin("checking auxfile checksums ;-)")
+			mf.checkTypeHashes("AUX", false, hash_filter)
+			eout.eend(0)
+		}
+		if mf.strict_misc_digests &&
+			mf.fhashdict.get("MISC") {
+			eout.ebegin("checking miscfile checksums ;-)")
+			mf.checkTypeHashes("MISC", true, hash_filter)
+			eout.eend(0)
+		}
+	}
 	for f
-	in
-myfiles:
-	eout.ebegin(_("checking %s ;-)") % f)
-	ftype = mf.findFile(f)
-	if ftype is
-None:
-	if mf.allow_missing:
-	continue
-	eout.eend(1)
-	writemsg(_("\n!!! Missing digest for '%s'\n") % (f, ),
-		noiselevel = -1)
-	return 0
-	mf.checkFileHashes(ftype, f, hash_filter = hash_filter)
-	eout.eend(0)
+			in
+		myfiles{
+		eout.ebegin(_("checking %s ;-)") % f)
+		ftype = mf.findFile(f)
+		if ftype is
+	None:
+		if mf.allow_missing:
+		continue
+		eout.eend(1)
+		WriteMsg(_("\n!!! Missing digest for '%s'\n") % (f, ),
+			noiselevel = -1)
+		return 0
+		mf.checkFileHashes(ftype, f, hash_filter = hash_filter)
+		eout.eend(0)
+	}
 	except
 	FileNotFound
 	as
 e:
 	eout.eend(1)
-	writemsg(_("\n!!! A file listed in the Manifest could not be found: %s\n")%str(e),
+	WriteMsg(_("\n!!! A file listed in the Manifest could not be found: %s\n")%str(e),
 		noiselevel = -1)
 	return 0
 	except
@@ -534,11 +535,11 @@ e:
 	as
 e:
 	eout.eend(1)
-	writemsg(_("\n!!! Digest verification failed:\n"), noiselevel = -1)
-	writemsg("!!! %s\n"%e.value[0], noiselevel = -1)
-	writemsg(_("!!! Reason: %s\n")%e.value[1], noiselevel = -1)
-	writemsg(_("!!! Got: %s\n")%e.value[2], noiselevel = -1)
-	writemsg(_("!!! Expected: %s\n")%e.value[3], noiselevel = -1)
+	WriteMsg(_("\n!!! Digest verification failed:\n"), noiselevel = -1)
+	WriteMsg("!!! %s\n"%e.value[0], noiselevel = -1)
+	WriteMsg(_("!!! Reason: %s\n")%e.value[1], noiselevel = -1)
+	WriteMsg(_("!!! Got: %s\n")%e.value[2], noiselevel = -1)
+	WriteMsg(_("!!! Expected: %s\n")%e.value[3], noiselevel = -1)
 	return 0
 	if mf.thin or
 	mf.allow_missing:
@@ -555,7 +556,7 @@ e:
 	and
 	not
 	mf.hasFile("EBUILD", f):
-	writemsg(_("!!! A file is not listed in the Manifest: '%s'\n") % 
+	WriteMsg(_("!!! A file is not listed in the Manifest: '%s'\n") % 
 filepath.Join(pkgdir, f), noiselevel = -1)
 	if strict:
 	return 0
@@ -571,7 +572,7 @@ try:
 UnicodeDecodeError:
 	parent = _unicode_decode(parent,
 		encoding = _encodings['fs'], errors = 'replace')
-	writemsg(_("!!! Path contains invalid "
+	WriteMsg(_("!!! Path contains invalid "
 	"character(s) for encoding '%s': '%s'") 
 % (_encodings['fs'], parent), noiselevel = -1)
 	if strict:
@@ -588,7 +589,7 @@ try:
 UnicodeDecodeError:
 	d = _unicode_decode(d,
 		encoding = _encodings['fs'], errors = 'replace')
-	writemsg(_("!!! Path contains invalid "
+	WriteMsg(_("!!! Path contains invalid "
 	"character(s) for encoding '%s': '%s'") 
 % (_encodings['fs'], filepath.Join(parent, d)),
 	noiselevel = -1)
@@ -612,7 +613,7 @@ UnicodeDecodeError:
 	if f.startswith("."):
 	continue
 	f = filepath.Join(parent, f)[len(filesdir)+1:]
-	writemsg(_("!!! File name contains invalid "
+	WriteMsg(_("!!! File name contains invalid "
 	"character(s) for encoding '%s': '%s'") 
 % (_encodings['fs'], f), noiselevel = -1)
 	if strict:
@@ -625,7 +626,7 @@ UnicodeDecodeError:
 	if file_type != "AUX" and
 	not
 	f.startswith("digest-"):
-	writemsg(_("!!! A file is not listed in the Manifest: '%s'\n") % 
+	WriteMsg(_("!!! A file is not listed in the Manifest: '%s'\n") % 
 filepath.Join(filesdir, f), noiselevel = -1)
 	if strict:
 	return 0
@@ -2301,218 +2302,213 @@ func _post_phase_userpriv_perms(mysettings *Config) {
 	}
 }
 
-func _check_build_log(mysettings *Config, out=None){
+func _check_build_log(mysettings *Config, out=None) {
 
-logfile := mysettings.ValueDict["PORTAGE_LOG_FILE"]
-if logfile == "" {
-	return
-}
-
-f ,err := os.Open(logfile)
-if err != nil {
-	return
-}
-
-var f_real *os.File
-if strings.HasSuffix(logfile,".gz") {
-	f_real = f
-	f = gzip.NewReader(f)
-}
-
-am_maintainer_mode = []
-bash_command_not_found = []
-bash_command_not_found_re := regexp.MustCompile("(.*): line (\d*): (.*): command not found$")
-command_not_found_exclude_re := regexp.MustCompile("/configure: line ")
-helper_missing_file = []
-helper_missing_file_re := regexp.MustCompile("^!!! (do|new).*: .* does not exist$")
-
-configure_opts_warn = []
-configure_opts_warn_re := regexp.MustCompile("^configure: WARNING: [Uu]nrecognized options: (.*)")
-
-qa_configure_opts := ""
-try{
-	with io.open(_unicode_encode(filepath.Join(
-	mysettings.ValueDict["PORTAGE_BUILDDIR"],
-	"build-info", "QA_CONFIGURE_OPTIONS"),
-	encoding = _encodings["fs"], errors = "strict"),
-	mode = "r", encoding = _encodings["repo.content"],
-	errors = "replace") as qa_configure_opts_f{
-	qa_configure_opts = qa_configure_opts_f.read()
-}
-}except IOError as e{
-		if e.errno ! in (errno.ENOENT, errno.ESTALE){
-		raise
-	}
+	logfile := mysettings.ValueDict["PORTAGE_LOG_FILE"]
+	if logfile == "" {
+		return
 	}
 
-qa_configure_opts = strings.Fields(qa_configure_opts)
-if qa_configure_opts{
-if len(qa_configure_opts) > 1{
-qa_configure_opts = "|".join(fmt.Sprintf("(%s)" % x for _, x := range  qa_configure_opts)
-qa_configure_opts = fmt.Sprintf("^(%s)$" % qa_configure_opts
-}else{
-qa_configure_opts = fmt.Sprintf("^%s$" % qa_configure_opts[0]
-}
-qa_configure_opts = re.compile(qa_configure_opts)
-}
-
-qa_am_maintainer_mode = []
-try{
-with io.open(_unicode_encode(filepath.Join(
-mysettings.ValueDict["PORTAGE_BUILDDIR"],
-"build-info", "QA_AM_MAINTAINER_MODE"),
-encoding=_encodings["fs"], errors="strict"),
-mode="r", encoding=_encodings["repo.content"],
-errors="replace") as qa_am_maintainer_mode_f{
-qa_am_maintainer_mode = []string{}
- for _, x := range
-qa_am_maintainer_mode_f.read().splitlines() if x]
-	}
-}except IOError as e{
-		if e.errno ! in (errno.ENOENT, errno.ESTALE){
-		raise
-	}
+	f_real, err := os.Open(logfile)
+	if err != nil {
+		return
 	}
 
-if qa_am_maintainer_mode{
-if len(qa_am_maintainer_mode) > 1{
-qa_am_maintainer_mode =
-"|".join(fmt.Sprintf("(%s)" % x for _, x := range  qa_am_maintainer_mode)
-qa_am_maintainer_mode = fmt.Sprintf("^(%s)$" % qa_am_maintainer_mode
-}else{
-qa_am_maintainer_mode =fmt.Sprintf(fmt.Sprintf( "^%s$" % qa_am_maintainer_mode[0]
-}
-qa_am_maintainer_mode = re.compile(qa_am_maintainer_mode)
-}
-
-am_maintainer_mode_re = re.compile(r"/missing --run ")
-am_maintainer_mode_exclude_re =
-re.compile(r"(/missing --run (autoheader|autotest|help2man|makeinfo)|^\s*Automake:\s)")
-
-make_jobserver_re =
-re.compile(r"g?make\[\d+\]: warning: jobserver unavailable:")
-make_jobserver = []
-
- _eerror:= func(lines) {
-	 for line
-	 in
-	 lines{
-		 eerror(line, phase = "install", key = mysettings.mycpv, out = out)
-	 }
- }
-
-try{
-	for line in f{
-	line = _unicode_decode(line)
-	if am_maintainer_mode_re.search(line) != nil &&
-	am_maintainer_mode_exclude_re.search(line) == nil &&
-(! qa_am_maintainer_mode or
-	qa_am_maintainer_mode.search(line) == nil){
-	am_maintainer_mode = append(strings.TrimRight(line, "\n"))
-}
-
-	if bash_command_not_found_re.match(line) != nil &&
-	command_not_found_exclude_re.search(line) == nil{
-	bash_ommand_not_found = append(strings.TrimRight(line, "\n"))
-}
-
-	if helper_missing_file_re.match(line) != nil{
-	helper_missing_file = append(strings.TrimRight(line, "\n"))
-}
-
-	m = configure_opts_warn_re.match(line)
-	if m != nil{
-	for _, x := range strings.Split(m.group(1), ", "){
-	if ! qa_configure_opts || qa_configure_opts.match(x) == nil{
-	configure_opts_warn = append(x)
-}
-}
-}
-
-	if make_jobserver_re.match(line) != nil{
-	make_jobserver = append(strings.TrimRight(line, "\n"))
-}
-}
-}except (EOFError, zlib.error) as e{
-_eerror([fmt.Sprintf("portage encountered a zlib error: '%s'" % (e,),
-		fmt.Sprintf("while reading the log file: '%s'" % logfile])
-	}finally{
-		f.close()
+	var f io.Reader = f_real
+	if strings.HasSuffix(logfile, ".gz") {
+		f, _ = gzip.NewReader(f_real)
 	}
 
+	am_maintainer_mode := []string{}
+	bash_command_not_found := []string{}
+	bash_command_not_found_re := regexp.MustCompile("(.*): line (\\d*): (.*): command not found$")
+	command_not_found_exclude_re := regexp.MustCompile("/configure: line ")
+	helper_missing_file := []string{}
+	helper_missing_file_re := regexp.MustCompile("^!!! (do|new).*: .* does not exist$")
 
-_eqawarn:= func(lines) {
-	for line
-	in
-	lines{
-		eqawarn(line, phase = "install", key = mysettings.mycpv, out = out)
+	configure_opts_warn := []string{}
+	configure_opts_warn_re := regexp.MustCompile("^configure: WARNING: [Uu]nrecognized options: (.*)")
+
+	q, err := ioutil.ReadFile(filepath.Join(
+		mysettings.ValueDict["PORTAGE_BUILDDIR"],
+		"build-info", "QA_CONFIGURE_OPTIONS"))
+	if err != nil {
+		//except IOError as e:
+		if err != syscall.ENOENT && err != syscall.ESTALE {
+			//raise
+		}
 	}
-}
-wrap_width = 70
 
-if am_maintainer_mode {
-	msg = [_("QA Notice: Automake \"maintainer mode\" detected:")]
-	msg = append("")
-	msg = append("\t" + line
-	for line
-	in
-	am_maintainer_mode)
-	msg = append("")
-	msg = append(wrap(_(
-		"If you patch Makefile.am, "
-	"configure.in,  or configure.ac then you "
-	"should use autotools.eclass and "
-	"eautomake or eautoreconf. Exceptions "
-	"are limited to system packages "
-	"for which it is impossible to run "
-	"autotools during stage building. "
-	"See https://wiki.gentoo.org/wiki/Project:Quality_Assurance/Autotools_failures"
-	" for more information."),
-	wrap_width))
-	_eqawarn(msg)
-}
+	qa_configure_opts := strings.Fields(string(q))
 
-if bash_command_not_found {
-	msg = [_("QA Notice: command not found:")]
-	msg = append("")
-	msg = append("\t" + line
-	for line
-	in
-	bash_command_not_found)
-	_eqawarn(msg)
-}
+	var qcoRe *regexp.Regexp
+	if len(qa_configure_opts) > 0 {
+		qcos := ""
+		if len(qa_configure_opts) > 1 {
+			qco := []string{}
+			for _, x := range qa_configure_opts {
+				qco = append(qco, fmt.Sprintf("(%s)", x))
+			}
+			qcos = strings.Join(qco, "|")
+			qcos = fmt.Sprintf("^(%s)$", qcos)
+		} else {
+			qcos = fmt.Sprintf("^%s$", qa_configure_opts[0])
+		}
+		qcoRe = regexp.MustCompile(qcos)
+	}
 
-if helper_missing_file {
-	msg = [_("QA Notice: file does not exist:")]
-	msg = append("")
-	msg = append("\t" + line[4:]
-	for line
-	in
-	helper_missing_file)
-	_eqawarn(msg)
-}
+	qa_am_maintainer_mode_f, err := ioutil.ReadFile(filepath.Join(
+		mysettings.ValueDict["PORTAGE_BUILDDIR"],
+		"build-info", "QA_AM_MAINTAINER_MODE"))
+	if err != nil {
+		//}except IOError as e{
+		if err != syscall.ENOENT && err != syscall.ESTALE {
+			//raise
+		}
+	}
 
-if configure_opts_warn{
-msg := []string{"QA Notice: Unrecognized configure options:"}
-msg=append(msg,"")
-msg= append(msg, fmt.Sprintf("\t%s" % x for _, x := range  configure_opts_warn)
-_eqawarn(msg)
-}
+	qa_am_maintainer_mode := []string{}
+	for _, x := range strings.Split(string(qa_am_maintainer_mode_f), "\n") {
+		if x != "" {
+			qa_am_maintainer_mode = append(qa_am_maintainer_mode, x)
+		}
+	}
 
-if make_jobserver {
-	msg := []string{"QA Notice: make jobserver unavailable:"}
-	msg = append(msg,"")
-	msg = append(msg,"\t" + line
-	for line
-	in
-	make_jobserver)
-	_eqawarn(msg)
-}
+	var qaamRe *regexp.Regexp
+	if len(qa_am_maintainer_mode) > 0 {
+		qaams := ""
+		if len(qa_am_maintainer_mode) > 1 {
+			qaa := []string{}
+			for _, x := range qa_am_maintainer_mode {
+				qaa = append(qaa, fmt.Sprintf("(%s)", x))
+			}
+			qaams = strings.Join(qaa, "|")
+			qaams = fmt.Sprintf("^(%s)$", qaams)
+		} else {
+			qaams = fmt.Sprintf("^%s$", qa_am_maintainer_mode[0])
+		}
+		qaamRe = regexp.MustCompile(qaams)
+	}
 
-f.close()
-if f_real != nil {
-	f_real.close()
-}
+	am_maintainer_mode_re := regexp.MustCompile("/missing --run ")
+	am_maintainer_mode_exclude_re := regexp.MustCompile("(/missing --run (autoheader|autotest|help2man|makeinfo)|^\\s*Automake:\\s)")
+
+	make_jobserver_re := regexp.MustCompile("g?make\\[\\d+\\]: warning: jobserver unavailable:")
+	make_jobserver := []string{}
+
+	_eerror := func(lines []string) {
+		for _, line := range lines {
+			eerror(line, phase = "install", key = mysettings.mycpv, out = out)
+		}
+	}
+
+	//try{
+	fl, _ := ioutil.ReadAll(f)
+	for _, line := range strings.Split(string(fl), "\n") {
+		if am_maintainer_mode_re.MatchString(line) &&
+			!am_maintainer_mode_exclude_re.MatchString(line) &&
+			(qaamRe == nil ||
+				!qaamRe.MatchString(line)) {
+			am_maintainer_mode = append(am_maintainer_mode, strings.TrimRight(line, "\n"))
+		}
+
+		if bash_command_not_found_re.MatchString(line)  &&
+			!command_not_found_exclude_re.MatchString(line)  {
+			bash_command_not_found = append(bash_command_not_found, strings.TrimRight(line, "\n"))
+		}
+
+		if helper_missing_file_re.MatchString(line)  {
+			helper_missing_file = append(helper_missing_file, strings.TrimRight(line, "\n"))
+		}
+
+		m := configure_opts_warn_re.FindStringSubmatch(line)
+		if m != nil {
+			for _, x := range strings.Split(m[1], ", ") {
+				if qcoRe == nil || !qcoRe.MatchString(x) {
+					configure_opts_warn = append(configure_opts_warn, x)
+				}
+			}
+		}
+
+		if !make_jobserver_re.MatchString(line)  {
+			make_jobserver = append(make_jobserver, strings.TrimRight(line, "\n"))
+		}
+	}
+	//}except (EOFError, zlib.error) as e{
+	_eerror([]string{fmt.Sprintf("portage encountered a zlib error: '%s'", err, ),
+		fmt.Sprintf("while reading the log file: '%s'", logfile)})
+	//}finally{
+	//f.close()
+	//}
+
+	_eqawarn := func(lines []string) {
+		for _, line := range lines {
+			eqawarn(line, phase = "install", key = mysettings.mycpv, out = out)
+		}
+	}
+	wrap_width := 70
+
+	if len(am_maintainer_mode) > 0 {
+		msg := []string{"QA Notice: Automake \"maintainer mode\" detected:"}
+		msg = append(msg, "")
+		for _, line := range am_maintainer_mode {
+			msg = append(msg, "\t"+line)
+		}
+		msg = append(msg, "")
+		msg = append(SplitSubN(
+			"If you patch Makefile.am, "+
+				"configure.in,  or configure.ac then you "+
+				"should use autotools.eclass and "+
+				"eautomake or eautoreconf. Exceptions "+
+				"are limited to system packages "+
+				"for which it is impossible to run "+
+				"autotools during stage building. "+
+				"See https://wiki.gentoo.org/wiki/Project:Quality_Assurance/Autotools_failures"+
+				" for more information.",
+			wrap_width))
+		_eqawarn(msg)
+	}
+
+	if len(bash_command_not_found) > 0 {
+		msg := []string{"QA Notice: command not found:"}
+		msg = append(msg, "")
+		for _, line := range bash_command_not_found {
+			msg = append(msg, "\t"+line)
+		}
+		_eqawarn(msg)
+	}
+
+	if len(helper_missing_file) > 0 {
+		msg := []string{"QA Notice: file does not exist:"}
+		msg = append(msg, "")
+		for _, line := range helper_missing_file {
+			msg = append(msg, "\t"+line[4:])
+		}
+		_eqawarn(msg)
+	}
+
+	if len(configure_opts_warn) > 0 {
+		msg := []string{"QA Notice: Unrecognized configure options:"}
+		msg = append(msg, "")
+		for _, line := range configure_opts_warn {
+			msg = append(msg, "\t"+line)
+		}
+		_eqawarn(msg)
+	}
+
+	if len(make_jobserver) > 0 {
+		msg := []string{"QA Notice: make jobserver unavailable:"}
+		msg = append(msg, "")
+		for _, line := range make_jobserver {
+			msg = append(msg, "\t"+line)
+		}
+		_eqawarn(msg)
+	}
+
+	//f.close()
+	if f_real != nil {
+		f_real.Close()
+	}
 }
 
 func _post_src_install_write_metadata(settings *Config){
@@ -2635,13 +2631,13 @@ func _post_src_install_uid_fix(mysettings *Config, out){
 
 os = _os_merge
 
-inst_uid = int(mysettings.ValueDict["PORTAGE_INST_UID"])
-inst_gid = int(mysettings.ValueDict["PORTAGE_INST_GID"])
+inst_uid, _ := strconv.Atoi(mysettings.ValueDict["PORTAGE_INST_UID"])
+inst_gid, _ := strconv.Atoi(mysettings.ValueDict["PORTAGE_INST_GID"])
 
 _preinst_bsdflags(mysettings)
 
-destdir = mysettings.ValueDict["D"]
-ed_len = len(mysettings.ValueDict["ED"])
+destdir := mysettings.ValueDict["D"]
+ed_len := len(mysettings.ValueDict["ED"])
 unicode_errors = []
 desktop_file_validate := FindBinary("desktop-file-validate") != ""
 xdg_dirs := strings.Fields(mysettings.ValueDict["XDG_DATA_DIRS"]),":")
@@ -2851,8 +2847,8 @@ func _reapply_bsdflags_to_image(mysettings *Config){
 
 if bsd_chflags{
 os.system(fmt.Sprintf("mtree -e -p %s -U -k flags < %s > /dev/null" %
-(_shell_quote(mysettings.ValueDict["D"]),
-_shell_quote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
+(ShellQuote(mysettings.ValueDict["D"]),
+ShellQuote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
 }
 }
 
@@ -3022,7 +3018,7 @@ if ! l{
 try{
 		entry = NeededEntry.parse(needed_filename, l)
 		}except InvalidData as e{
-portage.util.writemsg_level(fmt.Sprintf("\n%s\n\n" % (e,),
+portage.util.WriteMsg_level(fmt.Sprintf("\n%s\n\n" % (e,),
 level=logging.ERROR, -1,nil)
 continue
 		}
@@ -3100,12 +3096,12 @@ if soname_deps.provides != nil {
 }
 
 if unrecognized_elf_files{
-qa_msg = ["QA Notice: Unrecognized ELF file(s):"]
-qa_msg=append("")
-qa_msg= append(fmt.Sprintf("\t%s" % strings.TrimRight(_unicode(entry), "")
+qa_msg := []string{"QA Notice: Unrecognized ELF file(s):"}
+qa_msg=append(qa_msg,"")
+qa_msg= append(qa_msg, fmt.Sprintf("\t%s" % strings.TrimRight(_unicode(entry), "")
 for entry in unrecognized_elf_files)
-qa_msg=append("")
-for line in qa_msg{
+qa_msg=append(qa_msg, "")
+for _, line := range qa_msg{
 		eqawarn(line, key = mysettings.mycpv, out = out)
 	}
 }
@@ -3116,44 +3112,48 @@ if ! missing_symlinks {
 
 qa_msg := []string{"QA Notice: Missing soname symlink(s):"}
 qa_msg=append(qa_msg,"")
-qa_msg= append(qa_msg, fmt.Sprintf("\t%s -> %s" , filepath.Join(
-	strings.TrimLeft(filepath.Dir(obj),string(os.PathSeparator)), soname),
-filepath.Base(obj))
-for obj, soname in missing_symlinks)
-qa_msg=append("")
-for line in qa_msg{
+for obj, soname := range missing_symlinks {
+	qa_msg = append(qa_msg, fmt.Sprintf("\t%s -> %s", filepath.Join(
+		strings.TrimLeft(filepath.Dir(obj), string(os.PathSeparator)), soname),
+		filepath.Base(obj)))
+}
+qa_msg=append(qa_msg, "")
+for _, line := range qa_msg{
 		eqawarn(line, key = mysettings.mycpv, out = out)
 	}
 }
 
-func _merge_desktopfile_error(errors) {
+func _merge_desktopfile_error(errors []string) []string{
 	lines := []string{}
 
-	msg := []string{"QA Notice: This package installs one or more .desktop files "
-	"that do not pass validation."}
-	lines = append(wrap(msg, 72))
+	msg := "QA Notice: This package installs one or more .desktop files " +
+	"that do not pass validation."
+	lines = append(lines, SplitSubN(msg, 72)...)
 
-	lines = append("")
-	errors.sort()
-	lines = append("\t" + x
-	for _, x := range errors)
-	lines = append("")
+	lines = append(lines, "")
+	sort.Strings(errors)
+	for _, x := range errors {
+		lines = append(lines, "\t" + x)
+	}
+
+	lines = append(lines, "")
 
 	return lines
 }
 
-func _merge_unicode_error(errors) {
+func _merge_unicode_error(errors []string) []string {
 	lines := []string{}
 
-	msg := []string{"QA Notice: This package installs one or more file names "+
-	"containing characters that are not encoded with the UTF-8 encoding."}
-	lines = append(wrap(msg, 72))
+	msg := "QA Notice: This package installs one or more file names " +
+		"containing characters that are not encoded with the UTF-8 encoding."
+	lines = append(lines, SplitSubN(msg, 72)...)
 
-	lines = append("")
-	errors.sort()
-	lines = append("\t" + x
-	for _, x := range errors)
-	lines = append("")
+	lines = append(lines, "")
+	sort.Strings(errors)
+	for _, x := range errors {
+		lines = append(lines, "\t"+x)
+	}
+	lines = append(lines, "")
 
 	return lines
 }
@@ -3191,10 +3191,8 @@ func _prepare_self_update(settings *Config) {
 			symlinks = true)
 	}
 
-	for dir_path
-	in(base_path_tmp, portage._bin_path, portage._pym_path)
-	{
-		os.chmod(dir_path, 0o755)
+	for _, dir_path:= range []string{base_path_tmp, portage._bin_path, portage._pym_path}{
+		os.Chmod(dir_path, 0o755)
 	}
 }
 

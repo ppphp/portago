@@ -2,6 +2,7 @@ package atom
 
 import (
 	"bytes"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -203,4 +204,16 @@ func joinMB(s map[string]bool, sep string)string{
 		r = append(r, k)
 	}
 	return strings.Join(r, sep)
+}
+
+func listDir(path string) ([]string, error){
+	ss, err := ioutil.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+	rs := []string{}
+	for _, s := range ss {
+		rs =append(rs, s.Name())
+	}
+	return rs, nil
 }

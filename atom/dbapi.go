@@ -1122,7 +1122,7 @@ func (v *vardbapi) move_ent(myList []*Atom, repoMatch func(string) bool) int {
 			//raise InvalidPackageName(str(atom))
 		}
 	}
-	origMatches := v.match(origCp, 0)
+	origMatches := v.match(origCp.value, 0)
 	moves := 0
 	if len(origMatches) == 0 {
 		return moves
@@ -1359,8 +1359,8 @@ func (v *vardbapi) _clear_pkg_cache(pkgDblink *dblink) {
 }
 
 // 1
-func (v *vardbapi) match(origDep *Atom, useCache int) []*PkgStr {
-	myDep := dep_expand(origDep, v.dbapi, useCache, v.settings)
+func (v *vardbapi) match(origDep string, useCache int) []*PkgStr {
+	myDep := dep_expandS(origDep, v.dbapi, useCache, v.settings)
 	cacheKey := [2]*Atom{myDep, myDep.unevaluatedAtom}
 	myKey := depGetKey(myDep.value)
 	myCat := catsplit(myKey)[0]
@@ -2431,9 +2431,9 @@ func (v *varTree) get_all_provides() map[string][]*PkgStr {
 }
 
 // 1
-func (v *varTree) dep_bestmatch(myDep *Atom, useCache int) string {
+func (v *varTree) dep_bestmatch(myDep string, useCache int) string {
 	s := []string{}
-	for _, p := range v.dbapi.match(dep_expand(myDep, v.dbapi.dbapi, 1, v.settings), useCache) {
+	for _, p := range v.dbapi.match(dep_expandS(myDep, v.dbapi.dbapi, 1, v.settings), useCache) {
 		s = append(s, p.string)
 	}
 	myMatch := Best(s, "")
@@ -3160,30 +3160,31 @@ func (d *dblink) _show_unmerge(zing, desc, file_type, file_name) {
 
 }
 
-func (d *dblink) _unmerge_pkgfiles(pkgfiles, others_in_slot) {
+func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot) {
 
 	os = _os_merge
-	perf_md5 = perform_md5
-	showMessage = d._display_merge
-	show_unmerge = d._show_unmerge
-	ignored_unlink_errnos = d._ignored_unlink_errnos
-	ignored_rmdir_errnos = d._ignored_rmdir_errnos
+	perf_md5 := performMd5
+	showMessage := d._display_merge
+	show_unmerge := d._show_unmerge
+	ignored_unlink_errnos := d._ignored_unlink_errnos
 
-	if not pkgfiles:
-	showMessage(_("No package files given... Grabbing a set.\n"))
-	pkgfiles = d.getcontents()
+	if len(pkgfiles)==0 {
+		showMessage("No package files given... Grabbing a set.\n", 0, 0)
+		pkgfiles = d.getcontents()
+	}
 
-	if others_in_slot == nil:
-	others_in_slot = []
-	slot = d.vartree.dbapi._pkg_str(d.mycpv, nil).slot
-	slot_matches = d.vartree.dbapi.match(
-		"%s:%s" % (portage.cpv_getkey(d.mycpv), slot))
-	for cur_cpv in slot_matches:
-	if cur_cpv == d.mycpv:
-	continue
-	others_in_slot=append(,dblink(d.cat, catsplit(cur_cpv)[1],
-		settings=d.settings,
-		vartree=d.vartree, treetype="vartree", pipe=d._pipe))
+	if others_in_slot == nil{
+		others_in_slot = []
+		slot := d.vartree.dbapi._pkg_str(d.mycpv, "").slot
+		slot_matches := d.vartree.dbapi.match(
+			"%s:%s" % (portage.cpv_getkey(d.mycpv), slot))
+		for cur_cpv in slot_matches:
+		if cur_cpv == d.mycpv:
+		continue
+		others_in_slot=append(,dblink(d.cat, catsplit(cur_cpv)[1],
+			settings=d.settings,
+			vartree=d.vartree, treetype="vartree", pipe=d._pipe))
+	}
 
 	cfgfiledict = grabdict(d.vartree.dbapi._conf_mem_file)
 	stale_confmem = []
@@ -3676,17 +3677,8 @@ try:
 
 }
 
-func (d *dblink) isowner(filename, destroot=nil) {
-
-	if destroot != nil && destroot != d._eroot:
-	warnings.warn("The second parameter of the " + 
-"portage.dbapi.vartree.dblink.isowner()" + 
-" is now unused. Instead " + 
-"d.settings.ValueDict['EROOT'] will be used.",
-		DeprecationWarning, stacklevel=2)
-
-	return bool(d._match_contents(filename))
-
+func (d *dblink) isowner(filename string) bool {
+	return d._match_contents(filename) != ""
 }
 
 func (d *dblink) _match_contents(filename string) string {
@@ -3783,7 +3775,8 @@ try:
 	level=logging.ERROR, noiselevel=-1)
 }
 
-func (d *dblink) _find_libs_to_preserve(unmerge=false) {
+// false
+func (d *dblink) _find_libs_to_preserve(unmerge bool) {
 
 	if d._linkmap_broken || 
 d.vartree.dbapi._linkmap == nil || 
@@ -6661,7 +6654,7 @@ func (b *BinaryTree) move_ent(mylist []string, repo_match func(string) bool) int
 		moves += 1
 		mytbz2 := NewTbz2(tbz2path)
 		mydata := mytbz2.get_data()
-		updated_items := update_dbentries([][]*Atom{mylist}, mydata, "", mycpv)
+		updated_items := update_dbentries([][]string{mylist}, mydata, "", mycpv)
 		for k, v := range updated_items {
 			mydata[k] = v
 		}
