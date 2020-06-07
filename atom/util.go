@@ -58,7 +58,8 @@ func NormalizePath(myPath string) string {
 	return path.Clean(myPath)
 }
 
-func grabFile(myFileName string, compatLevel int, recursive, rememberSourceFile bool) [][2]string { // 00f
+// 0, false, false
+func grabFile(myFileName string, compatLevel int, recursive, rememberSourceFile bool) [][2]string {
 	myLines := grabLines(myFileName, recursive, true)
 	var newLines [][2]string
 

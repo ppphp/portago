@@ -2,6 +2,7 @@ package atom
 
 import (
 	"bufio"
+	"compress/gzip"
 	"fmt"
 	"github.com/ppphp/shlex"
 	"golang.org/x/sys/unix"
@@ -861,7 +862,7 @@ debug bool, use_cache=None, db DBAPI) {
 			!ok {
 
 			mysettings.reload()
-			mysettings.remap[string]bool{}
+			mysettings.remapset()
 			mysettings.SetCpv(mycpv, mydbapi)
 		}
 	}
@@ -901,7 +902,7 @@ debug bool, use_cache=None, db DBAPI) {
 
 	mysettings.ValueDict["ECLASSDIR"] = mysettings.ValueDict["PORTDIR"] + "/eclass"
 
-	mysettings.ValueDict["PORTAGE_BASHRC_FILES"] = "\n".join(mysettings.pbashrc)
+	mysettings.ValueDict["PORTAGE_BASHRC_FILES"] = joinMB(mysettings.pbashrc, "\n")
 
 	mysettings.ValueDict["P"] = mysplit[0] + "-" + mysplit[1]
 	mysettings.ValueDict["PN"] = mysplit[0]
@@ -2306,33 +2307,29 @@ logfile := mysettings.ValueDict["PORTAGE_LOG_FILE"]
 if logfile == "" {
 	return
 }
-try{
-	f = open(_unicode_encode(logfile, encoding = _encodings["fs"],
-	errors = "strict"), mode = "rb")
-}except EnvironmentError{
-		return
-	}
 
-f_real = None
-if logfile.endswith(".gz") {
+f ,err := os.Open(logfile)
+if err != nil {
+	return
+}
+
+var f_real *os.File
+if strings.HasSuffix(logfile,".gz") {
 	f_real = f
-	f = gzip.GzipFile(filename = "", mode = "rb", fileobj=f)
+	f = gzip.NewReader(f)
 }
 
 am_maintainer_mode = []
-bash_command_!_found = []
-bash_command_!_found_re = re.compile(
-r"(.*): line (\d*): (.*): command not found$")
-command_not_found_exclude_re = re.compile(r"/configure: line ")
+bash_command_not_found = []
+bash_command_not_found_re := regexp.MustCompile("(.*): line (\d*): (.*): command not found$")
+command_not_found_exclude_re := regexp.MustCompile("/configure: line ")
 helper_missing_file = []
-helper_missing_file_re = re.compile(
-r"^!!! (do|new).*: .* does not exist$")
+helper_missing_file_re := regexp.MustCompile("^!!! (do|new).*: .* does not exist$")
 
 configure_opts_warn = []
-configure_opts_warn_re = re.compile(
-r"^configure: WARNING: [Uu]nrecognized options: (.*)")
+configure_opts_warn_re := regexp.MustCompile("^configure: WARNING: [Uu]nrecognized options: (.*)")
 
-qa_configure_opts = ""
+qa_configure_opts := ""
 try{
 	with io.open(_unicode_encode(filepath.Join(
 	mysettings.ValueDict["PORTAGE_BUILDDIR"],
@@ -2684,11 +2681,11 @@ qa_desktop_file = re.compile(qa_desktop_file)
 
 for {
 
-unicode_error = false
-size = 0
-counted_inodes = map[string]bool{}
-fixlafiles_announced = false
-fixlafiles = "fixlafiles" in mysettings.Features.Features[]
+unicode_error := false
+size := 0
+counted_inodes := map[string]bool{}
+fixlafiles_announced := false
+fixlafiles :=   mysettings.Features.Features["fixlafiles"]
 desktopfile_errors = []
 
 for parent, dirs, files in os.walk(destdir){
