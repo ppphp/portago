@@ -3257,7 +3257,7 @@ try:
 	d.settings.ValueDict["INFODIR", "").split(":")) if infodir)
 	infodirs_inodes = map[string]bool{}
 	for infodir in infodirs:
-	infodir = filepath.Join(real_root, infodir.lstrip(os.sep))
+	infodir = filepath.Join(real_root, infodir.lstrip(string(os.PathSeparator)))
 	try:
 	statobj = os.Stat(infodir)
 	except OSError:
@@ -3402,7 +3402,7 @@ not d.isprotected(obj):
 	break
 	try:
 	child_lstat = os.Lstat(filepath.Join(
-	real_root, child.lstrip(os.sep)))
+	real_root, child.lstrip(string(os.PathSeparator))))
 	except OSError:
 	continue
 
@@ -3478,7 +3478,7 @@ not d.isprotected(obj):
 	flat_list = sorted(flat_list)
 	for f in flat_list:
 	lines=append(,"\t%s" % (filepath.Join(real_root,
-	f.lstrip(os.sep))))
+	f.lstrip(string(os.PathSeparator)))))
 	lines=append(,"")
 	d._elog("elog", "postrm", lines)
 
@@ -3546,7 +3546,7 @@ finally:
 	for unmerge_syms in protected_symlinks.values():
 	for relative_path in unmerge_syms:
 	obj = filepath.Join(real_root,
-		relative_path.lstrip(os.sep))
+		relative_path.lstrip(string(os.PathSeparator)))
 	parent = filepath.Dir(obj)
 	while len(parent) > len(d._eroot):
 try:
@@ -3658,7 +3658,7 @@ finally:
 	parents = []
 	for relative_path in unmerge_syms:
 	obj = filepath.Join(real_root,
-		relative_path.lstrip(os.sep))
+		relative_path.lstrip(string(os.PathSeparator)))
 try:
 	unlink(obj, os.Lstat(obj))
 	show_unmerge("<<<", "", "sym", obj)
@@ -3873,7 +3873,7 @@ consumer_node not in provider_nodes:
 	have_replacement_soname_link = false
 	have_replacement_hardlink = false
 	for f in preserve_node.alt_paths:
-	f_abs = filepath.Join(root, f.lstrip(os.sep))
+	f_abs = filepath.Join(root, f.lstrip(string(os.PathSeparator)))
 try:
 	if stat.S_ISREG(os.Lstat(f_abs).st_mode):
 	hardlinks.add(f)
@@ -3913,7 +3913,7 @@ func (d *dblink) _add_preserve_libs_to_contents(preserve_paths) {
 	for f in sorted(preserve_paths):
 	f = _unicode_decode(f,
 		encoding=_encodings['content'], errors='strict')
-	f_abs = filepath.Join(root, f.lstrip(os.sep))
+	f_abs = filepath.Join(root, f.lstrip(string(os.PathSeparator)))
 	contents_entry = old_contents.get(f_abs)
 	if contents_entry == nil:
 						showMessage(_("!!! File '%s' will not be preserved "+
@@ -4056,7 +4056,7 @@ func (d *dblink) _remove_preserved_libs(cpv_lib_map) {
 
 	parent_dirs = map[string]bool{}
 	for obj in files_to_remove:
-	obj = filepath.Join(root, obj.lstrip(os.sep))
+	obj = filepath.Join(root, obj.lstrip(string(os.PathSeparator)))
 	parent_dirs.add(filepath.Dir(obj))
 	if os.path.islink(obj):
 	obj_type = _("sym")
@@ -4098,7 +4098,7 @@ func (d *dblink) _collision_protect(srcroot, destroot, mypkglist,
 	collision_ignore = []
 	for x in portage.util.shlex_split(
 		d.settings.ValueDict["COLLISION_IGNORE", "")):
-	if pathIsDir(filepath.Join(d._eroot, x.lstrip(os.sep))):
+	if pathIsDir(filepath.Join(d._eroot, x.lstrip(string(os.PathSeparator)))):
 	x = NormalizePath(x)
 	x += "/*"
 	collision_ignore=append(,x)
@@ -4245,29 +4245,29 @@ try:
 
 }
 
-func (d *dblink) _lstat_inode_map(path_iter) {
-
-	os = _os_merge
-
+func (d *dblink) _lstat_inode_map(path_iter []string)map[[2]uint64]map[string]bool {
 	root := d.settings.ValueDict["ROOT"]
-	inode_map = {}
-	for f in path_iter:
-	path = filepath.Join(root, f.lstrip(os.sep))
-try:
-	st = os.Lstat(path)
-	except OSError as e:
-	if err not in (syscall.ENOENT, errno.ENOTDIR):
-	raise
-	del e
-	continue
-	key = (st.st_dev, st.st_ino)
-	paths = inode_map.get(key)
-	if paths == nil:
-	paths = map[string]bool{}
-	inode_map[key] = paths
-	paths.add(f)
+	inode_map := map[[2]uint64]map[string]bool{}
+	for _, f := range path_iter{
+		path := filepath.Join(root, strings.TrimLeft(f, string(os.PathSeparator)))
+		st, err := os.Lstat(path)
+		if err != nil {
+			//except OSError as e:
+			if err != syscall.ENOENT &&err != syscall.ENOTDIR){
+				//raise
+			}
+			//del e
+			continue
+		}
+		key := [2]uint64{st.Sys().(*syscall.Stat_t).Dev, st.Sys().(*syscall.Stat_t).Ino}
+		paths := inode_map[key]
+		if paths == nil {
+			paths = map[string]bool{}
+			inode_map[key] = paths
+		}
+		paths[f] = true
+	}
 	return inode_map
-
 }
 
 func (d *dblink) _security_check(installed_instances) {
@@ -4341,7 +4341,7 @@ s.st_mode & (stat.S_ISUID | stat.S_ISGID):
 	return 1
 }
 
-func (d *dblink) _eqawarn(phase, lines) {
+func (d *dblink) _eqawarn(phase string, lines []string) {
 
 	d._elog("eqawarn", phase, lines)
 }
@@ -4351,7 +4351,7 @@ func (d *dblink) _eerror(phase, lines) {
 	d._elog("eerror", phase, lines)
 }
 
-func (d *dblink) _elog(funcname, phase, lines) {
+func (d *dblink) _elog(funcname string, phase string, lines []string) {
 	func = getattr(portage.elog.messages, funcname)
 	if d._scheduler == nil:
 	for l in lines:
@@ -4447,36 +4447,36 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
 
 	is_binpkg := d.settings.ValueDict["EMERGE_FROM"] == "binary"
 	slot := ""
-	for _, var_name := range []string{"CHOST", "SLOT"}{
-try:
-	with io.open(_unicode_encode(
-		filepath.Join(inforoot, var_name),
-		encoding=_encodings['fs'], errors='strict'),
-	mode='r', encoding=_encodings['repo.content'],
-		errors='replace') as f:
-	val = f.readline().strip()
-	except EnvironmentError as e:
-	if err != syscall.ENOENT:
-	raise
-	del e
-	val = ""
+	for _, var_name := range []string{"CHOST", "SLOT"} {
+		f, err := ioutil.ReadFile(filepath.Join(inforoot, var_name))
+		val := ""
+		if err != nil {
+			//except EnvironmentError as e:
+			if err != syscall.ENOENT {
+				//raise
+			}
+			//del e
+		} else {
+			val = strings.TrimSpace(strings.Split(string(f), "\n")[0])
+		}
 
-	if var_name == "SLOT":
-	slot = val
+		if var_name == "SLOT" {
+			slot = val
 
-	if not slot.strip():
-	slot = d.settings.ValueDict[var_name, "")
-	if not slot.strip():
-	showMessage(_("!!! SLOT is undefined\n"),
-		level=logging.ERROR, noiselevel=-1)
-	return 1
-	write_atomic(filepath.Join(inforoot, var_name), slot + "\n")
+			if strings.TrimSpace(slot) == "" {
+				slot = d.settings.ValueDict[var_name]
+				if strings.TrimSpace(slot) == "" {
+					showMessage("!!! SLOT is undefined\n", 40, -1)
+					return 1
+				}
+				write_atomic(filepath.Join(inforoot, var_name), slot+"\n")
+			}
+		}
 
-			if not is_binpkg && val != d.settings.ValueDict[var_name, ""):
-	d._eqawarn("preinst",
-		[_("QA Notice: Expected %(var_name)s='%(expected_value)s', got '%(actual_value)s'\n") % 
-{"var_name":var_name, "expected_value":d.settings.ValueDict[var_name, ""), "actual_value":val}])
-}
+		if !is_binpkg && val != d.settings.ValueDict[var_name] {
+			d._eqawarn("preinst", []string{fmt.Sprintf("QA Notice: Expected %s='%s', got '%s'\n", var_name,  d.settings.ValueDict[var_name], val)}
+		}
+	}
 
 	def eerror(lines):
 	d._eerror("preinst", lines)
@@ -4647,14 +4647,14 @@ settings_clone["PORTAGE_RESTRICT"].split():
 
 	if paths_with_newlines:
 	msg = []
-	msg=append(,_("This package installs one or more files containing line ending characters:"))
-	msg=append(,"")
+	msg=append(msg,_("This package installs one or more files containing line ending characters:"))
+	msg=append(msg,"")
 	paths_with_newlines.sort()
 	for f in paths_with_newlines:
-	msg=append(,"\t/%s" % (f.replace("\n", "\\n").replace("\r", "\\r")))
-	msg=append(,"")
-	msg=append(,_("package %s NOT merged") % d.mycpv)
-	msg=append(,"")
+	msg=append(msg,"\t/%s" % (f.replace("\n", "\\n").replace("\r", "\\r")))
+	msg=append(msg,"")
+	msg=append(msg,_("package %s NOT merged") % d.mycpv)
+	msg=append(msg,"")
 	eerror(msg)
 	return 1
 
@@ -4675,12 +4675,12 @@ not filelist && not linklist && others_in_slot:
 	msg=append(,wrap(_("The '%(new_cpv)s' package will not install "+
 	"any files, but the currently installed '%(old_cpv)s'"+
 	" package has the following files: ") % d, wrap_width))
-	msg=append(,"")
-	msg=append(,sorted(installed_files))
-	msg=append(,"")
-	msg=append(,_("package %s NOT merged") % d.mycpv)
-	msg=append(,"")
-	msg=append(,wrap(
+	msg=append(msg,"")
+	msg=append(msg,sorted(installed_files))
+	msg=append(msg,"")
+	msg=append(msg,_("package %s NOT merged") % d.mycpv)
+	msg=append(msg,"")
+	msg=append(msg,wrap(
 	_("Manually run `emerge --unmerge =%s` if you "+
 	"really want to remove the above files. Set "+
 	"PORTAGE_PACKAGE_EMPTY_ABORT=\"0\" in "+
@@ -4719,10 +4719,10 @@ d._collision_protect(srcroot, destroot,
 	"Please mount the following filesystems as read-write "+
 	"and retry.")
 	msg = textwrap.wrap(msg, 70)
-	msg=append(,"")
+	msg=append(msg,"")
 	for f in rofilesystems:
-	msg=append(,"\t%s" % f)
-	msg=append(,"")
+	msg=append(msg,"\t%s" % f)
+	msg=append(msg,"")
 	d._elog("eerror", "preinst", msg)
 
 	msg = _("Package '%s' NOT merged due to read-only file systems.") % 
@@ -4739,14 +4739,14 @@ d.settings.mycpv
 	"corresponding to merged directories in the target "+
 	"filesystem (${ROOT})):") % d.settings.mycpv
 	msg = textwrap.wrap(msg, 70)
-	msg=append(,"")
+	msg=append(msg,"")
 	for k, v in sorted(internal_collisions.items(), key=operator.itemgetter(0)):
-	msg=append(,"\t%s" % filepath.Join(destroot, k.lstrip(string(os.PathSeparator))))
+	msg=append(msg,"\t%s" % filepath.Join(destroot, k.lstrip(string(os.PathSeparator))))
 	for (file1, file2), differences in sorted(v.items()):
-	msg=append(,"\t\t%s" % filepath.Join(destroot, file1.lstrip(string(os.PathSeparator))))
-	msg=append(,"\t\t%s" % filepath.Join(destroot, file2.lstrip(string(os.PathSeparator))))
-	msg=append(,"\t\t\tDifferences: %s" % ", ".join(differences))
-	msg=append(,"")
+	msg=append(msg,"\t\t%s" % filepath.Join(destroot, file1.lstrip(string(os.PathSeparator))))
+	msg=append(msg,"\t\t%s" % filepath.Join(destroot, file2.lstrip(string(os.PathSeparator))))
+	msg=append(msg,"\t\t\tDifferences: %s" % ", ".join(differences))
+	msg=append(msg,"")
 	d._elog("eerror", "preinst", msg)
 
 	msg = _("Package '%s' NOT merged due to internal collisions "+
@@ -4761,11 +4761,11 @@ d.settings.mycpv
 	"between symlinks and directories, which is explicitly "+
 	"forbidden by PMS section 13.4 (see bug 	(d.settings.mycpv,)
 	msg = textwrap.wrap(msg, 70)
-	msg=append(,"")
+	msg=append(msg,"")
 	for f in symlink_collisions:
-	msg=append(,"\t%s" % filepath.Join(destroot,
+	msg=append(msg,"\t%s" % filepath.Join(destroot,
 	f.lstrip(string(os.PathSeparator))))
-	msg=append(,"")
+	msg=append(msg,"")
 	d._elog("eerror", "preinst", msg)
 
 	if collisions:
@@ -4803,11 +4803,11 @@ d.settings.mycpv
 	from textwrap import wrap
 	msg = wrap(msg, 70)
 	if collision_protect:
-	msg=append(,"")
-	msg=append(,_("package %s NOT merged") % d.settings.mycpv)
-	msg=append(,"")
-	msg=append(,_("Detected file collision(s):"))
-	msg=append(,"")
+	msg=append(msg,"")
+	msg=append(msg,_("package %s NOT merged") % d.settings.mycpv)
+	msg=append(msg,"")
+	msg=append(msg,_("Detected file collision(s):"))
+	msg=append(msg,"")
 
 	for f in collisions:
 	msg=append(,"\t%s" % 
@@ -4818,12 +4818,12 @@ filepath.Join(destroot, f.lstrip(string(os.PathSeparator))))
 	owners = nil
 	if collision_protect || protect_owned || symlink_collisions:
 	msg = []
-	msg=append(,"")
-	msg=append(,_("Searching all installed"+
+	msg=append(msg,"")
+	msg=append(msg,_("Searching all installed"+
 	" packages for file collisions..."))
-	msg=append(,"")
-	msg=append(,_("Press Ctrl-C to Stop"))
-	msg=append(,"")
+	msg=append(msg,"")
+	msg=append(msg,_("Press Ctrl-C to Stop"))
+	msg=append(msg,"")
 	eerror(msg)
 
 	if len(collisions) > 20:
@@ -5142,21 +5142,19 @@ filepath.Join(d.dbpkgdir, "environment.bz2")
 
 	}
 
-func (d *dblink) _new_backup_path(p) {
-
-	os = _os_merge
-
-	x = -1
-	while true:
-	x += 1
-	backup_p = "%s.backup.%04d" % (p, x)
-try:
-	os.Lstat(backup_p)
-	except OSError:
-	break
+func (d *dblink) _new_backup_path(p string) string {
+	x := -1
+	backup_p := ""
+	for {
+		x += 1
+		backup_p = fmt.Sprintf("%s.backup.%04d", p, x)
+		if _, err := os.Lstat(backup_p); err != nil {
+			//except OSError:
+			break
+		}
+	}
 
 	return backup_p
-
 }
 
 func (d *dblink) _merge_contents(srcroot, destroot, cfgfiledict) {
@@ -5175,7 +5173,7 @@ func (d *dblink) _merge_contents(srcroot, destroot, cfgfiledict) {
 	secondhand = []
 
 			if d.mergeme(srcroot, destroot, outfile, secondhand,
-		d.settings.ValueDict["EPREFIX"].lstrip(os.sep), cfgfiledict, mymtime):
+		d.settings.ValueDict["EPREFIX"].lstrip(string(os.PathSeparator)), cfgfiledict, mymtime):
 	return 1
 
 			lastlen = 0
@@ -5218,7 +5216,7 @@ func (d *dblink) mergeme(srcroot, destroot, outfile, secondhand, stufftomerge, c
 	WriteMsg = d._display_merge
 
 	os = _os_merge
-	sep = os.sep
+	sep = string(os.PathSeparator)
 	join = filepath.Join
 	srcroot = NormalizePath(srcroot).rstrip(sep) + sep
 	destroot = NormalizePath(destroot).rstrip(sep) + sep
@@ -8272,15 +8270,15 @@ try:
 		encoding = _encodings['fs']
 	errors = 'strict'
 
-	relative_path = mysplit[0] + _os.sep + psplit[0] + _os.sep + 
+	relative_path = mysplit[0] + _string(os.PathSeparator) + psplit[0] + _string(os.PathSeparator) + 
 mysplit[1] + ".ebuild"
 
 	if (myrepo != nil && myrepo == getattr(mycpv, "repo", nil)
 	&& p is getattr(mycpv, "_db", nil)):
-	return (mytree + _os.sep + relative_path, mytree)
+	return (mytree + _string(os.PathSeparator) + relative_path, mytree)
 
 	for x in mytrees:
-	filename = x + _os.sep + relative_path
+	filename = x + _string(os.PathSeparator) + relative_path
 	if _os.access(_unicode_encode(filename,
 		encoding=encoding, errors=errors), _os.R_OK):
 	return (filename, x)
@@ -8497,37 +8495,38 @@ func (p *portdbapi) async_fetch_map(mypkg, useflags=nil, mytree=nil, loop=nil) {
 	loop = asyncio._wrap_loop(loop)
 	result = loop.create_future()
 
-	def
-	aux_get_done(aux_get_future):
-	if result.cancelled():
-	return
-	if aux_get_future.exception() is
-	not
-nil:
-	if isinstance(aux_get_future.exception(), PortageKeyError):
-	result.set_exception(portage.exception.InvalidDependString(
-		"getFetchMap(): aux_get() error reading "+ mypkg + "; aborting.")) else:
-	result.set_exception(future.exception())
-	return
+	aux_get_done:=func(aux_get_future) {
+		if result.cancelled():
+		return
+		if aux_get_future.exception() is
+		not
+	nil:
+		if isinstance(aux_get_future.exception(), PortageKeyError):
+		result.set_exception(portage.exception.InvalidDependString(
+			"getFetchMap(): aux_get() error reading " + mypkg + "; aborting.")) else:
+		result.set_exception(future.exception())
+		return
 
-	eapi, myuris = aux_get_future.result()
+		eapi, myuris = aux_get_future.result()
 
-	if not eapi_is_supported(eapi):
-	result.set_exception(portage.exception.InvalidDependString(
-		"getFetchMap(): '%s' has unsupported EAPI: '%s'" % 
-(mypkg, eapi)))
-	return
+		if !eapiIsSupported(eapi) {
+			result.set_exception(portage.exception.InvalidDependString(
+				"getFetchMap(): '%s' has unsupported EAPI: '%s'"%
+					(mypkg, eapi)))
+			return
+		}
 
-try:
-	result.set_result(_parse_uri_map(mypkg,
-	{
-		"EAPI":eapi, "SRC_URI":myuris
-	}, use = useflags))
-	except
-	Exception
-	as
-e:
-	result.set_exception(e)
+	try:
+		result.set_result(_parse_uri_map(mypkg,
+		{
+			"EAPI":eapi, "SRC_URI":myuris
+		}, use = useflags))
+		except
+		Exception
+		as
+	e:
+		result.set_exception(e)
+	}
 
 	aux_get_future = p.async_aux_get(
 		mypkg, ["EAPI", "SRC_URI"], mytree = mytree, loop = loop)
@@ -8537,8 +8536,8 @@ aux_get_future.add_done_callback(aux_get_done)
 return result
 }
 
-// nil, 0, nil
-func (p *portdbapi) getfetchsizes(mypkg, useflags=nil, debug int, myrepo=nil) {
+// nil, 0, ""
+func (p *portdbapi) getfetchsizes(mypkg string, useflags []string, debug int, myrepo string) {
 	myebuild, mytree := p.findname2(mypkg, myrepo = myrepo)
 	if myebuild == nil {
 		//raise AssertionError(_("ebuild not found for '%s'") % mypkg)
