@@ -1,40 +1,54 @@
 package atom
 
-import "log/syslog"
+import (
+	"fmt"
+	"io/ioutil"
+	"log/syslog"
+	"os"
+	"path/filepath"
+	"strings"
+	"syscall"
+)
 
 func filter_loglevels(logentries, loglevels []string) {
-	rValue =
-	{
+	rValue := map[]{}
+	for i := range loglevels {
+		loglevels[i] = strings.ToUpper(loglevels[i])
 	}
-	loglevels = [x.upper()
-	for x
+	for phase
 	in
-	loglevels]
-for phase in logentries:
-for msgtype, msgcontent in logentries[phase]:
-if msgtype.upper() in loglevels or "*" in loglevels:
-if phase not in rValue:
-rValue[phase] = []
-rValue[phase]=append(,(msgtype, msgcontent))
-return rValue
+logentries:
+	for msgtype, msgcontent
+	in
+	logentries[phase]:
+	if msgtype.upper() in
+	loglevels
+	or
+	"*"
+	in
+loglevels:
+	if phase !
+	in
+rValue:
+	rValue[phase] = []
+	rValue[phase] = append(, (msgtype, msgcontent))
+	return rValue
 }
 
 
-func _preload_elog_modules(settings) {
-	logsystems = settings.get("PORTAGE_ELOG_SYSTEM", "").split()
-	for s
-	in
-logsystems:
-	if ":" in
-s:
-	s, levels = s.split(":", 1)
-	levels = levels.split(",")
-	s = s.replace("-", "_")
-try:
-	_load_mod("portage.elog.mod_" + s)
-	except
-ImportError:
-	pass
+func _preload_elog_modules(settings *Config) {
+	logsystems := strings.Fields(settings.ValueDict["PORTAGE_ELOG_SYSTEM"])
+	for _, s:= range logsystems{
+		if strings.Contains(s, ":") {
+			s = strings.SplitN(s, ":", 2)[0]
+		}
+		s = strings.ReplaceAll(s, "-", "_")
+	try:
+		_load_mod("portage.elog.mod_" + s)
+		except
+	ImportError:
+		pass
+	}
 }
 
 func _merge_logentries(a, b) {
@@ -62,7 +76,7 @@ func _combine_logentries(logentries) {
 	for phase
 	in
 EBUILD_PHASES:
-	if not phase
+	if ! phase
 	in
 logentries:
 	continue
@@ -90,8 +104,7 @@ func _load_mod(name) {
 	global
 	_elog_mod_imports
 	m = _elog_mod_imports.get(name)
-	if m is
-None:
+	if m == nil:
 	m = __import__(name)
 	for comp
 	in
@@ -103,7 +116,7 @@ None:
 
 var _elog_listeners = []
 func add_listener(listener) {
-	_elog_listeners=append(_elog_listeners,listener)
+	_elog_listeners = append(_elog_listeners, listener)
 }
 
 func remove_listener(listener) {
@@ -121,7 +134,7 @@ func elog_process(cpv, mysettings, phasefilter=None) {
 	global
 	_elog_atexit_handlers
 
-	logsystems = mysettings.get("PORTAGE_ELOG_SYSTEM", "").split()
+	logsystems = mysettings.ValueDict["PORTAGE_ELOG_SYSTEM", "").split()
 	for s
 	in
 logsystems:
@@ -139,7 +152,7 @@ ImportError:
 	if "T" in
 mysettings:
 	ebuild_logentries = collect_ebuild_messages(
-		os.path.join(mysettings["T"], "logging"))
+		filepath.Join(mysettings.ValueDict["T"], "logging"))
 	else:
 	ebuild_logentries =
 	{
@@ -152,13 +165,13 @@ all_logentries:
 	else:
 	all_logentries[cpv] = ebuild_logentries
 
-	my_elog_classes = set(mysettings.get("PORTAGE_ELOG_CLASSES", "").split())
+	my_elog_classes = set(mysettings.ValueDict["PORTAGE_ELOG_CLASSES", "").split())
 	logsystems =
 	{
 	}
 	for token
 	in
-	mysettings.get("PORTAGE_ELOG_SYSTEM", "").split():
+	mysettings.ValueDict["PORTAGE_ELOG_SYSTEM", "").split():
 	if ":" in
 token:
 	s, levels = token.split(":", 1)
@@ -167,8 +180,7 @@ token:
 	s = token
 	levels = ()
 	levels_set = logsystems.get(s)
-	if levels_set is
-None:
+	if levels_set == nil:
 	levels_set = set()
 	logsystems[s] = levels_set
 	levels_set.update(levels)
@@ -178,10 +190,10 @@ None:
 all_logentries:
 	default_logentries = filter_loglevels(all_logentries[key], my_elog_classes)
 
-	if len(default_logentries) == 0 and(not
+	if len(default_logentries) == 0 &&(!
 	":"
 	in
-	mysettings.get("PORTAGE_ELOG_SYSTEM", "")):
+	mysettings.ValueDict["PORTAGE_ELOG_SYSTEM"]):
 	continue
 
 	default_fulllog = _combine_logentries(default_logentries)
@@ -210,8 +222,8 @@ try:
 	m.process(mysettings, str(key), mod_logentries, mod_fulllog)
 finally:
 	AlarmSignal.unregister()
-	if hasattr(m, "finalize") and
-	not
+	if hasattr(m, "finalize") &&
+	!
 	m.finalize
 	in
 _elog_atexit_handlers:
@@ -220,96 +232,103 @@ _elog_atexit_handlers:
 	except(ImportError, AttributeError)
 	as
 e:
-	writemsg(_("!!! Error while importing logging modules "
+	WriteMsg(_("!!! Error while importing logging modules "
 	"while loading \"mod_%s\":\n") % str(s))
-	writemsg("%s\n"%str(e), noiselevel = -1)
+	WriteMsg("%s\n"%str(e), noiselevel = -1)
 	except
 AlarmSignal:
-	writemsg("Timeout in elog_process for system '%s'\n"%s,
+	WriteMsg("Timeout in elog_process for system '%s'\n"%s,
 		noiselevel = -1)
 	except
 	PortageException
 	as
 e:
-	writemsg("%s\n"%str(e), noiselevel = -1)
+	WriteMsg("%s\n"%str(e), noiselevel = -1)
 }
 
 
-func collect_ebuild_messages(path) {
-	mylogfiles = None
-try:
-	mylogfiles = os.listdir(path)
-	except
-OSError:
-	pass
-	if not mylogfiles:
-	return
-	{
+var _log_levels = map[string]bool{
+	"ERROR": true,
+	"INFO":  true,
+	"LOG":   true,
+	"QA":    true,
+	"WARN":  true,
+}
+
+func collect_ebuild_messages(path string)map[string][]struct{s string; ss []string} {
+	mylogfiles, err := listDir(path)
+	if err != nil {
+		//except OSError:
+		//pass
 	}
-	mylogfiles.reverse()
-	logentries =
-	{
+	if len(mylogfiles) == 0 {
+		return map[string][]struct {
+			s  string;
+			ss []string
+		}{}
 	}
-	for msgfunction
-	in
-mylogfiles:
-	filename = os.path.join(path, msgfunction)
-	if msgfunction not
-	in
-EBUILD_PHASES:
-	writemsg(_("!!! can't process invalid log file: %s\n")%filename,
-		noiselevel = -1)
-	continue
-	if not msgfunction
-	in
-logentries:
-	logentries[msgfunction] = []
-	lastmsgtype = None
-	msgcontent = []
-	f = io.open(_unicode_encode(filename,
-		encoding = _encodings['fs'], errors = 'strict'),
-	mode = 'r', encoding=_encodings['repo.content'], errors = 'replace')
-	for l
-	in
-	f.read().split('\n'):
-	if not l:
-	continue
-try:
-	msgtype, msg = l.split(" ", 1)
-	if msgtype not
-	in
-_log_levels:
-	raise
-	ValueError(msgtype)
-	except
-ValueError:
-	writemsg(_("!!! malformed entry in "
-	"log file: '%s': %s\n") % (filename, l), noiselevel = -1)
-	continue
+	ReverseSlice(mylogfiles)
+	logentries := map[string][]struct {
+		s  string;
+		ss []string
+	}{}
+	for _, msgfunction := range mylogfiles {
+		filename := filepath.Join(path, msgfunction)
+		if !EBUILD_PHASES[msgfunction] {
+			WriteMsg(fmt.Sprintf("!!! can't process invalid log file: %s\n", filename),
+				-1, nil)
+			continue
+		}
+		if _, ok := logentries[msgfunction]; !ok {
+			logentries[msgfunction] = []struct {
+				s  string;
+				ss []string
+			}{}
+		}
+		lastmsgtype := ""
+		msgcontent := []string{}
+		f, _ := ioutil.ReadFile(filename)
+		for _, l := range strings.Split(string(f), "\n") {
+			if len(l) == 0 {
+				continue
+			}
+			msgtype, msg := strings.SplitN(l, " ", 1)[0], strings.SplitN(l, " ", 1)[1]
+			if !_log_levels[msgtype] {
+				WriteMsg(fmt.Sprintf("!!! malformed entry in "+
+					"log file: '%s': %s\n", filename, l), -1, nil)
+				continue
+			}
+			if lastmsgtype == "" {
+				lastmsgtype = msgtype
+			}
 
-	if lastmsgtype is
-None:
-	lastmsgtype = msgtype
+			if msgtype == lastmsgtype {
+				msgcontent = append(msgcontent, msg)
+			} else {
+				if len(msgcontent) > 0 {
+					logentries[msgfunction] = append(logentries[msgfunction], struct {
+						s  string;
+						ss []string
+					}{lastmsgtype, msgcontent})
+				}
+				msgcontent = []string{msg}
+			}
+			lastmsgtype = msgtype
+		}
+		if len(msgcontent) > 0 {
+			logentries[msgfunction] = append(logentries[msgfunction], struct {
+				s  string;
+				ss []string
+			}{lastmsgtype, msgcontent})
+		}
+	}
 
-	if msgtype == lastmsgtype:
-	msgcontent=append(,msg)
-	else:
-	if msgcontent:
-	logentries[msgfunction]=append(,(lastmsgtype, msgcontent))
-	msgcontent = [msg]
-	lastmsgtype = msgtype
-	f.close()
-	if msgcontent:
-	logentries[msgfunction]=append(,(lastmsgtype, msgcontent))
-
-	for f
-	in
-mylogfiles:
-try:
-	os.unlink(os.path.join(path, f))
-	except
-OSError:
-	pass
+	for _, f := range mylogfiles {
+		if err := syscall.Unlink(filepath.Join(path, f)); err != nil {
+			//except OSError:
+			//pass
+		}
+	}
 	return logentries
 }
 
@@ -319,12 +338,10 @@ func _elog_base(level, msg, phase="other", key=None, color=None, out=None) {
 	global
 	_msgbuffer
 
-	if out is
-None:
+	if out == nil:
 	out = sys.stdout
 
-	if color is
-None:
+	if color == nil:
 	color = "GOOD"
 
 	msg = _unicode_decode(msg,
@@ -340,13 +357,13 @@ None:
 
 	out.write(formatted_msg)
 
-	if key not
+	if key !
 	in
 _msgbuffer:
 	_msgbuffer[key] =
 	{
 	}
-	if phase not
+	if phase !
 	in
 	_msgbuffer[key]:
 	_msgbuffer[key][phase] = []
@@ -357,8 +374,7 @@ func collect_messages(key=None, phasefilter=None) {
 	global
 	_msgbuffer
 
-	if key is
-None:
+	if key == nil:
 	rValue = _msgbuffer
 	_reset_buffer()
 	else:
@@ -367,8 +383,7 @@ None:
 	}
 	if key in
 _msgbuffer:
-	if phasefilter is
-None:
+	if phasefilter == nil:
 	rValue[key] = _msgbuffer.pop(key)
 	else:
 	rValue[key] =
@@ -382,7 +397,7 @@ try:
 	except
 KeyError:
 	pass
-	if not _msgbuffer[key]:
+	if ! _msgbuffer[key]:
 	del
 	_msgbuffer[key]
 	return rValue
@@ -410,13 +425,13 @@ type _make_msgfunction struct{
 
 func NewMakeMsgFunction(level, color)*_make_msgfunction{
 	m := &_make_msgfunction{}
-self._level = level
-self._color = color
+	m._level = level
+	m._color = color
 	return m
 }
 
 func (m *_make_msgfunction) __call__(msg, phase="other", key=None, out=None) {
-	_elog_base(self._level, msg, phase = phase,
+	_elog_base(m._level, msg, phase = phase,
 		key = key, color = self._color, out=out)
 }
 
@@ -430,11 +445,11 @@ del f, _functions
 func process(mysettings, key, logentries, fulltext) {
 	elogfilename = portage.elog.mod_save.process(mysettings, key, logentries, fulltext)
 
-	if not mysettings.get("PORTAGE_ELOG_COMMAND"):
+	if ! mysettings.ValueDict["PORTAGE_ELOG_COMMAND"):
 	raise
 	portage.exception.MissingParameter("!!! Custom logging requested but PORTAGE_ELOG_COMMAND is not defined")
 	else:
-	mylogcmd = mysettings["PORTAGE_ELOG_COMMAND"]
+	mylogcmd = mysettings.ValueDict["PORTAGE_ELOG_COMMAND"]
 	mylogcmd = mylogcmd.replace("${LOGFILE}", elogfilename)
 	mylogcmd = mylogcmd.replace("${PACKAGE}", key)
 	retval = portage.process.spawn_bash(mylogcmd)
@@ -452,16 +467,16 @@ func process(mysettings, key, logentries, fulltext) {
 	global
 	_items
 	logfile = None
-	if (key == mysettings.mycpv and
+	if (key == mysettings.mycpv &&
 	"PORTAGE_LOGDIR"
 	in
 	mysettings
-	and
+	&&
 	"PORTAGE_LOG_FILE"
 	in
 	mysettings):
-	logfile = mysettings["PORTAGE_LOG_FILE"]
-	_items=append(,(mysettings["ROOT"], key, logentries, logfile))
+	logfile = mysettings.ValueDict["PORTAGE_LOG_FILE"]
+	_items=append(,(mysettings.ValueDict["ROOT"], key, logentries, logfile))
 }
 
 func finalize() {
@@ -493,15 +508,13 @@ _items:
 	{
 		"pkg": colorize("INFORM", key), "root": root
 	})
-	if logfile is
-	not
-None:
+	if logfile !=nil:
 	printer.einfo(_("Log file: %s") % colorize("INFORM", logfile))
 	print()
 	for phase
 	in
 EBUILD_PHASES:
-	if phase not
+	if phase !
 	in
 logentries:
 	continue
@@ -531,13 +544,13 @@ msgcontent:
 func process(mysettings, key, logentries, fulltext) {
 	if "PORTAGE_ELOG_MAILURI" in
 mysettings:
-	myrecipient = mysettings["PORTAGE_ELOG_MAILURI"].split()[0]
+	myrecipient = mysettings.ValueDict["PORTAGE_ELOG_MAILURI"].split()[0]
 	else:
 	myrecipient = "root@localhost"
 
-	myfrom = mysettings["PORTAGE_ELOG_MAILFROM"]
+	myfrom = mysettings.ValueDict["PORTAGE_ELOG_MAILFROM"]
 	myfrom = myfrom.replace("${HOST}", socket.getfqdn())
-	mysubject = mysettings["PORTAGE_ELOG_MAILSUBJECT"]
+	mysubject = mysettings.ValueDict["PORTAGE_ELOG_MAILSUBJECT"]
 	mysubject = mysubject.replace("${PACKAGE}", key)
 	mysubject = mysubject.replace("${HOST}", socket.getfqdn())
 
@@ -550,7 +563,7 @@ logentries:
 action = _("unmerged")
 if action == _("unmerged"):
 for phase in logentries:
-if phase not in ["postrm", "prerm", "other"]:
+if phase ! in ["postrm", "prerm", "other"]:
 action = _("unknown")
 
 mysubject = mysubject.replace("${ACTION}", action)
@@ -559,7 +572,7 @@ mymessage = portage.mail.create_message(myfrom, myrecipient, mysubject, fulltext
 try:
 portage.mail.send_mail(mysettings, mymessage)
 except PortageException as e:
-writemsg("%s\n" % str(e), noiselevel = -1)
+WriteMsg("%s\n" % str(e), noiselevel = -1)
 
 return
 }
@@ -579,7 +592,7 @@ func process(mysettings, key, logentries, fulltext) {
 	{
 		"pkg": key, "pid": os.getpid(), "time": time_str
 	}
-	config_root = mysettings["PORTAGE_CONFIGROOT"]
+	config_root = mysettings.ValueDict["PORTAGE_CONFIGROOT"]
 
 	config_dict =
 	{
@@ -587,10 +600,8 @@ func process(mysettings, key, logentries, fulltext) {
 	for k
 	in
 _config_keys:
-	v = mysettings.get(k)
-	if v is
-	not
-None:
+	v = mysettings.ValueDict[k)
+	if v !=nil:
 	config_dict[k] = v
 
 	config_dict, items = _items.setdefault(config_root, (config_dict,
@@ -619,13 +630,13 @@ func _finalize(mysettings, items) {
 	count = _("multiple packages")
 	if "PORTAGE_ELOG_MAILURI" in
 mysettings:
-	myrecipient = mysettings["PORTAGE_ELOG_MAILURI"].split()[0]
+	myrecipient = mysettings.ValueDict["PORTAGE_ELOG_MAILURI"].split()[0]
 	else:
 	myrecipient = "root@localhost"
 
-	myfrom = mysettings.get("PORTAGE_ELOG_MAILFROM", "")
+	myfrom = mysettings.ValueDict["PORTAGE_ELOG_MAILFROM", "")
 	myfrom = myfrom.replace("${HOST}", socket.getfqdn())
-	mysubject = mysettings.get("PORTAGE_ELOG_MAILSUBJECT", "")
+	mysubject = mysettings.ValueDict["PORTAGE_ELOG_MAILSUBJECT", "")
 	mysubject = mysubject.replace("${PACKAGE}", count)
 	mysubject = mysubject.replace("${HOST}", socket.getfqdn())
 
@@ -647,13 +658,13 @@ finally:
 	AlarmSignal.unregister()
 	except
 AlarmSignal:
-	writemsg("Timeout in finalize() for elog system 'mail_summary'\n",
+	WriteMsg("Timeout in finalize() for elog system 'mail_summary'\n",
 		noiselevel = -1)
 	except
 	PortageException
 	as
 e:
-	writemsg("%s\n" % (e, ), noiselevel = -1)
+	WriteMsg("%s\n" % (e, ), noiselevel = -1)
 
 	return
 }
@@ -663,13 +674,13 @@ e:
 
 func process(mysettings, key, logentries, fulltext) {
 
-	if mysettings.get("PORTAGE_LOGDIR"):
-	logdir = normalize_path(mysettings["PORTAGE_LOGDIR"])
+	if mysettings.ValueDict["PORTAGE_LOGDIR"):
+	logdir = NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])
 	else:
-	logdir = os.path.join(os.sep, mysettings["EPREFIX"].lstrip(os.sep),
+	logdir = filepath.Join(string(os.PathSeparator), mysettings.ValueDict["EPREFIX"].lstrip(string(os.PathSeparator)),
 		"var", "log", "portage")
 
-	if not os.path.isdir(logdir):
+	if ! pathIsDir(logdir):
 	uid = -1
 	if portage.data.secpass >= 2:
 	uid = portage_uid
@@ -683,11 +694,11 @@ func process(mysettings, key, logentries, fulltext) {
 
 	if "split-elog" in
 	mysettings.features:
-	log_subdir = os.path.join(logdir, "elog", cat)
-	elogfilename = os.path.join(log_subdir, elogfilename)
+	log_subdir = filepath.Join(logdir, "elog", cat)
+	elogfilename = filepath.Join(log_subdir, elogfilename)
 	else:
-	log_subdir = os.path.join(logdir, "elog")
-	elogfilename = os.path.join(log_subdir, cat+':'+elogfilename)
+	log_subdir = filepath.Join(logdir, "elog")
+	elogfilename = filepath.Join(log_subdir, cat+':'+elogfilename)
 	_ensure_log_subdirs(logdir, log_subdir)
 
 try:
@@ -703,29 +714,29 @@ elogfile:
 	as
 e:
 	func_call = "open('%s', 'w')" % elogfilename
-	if e.errno == errno.EACCES:
+	if e.errno == syscall.EACCES:
 	raise
 	portage.exception.PermissionDenied(func_call)
 	elif
-	e.errno == errno.EPERM:
+	e.errno == syscall.EPERM:
 	raise
 	portage.exception.OperationNotPermitted(func_call)
 	elif
-	e.errno == errno.EROFS:
+	e.errno == syscall.EROFS:
 	raise
 	portage.exception.ReadOnlyFileSystem(func_call)
 	else:
 	raise
 
-	elogdir_st = os.stat(log_subdir)
+	elogdir_st = os.Stat(log_subdir)
 	elogdir_gid = elogdir_st.st_gid
 	elogdir_grp_mode = 0o060 & elogdir_st.st_mode
 
 	logfile_uid = -1
 	if portage.data.secpass >= 2:
 	logfile_uid = elogdir_st.st_uid
-	apply_permissions(elogfilename, uid = logfile_uid, gid = elogdir_gid,
-		mode = elogdir_grp_mode, mask=0)
+	applyPermissions(elogfilename, logfile_uid, elogdir_gid,
+		elogdir_grp_mode, 0, nil, nil)
 
 	return elogfilename
 }
@@ -735,19 +746,19 @@ e:
 
 
 func process(mysettings, key, logentries, fulltext) {
-	if mysettings.get("PORTAGE_LOGDIR"):
-	logdir = normalize_path(mysettings["PORTAGE_LOGDIR"])
+	if mysettings.ValueDict["PORTAGE_LOGDIR"]:
+	logdir = NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])
 	else:
-	logdir = os.path.join(os.sep, mysettings["EPREFIX"].lstrip(os.sep),
+	logdir = filepath.Join(string(os.PathSeparator), mysettings.ValueDict["EPREFIX"].lstrip(string(os.PathSeparator)),
 		"var", "log", "portage")
 
-	if not os.path.isdir(logdir):
+	if ! pathIsDir(logdir):
 	logdir_uid = -1
 	if portage.data.secpass >= 2:
 	logdir_uid = portage_uid
 	ensure_dirs(logdir, uid = logdir_uid, gid = portage_gid, mode = 0o2770)
 
-	elogdir = os.path.join(logdir, "elog")
+	elogdir = filepath.Join(logdir, "elog")
 	_ensure_log_subdirs(logdir, elogdir)
 
 	elogfilename = elogdir + "/summary.log"
@@ -761,21 +772,21 @@ try:
 	as
 e:
 	func_call = "open('%s', 'a')" % elogfilename
-	if e.errno == errno.EACCES:
+	if e.errno == syscall.EACCES:
 	raise
 	portage.exception.PermissionDenied(func_call)
 	elif
-	e.errno == errno.EPERM:
+	e.errno == syscall.EPERM:
 	raise
 	portage.exception.OperationNotPermitted(func_call)
 	elif
-	e.errno == errno.EROFS:
+	e.errno == syscall.EROFS:
 	raise
 	portage.exception.ReadOnlyFileSystem(func_call)
 	else:
 	raise
 
-	elogdir_st = os.stat(elogdir)
+	elogdir_st = os.Stat(elogdir)
 	elogdir_gid = elogdir_st.st_gid
 	elogdir_grp_mode = 0o060 & elogdir_st.st_mode
 
@@ -804,12 +815,12 @@ e:
 // -----------------------syslog
 
 
-_pri = {
-"INFO"   : syslog.LOG_INFO,
-"WARN"   : syslog.LOG_WARNING,
-"ERROR"  : syslog.LOG_ERR,
-"LOG"    : syslog.LOG_NOTICE,
-"QA"     : syslog.LOG_WARNING
+var _pri = map[string]syslog.Priority{
+	"INFO":  syslog.LOG_INFO,
+	"WARN":  syslog.LOG_WARNING,
+	"ERROR": syslog.LOG_ERR,
+	"LOG":   syslog.LOG_NOTICE,
+	"QA":    syslog.LOG_WARNING,
 }
 
 func process(mysettings, key, logentries, fulltext) {
@@ -817,7 +828,7 @@ func process(mysettings, key, logentries, fulltext) {
 	for phase
 	in
 EBUILD_PHASES:
-	if not phase
+	if ! phase
 	in
 logentries:
 	continue
@@ -830,8 +841,8 @@ logentries:
 	in
 msgcontent:
 	line = "%s: %s: %s" % (key, phase, line)
-	if sys.hexversion < 0x3000000 and
-	not
+	if sys.hexversion < 0x3000000 &&
+	!
 	isinstance(line, bytes):
 	line = line.encode(_encodings['content'],
 		'backslashreplace')

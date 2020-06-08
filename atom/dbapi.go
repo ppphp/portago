@@ -718,13 +718,14 @@ type vdbMetadataDelta struct {
 	_vardb *vardbapi
 }
 
-func (v *vdbMetadataDelta) initialize(timestamp) {
+func (v *vdbMetadataDelta) initialize(timestamp int) {
 
 	f := NewAtomic_ofstream(v._vardb._cache_delta_filename, os.O_RDWR, true)
-	json.dump({
-		"version": v._format_version,
-			"timestamp": timestamp
-	}, f, ensure_ascii=false)
+	ms, _ := json.Marshal(map[string]{
+		"version":   v._format_version,
+		"timestamp": timestamp,
+	})
+	f.Write(ms)
 	f.Close()
 }
 
@@ -769,18 +770,18 @@ func (v *vdbMetadataDelta) load() {
 }
 
 func (v *vdbMetadataDelta) loadRace() {
-
-	tries = 2
-	while tries:
-	tries -= 1
-	cache_delta = v.load()
-	if cache_delta != nil && 
-cache_delta.get("timestamp") != 
-v._vardb._aux_cache.get("timestamp", false):
-	v._vardb._aux_cache_obj = nil
-	else:
-	return cache_delta
-
+	tries := 2
+	for tries > 0 {
+		tries -= 1
+		cache_delta := v.load()
+		if cache_delta != nil &&
+			cache_delta.timestamp !=
+				v._vardb._aux_cache().timestamp {
+			v._vardb._aux_cache_obj = nil
+		} else {
+			return cache_delta
+		}
+	}
 	return nil
 }
 
@@ -795,102 +796,109 @@ try:
 	}
 
 	delta_node := map[string]string{
-		"event": event,
+		"event":   event,
 		"package": cpv.cp,
 		"version": cpv.version,
-		"slot": slot,
+		"slot":    slot,
 		"counter": fmt.Sprintf("%s", counter),
 	}
 
-	deltas_obj["deltas"]=append(deltas_obj["deltas"], delta_node)
+	deltas_obj["deltas"] = append(deltas_obj["deltas"], delta_node)
 
-	filtered_list = []
+	filtered_list := []map[string]string{}
 	slot_keys := map[string]bool{}
 	version_keys := map[string]bool{}
 	for delta_node
-	in
-	reversed(deltas_obj["deltas"]):
-	slot_key = (delta_node["package"],
-		delta_node["slot"])
-	version_key = (delta_node["package"],
-		delta_node["version"])
-	if not(slot_key in
-	slot_keys
-	|| 
-version_key
-	in
-	version_keys):
-	filtered_list=append(,delta_node)
-	slot_keys.add(slot_key)
-	version_keys.add(version_key)
+		in
+	reversed(deltas_obj["deltas"]) {
+		slot_key := (delta_node["package"],
+			delta_node["slot"])
+		version_key := (delta_node["package"],
+			delta_node["version"])
+		if !(slot_keys[slot_key] || version_keys[version_key]) {
+			filtered_list = append(filtered_list, delta_node)
+			slot_keys[slot_key] = true
+			version_keys[version_key] = true
+		}
+	}
 
-	filtered_list.reverse()
+	ReverseSlice(filtered_list)
 	deltas_obj["deltas"] = filtered_list
 
-	f = atomic_ofstream(v._vardb._cache_delta_filename,
-		mode = 'w', encoding = _encodings['repo.content'])
-	json.dump(deltas_obj, f, ensure_ascii = false)
-	f.close()
-
-finally:
+	f := NewAtomic_ofstream(v._vardb._cache_delta_filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, true)
+	ms, _ := json.Marshal(deltas_obj)
+	f.Write(ms)
+	f.Close()
 	v._vardb.unlock()
 }
 
-func (v *vdbMetadataDelta) applyDelta(data) {
-
+func (v *vdbMetadataDelta) applyDelta(data map[string]map[string]string) {
 	packages := v._vardb._aux_cache().packages
-	deltas = {}
-	for delta
-	in
-	data["deltas"]:
-	cpv = delta["package"] + "-" + delta["version"]
-	deltas[cpv] = delta
-	event = delta["event"]
-	if event == "add":
-	if cpv not
-	in
-packages:
-try:
-	v._vardb.aux_get(cpv, ["DESCRIPTION"])
-	except
-KeyError:
-	pass
-	else if
-	event == "remove":
-	packages.pop(cpv, nil)
+	deltas := map[string]map[string]string{}
+	for delta := range data["deltas"] {
+		cpv := delta["package"] + "-" + delta["version"]
+		deltas[cpv] = delta
+		event := delta["event"]
+		if event == "add" {
+			if _, ok := packages[cpv]; !ok {
+			try:
+				v._vardb.aux_get(cpv, ["DESCRIPTION"])
+				except
+			KeyError:
+				pass
+			}
+		} else if event == "remove" {
+			delete(packages, cpv)
+		}
+	}
 
-	if deltas:
-	for cached_cpv, (mtime, metadata) in
-	list(packages.items()):
-	if cached_cpv in
-deltas:
-	continue
+	if len(deltas)>0 {
+		for cached_cpv, v := range packages {
+			mtime, metadata := v.cache_mtime, v.metadata
+			if Inmss(deltas, cached_cpv) {
+				continue
+			}
 
-	removed = false
-	for cpv, delta
-	in
-	deltas.items():
-	if (cached_cpv.startswith(delta["package"]) &&
-	metadata.get("SLOT") == delta["slot"]
-	&&
-	cpv_getkey(cached_cpv) == delta["package"]):
-	removed = true
-	break
+			removed := false
+			for cpv, delta := range deltas {
+				if (strings.HasPrefix(cached_cpv, delta["package"]) && metadata["SLOT"] == delta["slot"] && cpvGetKey(cached_cpv, "") == delta["package"]) {
+					removed = true
+					break
+				}
+			}
 
-	if removed:
-	del
-	packages[cached_cpv]
-	del
-	deltas[cpv]
-	if not deltas:
-	break
-
+			if removed {
+				delete(packages, cached_cpv)
+				delete(deltas, cpv)
+				if len(deltas) == 0 {
+					break
+				}
+			}
+		}
+	}
 }
 
 func NewVdbMetadataDelta(vardb *vardbapi) *vdbMetadataDelta {
 	v := &vdbMetadataDelta{}
 	v._vardb = vardb
 	return v
+}
+
+type auxCache struct {
+	version  int
+	packages map[string]*struct {
+		cache_mtime int64
+		metadata    map[string]string
+	}
+	owners *struct {
+		base_names map[string]map[struct {
+			s1 string;
+			int;
+			s2 string
+		}]string
+		version int
+	}
+	modified map[string]bool
 }
 
 type vardbapi struct {
@@ -924,18 +932,7 @@ type vardbapi struct {
 		}
 		int
 	}
-	_aux_cache_obj *struct {
-		version  int
-		packages map[string]*struct {
-			cache_mtime int64
-			metadata    map[string]string
-		}
-		owners *struct {
-			base_names map[string]map[struct{s1 string; int; s2 string}]string
-			version    int
-		}
-		modified map[string]bool
-	}
+	_aux_cache_obj              *auxCache
 	_cached_counter             interface{}
 	_lock_count, _fs_lock_count int
 	vartree                     *varTree
@@ -1394,48 +1391,40 @@ func (v *vardbapi) findname(myCpv string) string {
 	return v.getpath(myCpv, catsplit(myCpv)[1]+".ebuild")
 }
 
-func (v *vardbapi) flush_cache() {		
-	if v._flush_cache_enabled && 
-v._aux_cache != nil && 
-secpass >= 2 && 
-(len(v._aux_cache["modified"]) >= v._aux_cache_threshold||	not pathExists(v._cache_delta_filename)):
+func (v *vardbapi) flush_cache() {
+	if v._flush_cache_enabled && v._aux_cache() != nil && *secpass >= 2 && (len(v._aux_cache().modified)) >= v._aux_cache_threshold || !pathExists(v._cache_delta_filename) {
 
-	ensure_dirs(filepath.Dir(v._aux_cache_filename))
+		ensureDirs(filepath.Dir(v._aux_cache_filename), -1, -1, -1, -1, nil, true)
+		v._owners.populate()
+		valid_nodes := map[string]bool{}
+		for _, v := range v.cpv_all() {
+			valid_nodes[v] = true
+		}
+		for cpv := range v._aux_cache().packages {
+			if !valid_nodes[cpv] {
+				delete(v._aux_cache().packages, cpv)
+			}
+		}
+		v._aux_cache().modified = nil
+		timestamp := time.Now().Nanosecond()
+		v._aux_cache().timestamp = timestamp
 
-	v._owners.populate() 	valid_nodes = set(v.cpv_all())
-	for cpv in list(v._aux_cache["packages"]):
-	if cpv not in valid_nodes:
-	del v._aux_cache["packages"][cpv]
-	del v._aux_cache["modified"]
-	timestamp = time.time()
-	v._aux_cache["timestamp"] = timestamp
+		f := NewAtomic_ofstream(v._aux_cache_filename, os.O_RDWR|os.O_CREATE, true)
 
-	f = atomic_ofstream(v._aux_cache_filename, 'wb')
-	pickle.dump(v._aux_cache, f, protocol=2)
-	f.close()
-	apply_secpass_permissions(
-		v._aux_cache_filename, mode=0o644)
+		jm, _ :=json.Marshal(v._aux_cache())
+		f.Write(jm)
+		f.Close()
+		apply_secpass_permissions(
+			v._aux_cache_filename, -1, -1, 0644, -1, nil, true)
 
-	v._cache_delta.initialize(timestamp)
-	apply_secpass_permissions(
-		v._cache_delta_filename, mode=0o644)
+		v._cache_delta.initialize(timestamp)
+		apply_secpass_permissions(v._cache_delta_filename, -1, -1, 0644, -1, nil, true)
 
-	v._aux_cache["modified"] = map[string]bool{}
-
+		v._aux_cache().modified = map[string]bool{}
+	}
 }
 
-func (v *vardbapi) _aux_cache() *struct {
-	version  int
-	packages map[string]*struct {
-		cache_mtime int64
-		metadata    map[string]string
-	}
-	owners *struct {
-		base_names map[string]map[struct{s1 string; int; s2 string}]string
-		version    int
-	}
-	modified map[string]bool
-} {
+func (v *vardbapi) _aux_cache() *auxCache {
 	if v._aux_cache_obj == nil {
 		v._aux_cache_init()
 	}
@@ -1468,22 +1457,7 @@ func (v *vardbapi) _aux_cache_init() {
 //			(v._aux_cache_filename, e), noiselevel=-1)
 	//	del e
 
-	auxCache := &struct {
-		version  int
-		packages map[string]*struct {
-			cache_mtime int64
-			metadata    map[string]string
-		}
-		owners *struct {
-			base_names map[string]string
-			version    int
-		}
-		modified map[string]bool
-	}{version: v._aux_cache_version}
-	auxCache.packages = map[string]*struct {
-		cache_mtime int64
-		metadata    map[string]string
-	}{}
+	auxCache := &auxCache{}
 
 	owners := auxCache.owners
 	if owners != nil {
@@ -1500,9 +1474,17 @@ func (v *vardbapi) _aux_cache_init() {
 
 	if owners == nil {
 		owners = &struct {
-			base_names map[string]string
-			version    int
-		}{base_names: map[string]string{}, version: v._owners_cache_version}
+			base_names map[struct {
+				s1 string
+				int
+				s2 string
+			}]string
+			version int
+		}{base_names: map[struct {
+			s1 string
+			int
+			s2 string
+		}]string{}, version: v._owners_cache_version}
 		auxCache.owners = owners
 	}
 	auxCache.modified = map[string]bool{}
@@ -2826,54 +2808,45 @@ func (d *dblink) _prune_plib_registry(unmerge bool,
 	try:
 		plib_registry.load()
 
-		unmerge_with_replacement =
-			unmerge
-		and
-		preserve_paths
-		is
-		not
-		nil
-		if unmerge_with_replacement:
-		exclude_pkgs = (d.mycpv,) else:
-		exclude_pkgs = nil
+		unmerge_with_replacement := unmerge&&preserve_paths!=nil
+		if unmerge_with_replacement {
+			exclude_pkgs = (d.mycpv,)
+		}else {
+			exclude_pkgs = nil
+		}
 
 		d._linkmap_rebuild(exclude_pkgs = exclude_pkgs,
 			include_file = needed, preserve_paths = preserve_paths)
 
-		if unmerge:
-		unmerge_preserve = nil
-		if not unmerge_with_replacement:
-		unmerge_preserve =
-			d._find_libs_to_preserve(unmerge = true)
-		counter = d.vartree.dbapi.cpv_counter(d.mycpv)
-	try:
-		slot = d.mycpv.slot
-		except
-	AttributeError:
-		slot = _pkg_str(d.mycpv, slot = d.settings.ValueDict["SLOT"]).slot
-		plib_registry.unregister(d.mycpv, slot, counter)
-		if unmerge_preserve:
-		for path
-			in
-		sorted(unmerge_preserve):
-		contents_key = d._match_contents(path)
-		if not contents_key:
-		continue
-		obj_type = d.getcontents()[contents_key][0]
-		d._display_merge(_(">>> needed   %s %s\n")%
-			(obj_type, contents_key), noiselevel = -1)
-		plib_registry.register(d.mycpv,
-			slot, counter, unmerge_preserve)
-		d.vartree.dbapi.removeFromContents(d,
-			unmerge_preserve)
+		if unmerge{
+			unmerge_preserve := []string{}
+			if ! unmerge_with_replacement {
+				unmerge_preserve =
+					d._find_libs_to_preserve(true)
+			}
+			counter := d.vartree.dbapi.cpv_counter(d.mycpv)
+		try:
+			slot = d.mycpv.slot
+			except
+		AttributeError:
+			slot = NewPkgStr(d.mycpv, slot = d.settings.ValueDict["SLOT"]).slot
+			plib_registry.unregister(d.mycpv, slot, counter)
+			if len(unmerge_preserve) > 0{
+				for _, path := range sorted(unmerge_preserve){
+					contents_key = d._match_contents(path)
+					if len(contents_key) > 0 {
+						continue
+					}
+					obj_type := d.getcontents()[contents_key][0]
+					d._display_merge(fmt.Sprintf(">>> needed   %s %s\n", obj_type, contents_key),0, -1)
+				}
+				plib_registry.register(d.mycpv, slot, counter, unmerge_preserve)
+				d.vartree.dbapi.removeFromContents(d, unmerge_preserve, true)
+			}
+		}
 
-		unmerge_no_replacement =
-			unmerge
-		&&
-		not
-		unmerge_with_replacement
-		cpv_lib_map = d._find_unused_preserved_libs(
-			unmerge_no_replacement)
+		unmerge_no_replacement := unmerge&& !unmerge_with_replacement
+		cpv_lib_map := d._find_unused_preserved_libs(unmerge_no_replacement)
 		if cpv_lib_map:
 		d._remove_preserved_libs(cpv_lib_map)
 		d.vartree.dbapi.lock()
@@ -3939,217 +3912,261 @@ func (d *dblink) _add_preserve_libs_to_contents(preserve_paths) {
 
 }
 
-func (d *dblink) _find_unused_preserved_libs(unmerge_no_replacement) {
+func (d *dblink) _find_unused_preserved_libs(unmerge_no_replacement bool) map[string]map[string]bool {
 
-	if d._linkmap_broken || 
-d.vartree.dbapi._linkmap == nil || 
-d.vartree.dbapi._plib_registry == nil || 
-not d.vartree.dbapi._plib_registry.hasEntries():
-	return {}
+	if d._linkmap_broken || d.vartree.dbapi._linkmap == nil || d.vartree.dbapi._plib_registry == nil || ! d.vartree.dbapi._plib_registry.hasEntries() {
+		return map[string]map[string]bool{}
+	}
 
-				plib_dict = d.vartree.dbapi._plib_registry.getPreservedLibs()
-	linkmap = d.vartree.dbapi._linkmap
-	lib_graph = digraph()
-	preserved_nodes = map[string]bool{}
-	preserved_paths = map[string]bool{}
-	path_cpv_map = {}
-	path_node_map = {}
-	root = d.settings.ValueDict["ROOT"]
+	plib_dict := d.vartree.dbapi._plib_registry.getPreservedLibs()
+	linkmap := d.vartree.dbapi._linkmap
+	lib_graph := digraph()
+	preserved_nodes := map[string]bool{}
+	preserved_paths := map[string]bool{}
+	path_cpv_map := {}
+	path_node_map := {}
+	root := d.settings.ValueDict["ROOT"]
 
-	def path_to_node(path):
-	node = path_node_map.get(path)
-	if node == nil:
-	node = LinkageMap._LibGraphNode(linkmap._obj_key(path))
-	alt_path_node = lib_graph.get(node)
-	if alt_path_node != nil:
-	node = alt_path_node
-	node.alt_paths.add(path)
-	path_node_map[path] = node
-	return node
+	 path_to_node:= func(path string) {
+		 node := path_node_map[path]
+		 if node == nil {
+			 node = LinkageMap._LibGraphNode(linkmap._obj_key(path))
+			 alt_path_node := lib_graph.get(node)
+			 if alt_path_node != nil {
+				 node = alt_path_node
+			 }
+			 node.alt_paths.add(path)
+			 path_node_map[path] = node
+		 }
+		 return node
+	 }
 
-	for cpv, plibs in plib_dict.items():
-	for f in plibs:
-	path_cpv_map[f] = cpv
-	preserved_node = path_to_node(f)
-	if not preserved_node.file_exists():
-	continue
-	lib_graph.add(preserved_node, nil)
-	preserved_paths.add(f)
-	preserved_nodes.add(preserved_node)
-	for c in d.vartree.dbapi._linkmap.findConsumers(f):
-	consumer_node = path_to_node(c)
-	if not consumer_node.file_exists():
-	continue
+	for cpv, plibs in plib_dict.items(){
+		for f
+		in
+		plibs{
+			path_cpv_map[f] = cpv
+			preserved_node = path_to_node(f)
+			if not preserved_node.file_exists(){
+			continue
+		}
+			lib_graph.add(preserved_node, nil)
+			preserved_paths.add(f)
+			preserved_nodes.add(preserved_node)
+			for c in d.vartree.dbapi._linkmap.findConsumers(f){
+			consumer_node = path_to_node(c)
+			if not consumer_node.file_exists(){
+			continue
+		}
 			lib_graph.add(preserved_node, consumer_node)
+		}
+		}
+	}
 
-								provider_cache = {}
-	for preserved_node in preserved_nodes:
-	soname = linkmap.getSoname(preserved_node)
-	for consumer_node in lib_graph.parent_nodes(preserved_node):
-	if consumer_node in preserved_nodes:
-	continue
-	if unmerge_no_replacement:
-	will_be_unmerged = true
-	for path in consumer_node.alt_paths:
-	if not d.isowner(path):
-	will_be_unmerged = false
-	break
-	if will_be_unmerged:
-				lib_graph.remove_edge(preserved_node, consumer_node)
-	continue
+	provider_cache := {}
+	for preserved_node in preserved_nodes{
+		soname = linkmap.getSoname(preserved_node)
+		for consumer_node in lib_graph.parent_nodes(preserved_node){
 
-	providers = provider_cache.get(consumer_node)
-	if providers == nil:
-	providers = linkmap.findProviders(consumer_node)
-	provider_cache[consumer_node] = providers
-	providers = providers.get(soname)
-	if providers == nil:
-	continue
-	for provider in providers:
-	if provider in preserved_paths:
-	continue
-	provider_node = path_to_node(provider)
-	if not provider_node.file_exists():
-	continue
-	if provider_node in preserved_nodes:
-	continue
-				lib_graph.remove_edge(preserved_node, consumer_node)
-	break
+		if consumer_node in preserved_nodes{
+		continue
+	}
+		if unmerge_no_replacement{
+		will_be_unmerged = true
+		for path in consumer_node.alt_paths{
+		if not d.isowner(path){
+		will_be_unmerged = false
+		break
+	}
+	}
+		if will_be_unmerged{
+		lib_graph.remove_edge(preserved_node, consumer_node)
+		continue
+	}
+	}
 
-	cpv_lib_map = {}
-	while lib_graph:
-	root_nodes = preserved_nodes.intersection(lib_graph.root_nodes())
-	if not root_nodes:
-	break
-	lib_graph.difference_update(root_nodes)
-	unlink_list = map[string]bool{}
-	for node in root_nodes:
-	unlink_list.update(node.alt_paths)
-	unlink_list = sorted(unlink_list)
-	for obj in unlink_list:
-	cpv = path_cpv_map.get(obj)
-	if cpv == nil:
-				d._display_merge(_("!!! symlink to lib is preserved, "+
-	"but not the lib itd:\n!!! '%s'\n") % (obj,),
-	level=logging.ERROR, noiselevel=-1)
-	continue
-	removed = cpv_lib_map.get(cpv)
-	if removed == nil:
-	removed = map[string]bool{}
-	cpv_lib_map[cpv] = removed
-	removed.add(obj)
+		providers = provider_cache.get(consumer_node)
+		if providers == nil{
+		providers = linkmap.findProviders(consumer_node)
+		provider_cache[consumer_node] = providers
+	}
+		providers = providers.get(soname)
+		if providers == nil{
+		continue
+	}
+		for provider in providers{
+		if provider in preserved_paths{
+		continue
+	}
+		provider_node = path_to_node(provider)
+		if not provider_node.file_exists(){
+		continue
+	}
+		if provider_node in preserved_nodes{
+		continue
+	}
+		lib_graph.remove_edge(preserved_node, consumer_node)
+		break
+	}
+	}
+	}
 
+	cpv_lib_map := map[string]map[string]bool{}
+	for lib_graph{
+		root_nodes = preserved_nodes.intersection(lib_graph.root_nodes())
+		if not root_nodes {
+			break
+		}
+		lib_graph.difference_update(root_nodes)
+		unlink_list = map[string]bool{}
+		for node in root_nodes{
+			unlink_list.update(node.alt_paths)
+		}
+		unlink_list = sorted(unlink_list)
+		for obj in unlink_list{
+			cpv = path_cpv_map.get(obj)
+			if cpv == nil{
+			d._display_merge(fmt.Sprintf("!!! symlink to lib is preserved, "+
+			"but not the lib itd:\n!!! '%s'\n", obj, ), 40, -1)
+			continue
+		}
+			removed := cpv_lib_map[cpv]
+			if removed == nil{
+			removed = map[string]bool{}
+			cpv_lib_map[cpv] = removed
+		}
+			removed.add(obj)
+		}
+	}
 	return cpv_lib_map
-
 }
 
 func (d *dblink) _remove_preserved_libs(cpv_lib_map) {
 
-	os = _os_merge
-
 	files_to_remove = map[string]bool{}
-	for files in cpv_lib_map.values():
-	files_to_remove.update(files)
-	files_to_remove = sorted(files_to_remove)
-	showMessage = d._display_merge
-	root = d.settings.ValueDict["ROOT"]
+	for files
+	in
+	cpv_lib_map.values()
+	{
+		files_to_remove.update(files)
+	}
+	files_to_remove := sorted(files_to_remove)
+	showMessage := d._display_merge
+	root := d.settings.ValueDict["ROOT"]
 
-	parent_dirs = map[string]bool{}
-	for obj in files_to_remove:
-	obj = filepath.Join(root, obj.lstrip(string(os.PathSeparator)))
-	parent_dirs.add(filepath.Dir(obj))
-	if os.path.islink(obj):
-	obj_type = _("sym")
-	else:
-	obj_type = _("obj")
-try:
-	syscall.Unlink(obj)
-	except OSError as e:
-	if err != syscall.ENOENT:
-	raise
-	del e
-	else:
-	showMessage(_("<<< !needed  %s %s\n") % (obj_type, obj),
-		noiselevel=-1)
+	parent_dirs := map[string]bool{}
+	for _, obj := range files_to_remove {
+		obj = filepath.Join(root, strings.TrimLeft(obj, string(os.PathSeparator)))
+		parent_dirs[filepath.Dir(obj)] = true
+		obj_type := ""
+		if st, _ := os.Stat(obj); st!= nil && st.Mode()&os.ModeSymlink != 0 {
+			obj_type = "sym"
+		} else {
+			obj_type = "obj"
+		}
+		if err := syscall.Unlink(obj); err != nil {
+			//except OSError as e:
+			if err != syscall.ENOENT {
+				//raise
+			}
+			//del e
+		} else {
+			showMessage(fmt.Sprintf("<<< !needed  %s %s\n", obj_type, obj), 0, -1)
+		}
+	}
 
-			while parent_dirs:
-	x = parent_dirs.pop()
-	while true:
-try:
-	os.rmdir(x)
-	except OSError:
-	break
-	prev = x
-	x = filepath.Dir(x)
-	if x == prev:
-	break
-
+	for len(parent_dirs) > 0 {
+		x := ""
+		for k := range parent_dirs {
+			x = k
+			break
+		}
+		delete(parent_dirs, x)
+		for {
+			if err := os.RemoveAll(x); err != nil {
+				//except OSError:
+				break
+			}
+			prev := x
+			x = filepath.Dir(x)
+			if x == prev {
+				break
+			}
+		}
+	}
 	d.vartree.dbapi._plib_registry.pruneNonExisting()
 
 }
 
 func (d *dblink) _collision_protect(srcroot, destroot, mypkglist,
 	file_list, symlink_list) {
+	real_relative_paths := {}
 
-	os = _os_merge
+	collision_ignore := []string{}
+	ss, _ := shlex.Split(strings.NewReader(d.settings.ValueDict["COLLISION_IGNORE"]), false, true)
+	for _, x := range ss{
+		if pathIsDir(filepath.Join(d._eroot, strings.TrimLeft(x,string(os.PathSeparator)))) {
+			x = NormalizePath(x)
+			x += "/*"
+		}
+		collision_ignore=append(collision_ignore,x)
+	}
 
-	real_relative_paths = {}
-
-	collision_ignore = []
-	for x in portage.util.shlex_split(
-		d.settings.ValueDict["COLLISION_IGNORE", "")):
-	if pathIsDir(filepath.Join(d._eroot, x.lstrip(string(os.PathSeparator)))):
-	x = NormalizePath(x)
-	x += "/*"
-	collision_ignore=append(,x)
-
-			if d.vartree.dbapi._plib_registry == nil:
+	if d.vartree.dbapi._plib_registry == nil {
 		plib_cpv_map = nil
-	plib_paths = nil
-	plib_inodes = {}
-	else:
-	plib_dict = d.vartree.dbapi._plib_registry.getPreservedLibs()
-	plib_cpv_map = {}
-	plib_paths = map[string]bool{}
-	for cpv, paths in plib_dict.items():
-	plib_paths.update(paths)
-	for f in paths:
-	plib_cpv_map[f] = cpv
-	plib_inodes = d._lstat_inode_map(plib_paths)
+		plib_paths = nil
+		plib_inodes ={}
+	}else {
+		plib_dict = d.vartree.dbapi._plib_registry.getPreservedLibs()
+		plib_cpv_map = {}
+		plib_paths = map[string]bool{}
+		for cpv, paths
+		in
+		plib_dict.items() {
+			plib_paths.update(paths)
+			for f
+				in
+			paths {
+				plib_cpv_map[f] = cpv
+			}
+		}
+		plib_inodes = d._lstat_inode_map(plib_paths)
+	}
 
-	plib_collisions = {}
+	plib_collisions := {}
 
-	showMessage = d._display_merge
-	stopmerge = false
-	collisions = []
-	dirs = map[string]bool{}
-	dirs_ro = map[string]bool{}
-	symlink_collisions = []
-	destroot = d.settings.ValueDict["ROOT"]
-	totfiles = len(file_list) + len(symlink_list)
-	previous = monotonic()
-	progress_shown = false
-	report_interval = 1.7  	falign = len("%d" % totfiles)
-	showMessage(_(" %s checking %d files for package collisions\n") % 
-(colorize("GOOD", "*"), totfiles))
+	showMessage := d._display_merge
+	stopmerge := false
+	collisions := []
+	dirs := map[string]bool{}
+	dirs_ro := map[string]bool{}
+	symlink_collisions := []
+	destroot := d.settings.ValueDict["ROOT"]
+	totfiles := len(file_list) + len(symlink_list)
+	previous := monotonic()
+	progress_shown := false
+	report_interval := 1.7
+	falign := len(fmt.Sprintf("%d", totfiles))
+	showMessage(fmt.Sprinf(" %s checking %d files for package collisions\n", (colorize("GOOD", "*"), totfiles))
 	for i, (f, f_type) in enumerate(chain(
 		((f, "reg") for f in file_list),
-	((f, "sym") for f in symlink_list))):
+	((f, "sym") for f in symlink_list))){
 	current = monotonic()
 	if current - previous > report_interval:
 	showMessage(_("%3d%% done,  %*d files remaining ...\n") %
-		(i * 100 / totfiles, falign, totfiles - i))
+	(i * 100 / totfiles, falign, totfiles - i))
 	previous = current
 	progress_shown = true
+	}
 
-	dest_path = NormalizePath(filepath.Join(destroot, f.lstrip(string(os.PathSeparator))))
+	dest_path := NormalizePath(filepath.Join(destroot, strings.TrimLeft(f, string(os.PathSeparator))))
 
-		real_relative_path = filepath.Join(os.path.realpath(filepath.Dir(dest_path)),
+	real_relative_path := filepath.Join(os.path.realpath(filepath.Dir(dest_path)),
 		filepath.Base(dest_path))[len(destroot):]
 
 	real_relative_paths.setdefault(real_relative_path, [])=append(,f.lstrip(string(os.PathSeparator)))
 
-	parent = filepath.Dir(dest_path)
+	parent := filepath.Dir(dest_path)
 	if parent not in dirs:
 	for x in iter_parents(parent):
 	if x in dirs:
@@ -4231,18 +4248,21 @@ try:
 	for real_relative_path, files in real_relative_paths.items():
 		if len(files) >= 2:
 	files.sort()
-	for i in range(len(files) - 1):
-	file1 = NormalizePath(filepath.Join(srcroot, files[i]))
-	file2 = NormalizePath(filepath.Join(srcroot, files[i+1]))
+	for i := 0;i <len(files) - 1; i ++{
+	file1 := NormalizePath(filepath.Join(srcroot, files[i]))
+	file2 := NormalizePath(filepath.Join(srcroot, files[i+1]))
 		differences = compare_files(file1, file2, skipped_types=("atime", "mtime", "ctime"))
-	if differences:
-	internal_collisions.setdefault(real_relative_path, {})[(files[i], files[i+1])] = differences
+	if differences {
+		internal_collisions.setdefault(real_relative_path,
+		{
+		})[(files[i], files[i+1])] = differences
+}
+	}
 
-	if progress_shown:
-	showMessage(_("100% done\n"))
-
+	if progress_shown{
+		showMessage("100% done\n", 0, 0)
+}
 	return collisions, internal_collisions, dirs_ro, symlink_collisions, plib_collisions
-
 }
 
 func (d *dblink) _lstat_inode_map(path_iter []string)map[[2]uint64]map[string]bool {
@@ -4272,14 +4292,13 @@ func (d *dblink) _lstat_inode_map(path_iter []string)map[[2]uint64]map[string]bo
 
 func (d *dblink) _security_check(installed_instances) {
 
-	if not installed_instances:
-	return 0
+	if not installed_instances {
+		return 0
+	}
 
-	os = _os_merge
+	showMessage := d._display_merge
 
-	showMessage = d._display_merge
-
-	file_paths = map[string]bool{}
+	file_paths := map[string]bool{}
 	for dblnk in installed_instances:
 	file_paths.update(dblnk.getcontents())
 	inode_map = {}
@@ -4372,9 +4391,9 @@ func (d *dblink) _elog(funcname string, phase string, lines []string) {
 
 // nil
 func (d *dblink) _elog_process(phasefilter) {
-	cpv = d.mycpv
+	cpv := d.mycpv
 	if d._pipe == nil {
-		elog_process(cpv, d.settings, phasefilter = phasefilter)
+		elog_process(cpv, d.settings, phasefilter)
 	}else {
 		logdir := filepath.Join(d.settings.ValueDict["T"], "logging")
 		ebuild_logentries := collect_ebuild_messages(logdir)
