@@ -1564,7 +1564,7 @@ fd_pipes=None, returnpid bool) int {
 			cpv := mysettings.mycpv
 			cpv_slot := fmt.Sprintf("%s%s%s", cpv.cp, slotSeparator, cpv.slot)
 			mysettings.ValueDict["REPLACING_VERSIONS"] := strings.Join(
-				set(portage.versions.cpv_getversion(match)
+				set(cpvGetVersion(match)
 			for match
 				in
 			vardb.match(cpv_slot) +

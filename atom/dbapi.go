@@ -2833,7 +2833,7 @@ func (d *dblink) _prune_plib_registry(unmerge bool,
 			plib_registry.unregister(d.mycpv, slot, counter)
 			if len(unmerge_preserve) > 0{
 				for _, path := range sorted(unmerge_preserve){
-					contents_key = d._match_contents(path)
+					contents_key := d._match_contents(path)
 					if len(contents_key) > 0 {
 						continue
 					}
@@ -2971,8 +2971,7 @@ try:
 					}
 				}
 
-	d._prune_plib_registry(unmerge=true, needed=needed,
-		preserve_paths=preserve_paths)
+	d._prune_plib_registry(unmerge=true, needed, preserve_paths)
 
 			if eapi_unsupported {
 				failures += 1
@@ -3607,7 +3606,7 @@ finally:
 	if bsd_chflags && pflags != 0:
 		bsd_chflags.chflags(parent_name, pflags)
 
-						d._merged_path(os.path.realpath(parent_name), parent_stat)
+						d._merged_path(filepath.EvalSymlinks(parent_name), parent_stat)
 
 	show_unmerge("<<<", "", "dir", obj)
 	except EnvironmentError as e:
@@ -3623,7 +3622,7 @@ finally:
 	pass
 	else:
 	if dir_stat.st_dev in d._device_path_map:
-	d._merged_path(os.path.realpath(obj), dir_stat)
+	d._merged_path(filepath.EvalSymlinks(obj), dir_stat)
 
 	else:
 				unmerge_syms = protected_symlinks.pop(inode_key, nil)
@@ -4161,7 +4160,7 @@ func (d *dblink) _collision_protect(srcroot, destroot, mypkglist,
 
 	dest_path := NormalizePath(filepath.Join(destroot, strings.TrimLeft(f, string(os.PathSeparator))))
 
-	real_relative_path := filepath.Join(os.path.realpath(filepath.Dir(dest_path)),
+	real_relative_path := filepath.Join(filepath.EvalSymlinks(filepath.Dir(dest_path)),
 		filepath.Base(dest_path))[len(destroot):]
 
 	real_relative_paths.setdefault(real_relative_path, [])=append(,f.lstrip(string(os.PathSeparator)))
@@ -4183,7 +4182,7 @@ try:
 	if err == syscall.ENOENT:
 	del e
 	continue
-	else if err == errno.ENOTDIR:
+	else if err == syscall.ENOTDIR:
 	del e
 				dest_lstat = nil
 	parent_path = dest_path
@@ -4193,7 +4192,7 @@ try:
 	dest_lstat = os.Lstat(parent_path)
 	break
 	except EnvironmentError as e:
-	if err != errno.ENOTDIR:
+	if err != syscall.ENOTDIR:
 	raise
 	del e
 	if not dest_lstat:
@@ -4290,70 +4289,70 @@ func (d *dblink) _lstat_inode_map(path_iter []string)map[[2]uint64]map[string]bo
 	return inode_map
 }
 
-func (d *dblink) _security_check(installed_instances) {
+func (d *dblink) _security_check(installed_instances []*dblink) int {
+	if len(installed_instances) == 0 {
+		return 0
+	}
+	showMessage := d._display_merge
+	file_paths := map[string]bool{}
+	for _, dblnk := range installed_instances{
+		file_paths.update(dblnk.getcontents())
+	}
+	inode_map := {}
+	real_paths := map[string]bool{}
+	i := 0
+	for path := range file_paths{
+		i++
+		s, err := os.Lstat(path)
+		if err != nil {
+			//except OSError as e:
+			if err != syscall.ENOENT&& err != syscall.ENOTDIR){
+				//raise
+			}
+			//del e
+			continue
+		}
+		if !s.Mode()&os.ModeIrregular != 0 {
+			continue
+		}
+		path, _ = filepath.EvalSymlinks(path)
+		if  real_paths[path]{
+			continue
+		}
+		real_paths[path] = true
+		if s.st_nlink > 1 &&
+			s.st_mode & (stat.S_ISUID | stat.S_ISGID) {
+			k = (s.st_dev, s.st_ino)
+			if _, ok := inode_map[k]; !ok {
+				inode_map[k]= []string{}
+			}
+			inode_map[k] = append(inode_map[k], (path, s))
+		}
+	}
 
-	if not installed_instances {
+	suspicious_hardlinks := []
+	for _ , path_list := range inode_map.values(){
+		path, s = path_list[0]
+		if len(path_list) == s.st_nlink {
+			continue
+		}
+		suspicious_hardlinks=append(suspicious_hardlinks,path_list)
+	}
+	if len(suspicious_hardlinks)== 0 {
 		return 0
 	}
 
-	showMessage := d._display_merge
-
-	file_paths := map[string]bool{}
-	for dblnk in installed_instances:
-	file_paths.update(dblnk.getcontents())
-	inode_map = {}
-	real_paths = map[string]bool{}
-	for i, path in enumerate(file_paths):
-
-	if os is _os_merge:
-try:
-	_unicode_encode(path,
-		encoding=_encodings['merge'], errors='strict')
-	except UnicodeEncodeError:
-					try:
-	_unicode_encode(path,
-		encoding=_encodings['fs'], errors='strict')
-	except UnicodeEncodeError:
-	pass
-	else:
-	os = portage.os
-
-try:
-	s = os.Lstat(path)
-	except OSError as e:
-	if err not in (syscall.ENOENT, errno.ENOTDIR):
-	raise
-	del e
-	continue
-	if not stat.S_ISREG(s.st_mode):
-	continue
-	path = os.path.realpath(path)
-	if path in real_paths:
-	continue
-	real_paths.add(path)
-	if s.st_nlink > 1 &&
-s.st_mode & (stat.S_ISUID | stat.S_ISGID):
-	k = (s.st_dev, s.st_ino)
-	inode_map.setdefault(k, [])=append(,(path, s))
-	suspicious_hardlinks = []
-	for path_list in inode_map.values():
-	path, s = path_list[0]
-	if len(path_list) == s.st_nlink:
-		continue
-	suspicious_hardlinks=append(,path_list)
-	if not suspicious_hardlinks:
-	return 0
-
-	msg = []
-	msg=append(,_("suid/sgid file(s) "+
-	"with suspicious hardlink(s):"))
-	msg=append(,"")
-	for path_list in suspicious_hardlinks:
-	for path, s in path_list:
-	msg=append(,"\t%s" % path)
-	msg=append(,"")
-	msg=append(,_("See the Gentoo Security Handbook "+
-	"guide for advice on how to proceed."))
+	msg := []string{}
+	msg=append(msg,"suid/sgid file(s) with suspicious hardlink(s):")
+	msg=append(msg,"")
+	for _, path_list := range suspicious_hardlinks{
+		for path, s in path_list{
+		msg = append(msg, fmt.Sprintf("\t%s" , path))
+	}
+	}
+	msg=append(msg,"")
+	msg=append(msg,"See the Gentoo Security Handbook "+
+	"guide for advice on how to proceed.")
 
 	d._eerror("preinst", msg)
 
@@ -4361,12 +4360,10 @@ s.st_mode & (stat.S_ISUID | stat.S_ISGID):
 }
 
 func (d *dblink) _eqawarn(phase string, lines []string) {
-
 	d._elog("eqawarn", phase, lines)
 }
 
-func (d *dblink) _eerror(phase, lines) {
-
+func (d *dblink) _eerror(phase string, lines []string) {
 	d._elog("eerror", phase, lines)
 }
 
@@ -4442,8 +4439,6 @@ func (d *dblink) _emerge_log(msg) {emergelog(false, msg)}
 func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
 	mydbapi DBAPI, prev_mtimes=nil, counter=nil) {
 
-	os = _os_merge
-
 	destroot := d.settings.ValueDict["ROOT"]
 
 	showMessage := d._display_merge
@@ -4497,47 +4492,54 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
 		}
 	}
 
-	def eerror(lines):
-	d._eerror("preinst", lines)
+	eerror := func(lines) {
+		d._eerror("preinst", lines)
+	}
 
-	if not pathExists(d.dbcatdir):
-	ensure_dirs(d.dbcatdir)
+	if ! pathExists(d.dbcatdir) {
+		ensureDirs(d.dbcatdir,-1,-1,-1,-1,nil,true)
+	}
 
-				slot = _pkg_str(d.mycpv, slot=slot).slot
-	cp = d.mysplit[0]
-	slot_atom = "%s:%s" % (cp, slot)
+	slot = NewPkgStr(d.mycpv.string ,nil, nil, "", "", slot, 0, 0, "", 0, nil).slot
+	cp := d.mysplit[0]
+	slot_atom := fmt.Sprintf("%s:%s",cp, slot)
 
 	d.lockdb()
-	try:
-		slot_matches = [cpv for cpv in d.vartree.dbapi.match(slot_atom)
-	if cpv_getkey(cpv) == cp]
+	//try:
+		slot_matches := []*PkgStr{}
+	for _, cpv := range d.vartree.dbapi.match(slot_atom) {
+		if cpvGetKey(cpv.string, "") == cp {
+			slot_matches = append(slot_matches, cpv)
+		}
+	}
 
-	if d.mycpv not in slot_matches &&
-d.vartree.dbapi.cpv_exists(d.mycpv):
-		slot_matches=append(,d.mycpv)
+	if  ! Ins( slot_matches,d.mycpv) && d.vartree.dbapi.cpv_exists(d.mycpv) {
+		slot_matches = append(slot_matches, d.mycpv)
+	}
 
-	others_in_slot = []
-	for cur_cpv in slot_matches:
-				settings_clone = portage.config(clone=d.settings)
-	settings_clone.pop("PORTAGE_BUILDDIR_LOCKED", nil)
-	settings_clone.setcpv(cur_cpv, mydb=d.vartree.dbapi)
-	if d._preserve_libs && "preserve-libs" in
-settings_clone["PORTAGE_RESTRICT"].split():
-	d._preserve_libs = false
-	others_in_slot=append(,dblink(d.cat, catsplit(cur_cpv)[1],
-	settings=settings_clone,
-	vartree=d.vartree, treetype="vartree",
-	scheduler=d._scheduler, pipe=d._pipe))
-	finally:
+	others_in_slot := []*dblink{}
+	for _, cur_cpv := range slot_matches {
+		settings_clone := NewConfig(d.settings, nil, nil, "", nil, "", "", "", "", true, nil, false, nil)
+		delete(settings_clone.ValueDict, "PORTAGE_BUILDDIR_LOCKED")
+		settings_clone.SetCpv(cur_cpv, d.vartree.dbapi)
+		if d._preserve_libs && "preserve-libs" Ins(strings.Fields(settings_clone["PORTAGE_RESTRICT"])) {
+			d._preserve_libs = false
+		}
+		others_in_slot = append(others_in_slot, NewDblink(d.cat, catsplit(cur_cpv)[1], "",
+			settings_clone, "vartree", d.vartree, nil, d._scheduler, d._pipe))
+	}
 	d.unlockdb()
 
-			if not d._preserve_libs:
-	for dblnk in others_in_slot:
-	dblnk._preserve_libs = false
+	if ! d._preserve_libs{
+		for _, dblnk := range others_in_slot{
+			dblnk._preserve_libs = false
+		}
+	}
 
-	retval = d._security_check(others_in_slot)
-	if retval:
-	return retval
+	retval := d._security_check(others_in_slot)
+	if retval!= 0 {
+		return retval
+	}
 
 	if slot_matches:
 		max_dblnk = nil
@@ -6031,7 +6033,7 @@ try:
 	if "dir" == contents_type &&
 not stat.S_ISDIR(lst.st_mode) &&
 pathIsDir(live_path):
-					live_path = os.path.realpath(live_path)
+					live_path = filepath.EvalSymlinks(live_path)
 	lst = os.Lstat(live_path)
 
 								
@@ -8089,7 +8091,7 @@ try:
 	as
 e:
 	if err not
-	in(errno.ENOTDIR, syscall.ENOENT, syscall.ESTALE):
+	in(syscall.ENOTDIR, syscall.ENOENT, syscall.ESTALE):
 	raise
 	continue
 	for p
@@ -9283,6 +9285,7 @@ func NewFetchlistDict(pkgdir string, settings *Config, mydbapi *portdbapi) *Fetc
 	return f
 }
 
+// nil, nil, nil, nil
 func _async_manifest_fetchlist(portdb, repo_config, cp, cpv_list=nil,
 	max_jobs=nil, max_load=nil, loop=nil) {
 	loop = asyncio._wrap_loop(loop)
