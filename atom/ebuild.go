@@ -158,7 +158,7 @@ func (q *QueryCommand) __call__( argv []string) (string,string,int) {
 	args := argv[2:]
 
 	warnings := []string{}
-	warnings_str:= ""
+	warnings_str := ""
 
 	db := q.get_db()
 	eapi := q.settings.ValueDict["EAPI"]
@@ -167,94 +167,101 @@ func (q *QueryCommand) __call__( argv []string) (string,string,int) {
 		root = string(os.PathSeparator)
 	}
 	root = strings.TrimRight(NormalizePath(root), string(os.PathSeparator)) + string(os.PathSeparator)
-	if _, ok := db.Values()[root]; !ok{
-		return "", fmt.Sprintf("%s: Invalid ROOT: %s\n",cmd, root), 3
+	if _, ok := db.Values()[root]; !ok {
+		return "", fmt.Sprintf("%s: Invalid ROOT: %s\n", cmd, root), 3
 	}
 
 	portdb := db.Values()[root].PortTree().dbapi
 	vardb := db.Values()[root].VarTree().dbapi
 
-	if cmd == "best_version" || cmd=="has_version"{
+	var atom1 *Atom
+	if cmd == "best_version" || cmd == "has_version" {
 		allow_repo := EapiHasRepoDeps(eapi)
-	try:
-		atom = Atom(args[0], allow_repo = allow_repo)
-		except
-	InvalidAtom:
-		return ('', '%s: Invalid atom: %s\n' % (cmd, args[0]), 2)
+		var err error
+		atom1, err = NewAtom(args[0], nil, false, &allow_repo, nil, "", nil, nil)
+		if err != nil {
+			//except InvalidAtom:
+			return "", fmt.Sprintf("%s: Invalid atom: %s\n", cmd, args[0]), 2
+		}
 
-	try:
-		atom = Atom(args[0], allow_repo = allow_repo, eapi = eapi)
-		except
-		InvalidAtom
-		as
-	e:
-		warnings.append("QA Notice: %s: %s"%(cmd, e))
+		atom1, err = NewAtom(args[0], nil, false, &allow_repo, nil, eapi, nil, nil)
+		if err != nil {
+			//except InvalidAtom:
+			warnings = append(warnings, fmt.Sprintf("QA Notice: %s: %s", cmd, err))
+		}
 
-		use = q.settings.ValueDict['PORTAGE_BUILT_USE')
-		if use is
-	None:
-		use = q.settings['PORTAGE_USE']
+		use := q.settings.ValueDict["PORTAGE_BUILT_USE"]
+		if use == "" {
+			use = q.settings.ValueDict["PORTAGE_USE"]
+		}
 
-		use = frozenset(use.split())
-		atom = atom.evaluate_conditionals(use)
+		useSB := map[string]bool{}
+		for _, v := range strings.Fields(use) {
+			useSB[v] = true
+		}
+		atom1 = atom1.EvaluateConditionals(useSB)
 	}
 
-	if warnings:
-	warnings_str = q._elog('eqawarn', warnings)
+	if len(warnings) > 0 {
+		warnings_str = q._elog("eqawarn", warnings)
+	}
 
-	if cmd == 'has_version':
-	if vardb.match(atom):
-	returncode = 0
-	else:
-	returncode = 1
-	return ('', warnings_str, returncode)
-	else if
-	cmd == 'best_version':
-	m = Best(vardb.match(atom))
-	return ('%s\n' % m, warnings_str, 0)
-	else if
-	cmd
-	in('master_repositories', 'repository_path', 'available_eclasses', 'eclass_path', 'license_path'):
-	repo = _repo_name_re.match(args[0])
-	if repo is
-None:
-	return ('', '%s: Invalid repository: %s\n' % (cmd, args[0]), 2)
-try:
-	repo = portdb.repositories[args[0]]
-	except
-KeyError:
-	return ('', warnings_str, 1)
+	if cmd == "has_version" {
+		returncode := 1
+		if len(vardb.match(atom1.value, 1)) > 0 {
+			returncode = 0
+		}
+		return "", warnings_str, returncode
+	} else if cmd == "best_version" {
+		ps := []string{}
+		for _, p := range vardb.match(atom1.value, 1) {
+			ps = append(ps, p.string)
+		}
+		m := Best(ps, "")
+		return fmt.Sprintf("%s\n", m), warnings_str, 0
+	} else if Ins([]string{"master_repositories", "repository_path", "available_eclasses", "eclass_path", "license_path"}, cmd) {
+		if !repoNameRe.MatchString(args[0]) {
+			return "", fmt.Sprintf("%s: Invalid repository: %s\n", cmd, args[0]), 2
+		}
+		//try:
+		repo := portdb.repositories.Prepos[args[0]]
+		//except
+		//KeyError:
+		//	return ("", warnings_str, 1)
 
-	if cmd == 'master_repositories':
-	return ('%s\n' % ' '.join(x.name
-	for x
-	in
-	repo.masters), warnings_str, 0)
-	else if
-	cmd == 'repository_path':
-	return ('%s\n' % repo.location, warnings_str, 0)
-	else if
-	cmd == 'available_eclasses':
-	return ('%s\n' % ' '.join(sorted(repo.eclass_db.eclasses)), warnings_str, 0)
-	else if
-	cmd == 'eclass_path':
-try:
-	eclass = repo.eclass_db.eclasses[args[1]]
-	except
-KeyError:
-	return ('', warnings_str, 1)
-	return ('%s\n' % eclass.location, warnings_str, 0)
-	else if
-	cmd == 'license_path':
-	paths = reversed([]{filepath.Join(x.location, 'licenses', args[1])
-	for x
-	in
-	list(repo.masters) + []{repo}})
-for path in paths:
-if pathExists(path):
-return ('%s\n' % path, warnings_str, 0)
-return ('', warnings_str, 1) else:
-return "", fmt.Sprintf("Invalid command: %s\n" , cmd), 3
+		if cmd == "master_repositories" {
+			return fmt.Sprintf("%s\n", strings.Join(repo.masters, " ")), warnings_str, 0
+		} else if cmd == "repository_path" {
+			return fmt.Sprintf("%s\n", repo.location), warnings_str, 0
+		} else if cmd == "available_eclasses" {
+			ree := []string{}
+			for k := range repo.eclassDb.eclasses {
+				ree = append(ree, k)
+			}
+			return fmt.Sprintf("%s\n", strings.Join(sorted(ree), " ")), warnings_str, 0
+		} else if cmd == "eclass_path" {
+			//try:
+			eclass := repo.eclassDb.eclasses[args[1]]
+			//except
+			//KeyError:
+			//	return ("", warnings_str, 1)
+			return fmt.Sprintf("%s\n", eclass.location), warnings_str, 0
+		} else if cmd == "license_path" {
+			paths = reversed([]{filepath.Join(x.location, "licenses", args[1])
+				for x
+				in
+				list(repo.masters) + []{repo}})
+			for _, path := range paths {
+				if pathExists(path) {
+					return fmt.Sprintf("%s\n", path), warnings_str, 0
+				}
+			}
+			return "", warnings_str, 1
+		}
+	} else {
+		return "", fmt.Sprintf("Invalid command: %s\n", cmd), 3
+	}
+	return "", "", 0
 }
 
 func (q *QueryCommand) _elog( elog_funcname, lines) string {
@@ -722,7 +729,7 @@ logfile=None, **kwargs) ([]int, error){
 
 	ebuild_phase := NewEbuildPhase(actionmap, false,
 		phase, NewSchedulerInterface(asyncio._safe_loop()),
-		settings, **kwargs)
+		settings, nil, **kwargs)
 
 	ebuild_phase.start()
 	ebuild_phase.wait()

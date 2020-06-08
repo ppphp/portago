@@ -606,8 +606,6 @@ type ForkProcess struct {
 	*SpawnProcess
 }
 
-__slots__ = ()
-
 func(f *ForkProcess) _spawn( args, fd_pipes=nil, **kwargs){
 	parent_pid := os.Getpid()
 	pid = nil
@@ -899,14 +897,14 @@ type AbstractEbuildProcess struct {
 	_enable_ipc_daemon bool
 }
 
-func NewAbstractEbuildProcess( **kwargs)*AbstractEbuildProcess {
+func NewAbstractEbuildProcess(actionmap, background, fd_pipes, logfile, phase, scheduler, settings, **kwargs)*AbstractEbuildProcess {
 	a := &AbstractEbuildProcess{}
 	a._phases_without_builddir = []string{"clean", "cleanrm", "depend", "help",}
 	a._phases_interactive_whitelist = []string{"config",}
 	a._exit_timeout = 10
 	a._enable_ipc_daemon = true
 
-	a.SpawnProcess = NewSpawnProcess(**kwargs)
+	a.SpawnProcess = NewSpawnProcess(actionmap, background, fd_pipes, logfile, phase, scheduler, settings,**kwargs)
 	if a.phase == "" {
 		phase := a.settings.ValueDict["EBUILD_PHASE"]
 		if phase == "" {
@@ -1167,7 +1165,7 @@ func (a *AbstractEbuildProcess)_start_ipc_daemon() {
 		"master_repositories": query_command,
 		"repository_path":     query_command,
 	}
-	input_fifo, output_fifo = a._init_ipc_fifos()
+	input_fifo, output_fifo := a._init_ipc_fifos()
 	a._ipc_daemon = EbuildIpcDaemon(commands = commands,
 		input_fifo = input_fifo,
 		output_fifo=output_fifo,
@@ -1368,6 +1366,36 @@ func (a *AbstractEbuildProcess)_unlock_builddir_exit( unlock_future, returncode 
 	}
 }
 
+type EbuildProcess struct {
+	*AbstractEbuildProcess
+
+	actionmap
+}
+
+func (e *EbuildProcess) _spawn(args, **kwargs) {
+	actionmap := e.actionmap
+	if actionmap == nil {
+		actionmap = _spawn_actionmap(e.settings)
+	}
+
+	if e._dummy_pipe_fd is
+	not
+None{
+	e.settings.ValueDict["PORTAGE_PIPE_FD"] = fmt.Sprint(e._dummy_pipe_fd)
+}
+
+	defer delete(e.settings.ValueDict, "PORTAGE_PIPE_FD")
+	return _doebuild_spawn(e.phase, e.settings, actionmap, **kwargs)
+}
+
+func NewEbuildProcess(actionmap, background bool, fd_pipes, logfile, phase, scheduler, settings) *EbuildProcess {
+	e := &EbuildProcess{}
+	e.actionmap = actionmap
+	e.AbstractEbuildProcess = NewAbstractEbuildProcess(actionmap, background, fd_pipes, logfile, phase, scheduler, settings)
+
+	return e
+}
+
 type EbuildSpawnProcess struct {
 	*AbstractEbuildProcess
 	fakeroot_state string
@@ -1416,7 +1444,7 @@ func NewBlockerDB( fake_vartree)*BlockerDB {
 }
 
 func (b *BlockerDB)findInstalledBlockers( new_pkg) {
-	blocker_cache := BlockerCache(nil,
+	blocker_cache := NewBlockerCache(nil,
 		b._vartree.dbapi)
 	dep_keys := NewPackage()._runtime_keys
 	settings := b._vartree.settings
@@ -1654,7 +1682,7 @@ type EbuildPhase struct {
 	_locked_phases    []string
 }
 
-func NewEbuildPhase(actionmap interface{}, background bool, phase string, scheduler *SchedulerInterface, settings *Config) *EbuildPhase {
+func NewEbuildPhase(actionmap interface{}, background bool, phase string, scheduler *SchedulerInterface, settings *Config, fd_pipes map[int]int) *EbuildPhase {
 	e := &EbuildPhase{}
 	e._features_display = []string{
 		"ccache", "compressdebug", "distcc", "fakeroot",
@@ -1672,6 +1700,7 @@ func NewEbuildPhase(actionmap interface{}, background bool, phase string, schedu
 	e.phase = phase
 	e.scheduler = scheduler
 	e.settings = settings
+	e.fd_pipes = fd_pipes
 
 	return e
 }
@@ -1681,7 +1710,7 @@ func (e *EbuildPhase) _start() {
 	need_builddir := e.phase
 	not
 	in
-	EbuildProcess._phases_without_builddir
+	NewEbuildProcess()._phases_without_builddir
 
 	if need_builddir {
 		phase_completed_file :=
@@ -1831,7 +1860,7 @@ func (e *EbuildPhase) _start_ebuild() {
 		}
 	}
 
-	ebuild_process = EbuildProcess(actionmap = e.actionmap,
+	ebuild_process = NewEbuildProcess(actionmap = e.actionmap,
 		background = e.background, fd_pipes=fd_pipes,
 		logfile = e._get_log_path(), phase=e.phase,
 		scheduler = e.scheduler, settings=e.settings)
@@ -2023,9 +2052,8 @@ func (e *EbuildPhase) _fail_clean() {
 	e.returncode = nil
 	portage.elog.elog_process(e.settings.mycpv, e.settings)
 	phase := "clean"
-	clean_phase := EbuildPhase(background = e.background,
-		fd_pipes = e.fd_pipes, phase=phase, scheduler = e.scheduler,
-		settings=e.settings)
+	clean_phase := NewEbuildPhase(nil, e.background, phase,  e.scheduler,
+		e.settings, e.fd_pipes,)
 	e._start_task(clean_phase, e._fail_clean_exit)
 	return
 }
@@ -2037,33 +2065,239 @@ func (e *EbuildPhase) _fail_clean_exit( clean_phase) {
 	e.wait()
 }
 
-func (e *EbuildPhase) _elog( elog_funcname, lines, background=nil){
-if background == nil {
-	background = e.background
-}
-out = io.StringIO()
-phase = e.phase
-elog_func = getattr(elog_messages, elog_funcname)
-global_havecolor = portage.output.havecolor
-//try{
-portage.output.havecolor =
-e.settings.ValueDict['NOCOLOR', 'false').lower() in ('no', 'false')
-for line in lines{
-	elog_func(line, phase = phase, key =e.settings.mycpv, out = out)
+func (e *EbuildPhase) _elog( elog_funcname, lines, background=nil) {
+	if background == nil {
+		background = e.background
 	}
-//finally{
-portage.output.havecolor = global_havecolor
-msg = out.getvalue()
-if msg {
-	log_path = nil
-	if e.settings.ValueDict["PORTAGE_BACKGROUND"] != "subprocess" {
-		log_path = e.settings.ValueDict["PORTAGE_LOG_FILE"]
+	out = io.StringIO()
+	phase = e.phase
+	elog_func = getattr(elog_messages, elog_funcname)
+	global_havecolor := HaveColor
+	//try{
+	HaveColor = Ins([]string{"no", "false", ""}, strings.ToLower(e.settings.ValueDict["NOCOLOR"]))
+	for line
+	in
+	lines{
+		elog_func(line, phase = phase, key = e.settings.mycpv, out = out)
 	}
-	e.scheduler.output(msg, log_path = log_path,
-		background = background)
-}
+	//finally{
+	HaveColor = global_havecolor
+	msg := out.getvalue()
+	if msg {
+		log_path := ""
+		if e.settings.ValueDict["PORTAGE_BACKGROUND"] != "subprocess" {
+			log_path = e.settings.ValueDict["PORTAGE_LOG_FILE"]
+		}
+		e.scheduler.output(msg, log_path = log_path,
+			background = background)
+	}
 }
 
+type FifoIpcDaemon struct {
+	*AbstractPollTask
+	input_fifo, output_fifo,_files
+}
+
+_file_names = ("pipe_in",)
+_files_dict = slot_dict_class(_file_names, prefix="")
+
+func (f *FifoIpcDaemon) _start() {
+	f._files = f._files_dict()
+
+	f._files.pipe_in = \
+	os.open(f.input_fifo, os.O_RDONLY|os.O_NONBLOCK)
+
+	if sys.hexversion < 0x3040000 and
+	fcntl
+	is
+	not
+None:
+try:
+	fcntl.FD_CLOEXEC
+	except
+AttributeError:
+	pass
+	else:
+	fcntl.fcntl(f._files.pipe_in, fcntl.F_SETFD,
+		fcntl.fcntl(f._files.pipe_in,
+			fcntl.F_GETFD)|fcntl.FD_CLOEXEC)
+
+	f.scheduler.add_reader(
+		f._files.pipe_in,
+		f._input_handler)
+
+	f._registered = True
+}
+
+func (f *FifoIpcDaemon) _reopen_input() {
+	f.scheduler.remove_reader(f._files.pipe_in)
+	os.close(f._files.pipe_in)
+	f._files.pipe_in = \
+	os.open(f.input_fifo, os.O_RDONLY|os.O_NONBLOCK)
+
+	if sys.hexversion < 0x3040000 and
+	fcntl
+	is
+	not
+None:
+try:
+	fcntl.FD_CLOEXEC
+	except
+AttributeError:
+	pass
+	else:
+	fcntl.fcntl(f._files.pipe_in, fcntl.F_SETFD,
+		fcntl.fcntl(f._files.pipe_in,
+			fcntl.F_GETFD)|fcntl.FD_CLOEXEC)
+
+	f.scheduler.add_reader(
+		f._files.pipe_in,
+		f._input_handler)
+}
+
+func (f *FifoIpcDaemon) _cancel() {
+	if f.returncode is
+None:
+	f.returncode = 1
+	f._unregister()
+	f._async_wait()
+}
+
+func (f *FifoIpcDaemon) _input_handler() {
+	raise NotImplementedError(f)
+}
+
+func (f *FifoIpcDaemon) _unregister() {
+
+	f._registered = False
+
+	if f._files is
+	not
+None:
+	for f
+	in
+	f._files.values():
+	f.scheduler.remove_reader(f)
+	os.close(f)
+	f._files = None
+}
+
+type EbuildIpcDaemon struct {
+	*FifoIpcDaemon
+	commands
+}
+
+func (e *EbuildIpcDaemon) _input_handler() {
+	data = self._read_buf(self._files.pipe_in)
+	if data is
+None:
+	pass
+	elif
+data:
+try:
+	obj = pickle.loads(data)
+	except
+SystemExit:
+	raise
+	except
+Exception:
+	pass
+	else:
+
+	self._reopen_input()
+
+	cmd_key = obj[0]
+	cmd_handler = self.commands[cmd_key]
+	reply = cmd_handler(obj)
+try:
+	self._send_reply(reply)
+	except
+	OSError
+	as
+e:
+	if e.errno == errno.ENXIO:
+	pass
+	else:
+	raise
+
+	reply_hook = getattr(cmd_handler,
+		'reply_hook', None)
+	if reply_hook is
+	not
+None:
+	reply_hook()
+
+	else:
+	lock_filename = os.path.join(
+		os.path.dirname(self.input_fifo), '.ipc_lock')
+try:
+	lock_obj = lockfile(lock_filename, unlinkfile = True,
+		flags = os.O_NONBLOCK)
+	except
+TryAgain:
+	pass
+	else:
+try:
+	self._reopen_input()
+finally:
+	unlockfile(lock_obj)
+}
+
+func (e *EbuildIpcDaemon) _send_reply( reply) {
+try:
+	output_fd = os.open(self.output_fifo,
+		os.O_WRONLY|os.O_NONBLOCK)
+try:
+	os.write(output_fd, pickle.dumps(reply))
+finally:
+	os.close(output_fd)
+	except
+	OSError
+	as
+e:
+	WriteMsgLevel()
+		"!!! EbuildIpcDaemon %s: %s\n" % \
+	(_('failed to send reply'), e),
+	level = logging.ERROR, noiselevel=-1)
+}
+
+type MiscFunctionsProcess struct {
+	*AbstractEbuildProcess
+	commands []string
+	ld_preload_sandbox
+}
+
+func (m *MiscFunctionsProcess)_start() {
+	settings := m.settings
+	portage_bin_path := settings.ValueDict["PORTAGE_BIN_PATH"]
+	misc_sh_binary := filepath.Join(portage_bin_path,
+		filepath.Base(MISC_SH_BINARY))
+
+	m.args = append([]string{ShellQuote(misc_sh_binary)}, m.commands...)
+	if m.logfile == "" &&m.settings.ValueDict["PORTAGE_BACKGROUND"] != "subprocess" {
+		m.logfile = settings.ValueDict["PORTAGE_LOG_FILE"]
+	}
+
+	m.AbstractEbuildProcess._start()
+}
+
+func (m *MiscFunctionsProcess) _spawn(args, **kwargs){
+kwargs.setdefault('free', False if m.ld_preload_sandbox is None else not m.ld_preload_sandbox)
+
+if m._dummy_pipe_fd is not None:
+m.settings["PORTAGE_PIPE_FD"] = str(m._dummy_pipe_fd)
+
+if "fakeroot" in m.settings.features:
+kwargs["fakeroot"] = True
+
+phase_backup = m.settings.pop("EBUILD_PHASE", None)
+try:
+return spawn(" ".join(args), m.settings, **kwargs)
+finally:
+if phase_backup is not None:
+m.settings["EBUILD_PHASE"] = phase_backup
+m.settings.pop("PORTAGE_PIPE_FD", None)
+}
 
 type _PostPhaseCommands struct {
 	*CompositeTask
@@ -2822,9 +3056,9 @@ None:
 	s._prevent_builddir_collisions()
 	if '--debug' in
 	s.myopts:
-	writemsg("\nscheduler digraph:\n\n", noiselevel = -1)
+	WriteMsg("\nscheduler digraph:\n\n", noiselevel = -1)
 	s._digraph.debug_print()
-	writemsg("\n", noiselevel = -1)
+	WriteMsg("\n", noiselevel = -1)
 }
 
 func (s *Scheduler) _find_system_deps() {
@@ -3151,7 +3385,7 @@ func (s *Scheduler) _run_pkg_pretend() {
 	continue
 
 	out_str = ">>> Running pre-merge checks for " + colorize("INFORM", x.cpv) + "\n"
-	portage.util.writemsg_stdout(out_str, noiselevel = -1)
+	portage.util.WriteMsg_stdout(out_str, noiselevel = -1)
 
 	root_config = x.root_config
 	settings = s.pkgsettings.ValueDict[root_config.root]
@@ -3372,7 +3606,7 @@ true:
 	sighandler(signum, frame):
 	signal.signal(signal.SIGINT, signal.SIG_IGN)
 	signal.signal(signal.SIGTERM, signal.SIG_IGN)
-	portage.util.writemsg("\n\nExiting on signal %(signal)s\n" % 
+	portage.util.WriteMsg("\n\nExiting on signal %(signal)s\n" % 
 	{
 		"signal":signum
 	})
@@ -4538,13 +4772,14 @@ var _event_loop_attrs = []string{
 	"_asyncio_wrapper",
 }
 
-func NewSchedulerInterface(event_loop, is_background=None, **kwargs)*SchedulerInterface {
+// nil
+func NewSchedulerInterface(event_loop, is_background func()bool, **kwargs)*SchedulerInterface {
 	s := &SchedulerInterface{}
 	SlotObject.__init__(s, **kwargs)
 	s._event_loop = event_loop
-	if is_background is
-None:
-	is_background = s._return_false
+	if is_background == nil {
+		is_background = s._return_false
+	}
 	s._is_background = is_background
 	for kfilter_loglevels
 	in
@@ -4592,3 +4827,182 @@ func (s * SchedulerInterface) output( msg , log_path string, background interfac
 		}
 	}
 }
+
+type BlockerCache struct {
+	_cache_threshold int
+	
+	_vardb           *vardbapi
+	_cache_filename  string
+	_cache_version   string
+	_modified        map[string]bool
+}
+
+type BlockerData struct {
+	// slot
+	__weakref__,atoms,counter 
+}
+
+func NewBlockerData(counter, atoms)*BlockerData {
+	b := &BlockerData{}
+	b.counter = counter
+	b.atoms = atoms
+	return b
+}
+
+func NewBlockerCache(myroot string, vardb *vardbapi)*BlockerCache {
+	b := &BlockerCache{}
+	b._cache_threshold = 5
+
+	b._vardb = vardb
+	b._cache_filename = filepath.Join(vardb.settings.ValueDict["EROOT"], CachePath, "vdb_blockers.pickle")
+	b._cache_version = "1"
+	b._cache_data = None
+	b._modified = map[string]bool{}
+	b._load()
+	return b
+}
+
+func (b *BlockerCache) _load() {
+try:
+	f = open(b._cache_filename, mode = 'rb')
+	mypickle = pickle.Unpickler(f)
+try:
+	mypickle.find_global = None
+	except
+AttributeError:
+	pass
+	b._cache_data = mypickle.load()
+	f.close()
+	del
+	f
+	except(SystemExit, KeyboardInterrupt):
+	raise
+	except
+	Exception
+	as
+e:
+	if isinstance(e, EnvironmentError) && 
+	getattr(e, 'errno', None)
+	in(errno.ENOENT, errno.EACCES):
+	pass
+	else:
+	WriteMsg("!!! Error loading '%s': %s\n" % 
+	(b._cache_filename, str(e)), noiselevel = -1)
+	del
+	e
+
+	cache_valid = b._cache_data
+	&& 
+	isinstance(b._cache_data, dict)
+	&& 
+	b._cache_data.get("version") == b._cache_version
+	&& 
+	isinstance(b._cache_data.get("blockers"), dict)
+	if cache_valid:
+	invalid_items = set()
+	for k, v
+	in
+	b._cache_data["blockers"].items():
+	if not isinstance(k, basestring):
+	invalid_items.add(k)
+	continue
+try:
+	if portage.catpkgsplit(k) is
+None:
+	invalid_items.add(k)
+	continue
+	except
+	portage.exception.InvalidData:
+	invalid_items.add(k)
+	continue
+	if not isinstance(v, tuple)
+	or 
+	len(v) != 2:
+	invalid_items.add(k)
+	continue
+	counter, atoms = v
+	if not isinstance(counter, (int, long)):
+	invalid_items.add(k)
+	continue
+	if not isinstance(atoms, (list, tuple)):
+	invalid_items.add(k)
+	continue
+	invalid_atom = False
+	for atom
+	in
+atoms:
+	if not isinstance(atom, basestring):
+	invalid_atom = True
+	break
+	if atom[:1] != "!" or 
+	not
+	portage.isvalidatom(
+		atom, allow_blockers = True):
+	invalid_atom = True
+	break
+	if invalid_atom:
+	invalid_items.add(k)
+	continue
+
+	for k
+	in
+invalid_items:
+	del
+	b._cache_data["blockers"][k]
+	if not b._cache_data["blockers"]:
+	cache_valid = False
+
+	if not cache_valid:
+	b._cache_data =
+	{
+		"version":b._cache_version
+	}
+	b._cache_data["blockers"] =
+	{
+	}
+	b._modified.clear()
+}
+
+func (b *BlockerCache) flush() {
+	if len(b._modified) >= b._cache_threshold && 
+	secpass >= 2:
+try:
+	f = portage.util.atomic_ofstream(b._cache_filename, mode = 'wb')
+	pickle.dump(b._cache_data, f, protocol = 2)
+	f.close()
+	portage.util.apply_secpass_permissions(
+		b._cache_filename, gid = portage.portage_gid, mode = 0o644)
+	except(IOError, OSError):
+	pass
+	b._modified.clear()
+}
+
+func (b *BlockerCache)  __setitem__( cpv, blocker_data) {
+	b._cache_data["blockers"][_unicode(cpv)] = (blocker_data.counter,
+		tuple(_unicode(x)
+	for x
+	in
+	blocker_data.atoms))
+	b._modified.add(cpv)
+}
+
+func (b *BlockerCache)  __iter__() {
+	if b._cache_data is
+None:
+	return iter([])
+	return iter(b._cache_data["blockers"])
+}
+
+func (b *BlockerCache)  __len__() {
+	return len(b._cache_data["blockers"])
+}
+
+func (b *BlockerCache)  __delitem__( cpv) {
+	del
+	b._cache_data["blockers"][cpv]
+}
+
+func (b *BlockerCache)  __getitem__(cpv) {
+	return NewBlockerData(*b._cache_data["blockers"][cpv])
+}
+

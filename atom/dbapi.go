@@ -2493,6 +2493,7 @@ type dblink struct {
 	_slot_locks         []*Atom
 	_contents_basenames map[string]bool
 	_contents_inodes    map[[2]uint64][]string
+	_installed_instance *dblink
 }
 
 func (d *dblink) __hash__() {
@@ -4451,7 +4452,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
 
 	doebuild_environment(myebuild, "instprep", nil, d.settings,false , nil,  mydbapi)
 	phase := NewEbuildPhase(nil, false, "instprep",
-		d._scheduler, d.settings)
+		d._scheduler, d.settings, nil)
 	phase.start()
 	if phase.wait() != 0 {
 		showMessage("!!! instprep failed\n",
@@ -4492,7 +4493,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
 		}
 	}
 
-	eerror := func(lines) {
+	eerror := func(lines []string) {
 		d._eerror("preinst", lines)
 	}
 
@@ -4522,7 +4523,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
 		settings_clone := NewConfig(d.settings, nil, nil, "", nil, "", "", "", "", true, nil, false, nil)
 		delete(settings_clone.ValueDict, "PORTAGE_BUILDDIR_LOCKED")
 		settings_clone.SetCpv(cur_cpv, d.vartree.dbapi)
-		if d._preserve_libs && "preserve-libs" Ins(strings.Fields(settings_clone["PORTAGE_RESTRICT"])) {
+		if d._preserve_libs &&  Ins(strings.Fields(settings_clone["PORTAGE_RESTRICT"]),"preserve-libs") {
 			d._preserve_libs = false
 		}
 		others_in_slot = append(others_in_slot, NewDblink(d.cat, catsplit(cur_cpv)[1], "",
@@ -4541,17 +4542,20 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
 		return retval
 	}
 
-	if slot_matches:
-		max_dblnk = nil
-	max_counter = -1
-	for dblnk in others_in_slot:
-	cur_counter = d.vartree.dbapi.cpv_counter(dblnk.mycpv)
-	if cur_counter > max_counter:
-	max_counter = cur_counter
-	max_dblnk = dblnk
-	d._installed_instance = max_dblnk
+	if len(slot_matches) > 0 {
+		var max_dblnk *dblink
+		max_counter := -1
+		for _, dblnk := range others_in_slot {
+			cur_counter := d.vartree.dbapi.cpv_counter(dblnk.mycpv)
+			if cur_counter > max_counter {
+				max_counter = cur_counter
+				max_dblnk = dblnk
+			}
+		}
+		d._installed_instance = max_dblnk
+	}
 
-					phase = MiscFunctionsProcess(background=false,
+	phase = MiscFunctionsProcess(background=false,
 	commands=["preinst_mask"], phase="preinst",
 	scheduler=d._scheduler, settings=d.settings)
 	phase.start()
