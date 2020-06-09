@@ -130,6 +130,7 @@ func remove_listener(listener) {
 
 var _elog_atexit_handlers = []
 
+// nil
 func elog_process(cpv, mysettings, phasefilter=None) {
 	global
 	_elog_atexit_handlers

@@ -516,7 +516,7 @@ try:
 	for f
 			in
 		myfiles{
-		eout.ebegin(_("checking %s ;-)") % f)
+		eout.ebegin(fmt.Sprintf("checking %s ;-)", f))
 		ftype = mf.findFile(f)
 		if ftype is
 	None:
@@ -1417,7 +1417,7 @@ fd_pipes=None, returnpid bool) int {
 		}
 	}
 
-	if tmpdir == nil &&
+	if tmpdir == "" &&
 		!Ins(_doebuild_commands_without_builddir, mydo) {
 		rval := _check_temp_dir(mysettings)
 		if rval != 0 {
@@ -1432,7 +1432,7 @@ fd_pipes=None, returnpid bool) int {
 				-1, nil)
 		}
 		return unmerge(mysettings.ValueDict["CATEGORY"],
-			mysettings.ValueDict["PF"], myroot, mysettings, vartree = vartree)
+			mysettings.ValueDict["PF"], mysettings, vartree, nil, nil)
 	}
 
 	phases_to_run := map[string]bool{}
@@ -1713,15 +1713,15 @@ fd_pipes=None, returnpid bool) int {
 
 	actionmap := _spawn_actionmap(mysettings)
 
-	for _, x := range actionmap {
+	for x := range actionmap {
 		if len(actionmap_deps[x]) > 0 {
-			actionmap[x]["dep"] = strings.Join(actionmap_deps[x], " ")
+			actionmap[x].dep = strings.Join(actionmap_deps[x], " ")
 		}
 	}
 
 	_, regular_actionmap_phase := actionmap[mydo]
 
-	if len(regular_actionmap_phase) > 0 {
+	if regular_actionmap_phase{
 		var bintree *BinaryTree
 		if mydo == "package" {
 
@@ -1736,14 +1736,12 @@ fd_pipes=None, returnpid bool) int {
 				parent_dir := filepath.Join(mysettings.ValueDict["PKGDIR"],
 					mysettings.ValueDict["CATEGORY"])
 				ensureDirs(parent_dir, -1, -1, -1, -1, nil, true)
-				if !os.access(parent_dir, os.W_OK) {
+				if st, _ := os.Stat(parent_dir) st != nil && st.Mode()&0222 == 0 {
 					//raise PermissionDenied("access('%s', os.W_OK)" % parent_dir)
 				}
 			}
 		}
-		retval := spawnebuild(mydo,
-			actionmap, mysettings, debug, logfile = logfile,
-			fd_pipes = fd_pipes, returnpid=returnpid)
+		retval := spawnebuild(mydo, actionmap, mysettings, debug, 0, logfile, fd_pipes, returnpid)
 
 		if returnpid && isinstance(retval, list) {
 			return retval
@@ -1751,8 +1749,7 @@ fd_pipes=None, returnpid bool) int {
 
 		if retval == 0 {
 			if mydo == "package" && bintree != nil {
-				pkg = bintree.inject(mysettings.mycpv,
-					filename = mysettings.ValueDict["PORTAGE_BINPKG_TMPFILE"])
+				pkg := bintree.inject(mysettings.mycpv.string, mysettings.ValueDict["PORTAGE_BINPKG_TMPFILE"])
 				if pkg != nil {
 					infoloc := filepath.Join(
 						mysettings.ValueDict["PORTAGE_BUILDDIR"], "build-info")
@@ -1763,15 +1760,8 @@ fd_pipes=None, returnpid bool) int {
 						build_info["BUILD_ID"] = fmt.Sprintf("%s\n", pkg.build_id)
 					}
 					for k, v := range build_info {
-						with
-						io.open(_unicode_encode(
-							filepath.Join(infoloc, k),
-							encoding = _encodings["fs"], errors = "strict"),
-						mode = "w", encoding=_encodings["repo.content"],
-							errors = "strict") as
-						f{
-							f.write(v)
-						}
+						f, _ := os.OpenFile(filepath.Join(infoloc, k), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+						f.Write([]byte(v))
 					}
 				}
 			}
@@ -1789,7 +1779,8 @@ fd_pipes=None, returnpid bool) int {
 			-1, nil)
 	}
 
-	if regular_actionmap_phase != "" {
+	retval := 0
+	if regular_actionmap_phase {
 		//pass
 	} else if mydo == "qmerge" {
 
@@ -1811,11 +1802,9 @@ fd_pipes=None, returnpid bool) int {
 			mydbapi=mydbapi, vartree = vartree, prev_mtimes=prev_mtimes,
 			fd_pipes = fd_pipes)
 	} else if mydo == "merge" {
-		retval := spawnebuild("install", actionmap, mysettings, debug,
-			alwaysdep = 1, logfile = logfile, fd_pipes=fd_pipes,
-			returnpid = returnpid)
+		retval = spawnebuild("install", actionmap, mysettings, debug, 1, logfile, fd_pipes, returnpid)
 		if retval != 0 {
-			elog_process(mysettings.mycpv, mysettings)
+			elog_process(mysettings.mycpv, mysettings, nil)
 		}
 		if retval == 0 {
 			_handle_self_update(mysettings)
@@ -1827,7 +1816,7 @@ fd_pipes=None, returnpid bool) int {
 				fd_pipes = fd_pipes)
 		}
 	} else {
-		WriteMsgStdout(fmt.Sprintf("!!! Unknown mydo: %s\n", mydo), -1, nil)
+		WriteMsgStdout(fmt.Sprintf("!!! Unknown mydo: %s\n", mydo), -1)
 		return 1
 	}
 
@@ -1892,13 +1881,26 @@ func _prepare_env_file(settings *Config) int {
 	return env_extractor.returncode
 }
 
-func _spawn_actionmap(settings *Config) {
+type ActionMapArgs struct {
+	droppriv  bool
+	free      bool
+	sesandbox bool
+	fakeroot  bool
+}
+
+type Actionmap map[string]*struct {
+	cmd  string
+	args ActionMapArgs
+	dep string
+}
+
+func _spawn_actionmap(settings *Config) Actionmap {
 	features := settings.Features.Features
 	restrict := strings.Fields(settings.ValueDict["PORTAGE_RESTRICT"])
-	nosandbox := ((features["userpriv"]) &&
-		(!features["usersandbox"]) &&
-		!Ins(restrict, "userpriv") &&
-		!Ins(restrict, "nouserpriv"))
+	nosandbox := (features["userpriv"]) &&
+			(!features["usersandbox"]) &&
+			!Ins(restrict, "userpriv") &&
+			!Ins(restrict, "nouserpriv")
 
 	if !sandbox_capable {
 		nosandbox = true
@@ -1921,21 +1923,18 @@ func _spawn_actionmap(settings *Config) {
 	ebuild_sh := ShellQuote(ebuild_sh_binary) + " %s"
 	misc_sh := ShellQuote(misc_sh_binary) + " __dyn_%s"
 
-	actionmap := map[string]struct {
-		cmd  string
-		args map[string]interface{}
-	}{
-		"pretend":   {cmd: ebuild_sh, args: {"droppriv": 0, "free": 1, "sesandbox": 0, "fakeroot": 0}},
-		"setup":     {cmd: ebuild_sh, args: {"droppriv": 0, "free": 1, "sesandbox": 0, "fakeroot": 0}},
-		"unpack":    {cmd: ebuild_sh, args: {"droppriv": droppriv, "free": 0, "sesandbox": sesandbox, "fakeroot": 0}},
-		"prepare":   {cmd: ebuild_sh, args: {"droppriv": droppriv, "free": 0, "sesandbox": sesandbox, "fakeroot": 0}},
-		"configure": {cmd: ebuild_sh, args: {"droppriv": droppriv, "free": nosandbox, "sesandbox": sesandbox, "fakeroot": 0}},
-		"compile":   {cmd: ebuild_sh, args: {"droppriv": droppriv, "free": nosandbox, "sesandbox": sesandbox, "fakeroot": 0}},
-		"test":      {cmd: ebuild_sh, args: {"droppriv": droppriv, "free": nosandbox, "sesandbox": sesandbox, "fakeroot": 0}},
-		"install":   {cmd: ebuild_sh, args: {"droppriv": 0, "free": 0, "sesandbox": sesandbox, "fakeroot": fakeroot}},
-		"instprep":  {cmd: misc_sh, args: {"droppriv": 0, "free": 0, "sesandbox": sesandbox, "fakeroot": fakeroot}},
-		"rpm":       {cmd: misc_sh, args: {"droppriv": 0, "free": 0, "sesandbox": 0, "fakeroot": fakeroot}},
-		"package":   {cmd: misc_sh, args: {"droppriv": 0, "free": 0, "sesandbox": 0, "fakeroot": fakeroot}},
+	actionmap := Actionmap{
+		"pretend":   {cmd: ebuild_sh, args: ActionMapArgs{droppriv: false, free: true, sesandbox: false, fakeroot: false}},
+		"setup":     {cmd: ebuild_sh, args: ActionMapArgs{droppriv: false, free: true, sesandbox: false, fakeroot: false}},
+		"unpack":    {cmd: ebuild_sh, args: ActionMapArgs{droppriv: droppriv, free: false, sesandbox: sesandbox, fakeroot: false}},
+		"prepare":   {cmd: ebuild_sh, args: ActionMapArgs{droppriv: droppriv, free: false, sesandbox: sesandbox, fakeroot: false}},
+		"configure": {cmd: ebuild_sh, args: ActionMapArgs{droppriv: droppriv, free: nosandbox, sesandbox: sesandbox, fakeroot: false}},
+		"compile":   {cmd: ebuild_sh, args: ActionMapArgs{droppriv: droppriv, free: nosandbox, sesandbox: sesandbox, fakeroot: false}},
+		"test":      {cmd: ebuild_sh, args: ActionMapArgs{droppriv: droppriv, free: nosandbox, sesandbox: sesandbox, fakeroot: false}},
+		"install":   {cmd: ebuild_sh, args: ActionMapArgs{droppriv: false, free: false, sesandbox: sesandbox, fakeroot: fakeroot}},
+		"instprep":  {cmd: misc_sh, args: ActionMapArgs{droppriv: false, free: false, sesandbox: sesandbox, fakeroot: fakeroot}},
+		"rpm":       {cmd: misc_sh, args: ActionMapArgs{droppriv: false, free: false, sesandbox: false, fakeroot: fakeroot}},
+		"package":   {cmd: misc_sh, args: ActionMapArgs{droppriv: false, free: false, sesandbox: false, fakeroot: fakeroot}},
 	}
 
 	return actionmap
@@ -2216,9 +2215,9 @@ mysettings.configDict["env"]["LOGNAME"] = logname_backup
 }
 }
 
-// 0, nil, nil, false
-func spawnebuild(mydo string, actionmap, mysettings *Config, debug, alwaysdep int,
-logfile=None, fd_pipes=None, returnpid bool) int {
+// 0, nil, "", false
+func spawnebuild(mydo string, actionmap Actionmap, mysettings *Config, debug, alwaysdep int,
+logfile string, fd_pipes map[int]int, returnpid bool) int {
 
 	if returnpid {
 		warnings.warn("portage.spawnebuild() called "

@@ -832,7 +832,7 @@ try:
 			rval = 0
 		}
 	} else {
-		rval = mylink.merge(m.pkgloc, m.infloc, "",
+		rval = mylink.merge(m.pkgloc, m.infloc,
 			m.myebuild, 0, m.mydbapi,
 			m.prev_mtimes, counter)
 	}
@@ -843,11 +843,11 @@ except:
 	traceback.print_exc()
 	sys.stderr.flush()
 finally:
-	syscall._exit(rval)
+	syscall.Exit(rval)
 
 finally:
 	if pid == 0 || (pid == 0 && syscall.Getpid() != parent_pid) {
-		os._exit(1)
+		os.Exit(1)
 	}
 }
 
@@ -1348,8 +1348,9 @@ func (a *AbstractEbuildProcess)_async_unlock_builddir( returncode *int) {
 	}
 	a._build_dir_unlock = a._build_dir.async_unlock()
 	a._build_dir = nil
-	a._build_dir_unlock.add_done_callback(
-		functools.partial(a._unlock_builddir_exit, returncode = returncode))
+	a._build_dir_unlock.add_done_callback( func() {
+		return a._unlock_builddir_exit(, returncode)
+	})
 }
 
 // nil

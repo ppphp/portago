@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -31,7 +30,7 @@ type PackageIndex struct {
 }
 
 // true
-func (p *PackageIndex) _readpkgindex(pkgfile *os.File, pkg_entry bool) map[string]string {
+func (p *PackageIndex) _readpkgindex(pkgfile io.Reader, pkg_entry bool) map[string]string {
 	//var allowed_keys []string = nil
 	d := map[string]string{}
 	if p._pkg_slot_dict == nil || !pkg_entry {
@@ -85,18 +84,18 @@ func (p *PackageIndex) _writepkgindex(pkgfile io.Writer, items [][2]string) {
 	pkgfile.Write([]byte("\n"))
 }
 
-func (p *PackageIndex) read(pkgfile *os.File) {
+func (p *PackageIndex) read(pkgfile io.Reader) {
 	p.readHeader(pkgfile)
 	p.readBody(pkgfile)
 }
 
-func (p *PackageIndex) readHeader(pkgfile *os.File) {
+func (p *PackageIndex) readHeader(pkgfile io.Reader) {
 	for k, v := range p._readpkgindex(pkgfile, false) {
 		p.header[k] = v
 	}
 }
 
-func (p *PackageIndex) readBody(pkgfile *os.File) {
+func (p *PackageIndex) readBody(pkgfile io.Reader) {
 	for {
 		d := p._readpkgindex(pkgfile, true)
 		if len(d) == 0 {
