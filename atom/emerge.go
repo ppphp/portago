@@ -823,18 +823,18 @@ try:
 		if !mylink.exists() {
 			rval = syscall.EX_OK
 		} else if mylink.unmerge(
-			ldpath_mtimes = m.prev_mtimes) == syscall.F_OK{
+			ldpath_mtimes = m.prev_mtimes) == 0{
 			mylink.lockdb()
-			try:
+			//try:
 			mylink.delete()
-			finally:
+			//finally:
 			mylink.unlockdb()
-			rval = syscall.EX_OK
+			rval = 0
 		}
 	} else {
-		rval = mylink.merge(m.pkgloc, m.infloc,
-			myebuild = m.myebuild, mydbapi = m.mydbapi,
-			prev_mtimes=m.prev_mtimes, counter = counter)
+		rval = mylink.merge(m.pkgloc, m.infloc, "",
+			m.myebuild, 0, m.mydbapi,
+			m.prev_mtimes, counter)
 	}
 	except
 SystemExit:
@@ -1546,9 +1546,10 @@ return blocking_pkgs
 }
 
 func (b *BlockerDB)discardBlocker( pkg) {
+	a, _ := NewAtom(fmt.Sprintf("=%s", pkg.cpv, ), nil, false, nil, nil, "", nil, nil)
 	for cpv_match
 	in
-	b._fake_vartree.dbapi.match_pkgs(Atom(fmt.Sprintf("=%s", pkg.cpv, )))
+	b._fake_vartree.dbapi.match_pkgs(a)
 	{
 		if cpv_match.cp == pkg.cp {
 			b._fake_vartree.cpv_discard(cpv_match)
@@ -1624,13 +1625,13 @@ func(c*CompositeTask) _assert_current(task) {
 	}
 }
 
-func(c*CompositeTask) _default_exit( task) {
+func(c*CompositeTask) _default_exit( task) int {
 	c._assert_current(task)
 	if task.returncode != os.EX_OK {
 		c.returncode = task.returncode
 		c.cancelled = task.cancelled
 		c._current_task = nil
-		return task.returncode
+		return *task.returncode
 	}
 }
 func(c*CompositeTask) _final_exit( task) {
@@ -1645,7 +1646,7 @@ func(c*CompositeTask) _default_final_exit( task) {
 	return c.wait()
 }
 
-func(c*CompositeTask) _start_task( task, exit_handler) {
+func(c*CompositeTask) _start_task(task, exit_handler) {
 	//try{
 	//task.scheduler = c.scheduler
 	//except AttributeError{
@@ -1655,7 +1656,7 @@ func(c*CompositeTask) _start_task( task, exit_handler) {
 	task.start()
 }
 
-func(c*CompositeTask) _task_queued( task) {
+func(c*CompositeTask) _task_queued(task) {
 	task.addStartListener(c._task_queued_start_handler)
 	c._current_task = c._TASK_QUEUED
 }
@@ -1764,7 +1765,7 @@ func (e *EbuildPhase) _start() {
 		relevant_features := []string{}
 		enabled_features := e.settings.Features.Features
 		for _, x := range e._features_display {
-			if x := range enabled_features{
+			if enabled_features[ x]{
 				relevant_features = append(relevant_features, x)
 			}
 		}
@@ -1772,7 +1773,7 @@ func (e *EbuildPhase) _start() {
 			msg = append(msg, fmt.Sprintf("FEATURES:   %s", strings.Join(relevant_features, " ")))
 		}
 
-		e._elog('einfo', msg, background = true)
+		e._elog("einfo", msg, true)
 	}
 
 	if e.phase == "package" {
@@ -1820,7 +1821,7 @@ func (e *EbuildPhase) _start_lock() {
 }
 
 func (e *EbuildPhase) _lock_exit( ebuild_lock) {
-	if e._default_exit(ebuild_lock) != os.EX_OK {
+	if e._default_exit(ebuild_lock) != 0 {
 		e.wait()
 		return
 	}
@@ -2027,10 +2028,9 @@ func (e *EbuildPhase) _open_log( log_path) {
 func (e *EbuildPhase) _die_hooks() {
 	e.returncode = nil
 	phase := "die_hooks"
-	die_hooks := MiscFunctionsProcess(background = e.background,
-		commands = [phase], phase = phase, logfile = e._get_log_path(),
-		fd_pipes=e.fd_pipes, scheduler = e.scheduler,
-		settings=e.settings)
+	die_hooks := NewMiscFunctionsProcess(e.background,
+		 []string{phase},  phase, e._get_log_path(),
+		e.fd_pipes, e.scheduler, e.settings)
 	e._start_task(die_hooks, e._die_hooks_exit)
 }
 
@@ -2065,12 +2065,12 @@ func (e *EbuildPhase) _fail_clean_exit( clean_phase) {
 	e.wait()
 }
 
-func (e *EbuildPhase) _elog( elog_funcname, lines, background=nil) {
+func (e *EbuildPhase) _elog( elog_funcname string, lines []string, background bool) {
 	if background == nil {
 		background = e.background
 	}
 	out = io.StringIO()
-	phase = e.phase
+	phase := e.phase
 	elog_func = getattr(elog_messages, elog_funcname)
 	global_havecolor := HaveColor
 	//try{
@@ -2299,6 +2299,18 @@ m.settings["EBUILD_PHASE"] = phase_backup
 m.settings.pop("PORTAGE_PIPE_FD", None)
 }
 
+func NewMiscFunctionsProcess(background bool, commands []string, phase string, logfile string, fd_pipe map[int]int, scheduler *SchedulerInterface, settings *Config)*MiscFunctionsProcess{
+	m := &MiscFunctionsProcess{}
+	m.background = background
+	m.commands = commands
+	m.phase = phase
+	m.logfile = logfile
+	m.fd_pipes = fd_pipe
+	m.scheduler = scheduler
+	m.settings = settings
+	return m
+}
+
 type _PostPhaseCommands struct {
 	*CompositeTask
 
@@ -2325,7 +2337,7 @@ for kwargs, commands in cmds{
 
 kwargs = dict((k, v) for k, v in kwargs.items()
 if k in ('ld_preload_sandbox', ))
-tasks.add(MiscFunctionsProcess(background = p.background,
+tasks.add(NewMiscFunctionsProcess(background = p.background,
 commands = commands, fd_pipes = p.fd_pipes,
 logfile = p.logfile, phase = p.phase,
 scheduler = p.scheduler, settings= p.settings, **kwargs))
@@ -2570,21 +2582,25 @@ func NewPollScheduler( main bool, event_loop=None)*PollScheduler {
 	return p
 }
 
+const FAILURE = 1
 
 type  Scheduler struct {
 	*PollScheduler
 	_loadavg_latency, _max_display_latency                           int
 	_opts_ignore_blockers, _opts_no_background, _opts_no_self_update map[string]bool
 
-	settings    *Config
-	target_root string
-	trees       interface{}
-	myopts      interface{}
-	_spinner    interface{}
-	_mtimedb    int
-	_favorites  interface{}
-	_args_set   interface{}
-	_build_opts interface{}
+	settings        *Config
+	target_root     string
+	trees           interface{}
+	myopts          interface{}
+	_spinner        interface{}
+	_mtimedb        int
+	_favorites      interface{}
+	_args_set       interface{}
+	_build_opts     interface{}
+	_parallel_fetch bool
+	curval          int
+	_logger         *_emerge_log_class
 }
 
 type  _iface_class struct {
@@ -2593,34 +2609,39 @@ type  _iface_class struct {
 	fetch, scheduleSetup,scheduleUnpack string
 }
 
+// SlotObject
 type  _fetch_iface_class struct {
 	// slot
 	log_file,schedule string
-}(SlotObject):
+}
 
 _task_queues_class = slot_dict_class(
 ("merge", "jobs", "ebuild_locks", "fetch", "unpack"), prefix="")
 
+// SlotObject
 type  _build_opts_class struct {
 	// slot
 	buildpkg,buildpkg_exclude,buildpkgonly,
 	fetch_all_uri,fetchonly,pretend string
-}(SlotObject):
+}
 
+// SlotObject
 type  _binpkg_opts_class struct {
 	// slot
 	fetchonly,getbinpkg,pretend string
-}(SlotObject):
+}
 
+// SlotObject
 type  _pkg_count_class struct {
 	// slot
 	curval, maxval string
-}(SlotObject):
+}
 
-type  _emerge_log_class struct {
+// SlotObject
+type _emerge_log_class struct {
 	// slot
 	xterm_titles string
-}(SlotObject):
+}
 
 func (e *_emerge_log_class) log( *pargs, **kwargs) {
 	if not e.xterm_titles:
@@ -2628,38 +2649,48 @@ func (e *_emerge_log_class) log( *pargs, **kwargs) {
 	emergelog(self.xterm_titles, *pargs, **kwargs)
 }
 
+// SlotObject
 type  _failed_pkg struct {
 	// slot
 	build_dir,build_log,pkg, postinst_failure,returncode string
-}(SlotObject):
+}
 
 type  _ConfigPool struct {
 	// slot
-	_root,_allocate,_deallocate string
+	_root       string
+	_allocate   func(string)
+	_deallocate func(*Config)
 }
 
-func NewConfigPool(root, allocate, deallocate) *_ConfigPool {
+func NewConfigPool(root, allocate func(string), deallocate func(*Config)) *_ConfigPool {
 	c := &_ConfigPool{}
 	c._root = root
 	c._allocate = allocate
 	c._deallocate = deallocate
 	return c
 }
-func allocate(self):
-return self._allocate(self._root)
-func deallocate(self, settings):
-self._deallocate(settings)
 
-type  _unknown_internal_error(portage.exception.PortageException):
-func New_unknown_internal_error(value="") *_unknown_internal_error{
+func (c *_ConfigPool) allocate() {
+	return c._allocate(c._root)
+}
+
+func(c *_ConfigPool) deallocate( settings *Config) {
+	c._deallocate(settings)
+}
+
+type  _unknown_internal_error struct {
+	*PortageException
+}
+	// ""
+func New_unknown_internal_error(value string) *_unknown_internal_error {
 	u := &_unknown_internal_error{}
-	portage.exception.PortageException.__init__(self, value)
+	u.PortageException = &PortageException{value: value}
 	return u
 }
 
 // nil, nil, nil
 func NewScheduler(settings *Config, trees, mtimedb, myopts,
-spinner, mergelist, favorites, graph_config)*Scheduler {
+spinner, mergelist, favorites, graph_config) *Scheduler {
 	s := &Scheduler{}
 
 	s._loadavg_latency = 30
@@ -2672,7 +2703,7 @@ spinner, mergelist, favorites, graph_config)*Scheduler {
 	s._opts_no_self_update = map[string]bool{"--buildpkgonly": true,
 	"--fetchonly": true, "--fetch-all-uri": true, "--pretend": true}
 
-	s.PollScheduler = NewPollScheduler(main, )
+	s.PollScheduler = NewPollScheduler(true, nil)
 
 	if mergelist != nil {
 		warnings.warn("The mergelist parameter of the " + 
@@ -2693,14 +2724,15 @@ spinner, mergelist, favorites, graph_config)*Scheduler {
 
 	for k
 	in
-	s._build_opts.__slots__:
-	setattr(s._build_opts, k, myopts.get("--"+k.replace("_", "-")))
+	s._build_opts.__slots__ {
+		setattr(s._build_opts, k, myopts.get("--"+k.replace("_", "-")))
+	}
 	s._build_opts.buildpkg_exclude = InternalPackageSet( 
 	initial_atoms = " ".join(myopts.get("--buildpkg-exclude", [])).split(), 
 	allow_wildcard = true, allow_repo=true)
-	if "mirror" in
-	s.settings.features:
-	s._build_opts.fetch_all_uri = true
+	if s.settings.Features.Features["mirror"] {
+		s._build_opts.fetch_all_uri = true
+	}
 
 	s._binpkg_opts = s._binpkg_opts_class()
 	for k
@@ -2711,8 +2743,8 @@ spinner, mergelist, favorites, graph_config)*Scheduler {
 	myopts)
 
 	s.curval = 0
-	s._logger = s._emerge_log_class()
-	s._task_queues = s._task_queues_class()
+	s._logger = &_emerge_log_class{}
+	s._task_queues = &_task_queues_class{}
 	for k
 	in
 	s._task_queues.allowed_keys:
@@ -2777,12 +2809,15 @@ None:
 	s._post_mod_echo_msgs = []
 	s._parallel_fetch = false
 	s._init_graph(graph_config)
-	merge_count = len([x
+	merge_count := 0
 	for x
-	in
-	s._mergelist 
-	if isinstance(x, Package) &&
-	x.operation == "merge"])
+		in
+	s._mergelist{
+		if isinstance(x, Package) &&
+			x.operation == "merge"{
+	merge_count++
+			}
+	}
 s._pkg_count = s._pkg_count_class(
 curval = 0, maxval = merge_count)
 s._status_display.maxval = s._pkg_count.maxval
@@ -2796,22 +2831,23 @@ s._sigcont_time = None
 
 s._choose_pkg_return_early = false
 
-features = s.settings.features
-if "parallel-fetch" in features && 
+features := s.settings.Features.Features
+if  features["parallel-fetch"] &&
 not ("--pretend" in s.myopts || 
 "--fetch-all-uri" in s.myopts || 
 "--fetchonly" in s.myopts):
-if "distlocks" not in features:
-WriteMsg(red("!!!")+"\n", noiselevel = -1)
-WriteMsg(red("!!!")+" parallel-fetching " + 
-"requires the distlocks feature enabled"+"\n",
-noiselevel = -1)
-WriteMsg(red("!!!")+" you have it disabled, " + 
-"thus parallel-fetching is being disabled"+"\n",
-noiselevel = -1)
-WriteMsg(red("!!!")+"\n", noiselevel = -1)
-else if merge_count > 1:
-s._parallel_fetch = true
+if  ! features["distlocks"] {
+	WriteMsg(Red("!!!")+"\n", -1, nil)
+	WriteMsg(Red("!!!")+" parallel-fetching "+
+		"requires the distlocks feature enabled"+"\n",
+		-1, nil)
+	WriteMsg(Red("!!!")+" you have it disabled, "+
+		"thus parallel-fetching is being disabled"+"\n",
+		-1, nil)
+	WriteMsg(Red("!!!")+"\n", -1, nil)
+}else if merge_count > 1 {
+	s._parallel_fetch = true
+}
 
 if s._parallel_fetch:
 try:
@@ -3245,66 +3281,66 @@ None:
 	return os.EX_OK
 }
 
-func (s *Scheduler) _check_manifests() {
-	if "strict" not
-	in
-	s.settings.features
-	|| 
+func (s *Scheduler) _check_manifests() int {
+	if  !s.settings.Features["strict"] ||
 	"--fetchonly"
 	in
-	s.myopts
-	|| 
+	s.myopts ||
 	"--fetch-all-uri"
 	in
-	s.myopts:
-	return os.EX_OK
-
-	shown_verifying_msg = false
-	quiet_settings =
-	{
+	s.myopts{
+		return 0
 	}
+
+	shown_verifying_msg := false
+	quiet_settings :=map[string]string{}
 	for myroot, pkgsettings
 	in
-	s.pkgsettings.items():
-	quiet_config = portage.config(clone = pkgsettings)
-	quiet_config["PORTAGE_QUIET"] = "1"
-	quiet_config.backup_changes("PORTAGE_QUIET")
-	quiet_settings.ValueDict[myroot] = quiet_config
-	del
-	quiet_config
+	s.pkgsettings.items(){
+		quiet_config := NewConfig(pkgsettings,nil, "", nil, "","","","",true, nil, false, nil)
+		quiet_config.ValueDict["PORTAGE_QUIET"] = "1"
+		quiet_config.BackupChanges("PORTAGE_QUIET")
+		quiet_settings.ValueDict[myroot] = quiet_config
+		quiet_config = map[string]string{}
+	}
 
-	failures = 0
+	failures := 0
 
 	for x
 	in
-	s._mergelist:
-	if not isinstance(x, Package)
-	|| 
-	x.type_name != "ebuild":
-	continue
+	s._mergelist {
+		if not isinstance(x, Package) ||
+			x.type_name != "ebuild" {
+			continue
+		}
 
-	if x.operation == "uninstall":
-	continue
+		if x.operation == "uninstall" {
+			continue
+		}
 
-	if not shown_verifying_msg:
-	shown_verifying_msg = true
-	s._status_msg("Verifying ebuild manifests")
+		if ! shown_verifying_msg {
+			shown_verifying_msg = true
+			s._status_msg("Verifying ebuild manifests")
+		}
 
-	root_config = x.root_config
-	portdb = root_config.trees["porttree"].dbapi
-	quiet_config = quiet_settings.ValueDict[root_config.root]
-	ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
-	if ebuild_path is
-None:
-	raise
-	AssertionError("ebuild not found for '%s'" % x.cpv)
-	quiet_config["O"] =  filepath.Dir(ebuild_path)
-	if not digestcheck([], quiet_config, strict = true):
-	failures |= 1
+		root_config = x.root_config
+		portdb = root_config.trees["porttree"].dbapi
+		quiet_config = quiet_settings.ValueDict[root_config.root]
+		ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
+		if ebuild_path is
+	None:
+		raise
+		AssertionError("ebuild not found for '%s'" % x.cpv)
+		quiet_config["O"] =  filepath.Dir(ebuild_path)
+		if not digestcheck([], quiet_config, strict = true):
+		failures |= 1
+	}
 
-	if failures:
-	return FAILURE
-	return os.EX_OK
+
+	if failures!= 0 {
+		return FAILURE
+	}
+	return 0
 }
 
 func (s *Scheduler) _add_prefetchers() {
@@ -4640,8 +4676,10 @@ func (s *Scheduler) _world_atom( pkg) {
 	if set(("--buildpkgonly", "--fetchonly",
 		"--fetch-all-uri",
 		"--oneshot", "--onlydeps",
-		"--pretend")).intersection(s.myopts):
-	return
+		"--pretend")).intersection(s.myopts)
+	{
+		return
+	}
 
 	if pkg.root != s.target_root:
 	return
@@ -4788,12 +4826,12 @@ func NewSchedulerInterface(event_loop, is_background func()bool, **kwargs)*Sched
 	return s
 }
 
-func (s * SchedulerInterface) _return_false() bool{
+func (s *SchedulerInterface) _return_false() bool{
 	return false
 }
 
 // "", nil, 0, -1
-func (s * SchedulerInterface) output( msg , log_path string, background interface{}, level, noiselevel int) {
+func (s *SchedulerInterface) output( msg , log_path string, background interface{}, level, noiselevel int) {
 
 	global_background := s._is_background()
 	if background == nil || global_background {

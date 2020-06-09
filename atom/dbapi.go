@@ -2494,15 +2494,16 @@ type dblink struct {
 	_contents_basenames map[string]bool
 	_contents_inodes    map[[2]uint64][]string
 	_installed_instance *dblink
+	_scheduler          *SchedulerInterface
+	_device_path_map    map[uint64]bool
 }
 
 func (d *dblink) __hash__() {
 	return hash(d._hash_key)
 }
 
-func (d *dblink) __eq__() {
-	return isinstance(other, dblink) && 
-d._hash_key == other._hash_key
+func (d *dblink) __eq__(other *dblink) {
+	return d._hash_key == other._hash_key
 }
 
 func (d *dblink) _get_protect_obj() *ConfigProtect {
@@ -4100,28 +4101,27 @@ func (d *dblink) _remove_preserved_libs(cpv_lib_map) {
 
 func (d *dblink) _collision_protect(srcroot, destroot, mypkglist,
 	file_list, symlink_list) {
-	real_relative_paths := {}
+	real_relative_paths := map[string][]string{}
 
 	collision_ignore := []string{}
 	ss, _ := shlex.Split(strings.NewReader(d.settings.ValueDict["COLLISION_IGNORE"]), false, true)
-	for _, x := range ss{
-		if pathIsDir(filepath.Join(d._eroot, strings.TrimLeft(x,string(os.PathSeparator)))) {
+	for _, x := range ss {
+		if pathIsDir(filepath.Join(d._eroot, strings.TrimLeft(x, string(os.PathSeparator)))) {
 			x = NormalizePath(x)
 			x += "/*"
 		}
-		collision_ignore=append(collision_ignore,x)
+		collision_ignore = append(collision_ignore, x)
 	}
 
+	plib_cpv_map := map[string]{}
+	plib_paths := map[string]bool{}
+	plib_inodes := map[[2]uint64]map[string]bool{}
 	if d.vartree.dbapi._plib_registry == nil {
-		plib_cpv_map = nil
-		plib_paths = nil
-		plib_inodes ={}
-	}else {
+	} else {
 		plib_dict = d.vartree.dbapi._plib_registry.getPreservedLibs()
-		plib_cpv_map = {}
-		plib_paths = map[string]bool{}
+		plib_cpv_map = map[string]{}
 		for cpv, paths
-		in
+			in
 		plib_dict.items() {
 			plib_paths.update(paths)
 			for f
@@ -4133,135 +4133,175 @@ func (d *dblink) _collision_protect(srcroot, destroot, mypkglist,
 		plib_inodes = d._lstat_inode_map(plib_paths)
 	}
 
-	plib_collisions := {}
+	plib_collisions := map[[2]uint64]{}
 
 	showMessage := d._display_merge
 	stopmerge := false
-	collisions := []
+	collisions := []string{}
 	dirs := map[string]bool{}
 	dirs_ro := map[string]bool{}
-	symlink_collisions := []
+	symlink_collisions := []string{}
 	destroot := d.settings.ValueDict["ROOT"]
 	totfiles := len(file_list) + len(symlink_list)
 	previous := monotonic()
 	progress_shown := false
 	report_interval := 1.7
 	falign := len(fmt.Sprintf("%d", totfiles))
-	showMessage(fmt.Sprinf(" %s checking %d files for package collisions\n", (colorize("GOOD", "*"), totfiles))
-	for i, (f, f_type) in enumerate(chain(
-		((f, "reg") for f in file_list),
-	((f, "sym") for f in symlink_list))){
-	current = monotonic()
-	if current - previous > report_interval:
-	showMessage(_("%3d%% done,  %*d files remaining ...\n") %
-	(i * 100 / totfiles, falign, totfiles - i))
-	previous = current
-	progress_shown = true
+	showMessage(fmt.Sprintf(" %s checking %d files for package collisions\n", colorize("GOOD", "*"), totfiles), 0, 0)
+	ec := [][2]string{}
+	for _, f := range file_list {
+		ec = append(ec, [2]string{f, "reg"})
 	}
+	for _, f := range symlink_list {
+		ec = append(ec, [2]string{f, "sym"})
+	}
+	for i, v := range ec {
+		f, f_type := v[0], v[1]
+		current := monotonic()
+		if current-previous > report_interval {
+			showMessage(fmt.Sprintf("%3d%% done,  %*d files remaining ...\n",
+				i*100/totfiles, falign, totfiles-i), 0, 0)
+			previous = current
+			progress_shown = true
+		}
 
-	dest_path := NormalizePath(filepath.Join(destroot, strings.TrimLeft(f, string(os.PathSeparator))))
+		dest_path := NormalizePath(filepath.Join(destroot, strings.TrimLeft(f, string(os.PathSeparator))))
+		es, _ := filepath.EvalSymlinks(filepath.Dir(dest_path))
+		real_relative_path := filepath.Join(es,
+			filepath.Base(dest_path))[len(destroot):]
 
-	real_relative_path := filepath.Join(filepath.EvalSymlinks(filepath.Dir(dest_path)),
-		filepath.Base(dest_path))[len(destroot):]
+		if _, ok := real_relative_paths[real_relative_path]; !ok {
+			real_relative_paths[real_relative_path] = []string{}
+		}
+		real_relative_paths[real_relative_path] = append(real_relative_paths[real_relative_path], strings.TrimLeft(string(os.PathSeparator)))
 
-	real_relative_paths.setdefault(real_relative_path, [])=append(,f.lstrip(string(os.PathSeparator)))
+		parent := filepath.Dir(dest_path)
+		if !dirs[parent] {
+			for _, x := range iterParents(parent) {
+				if dirs[x] {
+					break
+				}
+				dirs[x] = true
+				if pathIsDir(x) {
+					if st, _ := os.Stat(x); st != nil && st.Mode()&0222 == 0 {
+						dirs_ro[x] = true
+					}
+					break
+				}
+			}
+		}
 
-	parent := filepath.Dir(dest_path)
-	if parent not in dirs:
-	for x in iter_parents(parent):
-	if x in dirs:
-	break
-	dirs.add(x)
-	if pathIsDir(x):
-	if not os.access(x, os.W_OK):
-	dirs_ro.add(x)
-	break
-
-try:
-	dest_lstat = os.Lstat(dest_path)
-	except EnvironmentError as e:
-	if err == syscall.ENOENT:
-	del e
-	continue
-	else if err == syscall.ENOTDIR:
-	del e
-				dest_lstat = nil
-	parent_path = dest_path
-	while len(parent_path) > len(destroot):
-	parent_path = filepath.Dir(parent_path)
-try:
-	dest_lstat = os.Lstat(parent_path)
-	break
-	except EnvironmentError as e:
-	if err != syscall.ENOTDIR:
-	raise
-	del e
-	if not dest_lstat:
-	raise AssertionError(
-		"unable to find non-directory " + 
-"parent for '%s'" % dest_path)
-	dest_path = parent_path
-	f = string(os.PathSeparator) + dest_path[len(destroot):]
-	if f in collisions:
-	continue
-	else:
-	raise
-	if f[0] != "/":
-	f="/"+f
-
-	if stat.S_ISDIR(dest_lstat.st_mode):
-	if f_type == "sym":
-			symlink_collisions=append(,f)
-	collisions=append(,f)
-	continue
-
-	plibs = plib_inodes.get((dest_lstat.st_dev, dest_lstat.st_ino))
-	if plibs:
-	for path in plibs:
-	cpv = plib_cpv_map[path]
-	paths = plib_collisions.get(cpv)
-	if paths == nil:
-	paths = map[string]bool{}
-	plib_collisions[cpv] = paths
-	paths.add(path)
+		dest_lstat, err := os.Lstat(dest_path)
+		if err != nil {
+			//except EnvironmentError as e:
+			if err == syscall.ENOENT {
+				//del e
 				continue
+			} else if err == syscall.ENOTDIR {
+				//del e
+				dest_lstat = nil
+				parent_path := dest_path
+				for len(parent_path) > len(destroot) {
+					parent_path = filepath.Dir(parent_path)
+					dest_lstat, err = os.Lstat(parent_path)
+					if err != nil {
+						//except EnvironmentError as e:
+						if err != syscall.ENOTDIR {
+							//raise
+						}
+						//del e
+					}
+					break
+				}
+				if dest_lstat == nil {
+					//raise AssertionError(
+					//	"unable to find non-directory " +
+					//"parent for '%s'" % dest_path)
+				}
+				dest_path := parent_path
+				f = string(os.PathSeparator) + dest_path[len(destroot):]
+				if Ins(collisions, f) {
+					continue
+				}
+			} else {
+				//raise
+			}
+		}
+		if !strings.HasPrefix(f, "/") {
+			f = "/" + f
+		}
 
-	isowned = false
-	full_path = filepath.Join(destroot, f.lstrip(string(os.PathSeparator)))
-	for ver in mypkglist:
-	if ver.isowner(f):
-	isowned = true
-	break
-	if not isowned && d.isprotected(full_path):
-	isowned = true
-	if not isowned:
-	f_match = full_path[len(d._eroot)-1:]
-	stopmerge = true
-	for pattern in collision_ignore:
-	if fnmatch.fnmatch(f_match, pattern):
-	stopmerge = false
-	break
-	if stopmerge:
-	collisions=append(,f)
+		if dest_lstat.IsDir() {
+			if f_type == "sym" {
+				symlink_collisions = append(symlink_collisions, f)
+				collisions = append(collisions, f)
+				continue
+			}
+		}
 
-	internal_collisions = {}
-	for real_relative_path, files in real_relative_paths.items():
-		if len(files) >= 2:
-	files.sort()
-	for i := 0;i <len(files) - 1; i ++{
-	file1 := NormalizePath(filepath.Join(srcroot, files[i]))
-	file2 := NormalizePath(filepath.Join(srcroot, files[i+1]))
-		differences = compare_files(file1, file2, skipped_types=("atime", "mtime", "ctime"))
-	if differences {
-		internal_collisions.setdefault(real_relative_path,
-		{
-		})[(files[i], files[i+1])] = differences
-}
+		plibs := plib_inodes[[2]uint64{dest_lstat.Sys().(*syscall.Stat_t).Dev, dest_lstat.Sys().(*syscall.Stat_t).Ino}]
+		if len(plibs) > 0 {
+			for path := range plibs {
+				cpv := plib_cpv_map[path]
+				paths := plib_collisions[cpv]
+				if paths == nil {
+					paths = map[string]bool{}
+					plib_collisions[cpv] = paths
+				}
+				paths[path] = true
+			}
+			continue
+		}
+
+		isowned := false
+		full_path := filepath.Join(destroot, strings.TrimLeft(f, string(os.PathSeparator)))
+		for ver
+			in
+		mypkglist {
+			if ver.isowner(f) {
+				isowned = true
+				break
+			}
+		}
+		if !isowned && d.isprotected(full_path) {
+			isowned = true
+		}
+		if !isowned {
+			f_match := full_path[len(d._eroot)-1:]
+			stopmerge = true
+			for _, pattern := range collision_ignore {
+				if fnmatch.fnmatch(f_match, pattern) {
+					stopmerge = false
+					break
+				}
+			}
+			if stopmerge {
+				collisions = append(collisions, f)
+			}
+		}
 	}
 
-	if progress_shown{
+	internal_collisions := map[]{}
+	for real_relative_path, files := range real_relative_paths {
+		if len(files) >= 2 {
+			sort.Strings(files)
+			for i := 0; i < len(files)-1; i++ {
+				file1 := NormalizePath(filepath.Join(srcroot, files[i]))
+				file2 := NormalizePath(filepath.Join(srcroot, files[i+1]))
+				differences := compare_files(file1, file2, skipped_types = ("atime", "mtime", "ctime"))
+				if differences {
+					if _, ok := internal_collisions[real_relative_path]; !ok {
+						internal_collisions[real_relative_path] = map[[2]string]{}
+					}
+					internal_collisions[real_relative_path][[2]string{files[i], files[i+1]}] = differences
+				}
+			}
+		}
+	}
+
+	if progress_shown {
 		showMessage("100% done\n", 0, 0)
-}
+	}
 	return collisions, internal_collisions, dirs_ro, symlink_collisions, plib_collisions
 }
 
@@ -4297,7 +4337,9 @@ func (d *dblink) _security_check(installed_instances []*dblink) int {
 	showMessage := d._display_merge
 	file_paths := map[string]bool{}
 	for _, dblnk := range installed_instances{
-		file_paths.update(dblnk.getcontents())
+		for k := range dblnk.getcontents() {
+			file_paths[k]=true
+		}
 	}
 	inode_map := {}
 	real_paths := map[string]bool{}
@@ -4307,7 +4349,7 @@ func (d *dblink) _security_check(installed_instances []*dblink) int {
 		s, err := os.Lstat(path)
 		if err != nil {
 			//except OSError as e:
-			if err != syscall.ENOENT&& err != syscall.ENOTDIR){
+			if err != syscall.ENOENT&& err != syscall.ENOTDIR{
 				//raise
 			}
 			//del e
@@ -4436,9 +4478,9 @@ func (d *dblink) _elog_process(phasefilter) {
 
 func (d *dblink) _emerge_log(msg) {emergelog(false, msg)}
 
-// 0, nil, nil, nil
+// 0, nil, nil, 0
 func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
-	mydbapi DBAPI, prev_mtimes=nil, counter=nil) {
+	mydbapi DBAPI, prev_mtimes=nil, counter int) {
 
 	destroot := d.settings.ValueDict["ROOT"]
 
@@ -4555,9 +4597,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
 		d._installed_instance = max_dblnk
 	}
 
-	phase = MiscFunctionsProcess(background=false,
-	commands=["preinst_mask"], phase="preinst",
-	scheduler=d._scheduler, settings=d.settings)
+	phase := NewMiscFunctionsProcess(false, []string{"preinst_mask"}, "preinst", "", nil, d._scheduler, d.settings)
 	phase.start()
 	phase.wait()
 	try:
@@ -5590,22 +5630,24 @@ dest_link != src_link:
 
 }
 
-func (d *dblink) _merged_path(path, lstatobj, exists=true) {
-	previous_path = d._device_path_map.get(lstatobj.st_dev)
+// true
+func (d *dblink) _merged_path(path string, lstatobj os.FileInfo, exists bool) {
+	previous_path := d._device_path_map[lstatobj.Sys().(*syscall.Stat_t).Dev]
 	if previous_path == nil || previous_path is false || 
-(exists && len(path) < len(previous_path)):
-	if exists:
-	d._device_path_map[lstatobj.st_dev] = path
-	else:
-					d._device_path_map[lstatobj.st_dev] = false
-
+(exists && len(path) < len(previous_path))
+	{
+		if exists {
+			d._device_path_map[lstatobj.Sys().(*syscall.Stat_t).Dev] = path
+		}else {
+			d._device_path_map[lstatobj.Sys().(*syscall.Stat_t).Dev] = false
+		}
+	}
 }
 
 func (d *dblink) _post_merge_sync() {
-
-	if not d._device_path_map || 
-"merge-sync" not in d.settings.features:
-	return
+	if len(d._device_path_map) == 0 || ! d.settings.Features.Features["merge-sync"] {
+		return
+	}
 
 	returncode = nil
 	if platform.system() == "Linux":
@@ -5630,28 +5672,30 @@ try:
 	proc.wait()
 }
 
-func (d *dblink) merge(mergeroot, inforoot, myroot=nil, myebuild=nil, cleanup=0,
-	mydbapi=nil, prev_mtimes=nil, counter=nil) {
+// nil, nil, 0,nil, nil, nil
+func (d *dblink) merge(mergeroot, inforoot , myroot, myebuild string, cleanup int,
+	mydbapi *vardbapi, prev_mtimes *MergeProcess, counter int) {
 
 	myroot = nil
-	retval = -1
-	parallel_install = "parallel-install" in d.settings.features
-	if not parallel_install:
-	d.lockdb()
-	d.vartree.dbapi._bump_mtime(d.mycpv)
-	if d._scheduler == nil:
-	d._scheduler = SchedulerInterface(asyncio._safe_loop())
+	retval := -1
+	parallel_install := d.settings.Features.Features["parallel-install"]
+	if ! parallel_install{
+		d.lockdb()
+	}
+	d.vartree.dbapi._bump_mtime(d.mycpv.string)
+	if d._scheduler == nil {
+		d._scheduler = NewSchedulerInterface(asyncio._safe_loop(), nil)
+	}
 try:
-	retval = d.treewalk(mergeroot, myroot, inforoot, myebuild,
-		cleanup=cleanup, mydbapi=mydbapi, prev_mtimes=prev_mtimes,
-		counter=counter)
+	retval = d.treewalk(mergeroot, inforoot, myebuild,
+		cleanup, mydbapi, prev_mtimes, counter)
 
-				if pathIsDir(d.settings.ValueDict['PORTAGE_BUILDDIR']):
+	if pathIsDir(d.settings.ValueDict["PORTAGE_BUILDDIR"]):
 
 	if retval == os.EX_OK:
-	phase = 'success_hooks'
+	phase = "success_hooks"
 	else:
-	phase = 'die_hooks'
+	phase = "die_hooks"
 
 	ebuild_phase = MiscFunctionsProcess(
 		background=false, commands=[phase],
@@ -6470,36 +6514,38 @@ func (b *bindbapi) aux_get(mycpv *PkgStr, wants map[string]string) []string {
 
 func (b *bindbapi) aux_update(cpv, values) {
 
-	if not self.bintree.populated:
-	self.bintree.populate()
+	if ! b.bintree.populated {
+		b.bintree.Populate(false, true, []string{})
+	}
 	build_id = nil
 try:
 	build_id = cpv.build_id
 	except AttributeError:
-	if self.bintree._multi_instance:
-		raise
-	else:
-	cpv = self._instance_key(cpv, support_string=true)[0]
-	build_id = cpv.build_id
+	if b.bintree._multi_instance {
+		//raise
+	}else {
+		cpv = b._instance_key(cpv, true)[0]
+		build_id = cpv.build_id
+	}
 
-	tbz2path = self.bintree.getname(cpv)
-	if not pathExists(tbz2path):
-	raise KeyError(cpv)
-	mytbz2 = portage.xpak.tbz2(tbz2path)
-	mydata = mytbz2.get_data()
+	tbz2path := b.bintree.getname(cpv, false)
+	if ! pathExists(tbz2path) {
+		//raise KeyError(cpv)
+	}
+	mytbz2 := NewTbz2(tbz2path)
+	mydata := mytbz2.get_data()
 
-	for k, v in values.items():
-	k = _unicode_encode(k,
-		encoding=_encodings['repo.content'], errors='backslashreplace')
-	v = _unicode_encode(v,
-		encoding=_encodings['repo.content'], errors='backslashreplace')
-	mydata[k] = v
+	for k, v in values.items(){
+		mydata[k] = v
+	}
 
-	for k, v in list(mydata.items()):
-	if not v:
-	del mydata[k]
-	mytbz2.recompose_mem(portage.xpak.xpak_mem(mydata))
-		self.bintree.inject(cpv, filename=tbz2path)
+	for k, v := range mydata{
+		if  v== "" {
+			delete(mydata, k)
+		}
+	}
+	mytbz2.recompose_mem(string(xpak_mem(mydata)), true)
+	b.bintree.inject(cpv, filename=tbz2path)
 }
 
 func (b *bindbapi) unpack_metadata(pkg, dest_dir){
@@ -6509,12 +6555,12 @@ func (b *bindbapi) unpack_metadata(pkg, dest_dir){
 	cpv = pkg
 	else:
 	cpv = pkg.mycpv
-	key = self._instance_key(cpv)
-	add_pkg = self.bintree._additional_pkgs.get(key)
+	key = b._instance_key(cpv)
+	add_pkg = b.bintree._additional_pkgs.get(key)
 	if add_pkg != nil:
 	yield add_pkg._db.unpack_metadata(pkg, dest_dir)
 	else:
-	tbz2_file = self.bintree.getname(cpv)
+	tbz2_file = b.bintree.getname(cpv)
 	yield loop.run_in_executor(ForkExecutor(loop=loop),
 	portage.xpak.tbz2(tbz2_file).unpackinfo, dest_dir)
 
@@ -6524,13 +6570,13 @@ func (b *bindbapi) cp_list(pkg, dest_dir){
 
 	loop = asyncio._wrap_loop()
 	if isinstance(pkg, _pkg_str):
-	settings = self.settings
+	settings = b.settings
 	cpv = pkg
 	else:
 	settings = pkg
 	cpv = settings.mycpv
 
-	pkg_path = self.bintree.getname(cpv)
+	pkg_path = b.bintree.getname(cpv)
 	if pkg_path != nil:
 
 	extractor = BinpkgExtractorAsync(
@@ -6548,8 +6594,8 @@ func (b *bindbapi) cp_list(pkg, dest_dir){
 	raise PortageException("Error Extracting '{}'".format(pkg_path))
 
 	else:
-	instance_key = self._instance_key(cpv)
-	add_pkg = self.bintree._additional_pkgs.get(instance_key)
+	instance_key = b._instance_key(cpv)
+	add_pkg = b.bintree._additional_pkgs.get(instance_key)
 	if add_pkg == nil:
 	raise portage.exception.PackageNotFound(cpv)
 	yield add_pkg._db.unpack_contents(pkg, dest_dir)
@@ -6566,30 +6612,30 @@ func (b *bindbapi) cp_list(mycp string, use_cache int) []*PkgStr {
 
 func (b *bindbapi) cp_all(sort=false) {
 
-	if not self.bintree.populated:
-	self.bintree.populate()
-	return fakedbapi.cp_all(self, sort=sort)
+	if not b.bintree.populated:
+	b.bintree.populate()
+	return fakedbapi.cp_all(b, sort=sort)
 }
 
 func (b *bindbapi) cpv_all() {
 
-	if not self.bintree.populated:
-	self.bintree.populate()
-	return fakedbapi.cpv_all(self)
+	if not b.bintree.populated:
+	b.bintree.populate()
+	return fakedbapi.cpv_all(b)
 }
 
 func (b *bindbapi) getfetchsizes(pkg) {
 
-	if not self.bintree.populated:
-	self.bintree.populate()
+	if not b.bintree.populated:
+	b.bintree.populate()
 
 	pkg = getattr(pkg, "cpv", pkg)
 
 	filesdict = {}
-	if not self.bintree.isremote(pkg):
+	if not b.bintree.isremote(pkg):
 	pass
 	else:
-	metadata = self.bintree._remotepkgs[self._instance_key(pkg)]
+	metadata = b.bintree._remotepkgs[b._instance_key(pkg)]
 try:
 	size = int(metadata["SIZE"])
 	except KeyError:
@@ -6598,7 +6644,7 @@ try:
 	raise portage.exception.InvalidSignature(
 		"SIZE: %s" % metadata["SIZE"])
 	else:
-	filesdict[filepath.Base(self.bintree.getname(pkg))] = size
+	filesdict[filepath.Base(b.bintree.getname(pkg))] = size
 
 	return filesdict
 
@@ -6623,7 +6669,7 @@ type BinaryTree struct {
 	populated, _populating, _multi_instance, _remote_has_index, _all_directory                                   bool
 	_pkgindex_version                                                                                            int
 	_pkgindex_hashes, _pkgindex_keys, _pkgindex_aux_keys, _pkgindex_use_evaluated_keys, _pkgindex_inherited_keys []string
-	_remotepkgs                                                                                                  interface{}
+	_remotepkgs map[string]
 	dbapi                                                                                                        *bindbapi
 	update_ents                                                                                                  func(updates map[string][][]*Atom, onProgress, onUpdate func(int, int))
 	move_slot_ent                                                                                                func(mylist []*Atom, repo_match func(string) bool) int
@@ -7099,69 +7145,60 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex {
 
 }
 
-func (b *BinaryTree) _populate_remote(getbinpkg_refresh=true) {
+// true
+func (b *BinaryTree) _populate_remote(getbinpkg_refresh) {
 
-	self._remote_has_index = false
-	self._remotepkgs = {}
-	for base_url in self.settings.ValueDict["PORTAGE_BINHOST"].split():
-	parsed_url = urlparse(base_url)
-	host = parsed_url.netloc
-	port = parsed_url.port
-	user = nil
-	passwd = nil
-	user_passwd = ""
-	if "@" in host:
-	user, host = host.split("@", 1)
-	user_passwd = user + "@"
-	if ":" in user:
-	user, passwd = user.split(":", 1)
+	b._remote_has_index = false
+	b._remotepkgs = map[]{}
+	for _, base_url := range strings.Fields(b.settings.ValueDict["PORTAGE_BINHOST"]){
+	parsed_url, _ := url.Parse(base_url)
+	host := parsed_url.Hostname()
+	port := parsed_url.Port()
+	user_passwd := parsed_url.User.String()
+	user := parsed_url.User.Username()
+	passwd, _ :=  parsed_url.User.Password()
 
-	if port != nil:
-	port_str = ":%s" % (port,)
-	if host.endswith(port_str):
-	host = host[:-len(port_str)]
-	pkgindex_file = filepath.Join(self.settings.ValueDict["EROOT"], CACHE_PATH, "binhost",
-		host, parsed_url.path.lstrip("/"), "Packages")
-	pkgindex = self._new_pkgindex()
-try:
-	f = io.open(_unicode_encode(pkgindex_file,
-		encoding=_encodings['fs'], errors='strict'),
-	mode='r', encoding=_encodings['repo.content'],
-		errors='replace')
-try:
-	pkgindex.read(f)
-finally:
-	f.close()
-	except EnvironmentError as e:
-	if err != syscall.ENOENT:
-	raise
-	local_timestamp = pkgindex.header.get("TIMESTAMP", nil)
-try:
-	download_timestamp = 
-float(pkgindex.header.get("DOWNLOAD_TIMESTAMP", 0))
-	except ValueError:
-	download_timestamp = 0
+	pkgindex_file := filepath.Join(b.settings.ValueDict["EROOT"], CachePath, "binhost",
+		host, strings.TrimLeft(parsed_url.Path,"/"), "Packages")
+	pkgindex := b._new_pkgindex()
+
+	f, err := os.Open(pkgindex_file)
+	if err != nil {
+		//except EnvironmentError as e:
+		if err != syscall.ENOENT {
+			//raise
+		}
+	}else {
+		//try:
+		pkgindex.read(f)
+		//finally:
+		f.Close()
+	}
+	local_timestamp := pkgindex.header["TIMESTAMP"]
+	download_timestamp, err := strconv.ParseFloat(pkgindex.header["DOWNLOAD_TIMESTAMP"],64)
 	remote_timestamp = nil
-	rmt_idx = self._new_pkgindex()
+	rmt_idx := b._new_pkgindex()
 	proc = nil
 	tmp_filename = nil
 try:
-				url = base_url.rstrip("/") + "/Packages"
+	url := strings.TrimRight(base_url,"/") + "/Packages"
 	f = nil
 
-	if not getbinpkg_refresh && local_timestamp:
-	raise UseCachedCopyOfRemoteIndex()
+	if not getbinpkg_refresh && local_timestamp {
+		raise
+		UseCachedCopyOfRemoteIndex()
+	}
 
-try:
-	ttl = float(pkgindex.header.get("TTL", 0))
-	except ValueError:
-	pass
-	else:
-	if download_timestamp && ttl &&
-download_timestamp + ttl > time.time():
-	raise UseCachedCopyOfRemoteIndex()
+	ttl, err := strconv.ParseFloat(pkgindex.header["TTL"], 64)
+	if err == nil {
+		if download_timestamp!= 0 && ttl!=0 &&
+			download_timestamp+ttl > time.Now().Nanosecond() {
+			raise
+			UseCachedCopyOfRemoteIndex()
+		}
+	}
 
-			if parsed_url.scheme not in ("https",) || _have_pep_476():
+	if parsed_url.Scheme != "https" || _have_pep_476():
 try:
 	f = _urlopen(url, if_modified_since=local_timestamp)
 	if hasattr(f, "headers") && f.headers.get("timestamp", ""):
@@ -7170,7 +7207,7 @@ try:
 	if hasattr(err, "code") && err.code == 304: 	raise UseCachedCopyOfRemoteIndex()
 
 	if parsed_url.scheme in ("ftp", "http", "https"):
-				if self.settings.ValueDict["PORTAGE_DEBUG", "0") != "0":
+				if b.settings.ValueDict["PORTAGE_DEBUG", "0") != "0":
 	traceback.print_exc()
 
 	raise
@@ -7185,22 +7222,22 @@ try:
 	if parsed_url.scheme == "ssh":
 					ssh_args = ["ssh"]
 	if port != nil:
-	ssh_args=append(,"-p%s" % (port,))
+	ssh_args=append(ssh_args,"-p%s" % (port,))
 		ssh_args=append(,portage.util.shlex_split(
-		self.settings.ValueDict["PORTAGE_SSH_OPTS", "")))
-	ssh_args=append(,user_passwd + host)
-	ssh_args=append(,"--")
-	ssh_args=append(,"cat")
-	ssh_args=append(,path)
+		b.settings.ValueDict["PORTAGE_SSH_OPTS", "")))
+	ssh_args=append(ssh_args,user_passwd + host)
+	ssh_args=append(ssh_args,"--")
+	ssh_args=append(ssh_args,"cat")
+	ssh_args=append(ssh_args,path)
 
 	proc = subprocess.Popen(ssh_args,
 		stdout=subprocess.PIPE)
 	f = proc.stdout
 	else:
 	setting = "FETCHCOMMAND_" + parsed_url.scheme.upper()
-	fcmd = self.settings.ValueDict[setting)
+	fcmd = b.settings.ValueDict[setting)
 	if not fcmd:
-	fcmd = self.settings.ValueDict["FETCHCOMMAND")
+	fcmd = b.settings.ValueDict["FETCHCOMMAND")
 	if not fcmd:
 	raise EnvironmentError("FETCHCOMMAND is unset")
 
@@ -7215,7 +7252,7 @@ try:
 	}
 
 	for k in ("PORTAGE_SSH_OPTS",):
-	v = self.settings.ValueDict[k)
+	v = b.settings.ValueDict[k)
 	if v != nil:
 	fcmd_vars[k] = v
 
@@ -7235,7 +7272,7 @@ try:
 	WriteMsg(_("\n\n!!! Binhost package index " 
 " has no TIMESTAMP field.\n"), noiselevel=-1)
 	else:
-	if not self._pkgindex_version_supported(rmt_idx):
+	if not b._pkgindex_version_supported(rmt_idx):
 	WriteMsg(_("\n\n!!! Binhost package index version" 
 " is not supported: '%s'\n") % 
 rmt_idx.header.get("VERSION"), noiselevel=-1)
@@ -7295,20 +7332,20 @@ _("Timed out while closing connection to binhost"),
 	remote_base_uri = pkgindex.header.get("URI", base_url)
 	for d in pkgindex.packages:
 	cpv = _pkg_str(d["CPV"], metadata=d,
-	settings=self.settings, db=self.dbapi)
-			if self.dbapi.cpv_exists(cpv):
+	settings=b.settings, db=b.dbapi)
+			if b.dbapi.cpv_exists(cpv):
 	continue
 
 	d["CPV"] = cpv
 	d["BASE_URI"] = remote_base_uri
 	d["PKGINDEX_URI"] = url
-	self._remotepkgs[self.dbapi._instance_key(cpv)] = d
-	self.dbapi.cpv_inject(cpv)
+	b._remotepkgs[b.dbapi._instance_key(cpv)] = d
+	b.dbapi.cpv_inject(cpv)
 
-	self._remote_has_index = true
-	self._merge_pkgindex_header(pkgindex.header,
-	self._pkgindex_header)
-
+	b._remote_has_index = true
+	b._merge_pkgindex_header(pkgindex.header,
+	b._pkgindex_header)
+	}
 }
 
 func (b *BinaryTree) _populate_additional(repos) {
@@ -7318,33 +7355,36 @@ func (b *BinaryTree) _populate_additional(repos) {
 	for cpv in repo.cpv_all():
 	metadata = dict(zip(aux_keys, repo.aux_get(cpv, aux_keys)))
 	pkg = _pkg_str(cpv, metadata=metadata, settings=repo.settings, db=repo)
-	instance_key = self.dbapi._instance_key(pkg)
-	self._additional_pkgs[instance_key] = pkg
-	self.dbapi.cpv_inject(pkg)
+	instance_key = b.dbapi._instance_key(pkg)
+	b._additional_pkgs[instance_key] = pkg
+	b.dbapi.cpv_inject(pkg)
 }
 
-func (b *BinaryTree) inject(cpv, filename=nil) {
+// ""
+func (b *BinaryTree) inject(cpv, filename string) {
 
-	mycat, mypkg = catsplit(cpv)
-	if not self.populated:
-	self.populate()
-	if filename == nil:
-	full_path = self.getname(cpv)
-	else:
-	full_path = filename
-try:
-	s = os.Stat(full_path)
-	except OSError as e:
-	if err != syscall.ENOENT:
-	raise
-	del e
-	WriteMsg(_("!!! Binary package does not exist: '%s'\n") % full_path,
-		noiselevel=-1)
-	return
-	metadata = self._read_metadata(full_path, s)
+	mycat, mypkg := catsplit(cpv)[0], catsplit(cpv)[1]
+	if !b.populated {
+		b.Populate(false, true, []string{})
+	}
+	full_path := filename
+	if filename == "" {
+		full_path = b.getname(cpv)
+	}
+	s, err := os.Stat(full_path)
+	if err != nil {
+		//except OSError as e:
+		if err != syscall.ENOENT {
+			//raise
+		}
+		//del e
+		WriteMsg(fmt.Sprintf("!!! Binary package does not exist: '%s'\n",full_path), -1, nil)
+		return
+	}
+	metadata = b._read_metadata(full_path, s)
 	invalid_depend = false
 try:
-	self._eval_use_flags(cpv, metadata)
+	b._eval_use_flags(cpv, metadata)
 	except portage.exception.InvalidDependString:
 	invalid_depend = true
 	if invalid_depend || not metadata.get("SLOT"):
@@ -7358,53 +7398,53 @@ try:
 	except AttributeError:
 	build_id = nil
 	else:
-	instance_key = self.dbapi._instance_key(cpv)
-	if instance_key in self.dbapi.cpvdict:
-						self.dbapi.cpv_remove(cpv)
-	self._pkg_paths.pop(instance_key, nil)
-	if self._remotepkgs != nil:
-	fetched = self._remotepkgs.pop(instance_key, nil)
+	instance_key = b.dbapi._instance_key(cpv)
+	if instance_key in b.dbapi.cpvdict:
+						b.dbapi.cpv_remove(cpv)
+	b._pkg_paths.pop(instance_key, nil)
+	if b._remotepkgs != nil:
+	fetched = b._remotepkgs.pop(instance_key, nil)
 
-	cpv = _pkg_str(cpv, metadata=metadata, settings=self.settings,
-		db=self.dbapi)
+	cpv = _pkg_str(cpv, metadata=metadata, settings=b.settings,
+		db=b.dbapi)
 
 			pkgindex_lock = nil
 	try:
-	pkgindex_lock = lockfile(self._pkgindex_file,
+	pkgindex_lock = lockfile(b._pkgindex_file,
 	wantnewlockfile=1)
 	if filename != nil:
-	new_filename = self.getname(cpv, allocate_new=true)
+	new_filename = b.getname(cpv, allocate_new=true)
 	try:
 	samefile = os.path.samefile(filename, new_filename)
 	except OSError:
 	samefile = false
 	if not samefile:
-	self._ensure_dir(filepath.Dir(new_filename))
-	_movefile(filename, new_filename, mysettings=self.settings)
+	b._ensure_dir(filepath.Dir(new_filename))
+	_movefile(filename, new_filename, mysettings=b.settings)
 	full_path = new_filename
 
 	basename = filepath.Base(full_path)
 	pf = catsplit(cpv)[1]
 	if (build_id == nil && not fetched &&
 	basename.endswith(".xpak")):
-						build_id = self._parse_build_id(basename)
+						build_id = b._parse_build_id(basename)
 	metadata["BUILD_ID"] = _unicode(build_id)
 	cpv = _pkg_str(cpv, metadata=metadata,
-	settings=self.settings, db=self.dbapi)
+	settings=b.settings, db=b.dbapi)
 	binpkg = portage.xpak.tbz2(full_path)
 	binary_data = binpkg.get_data()
 	binary_data[b"BUILD_ID"] = _unicode_encode(
 	metadata["BUILD_ID"])
 	binpkg.recompose_mem(portage.xpak.xpak_mem(binary_data))
 
-	self._file_permissions(full_path)
-	pkgindex = self._load_pkgindex()
-	if not self._pkgindex_version_supported(pkgindex):
-	pkgindex = self._new_pkgindex()
+	b._file_permissions(full_path)
+	pkgindex = b._load_pkgindex()
+	if not b._pkgindex_version_supported(pkgindex):
+	pkgindex = b._new_pkgindex()
 
-	d = self._inject_file(pkgindex, cpv, full_path)
-	self._update_pkgindex_header(pkgindex.header)
-	self._pkgindex_write(pkgindex)
+	d = b._inject_file(pkgindex, cpv, full_path)
+	b._update_pkgindex_header(pkgindex.header)
+	b._pkgindex_write(pkgindex)
 
 	finally:
 	if pkgindex_lock:
@@ -7415,41 +7455,48 @@ try:
 	return cpv
 }
 
-func (b *BinaryTree) _read_metadata(filename, st, keys=nil) {
+// nil
+func (b *BinaryTree) _read_metadata(filename string, st os.FileInfo, keys=nil) {
 
-	if keys == nil:
-	keys = self.dbapi._aux_cache_keys
-	metadata = self.dbapi._aux_cache_slot_dict()
-	else:
-	metadata = {}
-	binary_metadata = portage.xpak.tbz2(filename).get_data()
-	for k in keys:
-	if k == "_mtime_":
-	metadata[k] = _unicode(st[stat.ST_MTIME])
-	else if k == "SIZE":
-	metadata[k] = _unicode(st.st_size)
-	else:
-	v = binary_metadata.get(_unicode_encode(k))
-	if v == nil:
-	if k == "EAPI":
-	metadata[k] = "0"
-	else:
-	metadata[k] = ""
-	else:
-	v = _unicode_decode(v)
-	metadata[k] = " ".join(v.split())
+	if keys == nil {
+		keys = b.dbapi._aux_cache_keys
+		metadata = b.dbapi._aux_cache_slot_dict()
+	}else {
+		metadata ={}
+	}
+	binary_metadata := NewTbz2(filename).get_data()
+	for k in keys{
+		if k == "_mtime_"{
+		metadata[k] = st.ModTime()
+	} else if k == "SIZE"{
+		metadata[k] = st.Size()
+	} else{
+		v = binary_metadata.get(_unicode_encode(k))
+		if v == nil{
+		if k == "EAPI"{
+		metadata[k] = "0"
+	} else{
+		metadata[k] = ""
+	}
+	} else{
+		v = _unicode_decode(v)
+		metadata[k] = " ".join(v.split())
+	}
+	}
+	}
 	return metadata
 }
 
-func (b *BinaryTree) _inject_file(pkgindex, cpv, filename) {
+func (b *BinaryTree) _inject_file(pkgindex, cpv *PkgStr, filename) {
 
-	instance_key = self.dbapi._instance_key(cpv)
-	if self._remotepkgs != nil:
-	self._remotepkgs.pop(instance_key, nil)
+	instance_key := b.dbapi._instance_key(cpv)
+	if b._remotepkgs != nil {
+		delete(b._remotepkgs,instance_key)
+	}
 
-	self.dbapi.cpv_inject(cpv)
-	self._pkg_paths[instance_key] = filename[len(self.pkgdir)+1:]
-	d = self._pkgindex_entry(cpv)
+	b.dbapi.cpv_inject(cpv)
+	b._pkg_paths[instance_key.string] = filename[len(b.pkgdir)+1:]
+	d = b._pkgindex_entry(cpv)
 
 			path = d.get("PATH", "")
 	for i in range(len(pkgindex.packages) - 1, -1, -1):
@@ -7560,10 +7607,10 @@ func (b *BinaryTree) _merge_pkgindex_header(src, dest map[string]string) {
 
 func (b *BinaryTree) _propagate_config(config) {
 
-	if self._pkgindex_header == nil:
+	if b._pkgindex_header == nil:
 	return false
 
-	self._merge_pkgindex_header(self._pkgindex_header,
+	b._merge_pkgindex_header(b._pkgindex_header,
 		config.configDict["defaults"])
 	config.regenerate()
 	config._init_iuse()
@@ -7804,8 +7851,8 @@ func (b *BinaryTree) isremote(pkgname *PkgStr) bool {
 
 func (b *BinaryTree) get_pkgindex_uri(cpv) {
 	uri = nil
-	if self._remotepkgs != nil:
-	metadata = self._remotepkgs.get(self.dbapi._instance_key(cpv))
+	if b._remotepkgs != nil:
+	metadata = b._remotepkgs.get(b.dbapi._instance_key(cpv))
 	if metadata != nil:
 	uri = metadata["PKGINDEX_URI"]
 	return uri
@@ -7813,43 +7860,43 @@ func (b *BinaryTree) get_pkgindex_uri(cpv) {
 }
 
 func (b *BinaryTree) gettbz2(pkgname) {
-	instance_key = self.dbapi._instance_key(pkgname)
-	tbz2_path = self.getname(pkgname)
+	instance_key = b.dbapi._instance_key(pkgname)
+	tbz2_path = b.getname(pkgname)
 	tbz2name = filepath.Base(tbz2_path)
 	resume = false
 	if pathExists(tbz2_path):
-	if tbz2name[:-5] not in self.invalids:
+	if tbz2name[:-5] not in b.invalids:
 	return
 	else:
 	resume = true
 	WriteMsg(_("Resuming download of this tbz2, but it is possible that it is corrupt.\n"),
 		noiselevel=-1)
 
-	mydest = filepath.Dir(self.getname(pkgname))
-	self._ensure_dir(mydest)
-		if self._remote_has_index:
-	rel_url = self._remotepkgs[instance_key].get("PATH")
+	mydest = filepath.Dir(b.getname(pkgname))
+	b._ensure_dir(mydest)
+		if b._remote_has_index:
+	rel_url = b._remotepkgs[instance_key].get("PATH")
 	if not rel_url:
 	rel_url = pkgname + ".tbz2"
-	remote_base_uri = self._remotepkgs[instance_key]["BASE_URI"]
+	remote_base_uri = b._remotepkgs[instance_key]["BASE_URI"]
 	url = remote_base_uri.rstrip("/") + "/" + rel_url.lstrip("/")
 	else:
-	url = self.settings.ValueDict["PORTAGE_BINHOST"].rstrip("/") + "/" + tbz2name
+	url = b.settings.ValueDict["PORTAGE_BINHOST"].rstrip("/") + "/" + tbz2name
 	protocol = urlparse(url)[0]
 	fcmd_prefix = "FETCHCOMMAND"
 	if resume:
 	fcmd_prefix = "RESUMECOMMAND"
-	fcmd = self.settings.ValueDict[fcmd_prefix + "_" + protocol.upper())
+	fcmd = b.settings.ValueDict[fcmd_prefix + "_" + protocol.upper())
 	if not fcmd:
-	fcmd = self.settings.ValueDict[fcmd_prefix)
+	fcmd = b.settings.ValueDict[fcmd_prefix)
 	success = portage.getbinpkg.file_get(url, mydest, fcmd=fcmd)
 	if not success:
 try:
-	syscall.Unlink(self.getname(pkgname))
+	syscall.Unlink(b.getname(pkgname))
 	except OSError:
 	pass
 	raise portage.exception.FileNotFound(mydest)
-	self.inject(pkgname)
+	b.inject(pkgname)
 
 }
 
@@ -7872,16 +7919,16 @@ try:
 	except AttributeError:
 	cpv = pkg
 
-	_instance_key = self.dbapi._instance_key
+	_instance_key = b.dbapi._instance_key
 	instance_key = _instance_key(cpv)
 	digests = {}
-	metadata = (nil if self._remotepkgs == nil else
-	self._remotepkgs.get(instance_key))
+	metadata = (nil if b._remotepkgs == nil else
+	b._remotepkgs.get(instance_key))
 	if metadata == nil:
-	for d in self._load_pkgindex().packages:
+	for d in b._load_pkgindex().packages:
 	if (d["CPV"] == cpv &&
 	instance_key == _instance_key(_pkg_str(d["CPV"],
-		metadata=d, settings=self.settings))):
+		metadata=d, settings=b.settings))):
 	metadata = d
 	break
 
@@ -7907,7 +7954,7 @@ try:
 
 func (b *BinaryTree) digestCheck(pkg) {
 
-	digests = self._get_digests(pkg)
+	digests = b._get_digests(pkg)
 
 	if not digests:
 	return false
@@ -7917,13 +7964,13 @@ try:
 	except AttributeError:
 	cpv = pkg
 
-	pkg_path = self.getname(cpv)
+	pkg_path = b.getname(cpv)
 	hash_filter = _hash_filter(
-		self.settings.ValueDict["PORTAGE_CHECKSUM_FILTER", ""))
+		b.settings.ValueDict["PORTAGE_CHECKSUM_FILTER", ""))
 	if not hash_filter.transparent:
 	digests = _apply_hash_filter(digests, hash_filter)
 	eout = EOutput()
-	eout.quiet = self.settings.ValueDict["PORTAGE_QUIET") == "1"
+	eout.quiet = b.settings.ValueDict["PORTAGE_QUIET") == "1"
 	ok, st = _check_distfile(pkg_path, digests, eout, show_errors=0)
 	if not ok:
 	ok, reason = verify_all(pkg_path, digests)
@@ -7939,7 +7986,7 @@ func (b *BinaryTree) getslot(mycatpkg) {
 
 	myslot = ""
 try:
-	myslot = self.dbapi._pkg_str(mycatpkg, nil).slot
+	myslot = b.dbapi._pkg_str(mycatpkg, nil).slot
 	except KeyError:
 	pass
 	return myslot
@@ -8065,53 +8112,49 @@ func NewBinaryTree(pkgDir string, settings *Config) *BinaryTree {
 
 type _better_cache struct {
 	_scanned_cats map[string]bool
-	_repo_list    []string
+	_repo_list    []*RepoConfig
+	_items        map[string][]*RepoConfig
 }
 
-func (b *_better_cache) __getitem__(catpkg) {
-	result = b._items.get(catpkg)
-	if result is
-	not
-nil:
-	return result
+func (b *_better_cache) __getitem__(catpkg string) []*RepoConfig {
+	result := b._items[catpkg]
+	if result != nil {
+		return result
+	}
 
-	cat, pkg = catsplit(catpkg)
-	if cat not
-	in
-	b._scanned_cats:
-	b._scan_cat(cat)
+	cat := catsplit(catpkg)[0]
+	if _, ok := b._scanned_cats[cat]; !ok {
+		b._scan_cat(cat)
+	}
 	return b._items[catpkg]
 }
 
-func (b *_better_cache) _scan_cat( cat) {
-	for repo
-	in
-	b._repo_list:
-	cat_dir = repo.location + "/" + cat
-try:
-	pkg_list = os.listdir(cat_dir)
-	except
-	OSError
-	as
-e:
-	if err not
-	in(syscall.ENOTDIR, syscall.ENOENT, syscall.ESTALE):
-	raise
-	continue
-	for p
-	in
-pkg_list:
-	if pathIsDir(cat_dir + "/" + p):
-	b._items[cat+"/"+p]=append(,repo)
-	b._scanned_cats[cat]=true
+func (b *_better_cache) _scan_cat( cat string) {
+	for _, repo := range b._repo_list {
+		cat_dir := repo.location + "/" + cat
+		pkg_list, err := listDir(cat_dir)
+		if err != nil {
+			//except OSError as e:
+			if err != syscall.ENOTDIR && err != syscall.ENOENT && err != syscall.ESTALE {
+				//raise
+			}
+			continue
+		}
+		for _, p := range pkg_list {
+			if pathIsDir(cat_dir + "/" + p) {
+				b._items[cat+"/"+p] = append(b._items[cat+"/"+p], repo)
+			}
+		}
+	}
+	b._scanned_cats[cat] = true
 }
 
 func NewBetterCache( repositories []*RepoConfig)*_better_cache {
 	b := &_better_cache{}
-	b._items = collections.defaultdict(list)
+	b._items = map[string][]*RepoConfig{}
 	b._scanned_cats = map[string]bool{}
 
-	b._repo_list = []string{}
+	b._repo_list = []*RepoConfig{}
 
 	r := []*RepoConfig{}
 	for k := len(repositories) - 1; k >= 0; k-- {
@@ -8206,10 +8249,10 @@ func (p *portdbapi) flush_cache() {
 	}
 }
 
-func (p *portdbapi) findLicensePath(license_name string) string{
+func (p *portdbapi) findLicensePath(license_name string) string {
 	for _, x := range reversed(p.porttrees) {
 		license_path := filepath.Join(x, "licenses", license_name)
-		if os.access(license_path, os.R_OK) {
+		if st, _ := os.Stat(license_path); st != nil && st.Mode()&0444 != nil {
 			return license_path
 		}
 	}
@@ -9037,43 +9080,50 @@ e:
 	break
 }
 
-func (p *portdbapi) _visible(cpv, metadata) {
-	eapi = metadata["EAPI"]
-	if not eapi_is_supported(eapi):
-	return false
-	if _eapi_is_deprecated(eapi):
-	return false
-	if not metadata["SLOT"]:
-	return false
+func (p *portdbapi) _visible(cpv *PkgStr, metadata map[string]string) bool {
+	eapi := metadata["EAPI"]
+	if !eapiIsSupported(eapi) {
+		return false
+	}
+	if eapiIsDeprecated(eapi) {
+		return false
+	}
+	if metadata["SLOT"] == "" {
+		return false
+	}
 
-	settings = p.settings
-	if settings._getMaskAtom(cpv, metadata):
-	return false
-	if settings._getMissingKeywords(cpv, metadata):
-	return false
-	if settings.local_config:
-	metadata["CHOST"] = settings.ValueDict["CHOST", "")
-	if not settings._accept_chost(cpv, metadata):
-	return false
-	metadata["USE"] = ""
-	if "?" in
-	metadata["LICENSE"]
-||
-"?"
-	in
-	metadata["PROPERTIES"]:
-	p.doebuild_settings.setcpv(cpv, mydb = metadata)
-	metadata["USE"] = p.doebuild_settings.ValueDict["PORTAGE_USE"]
-try:
-	if settings._getMissingLicenses(cpv, metadata):
-	return false
-	if settings._getMissingProperties(cpv, metadata):
-	return false
-	if settings._getMissingRestrict(cpv, metadata):
-	return false
-	except
-InvalidDependString:
-	return false
+	settings := p.settings
+	if settings._getMaskAtom(cpv, metadata) != nil {
+		return false
+	}
+	if settings._getMissingKeywords(cpv, metadata) != nil {
+		return false
+	}
+	if settings.localConfig {
+		metadata["CHOST"] = settings.ValueDict["CHOST"]
+		if !settings._accept_chost(cpv, metadata) {
+			return false
+		}
+		metadata["USE"] = ""
+		if strings.Contains(metadata["LICENSE"], "?") ||
+			strings.Contains(metadata["PROPERTIES"], "?") {
+			p.doebuild_settings.SetCpv(cpv, metadata)
+			metadata["USE"] = p.doebuild_settings.ValueDict["PORTAGE_USE"]
+		}
+		//try:
+		if settings._getMissingLicenses(cpv, metadata) {
+			return false
+		}
+		if settings._getMissingProperties(cpv, metadata) {
+			return false
+		}
+		if settings._getMissingRestrict(cpv, metadata) {
+			return false
+		}
+		//except
+		//InvalidDependString:
+		return false
+	}
 
 	return true
 }
@@ -9200,7 +9250,7 @@ type PortageTree struct {
 	dbapi    *portdbapi
 }
 
-func (p *PortageTree) dep_bestmatch(mydep) {
+func (p *PortageTree) dep_bestmatch(mydep) string {
 	mymatch := p.dbapi.xmatch("bestmatch-visible", mydep)
 	if mymatch == nil {
 		return ""
@@ -9226,14 +9276,13 @@ func (p *PortageTree) getallnodes() {
 
 }
 
-func (p *PortageTree) getslot(mycatpkg) {
+func (p *PortageTree) getslot(mycatpkg *PkgStr) string {
 
-	myslot = ""
-try:
-	myslot = p.dbapi._pkg_str(mycatpkg, nil).slot
-	except
-KeyError:
-	pass
+	myslot := ""
+	//try:
+	myslot = p.dbapi._pkg_str(mycatpkg, "").slot
+	//except KeyError:
+	//pass
 	return myslot
 }
 
