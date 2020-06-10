@@ -2562,12 +2562,8 @@ for _, k := range []string{"CHOST"} {
 	}
 }
 
-with io.open(_unicode_encode(filepath.Join(build_info_dir,
-"BUILD_TIME"), encoding=_encodings["fs"], errors="strict"),
-mode="w", encoding=_encodings["repo.content"],
-errors="strict") as f{
-f.write(fmt.Sprintf("%.0f\n" , time.Now(),))
-	}
+	f, _ := os.OpenFile(filepath.Join(build_info_dir, "BUILD_TIME"), os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
+	f.Write([]byte(fmt.Sprintf("%.0f\n" , time.Now(),)))
 
 use := map[string]bool{}
 for _, v := range (strings.Fields(settings.ValueDict["PORTAGE_USE"])){
@@ -2590,11 +2586,11 @@ for _, k := range _vdb_use_conditional_keys {
 		}
 		token_class = Atom
 	} else {
-		token_class = None
+		token_class = nil
 	}
 
 	v2 := useReduce(v, use, []string{}, false, []string{}, false, "", false, false, nil, token_class, false)
-	v = parenEncloses(v2, nil, nil)
+	v = parenEncloses(v2, false, false)
 	if v == "" {
 		if err := syscall.Unlink(filename); err != nil {
 			//}except OSError{

@@ -2116,7 +2116,7 @@ func get_required_use_flags(requiredUse, eapi string) map[string]bool { //n
 }
 
 // "/", nil, 0, 0
-func _expand_new_virtuals(mysplit []string, edebug, mydbapi, mysettings *Config, myroot string,
+func _expand_new_virtuals(mysplit []string, edebug bool, mydbapi, mysettings *Config, myroot string,
 trees TreesDict, use_mask, use_force int, **kwargs){
 
 newsplit := []string{}
@@ -2390,13 +2390,13 @@ type _dep_choice struct{
 }
 
 // 0, nil, false
-func dep_zapdeps(unreduced, reduced, myroot string, use_binaries int, trees *TreesDict,
-minimize_slots bool) {
+func dep_zapdeps(unreduced []string, reduced, myroot string, use_binaries int, trees *TreesDict,
+minimize_slots bool) []string {
 	if trees == nil {
 		trees = Db()
 	}
-	WriteMsg(fmt.Sprint("ZapDeps -- %s\n",use_binaries), 2, nil)
-	if !reduced || unreduced == ["||"] || dep_eval(reduced) {
+	WriteMsg(fmt.Sprint("ZapDeps -- %s\n", use_binaries), 2, nil)
+	if !reduced || (len(unreduced) == 0 && unreduced[0] == "||") || dep_eval(reduced) {
 		return []string{}
 	}
 
@@ -2615,7 +2615,7 @@ minimize_slots bool) {
 				if parent != nil && graph_interface.want_update_pkg(parent, avail_pkg) {
 					want_update = true
 				}
-				if (!strings.HasPrefix(slot_atom.cp,"virtual/")
+				if (!strings.HasPrefix(slot_atom.cp, "virtual/")
 				&&
 				!graph_db.match_pkgs(slot_atom)){
 				new_slot_count += 1
@@ -2651,7 +2651,7 @@ minimize_slots bool) {
 					in
 				slot_map {
 					if !vardb.match(slot_atom) &&
-						! strings.HasPrefix(slot_atom,"virtual/") {
+						!strings.HasPrefix(slot_atom, "virtual/") {
 						all_installed_slots = false
 						break
 					}
@@ -2686,7 +2686,7 @@ minimize_slots bool) {
 				for atom
 					in
 				atoms {
-					if atom.blocker || strings.HasPrefix(atom.cp,"virtual/") {
+					if atom.blocker || strings.HasPrefix(atom.cp, "virtual/") {
 						continue
 					}
 					if !any(pkg in
@@ -2800,72 +2800,78 @@ minimize_slots bool) {
 	}
 
 	for choices
-	in
-	choice_bins{
-		if len(choices) < 2{
-		continue
-	}
-
-		if minimize_slots{
-
-		choices.sort(key = operator.attrgetter("new_slot_count"))
-	}
-
-		for choice_1 in choices[1:]{
-		cps = set(choice_1.cp_map)
-		for choice_2 in choices{
-		if choice_1 is choice_2
-		break
-	}
-		if choice_1.all_installed_slots &&
-		! choice_2.all_installed_slots &&
-		! choice_2.want_update{
-		choices.remove(choice_1)
-		index_2 = choices.index(choice_2)
-		choices.insert(index_2, choice_1)
-		break
-	}
-
-		intersecting_cps = cps.intersection(choice_2.cp_map)
-		has_upgrade = false
-		has_downgrade = false
-		for cp in intersecting_cps{
-		version_1 = choice_1.cp_map[cp]
-		version_2 = choice_2.cp_map[cp]
-		difference = vercmp(version_1.version, version_2.version)
-		if difference != 0{
-		if difference > 0{
-		has_upgrade = true
-	} else{
-		has_downgrade = true
-	}
-	}
-	}
-
-		if (
-	(has_upgrade && !has_downgrade)
-		|| (choice_1.all_in_graph && !choice_2.all_in_graph &&
-		! (has_downgrade && !has_upgrade))
-	){
-		choices.remove(choice_1)
-		index_2 = choices.index(choice_2)
-		choices.insert(index_2, choice_1)
-		break
-	}
-	}
-	}
-	for _, allow_masked := range []bool{false, true}{
-		for _, choices := range choice_bins{
-			for _, choice :=range choices{
-			if choice.all_available || allow_masked{
-			return choice.atoms
+		in
+	choice_bins {
+		if len(choices) < 2 {
+			continue
 		}
+
+		if minimize_slots {
+
+			choices.sort(key = operator.attrgetter("new_slot_count"))
+		}
+
+		for choice_1
+		in
+		choices[1:]
+		{
+			cps = set(choice_1.cp_map)
+			for choice_2
+			in
+			choices{
+				if choice_1 is choice_2
+				break
+			}
+			if choice_1.all_installed_slots &&
+				!choice_2.all_installed_slots &&
+				!choice_2.want_update {
+				choices.remove(choice_1)
+				index_2 = choices.index(choice_2)
+				choices.insert(index_2, choice_1)
+				break
+			}
+
+			intersecting_cps = cps.intersection(choice_2.cp_map)
+			has_upgrade = false
+			has_downgrade = false
+			for cp
+			in
+			intersecting_cps{
+				version_1 = choice_1.cp_map[cp]
+				version_2 = choice_2.cp_map[cp]
+				difference = vercmp(version_1.version, version_2.version)
+				if difference != 0{
+				if difference > 0{
+				has_upgrade = true
+			} else{
+				has_downgrade = true
+			}
+			}
+			}
+
+			if (
+				(has_upgrade && !has_downgrade) || (choice_1.all_in_graph && !choice_2.all_in_graph &&
+					!(has_downgrade && !has_upgrade))
+		){
+			choices.remove(choice_1)
+			index_2 = choices.index(choice_2)
+			choices.insert(index_2, choice_1)
+			break
 		}
 		}
 	}
+	for _, allow_masked := range []bool{false, true} {
+		for _, choices := range choice_bins {
+			for _, choice := range choices {
+				if choice.all_available || allow_masked {
+					return choice.atoms
+				}
+			}
+		}
+	}
 
-	assert(false)
-
+	return nil
+	//assert(false)
 }
 
 // "yes", nil, nil, 1, 0, "", nil
@@ -2942,7 +2948,7 @@ use_cache , use_binaries int, myroot string, trees *TreesDict) (int, []string) {
 		//return [0, "%s" % (e,)]
 	}
 
-	if mysplit == []string{} {
+	if len(mysplit) == 0 {
 		return 1, []string{}
 	}
 
@@ -2956,7 +2962,7 @@ use_cache , use_binaries int, myroot string, trees *TreesDict) (int, []string) {
 
 	dnf := false
 	if mysettings.localConfig {
-		orig_split = mysplit
+		orig_split := mysplit
 		mysplit = _overlap_dnf(mysplit)
 		dnf = mysplit
 		is
@@ -3077,7 +3083,7 @@ func _iter_flatten(dep_struct) {
 
 
 // 1
-func dep_wordreduce(mydeplist,mysettings,mydbapi,mode,use_cache int) {
+func dep_wordreduce(mydeplist []string,mysettings *Config,mydbapi,mode,use_cache int) {
 	deplist := mydeplist[:]
 	for mypos, token
 	in
