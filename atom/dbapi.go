@@ -3021,58 +3021,59 @@ finally:
 finally:
 	d.vartree.dbapi._bump_mtime(d.mycpv)
 try:
-	if not eapi_unsupported && os.path.isfile(myebuildpath):
-	if retval != os.EX_OK:
-	msg_lines = []
-	msg = _("The '%(ebuild_phase)s' "+
-	"phase of the '%(cpv)s' package "+
-	"has failed with exit value %(retval)s.") % 
-{"ebuild_phase":ebuild_phase, "cpv":d.mycpv,
-	"retval":retval}
-	from textwrap import wrap
-	msg_lines=append(,wrap(msg, 72))
-	msg_lines=append(,"")
+	if ! eapi_unsupported && os.path.isfile(myebuildpath) {
+		if retval != 0 {
+			msg_lines := []string{}
+			msg := fmt.Sprintf("The '%s' "+
+				"phase of the '%s' package "+
+				"has failed with exit value %s.",
+				ebuild_phase, d.mycpv, retval)
+			msg_lines = append(msg_lines, SplitSubN(msg, 72)...)
+			msg_lines = append(msg_lines, "")
 
-	ebuild_name = filepath.Base(myebuildpath)
-	ebuild_dir = filepath.Dir(myebuildpath)
-	msg = _("The problem occurred while executing "+
-	"the ebuild file named '%(ebuild_name)s' "+
-	"located in the '%(ebuild_dir)s' directory. "+
-	"If necessary, manually remove "+
-	"the environment.bz2 file and/or the "+
-	"ebuild file located in that directory.") % 
-{"ebuild_name":ebuild_name, "ebuild_dir":ebuild_dir}
-	msg_lines=append(,wrap(msg, 72))
-	msg_lines=append(,"")
+			ebuild_name := filepath.Base(myebuildpath)
+			ebuild_dir := filepath.Dir(myebuildpath)
+			msg = fmt.Sprintf("The problem occurred while executing "+
+				"the ebuild file named '%s' "+
+				"located in the '%s' directory. "+
+				"If necessary, manually remove "+
+				"the environment.bz2 file and/or the "+
+				"ebuild file located in that directory.",
+				ebuild_name, ebuild_dir)
+			msg_lines = append(msg_lines, SplitSubN(msg, 72)...)
+			msg_lines = append(msg_lines, "")
 
-	msg = _("Removal "+
-	"of the environment.bz2 file is "+
-	"preferred since it may allow the "+
-	"removal phases to execute successfully. "+
-	"The ebuild will be "+
-	"sourced and the eclasses "+
-	"from the current ebuild repository will be used "+
-	"when necessary. Removal of "+
-	"the ebuild file will cause the "+
-	"pkg_prerm() and pkg_postrm() removal "+
-	"phases to be skipped entirely.")
-	msg_lines=append(,wrap(msg, 72))
+			msg = "Removal " +
+				"of the environment.bz2 file is " +
+				"preferred since it may allow the " +
+				"removal phases to execute successfully. " +
+				"The ebuild will be " +
+				"sourced and the eclasses " +
+				"from the current ebuild repository will be used " +
+				"when necessary. Removal of " +
+				"the ebuild file will cause the " +
+				"pkg_prerm() and pkg_postrm() removal " +
+				"phases to be skipped entirely."
+			msg_lines = append(msg_lines, SplitSubN(msg, 72)...)
 
-	d._eerror(ebuild_phase, msg_lines)
+			d._eerror(ebuild_phase, msg_lines)
+		}
+	}
 
 	d._elog_process(phasefilter=("prerm", "postrm"))
 
-	if retval == os.EX_OK:
-try:
-	doebuild_environment(myebuildpath, "cleanrm",
-		settings=d.settings, db=d.vartree.dbapi)
-	except UnsupportedAPIException:
-	pass
-	phase = EbuildPhase(background=background,
-		phase="cleanrm", scheduler=scheduler,
-		settings=d.settings)
-	phase.start()
-	retval = phase.wait()
+	if retval == 0 {
+	try:
+		doebuild_environment(myebuildpath, "cleanrm", nil
+		d.settings, false, nil, d.vartree.dbapi)
+		except
+	UnsupportedAPIException:
+		pass
+		phase = NewEbuildPhase(nil, background, "cleanrm", scheduler,
+			d.settings, nil)
+		phase.start()
+		retval = phase.wait()
+	}
 finally:
 	if builddir_lock != nil:
 	scheduler.run_until_complete(
@@ -3116,19 +3117,20 @@ try:
 }
 
 // 0, 0
-func (d *dblink) _display_merge(msg string, level, noiselevel int{
-	if not d._verbose && noiselevel >= 0 && level < logging.WARN:
-	return
+func (d *dblink) _display_merge(msg string, level, noiselevel int){
+	if ! d._verbose && noiselevel >= 0 && level < 30 {
+		return
+	}
 	if d._scheduler == nil:
 	WriteMsg_level(msg, level=level, noiselevel=noiselevel)
 	else:
 	log_path = nil
 	if d.settings.ValueDict["PORTAGE_BACKGROUND") != "subprocess":
-	log_path = d.settings.ValueDict["PORTAGE_LOG_FILE")
-	background = d.settings.ValueDict["PORTAGE_BACKGROUND") == "1"
+	log_path = d.settings.ValueDict["PORTAGE_LOG_FILE"]
+	background = d.settings.ValueDict["PORTAGE_BACKGROUND"] == "1"
 
 	if background && log_path == nil:
-	if level >= logging.WARN:
+	if level >= 30:
 	WriteMsg_level(msg, level=level, noiselevel=noiselevel)
 	else:
 	d._scheduler.output(msg,
@@ -3138,12 +3140,11 @@ func (d *dblink) _display_merge(msg string, level, noiselevel int{
 }
 
 func (d *dblink) _show_unmerge(zing, desc, file_type, file_name) {
-	d._display_merge("%s %s %s %s\n" % 
-(zing, desc.ljust(8), file_type, file_name))
-
+	d._display_merge(fmt.Sprintf("%s %s %s %s\n",
+		zing, desc.ljust(8), file_type, file_name))
 }
 
-func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot) {
+func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot []*dblink) {
 
 	os = _os_merge
 	perf_md5 := performMd5
@@ -3157,24 +3158,23 @@ func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot)
 	}
 
 	if others_in_slot == nil{
-		others_in_slot = []
+		others_in_slot = []*dblink{}
 		slot := d.vartree.dbapi._pkg_str(d.mycpv, "").slot
 		slot_matches := d.vartree.dbapi.match(
-			"%s:%s" % (portage.cpv_getkey(d.mycpv), slot))
+			fmt.Sprintf("%s:%s" ,cpvGetKey(d.mycpv, ""), slot), 1)
 		for cur_cpv in slot_matches:
 		if cur_cpv == d.mycpv:
 		continue
-		others_in_slot=append(,dblink(d.cat, catsplit(cur_cpv)[1],
-			settings=d.settings,
-			vartree=d.vartree, treetype="vartree", pipe=d._pipe))
+		others_in_slot=append(others_in_slot,NewDblink(d.cat, catsplit(cur_cpv)[1],"",
+			d.settings, "vartree",d.vartree, nil, d._pipe))
 	}
 
-	cfgfiledict = grabdict(d.vartree.dbapi._conf_mem_file)
+	cfgfiledict := grabDict(d.vartree.dbapi._conf_mem_file,false, false, false, true, false)
 	stale_confmem = []
 	protected_symlinks = {}
 
-	unmerge_orphans = "unmerge-orphans" in d.settings.features
-	calc_prelink = "prelink-checksums" in d.settings.features
+	unmerge_orphans :=  d.settings.Features.Features["unmerge-orphans"]
+	calc_prelink := d.settings.Features.Features["prelink-checksums"]
 
 	if pkgfiles:
 	d.updateprotect()
@@ -3184,8 +3184,8 @@ func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot)
 
 			mydirs = map[string]bool{}
 
-	uninstall_ignore = portage.util.shlex_split(
-		d.settings.ValueDict["UNINSTALL_IGNORE", ""))
+	uninstall_ignore, _ := shlex.Split(strings.NewReader(
+		d.settings.ValueDict["UNINSTALL_IGNORE"]),false, true)
 
 	def unlink(file_name, lstatobj):
 	if bsd_chflags:
@@ -3200,12 +3200,9 @@ try:
 				os.chmod(file_name, 0)
 	syscall.Unlink(file_name)
 	except OSError as ose:
-									d._eerror("postrm",
-	["Could not chmod or unlink '%s': %s" % 
-(file_name, ose)])
+		d._eerror("postrm", []string{fmt.Sprintf("Could not chmod or unlink '%s': %s", file_name, ose)}
 	else:
-
-					d._merged_path(file_name, lstatobj, exists=false)
+		d._merged_path(file_name, lstatobj, false)
 
 	finally:
 	if bsd_chflags && pflags != 0:
@@ -5119,7 +5116,7 @@ match_from_list(PORTAGE_PACKAGE_ATOM, [d.mycpv]):
 	showMessage(colorize("WARN", _("WARNING:"))
 	+ _(" AUTOCLEAN is disabled.  This can cause serious"+
 	" problems due to overlapping packages.\n"),
-	level=logging.WARN, noiselevel=-1)
+	level=30, noiselevel=-1)
 
 		d.dbdir = d.dbpkgdir
 	d.lockdb()

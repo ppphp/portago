@@ -2327,6 +2327,7 @@ func _post_phase_userpriv_perms(mysettings *Config) {
 	}
 }
 
+// nil
 func _check_build_log(mysettings *Config, out=None) {
 
 	logfile := mysettings.ValueDict["PORTAGE_LOG_FILE"]

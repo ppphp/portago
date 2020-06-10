@@ -317,7 +317,8 @@ func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 	return newList
 }
 
-func grabDict(myFileName string, justStrings, empty, recursive, incremental, newLines bool) map[string][]string { // false, false, false, true, false
+// false, false, false, true, false
+func grabDict(myFileName string, justStrings, empty, recursive, incremental, newLines bool) map[string][]string {
 	newDict := map[string][]string{}
 	for _, x := range grabLines(myFileName, recursive, false) {
 		v := x[0]
@@ -1461,6 +1462,36 @@ type preservedLibsRegistry struct {
 	_root, _filename string
 	_data, _lock     interface{}
 }
+
+func(p*preservedLibsRegistry) lock() {
+	if p._lock != nil {
+		//raise AssertionError("already locked")
+	}
+	p._lock, _ = Lockfile(p._filename, false, false, "", 0)
+}
+
+func(p*preservedLibsRegistry) unlock() {
+	if p._lock == nil {
+		//raise AssertionError("not locked")
+	}
+	p._lock = Unlockfile(p._lock)
+}
+
+func(p*preservedLibsRegistry) load() {}
+
+func(p*preservedLibsRegistry) store() {}
+
+func(p*preservedLibsRegistry) _normalize_counter() {}
+
+func(p*preservedLibsRegistry) register() {}
+
+func(p*preservedLibsRegistry) unregister() {}
+
+func(p*preservedLibsRegistry) pruneNonExisting() {}
+
+func(p*preservedLibsRegistry) hasEntries() {}
+
+func(p*preservedLibsRegistry) getPreservedLibs() {}
 
 func NewPreservedLibsRegistry(root, filename string) *preservedLibsRegistry {
 	p := &preservedLibsRegistry{_json_write: true, _json_write_opts: map[string]bool{

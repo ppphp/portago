@@ -3873,16 +3873,14 @@ None:
 	in
 	vardb.match(x.slot_atom) + 
 	vardb.match('=' + x.cpv)))
-	pretend_phase = EbuildPhase(
-		phase = "pretend", scheduler = sched_iface,
-		settings=settings)
+	pretend_phase = NewEbuildPhase(nil, false, "pretend",  sched_iface, settings,nil)
 
 	current_task = pretend_phase
 	pretend_phase.start()
 	ret = pretend_phase.wait()
 	if ret != os.EX_OK:
 	failures += 1
-	portage.elog.elog_process(x.cpv, settings)
+	elog_process(x.cpv, settings, nil)
 finally:
 
 	if current_task is
