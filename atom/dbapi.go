@@ -9423,7 +9423,7 @@ result:
 
 // ordered map
 // nil
-func _parse_uri_map(cpv, metadata map[string]string, use map[string]bool) map[string]map[string]bool {
+func _parse_uri_map(cpv *PkgStr, metadata map[string]string, use map[string]bool) map[string]map[string]bool {
 	myuris := useReduce(metadata["SRC_URI"], use, []string{}, use == nil, []string{}, true, metadata["EAPI"], false, false, nil, nil, false)
 
 	uri_map := map[string]map[string]bool{}

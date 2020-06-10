@@ -1676,9 +1676,9 @@ type EbuildPhase struct {
 	*CompositeTask
 
 	// slot
-	actionmap,  phase,  _ebuild_lock string
-	settings *Config
-	fd_pipes map[int]int
+	actionmap, phase, _ebuild_lock string
+	settings                       *Config
+	fd_pipes                       map[int]int
 
 	_features_display []string
 	_locked_phases    []string
@@ -2189,7 +2189,7 @@ type EbuildIpcDaemon struct {
 }
 
 func (e *EbuildIpcDaemon) _input_handler() {
-	data = self._read_buf(self._files.pipe_in)
+	data = e._read_buf(e._files.pipe_in)
 	if data is
 None:
 	pass
@@ -2205,13 +2205,13 @@ Exception:
 	pass
 	else:
 
-	self._reopen_input()
+	e._reopen_input()
 
 	cmd_key = obj[0]
-	cmd_handler = self.commands[cmd_key]
+	cmd_handler = e.commands[cmd_key]
 	reply = cmd_handler(obj)
 try:
-	self._send_reply(reply)
+	e._send_reply(reply)
 	except
 	OSError
 	as
@@ -2230,7 +2230,7 @@ None:
 
 	else:
 	lock_filename = os.path.join(
-		os.path.dirname(self.input_fifo), '.ipc_lock')
+		filepath.Dir(e.input_fifo), '.ipc_lock')
 try:
 	lock_obj = lockfile(lock_filename, unlinkfile = True,
 		flags = os.O_NONBLOCK)
@@ -2239,14 +2239,14 @@ TryAgain:
 	pass
 	else:
 try:
-	self._reopen_input()
+	e._reopen_input()
 finally:
 	unlockfile(lock_obj)
 }
 
 func (e *EbuildIpcDaemon) _send_reply( reply) {
 try:
-	output_fd = os.open(self.output_fifo,
+	output_fd = os.open(e.output_fifo,
 		os.O_WRONLY|os.O_NONBLOCK)
 try:
 	os.write(output_fd, pickle.dumps(reply))
@@ -2647,7 +2647,7 @@ type _emerge_log_class struct {
 func (e *_emerge_log_class) log( *pargs, **kwargs) {
 	if not e.xterm_titles:
 	kwargs.pop("short_msg", None)
-	emergelog(self.xterm_titles, *pargs, **kwargs)
+	emergelog(e.xterm_titles, *pargs, **kwargs)
 }
 
 // SlotObject
@@ -5045,3 +5045,172 @@ func (b *BlockerCache)  __getitem__(cpv) {
 	return NewBlockerData(*b._cache_data["blockers"][cpv])
 }
 
+type EbuildBuildDir struct {
+	// slot
+	scheduler,  _catdir, _lock_obj string
+	settings *Config
+	locked bool
+	
+} 
+__slots__ = ("scheduler", "settings",
+"locked", "_catdir", "_lock_obj")
+
+func NewEbuildBuildDir( **kwargs)*EbuildBuildDir{
+	e := &EbuildBuildDir{}
+	SlotObject.__init__(e, **kwargs)
+	e.locked = false
+	return e
+}
+
+func (e*EbuildBuildDir) _assert_lock( async_lock) {
+	if async_lock.returncode != 0 {
+		raise AssertionError("AsynchronousLock failed with returncode %s" \
+		% (async_lock.returncode,))
+	}
+}
+
+func (e*EbuildBuildDir) clean_log() {
+	settings := e.settings
+	if settings.Features.Features["keepwork"] {
+		return
+	}
+	log_file := settings.ValueDict["PORTAGE_LOG_FILE"]
+	if log_file != "" &&os.path.isfile(log_file) {
+		if err :=syscall.Unlink(log_file); err != nil {
+			//except OSError:
+			//pass
+		}
+	}
+}
+
+func (e*EbuildBuildDir) async_lock() {
+	if e._lock_obj is
+	not
+	None{
+		raise e.AlreadyLocked((e._lock_obj, ))
+	}
+
+	dir_path := e.settings.ValueDict["PORTAGE_BUILDDIR"]
+	if dir_path == "" {
+		raise
+		AssertionError('PORTAGE_BUILDDIR is unset')
+	}
+	catdir := filepath.Dir(dir_path)
+	e._catdir = catdir
+	catdir_lock := AsynchronousLock(path = catdir, scheduler = e.scheduler)
+	builddir_lock := AsynchronousLock(path = dir_path, scheduler = e.scheduler)
+	result = e.scheduler.create_future()
+
+	catdir_locked := func(catdir_lock) {
+	try:
+		e._assert_lock(catdir_lock)
+		except
+		AssertionError
+		as
+	e:
+		result.set_exception(e)
+		return
+
+		//try:
+		ensureDirs(catdir, -1, *portage_gid, 070, 0, nil, nil)
+		//except PortageException as e:
+		//if ! filepath.Dir(catdir) {
+		//	result.set_exception(e)
+		//	return
+		//}
+
+		builddir_lock.addExitListener(builddir_locked)
+		builddir_lock.start()
+	}
+
+	builddir_locked := func(builddir_lock) {
+	try:
+		e._assert_lock(builddir_lock)
+		except
+		AssertionError
+		as
+	e:
+		catdir_lock.async_unlock.add_done_callback(
+			functools.partial(catdir_unlocked, exception = e))
+		return
+
+		e._lock_obj = builddir_lock
+		e.locked = true
+		e.settings['PORTAGE_BUILDDIR_LOCKED'] = '1'
+		catdir_lock.async_unlock().add_done_callback(catdir_unlocked)
+	}
+
+	catdir_unlocked := func(future, exception = None) {
+		if !(exception is
+		None
+		&&
+		future.exception()
+		is
+		None):
+		result.set_exception(exception || future.exception()) else:
+		result.set_result(None)
+	}
+
+	//try:
+	ensureDirs(filepath.Dir(catdir), -1, *portage_gid, 070, 0, nil, nil)
+	//except PortageException:
+	//if not filepath.Dir(filepath.Dir(catdir)):
+	//raise
+
+	catdir_lock.addExitListener(catdir_locked)
+	catdir_lock.start()
+	return result
+}
+
+func (e*EbuildBuildDir) async_unlock() {
+	result = e.scheduler.create_future()
+
+	builddir_unlocked:=func(future) {
+		if future.exception() is
+		not
+	None{
+		result.set_exception(future.exception())
+	}else {
+			e._lock_obj = None
+			e.locked = False
+			delete(e.settings.ValueDict,"PORTAGE_BUILDDIR_LOCKED")
+			catdir_lock = AsynchronousLock(
+				path = e._catdir, scheduler = e.scheduler)
+			catdir_lock.addExitListener(catdir_locked)
+			catdir_lock.start()
+		}
+	}
+
+	catdir_locked:= func(catdir_lock) {
+		if catdir_lock.wait() != 0 {
+			result.set_result(None)
+		}else {
+			if err := os.RemoveAll(e._catdir); err != nil {
+				//except OSError:
+				//pass
+			}
+			catdir_lock.async_unlock().add_done_callback(catdir_unlocked)
+		}
+	}
+
+	catdir_unlocked:= func(future) {
+		if future.exception() is
+	None{
+		result.set_result(None)
+	}else {
+			result.set_exception(future.exception())
+		}
+	}
+
+	if e._lock_obj is
+None{
+	e.scheduler.call_soon(result.set_result, None)
+}else {
+		e._lock_obj.async_unlock().add_done_callback(builddir_unlocked)
+	}
+	return result
+}
+
+type AlreadyLocked struct {
+	PortageException
+}

@@ -10,9 +10,11 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -679,7 +681,8 @@ _vdb_use_conditional_keys = append([]string{"BDEPEND", "DEPEND", "HDEPEND", "PDE
 "LICENSE", "PROPERTIES", "RESTRICT",)
 )
 
-func _doebuild_spawn(phase string, settings *Config, actionmap=None, **kwargs)([]int,error) {
+// nil
+func _doebuild_spawn(phase string, settings *Config, actionmap Actionmap, **kwargs)([]int,error) {
 
 	if _unsandboxed_phases[phase] {
 		kwargs["free"] = true
@@ -699,9 +702,9 @@ func _doebuild_spawn(phase string, settings *Config, actionmap=None, **kwargs)([
 		kwargs["close_fds"] = false
 	}
 	cmd := ""
-	if actionmap != nil && actionmap[phase]{
-		kwargs.update(actionmap[phase]["args"])
-		cmd = fmt.Sprintf(actionmap[phase]["cmd"], phase)
+	if actionmap != nil && actionmap[phase] != nil {
+		kwargs.update(actionmap[phase].args)
+		cmd = fmt.Sprintf(actionmap[phase].cmd, phase)
 	} else {
 		ebuild_sh_arg := phase
 		if phase == "cleanrm" {
@@ -713,13 +716,13 @@ func _doebuild_spawn(phase string, settings *Config, actionmap=None, **kwargs)([
 			ebuild_sh_arg)
 	}
 
-		settings.ValueDict["EBUILD_PHASE"] = phase
-		defer delete(settings.ValueDict, "EBUILD_PHASE")
-		return spawnE(cmd, settings, **kwargs)
+	settings.ValueDict["EBUILD_PHASE"] = phase
+	defer delete(settings.ValueDict, "EBUILD_PHASE")
+	return spawnE(cmd, settings, **kwargs)
 }
 
 // nil, false, nil,
-func _spawn_phase(phase string, settings *Config, actionmap=None, returnpid bool,
+func _spawn_phase(phase string, settings *Config, actionmap Actionmap, returnpid bool,
 logfile=None, **kwargs) ([]int, error){
 
 	if returnpid {
@@ -992,7 +995,7 @@ debug bool, use_cache=None, db DBAPI) {
 				src_uri, = mydbapi.aux_get(mysettings.mycpv,
 					["SRC_URI"], mytree = mytree)
 			}
-			metadata = map[string]string{
+			metadata := map[string]string{
 				"EAPI":    eapi,
 				"SRC_URI": src_uri,
 			}
@@ -1048,14 +1051,17 @@ debug bool, use_cache=None, db DBAPI) {
 
 			for _, v := range masquerades {
 				feature, m := v[0], v[1]
+				in := true
 				for _, l:= range possible_libexecdirs{
 					p := filepath.Join(string(os.PathSeparator), eprefix_lstrip,
 					"usr", l, m, "bin")
 					if st, _ := os.Stat(p); st != nil && st.IsDir() {
 						mysettings.ValueDict["PATH"] = p + ":" + mysettings.ValueDict["PATH"]
+						in = false
 						break
 					}
-				} else {
+				}
+				if in {
 					WriteMsg(fmt.Sprintf("Warning: %s requested but no masquerade dir "+
 						"can be found in /usr/lib*/%s/bin\n", m, m), 0, nil)
 					delete(mysettings.Features.Features, feature)
@@ -1139,7 +1145,7 @@ _doebuild_commands_without_builddir = []string{
 // 0, 0, 0, 0, 1, 0, "", nil, nil, nil, nil, false
 func doebuild(myebuild, mydo string, settings *Config, debug, listonly,
 fetchonly, cleanup, use_cache, fetchall int, tree string,
-mydbapi *vardbapi, vartree *varTree, prev_mtimes=None,
+mydbapi DBAPI, vartree *varTree, prev_mtimes=None,
 fd_pipes=None, returnpid bool) int {
 	if settings == nil {
 		//raise TypeError("settings parameter is required")
@@ -1348,7 +1354,7 @@ fd_pipes=None, returnpid bool) int {
 	}
 
 	if !returnpid && mydo == "info" {
-		tmpdir = tempfile.mkdtemp()
+		tmpdir, _ := ioutil.TempDir("", "")
 		tmpdir_orig = mysettings.ValueDict["PORTAGE_TMPDIR"]
 		mysettings.ValueDict["PORTAGE_TMPDIR"] = tmpdir
 	}
@@ -1373,15 +1379,15 @@ fd_pipes=None, returnpid bool) int {
 					builddir_lock.async_unlock())
 			}
 		}()
-		return _spawn_phase(mydo, mysettings,
-			fd_pipes = fd_pipes, returnpid = returnpid)
+		return _spawn_phase(mydo, mysettings, nil, returnpid, "",
+			fd_pipes = fd_pipes, )
 	}
 
 	if mydo == "depend" {
-		WriteMsg(fmt.Sprintf("!!! DEBUG: dbkey: %s\n", dbkey), 2)
+		WriteMsg(fmt.Sprintf("!!! DEBUG: dbkey: %s\n", dbkey), 2, nil)
 		if returnpid {
-			return _spawn_phase(mydo, mysettings,
-				fd_pipes = fd_pipes, returnpid = returnpid)
+			return _spawn_phase(mydo, mysettings, nil, returnpid, "",
+				fd_pipes = fd_pipes)
 		} else if dbkey != "" {
 			mysettings.ValueDict["dbkey"] = dbkey
 		} else {
@@ -1389,8 +1395,8 @@ fd_pipes=None, returnpid bool) int {
 				filepath.Join(mysettings.depcachedir, "aux_db_key_temp")
 		}
 
-		return _spawn_phase(mydo, mysettings,
-			fd_pipes = fd_pipes, returnpid = returnpid)
+		return _spawn_phase(mydo, mysettings, nil, returnpid, ""
+			fd_pipes = fd_pipes)
 
 	} else if mydo == "nofetch" {
 
@@ -1951,10 +1957,24 @@ if Inmss(metadata, "PORTAGE_REPO_NAME") || Inmss(metadata, "SRC_URI") {
 	for k := range all_keys {
 		metadata[k]=m2[k]
 	}
-	
-metadata = dict(((k, metadata[k]) for k in all_keys if k in metadata),
-repository=metadata["PORTAGE_REPO_NAME"])
+
+	md := map[string]string{}
+	for  k := range all_keys {
+		if Inmss(metadata, k) {
+			md[k]= metadata[k]
+		}
+	}
+	md["repository"]=metadata["PORTAGE_REPO_NAME"]
+	metadata = md
 }else{
+	md := map[string]string{}
+	for k := range all_keys {
+		if Inmss(metadata, k) {
+			md[k]= metadata[k]
+		}
+	}
+	md["repository"]=metadata["PORTAGE_REPO_NAME"]
+	metadata = md
 metadata = dict(zip(all_keys,
 mydbapi.aux_get(mysettings.mycpv, all_keys,
 myrepo=mysettings.ValueDict["PORTAGE_REPO_NAME"))))
@@ -2026,193 +2046,194 @@ return 0
 
 // false, false, false, false, false, true, true, false, false
 func spawnE(mystring string, mysettings  *Config, debug, free, droppriv,
-sesandbox, fakeroot, networked, ipc, mountns, pidns bool, **keywords){
-check_config_instance(mysettings)
+sesandbox, fakeroot, networked, ipc, mountns, pidns bool, **keywords) {
+	check_config_instance(mysettings)
 
-fd_pipes = keywords.get("fd_pipes")
-if fd_pipes == nil {
-	fd_pipes =
-	{
-		0:portage._get_stdin().fileno(),
-		1:sys.__stdout__.fileno(),
-		2:sys.__stderr__.fileno(),
+	fd_pipes = keywords.get("fd_pipes")
+	if fd_pipes == nil {
+		fd_pipes =
+		{
+			0:portage._get_stdin().fileno(),
+			1:sys.__stdout__.fileno(),
+			2:sys.__stderr__.fileno(),
+		}
 	}
-}
 
-stdout_filenos = (sys.__stdout__.fileno(), sys.__stderr__.fileno())
-for fd in fd_pipes.values()
-	{
-		if fd in
-		stdout_filenos{
-			sys.__stdout__.flush()
-			sys.__stderr__.flush()
+	//stdout_filenos := []int{syscall.Stdout, syscall.Stderr}
+	for _, fd:= range fd_pipes{
+		if fd ==syscall.Stdout||fd ==syscall.Stderr {
+			//sys.__stdout__.flush()
+			//sys.__stderr__.flush()
 			break
 		}
 	}
 
-features := mysettings.Features.Features
+	features := mysettings.Features.Features
 
-if uid == 0 && platform.system() == "Linux"{
-keywords["unshare_net"] = ! networked
-keywords["unshare_ipc"] = ! ipc
-keywords["unshare_mount"] = mountns
-keywords["unshare_pid"] = pidns
+	if uid == 0 && runtime.GOOS == "linux" {
+		keywords["unshare_net"] = !networked
+		keywords["unshare_ipc"] = !ipc
+		keywords["unshare_mount"] = mountns
+		keywords["unshare_pid"] = pidns
 
-if ! networked && mysettings.ValueDict["EBUILD_PHASE"] != "nofetch" &&
-(  features["network-sandbox-proxy"] ||  features["distcc"]){
+		if !networked && mysettings.ValueDict["EBUILD_PHASE"] != "nofetch" &&
+			(features["network-sandbox-proxy"] || features["distcc"]) {
 
-		//try{
-		proxy = get_socks5_proxy(mysettings)
-		//except NotImplementedError{
-		//pass
-		//}else{
-		mysettings.ValueDict["PORTAGE_SOCKS5_PROXY"] = proxy
-		mysettings.ValueDict["DISTCC_SOCKS_PROXY"] = proxy
+			//try{
+			proxy := get_socks5_proxy(mysettings)
+			//except NotImplementedError{
+			//pass
+			//}else{
+			mysettings.ValueDict["PORTAGE_SOCKS5_PROXY"] = proxy
+			mysettings.ValueDict["DISTCC_SOCKS_PROXY"] = proxy
+		}
 	}
-}
 
-fakeroot = fakeroot && uid != 0 && fakeroot_capable
-portage_build_uid := os.Getuid()
-portage_build_gid := os.Getgid()
-logname = None
-if uid == 0 && portage_uid!=0 && portage_gid!=0 && hasattr(os, "setgroups") {
-	if droppriv {
-		logname := *_portage_username
-		keywords.update(
-		{
-			"uid": portage_uid,
-			"gid": portage_gid,
-			"groups": userpriv_groups,
-			"umask": 0o22
-		})
+	fakeroot = fakeroot && uid != 0 && fakeroot_capable
+	portage_build_uid := os.Getuid()
+	portage_build_gid := os.Getgid()
+	logname := ""
+	if uid == 0 && portage_uid != nil && portage_gid != nil && hasattr(os, "setgroups") {
+		if droppriv {
+			logname = *_portage_username
+			keywords.update(
+			{
+				"uid": portage_uid,
+				"gid": portage_gid,
+				"groups": userpriv_groups,
+				"umask": 0o22
+			})
 
-		stdout_fd = fd_pipes.get(1)
-		if stdout_fd != nil {
-			try{
-				subprocess_tty = _os.ttyname(stdout_fd)
-			}
-			except
-			OSError{
-				pass
-			} else {
+			stdout_fd := fd_pipes[1]
+			if stdout_fd != 0 {
 				try{
-					parent_tty = _os.ttyname(sys.__stdout__.fileno())
+					subprocess_tty = _os.ttyname(stdout_fd)
 				}
 				except
 				OSError{
-					parent_tty = None
-				}
+					pass
+				} else {
+					try{
+						parent_tty = _os.ttyname(sys.__stdout__.fileno())
+					}
+					except
+					OSError{
+						parent_tty = None
+					}
 
-				if subprocess_tty != parent_tty {
-					_os.chown(subprocess_tty,
-						int(portage_uid), int(portage_gid))
+					if subprocess_tty != parent_tty {
+						_os.chown(subprocess_tty,
+							int(portage_uid), int(portage_gid))
+					}
 				}
 			}
+
+			if features["userpriv"] && !Ins(strings.Fields(mysettings.ValueDict["PORTAGE_RESTRICT"]), "userpriv") && *secpass >= 2 {
+
+				portage_build_uid = int(*portage_uid)
+				portage_build_gid = int(*portage_gid)
+			}
 		}
-
-		if features["userpriv"] && !Ins(strings.Fields(mysettings.ValueDict["PORTAGE_RESTRICT"]), "userpriv") && *secpass >= 2 {
-
-			portage_build_uid = int(*portage_uid)
-			portage_build_gid = int(*portage_gid)
-		}
 	}
-}
 
-if  ! Inmss(mysettings.ValueDict,"PORTAGE_BUILD_USER" ) {
-	user = None
-	try{
-		user = pwd.getpwuid(portage_build_uid).pw_name
-	}except KeyError{
-		if portage_build_uid == 0{
-		user = "root"
-	} else if portage_build_uid == portage_uid{
-		user = portage.data._portage_username
-	}
-	}
-	if user != nil {
-		mysettings.ValueDict["PORTAGE_BUILD_USER"] = user
-	}
-}
-
-if  ! Inmss( mysettings.ValueDict, "PORTAGE_BUILD_GROUP"){
-		group = None
+	if !Inmss(mysettings.ValueDict, "PORTAGE_BUILD_USER") {
+		user := ""
 		try{
-		group = grp.getgrgid(portage_build_gid).gr_name
-	}except KeyError{
-		if portage_build_gid == 0{
-		group = "root"
-	} else if portage_build_gid == portage_gid{
-		group = portage.data._portage_grpname
+			user = pwd.getpwuid(portage_build_uid).pw_name
+		}
+		except
+		KeyError{
+			if portage_build_uid == 0{
+			user = "root"
+		} else if portage_build_uid == portage_uid{
+			user = portage.data._portage_username
+		}
+		}
+		if user != "" {
+			mysettings.ValueDict["PORTAGE_BUILD_USER"] = user
+		}
 	}
+
+	if !Inmss(mysettings.ValueDict, "PORTAGE_BUILD_GROUP") {
+		group := ""
+		try{
+			group = grp.getgrgid(portage_build_gid).gr_name
+		}
+		except
+		KeyError{
+			if portage_build_gid == 0{
+			group = "root"
+		} else if portage_build_gid == portage_gid{
+			group = portage.data._portage_grpname
+		}
+		}
+		if group != "" {
+			mysettings.ValueDict["PORTAGE_BUILD_GROUP"] = group
+		}
 	}
-		if group != nil{
-		mysettings.ValueDict["PORTAGE_BUILD_GROUP"] = group
+
+	if !free {
+		free = (droppriv && !features["usersandbox"]) || (!droppriv && !features["sandbox"] && !features["usersandbox"] && !fakeroot)
 	}
+
+	if !free && !(fakeroot || sandbox_capable) {
+		free = true
 	}
 
-if ! free {
-	free = (droppriv && !features["usersandbox"]) ||(! droppriv &&  ! features["sandbox"] && ! features["usersandbox"] && ! fakeroot)
-}
+	if mysettings.mycpv != nil {
+		keywords["opt_name"] = fmt.Sprintf("[%s]", mysettings.mycpv)
+	} else {
+		keywords["opt_name"] = fmt.Sprintf("[%s/%s]", mysettings.ValueDict["CATEGORY"], mysettings.ValueDict["PF"])
+	}
 
-if ! free && ! (fakeroot || sandbox_capable) {
-	free = true
-}
+	if _, ok := os.LookupEnv("SANDBOX_ACTIVE"); free || ok {
+		keywords["opt_name"] += " bash"
+		spawn_func = spawn_bash
+	} else if fakeroot {
+		keywords["opt_name"] += " fakeroot"
+		keywords["fakeroot_state"] = filepath.Join(mysettings.ValueDict["T"], "fakeroot.state")
+		spawn_func = portage.process.spawn_fakeroot
+	} else {
+		keywords["opt_name"] += " sandbox"
+		spawn_func = portage.process.spawn_sandbox
+	}
 
-if mysettings.mycpv != nil{
-keywords["opt_name"] = fmt.Sprintf("[%s]" , mysettings.mycpv)
-}else{
-keywords["opt_name"] = fmt.Sprintf("[%s/%s]" , mysettings.ValueDict["CATEGORY"], mysettings.ValueDict["PF"])
-}
+	if sesandbox {
+		spawn_func = selinux.spawn_wrapper(spawn_func,
+			mysettings.ValueDict["PORTAGE_SANDBOX_T"])
+	}
 
-if _,ok:=  os.LookupEnv("SANDBOX_ACTIVE"); free || ok{
-keywords["opt_name"] += " bash"
-spawn_func = spawn_bash
-}else if fakeroot{
-keywords["opt_name"] += " fakeroot"
-keywords["fakeroot_state"] = filepath.Join(mysettings.ValueDict["T"], "fakeroot.state")
-spawn_func = portage.process.spawn_fakeroot
-}else{
-keywords["opt_name"] += " sandbox"
-spawn_func = portage.process.spawn_sandbox
-}
+	logname_backup := ""
+	if logname != "" {
+		logname_backup = mysettings.configDict["env"]["LOGNAME"]
+		mysettings.configDict["env"]["LOGNAME"] = logname
+	}
 
-if sesandbox{
-spawn_func = selinux.spawn_wrapper(spawn_func,
-mysettings.ValueDict["PORTAGE_SANDBOX_T"])
-}
+	defer func() {
+		if logname == "" {
+			//pass
+		} else if logname_backup == "" {
+			delete(mysettings.configDict["env"], "LOGNAME")
+		} else {
+			mysettings.configDict["env"]["LOGNAME"] = logname_backup
+		}
+	}()
+	if keywords.get("returnpid") {
+		return spawn_func(mystring, env = mysettings.environ(),
+			**keywords)
+	}
 
-logname_backup = None
-if logname != nil{
-logname_backup = mysettings.configDict["env"].get("LOGNAME")
-mysettings.configDict["env"]["LOGNAME"] = logname
-}
+	proc := EbuildSpawnProcess(
+		background = false, args = mystring,
+		scheduler = SchedulerInterface(asyncio._safe_loop()),
+		spawn_func = spawn_func,
+		settings = mysettings, **keywords)
 
-try{
-if keywords.get("returnpid"){
-return spawn_func(mystring, env = mysettings.environ(),
-**keywords)
-}
+	proc.start()
+	proc.wait()
 
-proc = EbuildSpawnProcess(
-background = false, args = mystring,
-scheduler = SchedulerInterface(asyncio._safe_loop()),
-spawn_func = spawn_func,
-settings = mysettings, **keywords)
+	return proc.returncode
 
-proc.start()
-proc.wait()
-
-return proc.returncode
-
-}finally{
-if logname == nil{
-pass
-}else if logname_backup == nil{
-mysettings.configDict["env"].pop("LOGNAME", None)
-}else{
-mysettings.configDict["env"]["LOGNAME"] = logname_backup
-}
-}
 }
 
 // 0, nil, "", false
@@ -2226,15 +2247,12 @@ logfile string, fd_pipes map[int]int, returnpid bool) int {
 			DeprecationWarning, stacklevel = 2)
 	}
 
-	if !returnpid && (alwaysdep || !mysettings.Features.Features["noauto"]) {
-
-		if "dep" in
-		actionmap[mydo]
-		{
-			retval := spawnebuild(actionmap[mydo]["dep"], actionmap,
-				mysettings, debug, alwaysdep = alwaysdep, logfile = logfile,
-			fd_pipes=fd_pipes, returnpid = returnpid)
-			if retval!= 0 {
+	if !returnpid && (alwaysdep != 0|| !mysettings.Features.Features["noauto"]) {
+		if actionmap[mydo].dep != "" {
+			retval := spawnebuild(actionmap[mydo].dep, actionmap,
+				mysettings, debug, alwaysdep, logfile,
+				fd_pipes, returnpid)
+			if retval != 0 {
 				return retval
 			}
 		}
@@ -2264,18 +2282,18 @@ logfile string, fd_pipes map[int]int, returnpid bool) int {
 	}
 
 	return _spawn_phase(mydo, mysettings,
-		actionmap = actionmap, logfile = logfile,
-		fd_pipes=fd_pipes, returnpid = returnpid)
+		actionmap, returnpid, logfile,
+		fd_pipes=fd_pipes, )
 }
 
-_post_phase_cmds = {
+var _post_phase_cmds = {
 
-"install" : [
+"install": [
 "install_qa_check",
 "install_symlink_html_docs",
 "install_hooks"],
 
-"preinst" : (
+"preinst": (
 (
 
 {
@@ -2295,7 +2313,7 @@ _post_phase_cmds = {
 ],
 ),
 ),
-"postinst" : [
+"postinst": [
 "postinst_qa_check"],
 }
 
@@ -2625,13 +2643,12 @@ os.system(fmt.Sprintf("chflags -R nosunlnk,nouunlnk %s 2>/dev/null" %
 }
 }
 
-func _postinst_bsdflags(mysettings *Config){
-if bsd_chflags{
-
-os.system(fmt.Sprintf("mtree -e -p %s -U -k flags < %s > /dev/null" %
-(_shell_quote(mysettings.ValueDict["ROOT"]),
-_shell_quote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
-}
+func _postinst_bsdflags(mysettings *Config) {
+	if bsd_chflags {
+		exec.Command("sh", "-c", fmt.Sprintf("mtree -e -p %s -U -k flags < %s > /dev/null",
+			ShellQuote(mysettings.ValueDict["ROOT"]),
+				ShellQuote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
+	}
 }
 
 func _post_src_install_uid_fix(mysettings *Config, out){
@@ -2645,89 +2662,59 @@ _preinst_bsdflags(mysettings)
 
 destdir := mysettings.ValueDict["D"]
 ed_len := len(mysettings.ValueDict["ED"])
-unicode_errors = []
+unicode_errors := []string{}
 desktop_file_validate := FindBinary("desktop-file-validate") != ""
 xdg_dirs := strings.Fields(mysettings.ValueDict["XDG_DATA_DIRS"]),":")
 if len(xdg_dirs) == 0 {
 	xdg_dirs = []string{"/usr/share"}
 }
+xd := []string{}
+	for _, i := range xdg_dirs {
+		if i != "" {
+			xd = append(xd, filepath.Join(i, "applications")+string(os.PathSeparator))
+		}
+	}
+	xdg_dirs = xd
 
-xdg_dirs = tuple(filepath.Join(i, "applications") + string(os.PathSeparator)
-for i in xdg_dirs if i)
-
-qa_desktop_file := ""
-try{
-	with io.open(_unicode_encode(filepath.Join(
+	qdf, err := ioutil.ReadFile(filepath.Join(
 	mysettings.ValueDict["PORTAGE_BUILDDIR"],
-	"build-info", "QA_DESKTOP_FILE"),
-	encoding = _encodings["fs"], errors = "strict"),
-	mode = "r", encoding = _encodings["repo.content"],
-	errors = "replace") as f{
-	qa_desktop_file = f.read()
+	"build-info", "QA_DESKTOP_FILE"))
+if err != nil {
+	//except IOError as e:
+	if err != syscall.ENOENT && err != syscall.ESTALE {
+		//raise
+	}
 }
-}except IOError as e{
-		if err ! in (syscall.ENOENT, syscall.ESTALE){
-		raise
-	}
-	}
 
-qa_desktop_file = strings.Fields(qa_desktop_file)
-if qa_desktop_file{
-if len(qa_desktop_file) > 1{
-qa_desktop_file = "|".join(fmt.Sprintf("(%s)" % x for _, x := range  qa_desktop_file)
-qa_desktop_file = fmt.Sprintf("^(%s)$" % qa_desktop_file
-}else{
-qa_desktop_file = fmt.Sprintf("^%s$" % qa_desktop_file[0]
-}
-qa_desktop_file = re.compile(qa_desktop_file)
+qa_desktop_file := strings.Fields(string(qdf))
+	var qdfRe *regexp.Regexp
+if len(qa_desktop_file) > 0 {
+	qdfs := ""
+	if len(qa_desktop_file) > 1 {
+		qdfss := []string{}
+		for _, x := range qa_desktop_file {
+			qdfss = append(qdfss, fmt.Sprintf("(%s)", x))
+		}
+		qdfs = strings.Join(qdfss, "|")
+		qdfs = fmt.Sprintf("^(%s)$", qdfs)
+	} else {
+		qdfs = fmt.Sprintf("^%s$", qa_desktop_file[0])
+	}
+	qdfRe = regexp.MustCompile(qdfs)
 }
 
 for {
 
 unicode_error := false
 size := 0
-counted_inodes := map[string]bool{}
+counted_inodes := map[uint64]bool{}
 fixlafiles_announced := false
 fixlafiles :=   mysettings.Features.Features["fixlafiles"]
-desktopfile_errors = []
+desktopfile_errors := []string{}
 
 for parent, dirs, files in os.walk(destdir){
-try{
-	parent = _unicode_decode(parent,
-	encoding = _encodings["merge"], errors = "strict")
-}except UnicodeDecodeError{
-			new_parent = _unicode_decode(parent,
-			encoding = _encodings["merge"], errors = "replace")
-			new_parent = _unicode_encode(new_parent,
-			encoding = "ascii", errors = "backslashreplace")
-			new_parent = _unicode_decode(new_parent,
-			encoding = _encodings["merge"], errors = "replace")
-			os.rename(parent, new_parent)
-			unicode_error = true
-			unicode_errors = append(new_parent[ed_len:])
-			break
-		}
 
 for fname in chain(dirs, files){
-try{
-	fname = _unicode_decode(fname,
-	encoding = _encodings["merge"], errors = "strict")
-}except UnicodeDecodeError{
-fpath = _filepath.Join(
-parent.encode(_encodings["merge"]), fname)
-new_fname = _unicode_decode(fname,
-encoding=_encodings["merge"], errors="replace")
-new_fname = _unicode_encode(new_fname,
-encoding="ascii", errors="backslashreplace")
-new_fname = _unicode_decode(new_fname,
-encoding=_encodings["merge"], errors="replace")
-new_fpath = filepath.Join(parent, new_fname)
-os.rename(fpath, new_fpath)
-unicode_error = true
-unicode_errors=append(new_fpath[ed_len:])
-fname = new_fname
-fpath = new_fpath
-}else {
 				fpath = filepath.Join(parent, fname)
 			}
 
@@ -2735,24 +2722,17 @@ fpath_relative = fpath[ed_len - 1:]
 if desktop_file_validate && fname.endswith(".desktop") &&
 os.path.isfile(fpath) &&
 fpath_relative.startswith(xdg_dirs) &&
-! (qa_desktop_file && qa_desktop_file.match(fpath_relative.strip(string(os.PathSeparator))) != nil) {
+! (qdfRe != nil && qdfRe.MatchString(fpath_relative.strip(string(os.PathSeparator)))) {
 
 	desktop_validate = validate_desktop_entry(fpath)
-	if desktop_validate {
-		desktopfile_errors = append(desktop_validate)
+	if desktop_validate != "" {
+		desktopfile_errors = append(desktopfile_errors,desktop_validate)
 	}
 }
 
-if fixlafiles &&
-fname.endswith(".la") && os.path.isfile(fpath){
-f = open(_unicode_encode(fpath,
-encoding=_encodings["merge"], errors="strict"),
-mode="rb")
-has_lafile_header = b".la - a libtool library file"
-in f.readline()
-f.seek(0)
-contents = f.read()
-f.close()
+if fixlafiles && strings.HasSuffix(fname, ".la") && os.path.isfile(fpath){
+	contents, _ := ioutil.ReadFile(fpath)
+	has_lafile_header = Ins(strings.Split(string(contents), "\n"), ".la - a libtool library file")
 try{
 	needs_update, new_contents = rewrite_lafile(contents)
 }except portage.exception.InvalidData as e{
@@ -2762,8 +2742,8 @@ try{
 		WriteMsg("Fixing .la files\n", fd = out)
 	}
 
-msg = fmt.Sprintf("   %s is not a valid libtool archive, skipping\n" % fpath[len(destdir):]
-qa_msg = fmt.Sprintf("QA Notice: invalid .la file found: %s, %s" % (fpath[len(destdir):], e)
+msg = fmt.Sprintf("   %s is not a valid libtool archive, skipping\n" ,fpath[len(destdir):])
+qa_msg = fmt.Sprintf("QA Notice: invalid .la file found: %s, %s" ,fpath[len(destdir):], e)
 if has_lafile_header{
 		WriteMsg(msg, fd = out)
 		eqawarn(qa_msg, key = mysettings.mycpv, out= out)
@@ -2773,39 +2753,34 @@ if has_lafile_header{
 if needs_update{
 if ! fixlafiles_announced {
 	fixlafiles_announced = true
-	WriteMsg("Fixing .la files\n", fd = out)
+	WriteMsg("Fixing .la files\n"), fd = out)
 }
-WriteMsg(fmt.Sprintf("   %s\n" % fpath[len(destdir):], fd=out)
+WriteMsg(fmt.Sprintf("   %s\n" , fpath[len(destdir):]), fd=out)
 
-write_atomic(_unicode_encode(fpath,
-encoding=_encodings["merge"], errors="strict"),
+write_atomic(fpath,
 new_contents, mode="wb")
 }
 		}
 
-mystat = os.Lstat(fpath)
+mystat, _ := os.Lstat(fpath)
 if stat.S_ISREG(mystat.st_mode) &&
-mystat.st_ino ! in counted_inodes{
-				counted_inodes.add(mystat.st_ino)
-				size += mystat.st_size
+! counted_inodes(mystat.Sys().(*syscall.Stat_t).Ino){
+				counted_inodes[mystat.Sys().(*syscall.Stat_t).Ino]=true
+				size += mystat.Size()
 			}
 if mystat.st_uid != portage_uid &&
 mystat.st_gid != portage_gid {
 	continue
 }
-myuid = -1
-mygid = -1
-if mystat.st_uid == portage_uid {
+myuid := -1
+mygid := -1
+if mystat.Sys().(*syscall.Stat_t).Uid == uint32(*portage_uid) {
 	myuid = inst_uid
 }
-if mystat.st_gid == portage_gid {
+if mystat.Sys().(*syscall.Stat_t).Gid == *portage_gid {
 	mygid = inst_gid
 }
-apply_secpass_permissions(
-_unicode_encode(fpath, encoding=_encodings["merge"]),
-uid=myuid, gid=mygid,
-mode=mystat.st_mode, stat_cached=mystat,
-follow_links=false)
+apply_secpass_permissions(fpath, myuid, mygid, mystat.Mode(), -1,  mystat, false)
 		}
 
 if unicode_error {
@@ -2829,10 +2804,7 @@ if desktopfile_errors {
 }
 
 if unicode_errors {
-	for l
-	in
-	_merge_unicode_error(unicode_errors)
-	{
+	for _, l:= range _merge_unicode_error(unicode_errors){
 		eqawarn(l, phase = "install", key = mysettings.mycpv, out = out)
 	}
 }
@@ -2844,19 +2816,18 @@ f = io.open(_unicode_encode(filepath.Join(build_info_dir,
 "SIZE"), encoding=_encodings["fs"], errors="strict"),
 mode="w", encoding=_encodings["repo.content"],
 errors="strict")
-f.write(fmt.Sprintf("%d\n" % size)
+f.write(fmt.Sprintf("%d\n" , size))
 f.close()
 
 _reapply_bsdflags_to_image(mysettings)
 }
 
-func _reapply_bsdflags_to_image(mysettings *Config){
-
-if bsd_chflags{
-os.system(fmt.Sprintf("mtree -e -p %s -U -k flags < %s > /dev/null" %
-(ShellQuote(mysettings.ValueDict["D"]),
-ShellQuote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
-}
+func _reapply_bsdflags_to_image(mysettings *Config) {
+	if bsd_chflags {
+		exec.Command("sh", "-c", fmt.Sprintf("mtree -e -p %s -U -k flags < %s > /dev/null",
+			ShellQuote(mysettings.ValueDict["D"]),
+			ShellQuote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
+	}
 }
 
 func _post_src_install_soname_symlinks(mysettings *Config, out) {
