@@ -10,28 +10,21 @@ import (
 	"syscall"
 )
 
-func filter_loglevels(logentries, loglevels []string) {
+func filter_loglevels(logentries map[], loglevels []string) map[]{
 	rValue := map[]{}
 	for i := range loglevels {
 		loglevels[i] = strings.ToUpper(loglevels[i])
 	}
-	for phase
-	in
-logentries:
-	for msgtype, msgcontent
-	in
-	logentries[phase]:
-	if msgtype.upper() in
-	loglevels
-	or
-	"*"
-	in
-loglevels:
-	if phase !
-	in
-rValue:
-	rValue[phase] = []
-	rValue[phase] = append(, (msgtype, msgcontent))
+	for _, phase := range logentries {
+		for msgtype, msgcontent := range logentries[phase]{
+		if  ins(loglevels,strings.ToUpper(msgtype)) || ins(loglevels,"*)"{
+		if phase ! in rValue{
+		rValue[phase] = []
+	}
+		rValue[phase] = append(rValue[phase], (msgtype, msgcontent))
+	}
+	}
+	}
 	return rValue
 }
 
@@ -135,118 +128,119 @@ func elog_process(cpv, mysettings, phasefilter=None) {
 	global
 	_elog_atexit_handlers
 
-	logsystems = mysettings.ValueDict["PORTAGE_ELOG_SYSTEM", "").split()
-	for s
-	in
-logsystems:
-	if ":" in
-s:
-	s, levels = s.split(":", 1)
-	levels = levels.split(",")
-	s = s.replace("-", "_")
-try:
-	_load_mod("portage.elog.mod_" + s)
-	except
-ImportError:
-	pass
+	logsystems := strings.Fields(mysettings.ValueDict["PORTAGE_ELOG_SYSTEM"])
+	for _, s := range logsystems{
+		if strings.Contains(s,":") {
+			s, levels = s.split(":", 1)
+			levels = levels.split(",")
+		}
+		s = strings.ReplaceAll(s, "-", "_")
+	try:
+		_load_mod("portage.elog.mod_" + s)
+		except
+	ImportError:
+		pass
+	}
 
-	if "T" in
-mysettings:
-	ebuild_logentries = collect_ebuild_messages(
-		filepath.Join(mysettings.ValueDict["T"], "logging"))
-	else:
-	ebuild_logentries =
-	{
+	if  Inmss(mysettings.ValueDict, "T") {
+		ebuild_logentries = collect_ebuild_messages(
+			filepath.Join(mysettings.ValueDict["T"], "logging"))
+	}else {
+		ebuild_logentries =
+		{
+		}
 	}
 	all_logentries = collect_messages(key = cpv, phasefilter = phasefilter)
 	if cpv in
-all_logentries:
-	all_logentries[cpv] = \
+all_logentries{
+	all_logentries[cpv] =
 	_merge_logentries(all_logentries[cpv], ebuild_logentries)
-	else:
-	all_logentries[cpv] = ebuild_logentries
+	}else {
+		all_logentries[cpv] = ebuild_logentries
+	}
 
 	my_elog_classes = set(mysettings.ValueDict["PORTAGE_ELOG_CLASSES", "").split())
 	logsystems =
 	{
 	}
-	for token
-	in
-	mysettings.ValueDict["PORTAGE_ELOG_SYSTEM", "").split():
-	if ":" in
-token:
-	s, levels = token.split(":", 1)
-	levels = levels.split(",")
-	else:
-	s = token
-	levels = ()
-	levels_set = logsystems.get(s)
-	if levels_set == nil:
-	levels_set = set()
-	logsystems[s] = levels_set
-	levels_set.update(levels)
+	for _, token := range strings.Fields(mysettings.ValueDict["PORTAGE_ELOG_SYSTEM"]){
+		if strings.Contains(token, ":") {
+			s, levels = token.split(":", 1)
+			levels = levels.split(",")
+		}else {
+			s = token
+			levels = ()
+		}
+		levels_set = logsystems.get(s)
+		if levels_set == nil {
+			levels_set = set()
+			logsystems[s] = levels_set
+		}
+		levels_set.update(levels)
+	}
 
 	for key
 	in
-all_logentries:
-	default_logentries = filter_loglevels(all_logentries[key], my_elog_classes)
+all_logentries{
+		default_logentries := filter_loglevels(all_logentries[key], my_elog_classes)
+		if len(default_logentries) == 0 &&(!strings.Contains(mysettings.ValueDict["PORTAGE_ELOG_SYSTEM"], ":")){
+			continue
+		}
 
-	if len(default_logentries) == 0 &&(!
-	":"
-	in
-	mysettings.ValueDict["PORTAGE_ELOG_SYSTEM"]):
-	continue
+		default_fulllog := _combine_logentries(default_logentries)
 
-	default_fulllog = _combine_logentries(default_logentries)
+		for listener
+			in
+		_elog_listeners {
+			listener(mysettings, str(key), default_logentries, default_fulllog)
+		}
 
-	for listener
-	in
-_elog_listeners:
-	listener(mysettings, str(key), default_logentries, default_fulllog)
-
-	for s, levels
-	in
-	logsystems.items():
-	if levels:
-	mod_logentries = filter_loglevels(all_logentries[key], levels)
-	mod_fulllog = _combine_logentries(mod_logentries)
-	else:
-	mod_logentries = default_logentries
-	mod_fulllog = default_fulllog
-	if len(mod_logentries) == 0:
-	continue
-	s = s.replace("-", "_")
-try:
-	m = _load_mod("portage.elog.mod_" + s)
-try:
-	AlarmSignal.register(60)
-	m.process(mysettings, str(key), mod_logentries, mod_fulllog)
-finally:
-	AlarmSignal.unregister()
-	if hasattr(m, "finalize") &&
-	!
-	m.finalize
-	in
-_elog_atexit_handlers:
-	_elog_atexit_handlers=append(,m.finalize)
-	atexit_register(m.finalize)
-	except(ImportError, AttributeError)
-	as
-e:
-	WriteMsg(_("!!! Error while importing logging modules "
-	"while loading \"mod_%s\":\n") % str(s))
-	WriteMsg("%s\n"%str(e), noiselevel = -1)
-	except
-AlarmSignal:
-	WriteMsg("Timeout in elog_process for system '%s'\n"%s,
-		noiselevel = -1)
-	except
-	PortageException
-	as
-e:
-	WriteMsg("%s\n"%str(e), noiselevel = -1)
+		for s, levels
+			in
+		logsystems.items() {
+			if levels {
+				mod_logentries = filter_loglevels(all_logentries[key], levels)
+				mod_fulllog = _combine_logentries(mod_logentries)
+			}else {
+				mod_logentries = default_logentries
+				mod_fulllog = default_fulllog
+			}
+			if len(mod_logentries) == 0 {
+				continue
+			}
+			s = strings.ReplaceAll(s, "-", "_")
+		try:
+			m = _load_mod("portage.elog.mod_" + s)
+		try:
+			AlarmSignal.register(60)
+			m.process(mysettings, str(key), mod_logentries, mod_fulllog)
+		finally:
+			AlarmSignal.unregister()
+			if hasattr(m, "finalize") &&
+				!
+					m.finalize
+				in
+		_elog_atexit_handlers:
+			_elog_atexit_handlers = append(, m.finalize)
+			atexit_register(m.finalize)
+			except(ImportError, AttributeError)
+			as
+		e:
+			WriteMsg(_("!!! Error while importing logging modules "
+			"while loading \"mod_%s\":\n") % str(s))
+			WriteMsg("%s\n"%str(e), noiselevel = -1)
+			except
+		AlarmSignal:
+			WriteMsg("Timeout in elog_process for system '%s'\n"%s,
+				noiselevel = -1)
+			except
+			PortageException
+			as
+		e:
+			WriteMsg("%s\n"%str(e), noiselevel = -1)
+		}
+	}
 }
-
 
 var _log_levels = map[string]bool{
 	"ERROR": true,

@@ -721,9 +721,9 @@ func _doebuild_spawn(phase string, settings *Config, actionmap Actionmap, **kwar
 	return spawnE(cmd, settings, **kwargs)
 }
 
-// nil, false, nil,
+// nil, false, "",
 func _spawn_phase(phase string, settings *Config, actionmap Actionmap, returnpid bool,
-logfile=None, **kwargs) ([]int, error){
+logfile string, **kwargs) ([]int, error){
 
 	if returnpid {
 		return _doebuild_spawn(phase, settings, actionmap,
@@ -933,7 +933,7 @@ debug bool, use_cache=None, db DBAPI) {
 	mysettings.ValueDict["BUILD_PREFIX"] = mysettings.ValueDict["PORTAGE_TMPDIR"] + "/portage"
 	mysettings.ValueDict["PKG_TMPDIR"] = mysettings.ValueDict["BUILD_PREFIX"] + "/._unmerge_"
 
-	if mydo in("unmerge", "prerm", "postrm", "cleanrm") {
+	if  ins([]string{"unmerge", "prerm", "postrm", "cleanrm"},mydo) {
 		mysettings.ValueDict["PORTAGE_BUILDDIR"] = filepath.Join(
 			mysettings.ValueDict["PKG_TMPDIR"],
 			mysettings.ValueDict["CATEGORY"], mysettings.ValueDict["PF"])
@@ -993,7 +993,7 @@ debug bool, use_cache=None, db DBAPI) {
 			src_uri := mysettings.configDict["pkg"]["SRC_URI"]
 			if src_uri == "" {
 				src_uri, = mydbapi.aux_get(mysettings.mycpv,
-					["SRC_URI"], mytree = mytree)
+					[]string{"SRC_URI"}, mytree = mytree)
 			}
 			metadata := map[string]string{
 				"EAPI":    eapi,
@@ -1502,14 +1502,14 @@ fd_pipes=None, returnpid bool) int {
 
 			if newstuff {
 				if builddir_lock == nil && !Inmss(mysettings.ValueDict, "PORTAGE_BUILDDIR_LOCKED") {
-					builddir_lock = EbuildBuildDir(
-						scheduler = asyncio._safe_loop(),
-						settings = mysettings)
+					builddir_lock = NewEbuildBuildDir(
+						asyncio._safe_loop(),
+						mysettings)
 					builddir_lock.scheduler.run_until_complete(
 						builddir_lock.async_lock())
 				}
 				//try{
-				_spawn_phase("clean", mysettings)
+				_spawn_phase("clean", mysettings, nil, false, "")
 				//finally{
 				if builddir_lock != nil {
 					builddir_lock.scheduler.run_until_complete(
@@ -1526,9 +1526,9 @@ fd_pipes=None, returnpid bool) int {
 	have_build_dirs := false
 	if !Ins([]string{"digest", "fetch", "help", "manifest"}, mydo) {
 		if !returnpid && !Inmss(mysettings.ValueDict, "PORTAGE_BUILDDIR_LOCKED") {
-			builddir_lock = EbuildBuildDir(
-				scheduler = asyncio._safe_loop(),
-				settings = mysettings)
+			builddir_lock := NewEbuildBuildDir(
+				 asyncio._safe_loop(),
+				 mysettings)
 			builddir_lock.scheduler.run_until_complete(
 				builddir_lock.async_lock())
 		}
@@ -1568,15 +1568,15 @@ fd_pipes=None, returnpid bool) int {
 	if eapiExportsReplaceVars(mysettings.ValueDict["EAPI"]) &&
 		(Ins([]string{"postinst", "preinst", "pretend", "setup"}, mydo) ||
 			(!features["noauto"] && !returnpid &&
-				(Inmsmss(actionmap_deps, mydo) || Ins([]string{"merge", "package", "qmerge"}, mydo)))) {
-		if !vartree {
+				(Inmsss(actionmap_deps, mydo) || Ins([]string{"merge", "package", "qmerge"}, mydo)))) {
+		if vartree== nil {
 			WriteMsg("Warning: vartree not given to doebuild. "+
 				"Cannot set REPLACING_VERSIONS in pkg_{pretend,setup}\n", 0, nil)
 		} else {
 			vardb := vartree.dbapi
 			cpv := mysettings.mycpv
 			cpv_slot := fmt.Sprintf("%s%s%s", cpv.cp, slotSeparator, cpv.slot)
-			mysettings.ValueDict["REPLACING_VERSIONS"] := strings.Join(
+			mysettings.ValueDict["REPLACING_VERSIONS"] = strings.Join(
 				set(cpvGetVersion(match)
 			for match
 				in
@@ -1594,12 +1594,12 @@ fd_pipes=None, returnpid bool) int {
 				mysettings.ValueDict["PORTAGE_UPDATE_ENV"] = env_file
 			}
 		}
-		defer delete(mysettings, "PORTAGE_UPDATE_ENV")
-		return _spawn_phase(mydo, mysettings,
-			fd_pipes = fd_pipes, logfile = logfile, returnpid=returnpid)
+		defer delete(mysettings.ValueDict, "PORTAGE_UPDATE_ENV")
+		return _spawn_phase(mydo, mysettings, "",returnpid,logfile
+			fd_pipes = fd_pipes)
 	}
 
-	mycpv := (mysettings.ValueDict["CATEGORY"] + "/" + mysettings.ValueDict["PF"])
+	mycpv := mysettings.ValueDict["CATEGORY"] + "/" + mysettings.ValueDict["PF"]
 
 	need_distfiles := tree == "porttree" && !unpacked &&
 		((mydo == "fetch" || mydo == "unpack") ||
@@ -2051,9 +2051,9 @@ sesandbox, fakeroot, networked, ipc, mountns, pidns bool, **keywords) {
 
 	fd_pipes = keywords.get("fd_pipes")
 	if fd_pipes == nil {
-		fd_pipes =
+		fd_pipes = map[]
 		{
-			0:portage._get_stdin().fileno(),
+			0:getStdin().Fd(),
 			1:sys.__stdout__.fileno(),
 			2:sys.__stderr__.fileno(),
 		}
@@ -2630,13 +2630,13 @@ func _preinst_bsdflags(mysettings *Config){
 if bsd_chflags{
 
 os.system(fmt.Sprintf("mtree -c -p %s -k flags > %s" %
-(_shell_quote(mysettings.ValueDict["D"]),
-_shell_quote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
+(ShellQuote(mysettings.ValueDict["D"]),
+ShellQuote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
 
 os.system(fmt.Sprintf("chflags -R noschg,nouchg,nosappnd,nouappnd %s" %
-(_shell_quote(mysettings.ValueDict["D"]),))
+(ShellQuote(mysettings.ValueDict["D"]),))
 os.system(fmt.Sprintf("chflags -R nosunlnk,nouunlnk %s 2>/dev/null" %
-(_shell_quote(mysettings.ValueDict["D"]),))
+(ShellQuote(mysettings.ValueDict["D"]),))
 }
 }
 

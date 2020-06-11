@@ -1619,7 +1619,8 @@ func(b *BinpkgEnvExtractor) _extractor_exit( extractor_proc *SpawnProcess) {
 	f.Close()
 
 	b._current_task = nil
-	b.returncode = 0
+	i := 0
+	b.returncode = &i
 	b.wait()
 }
 
@@ -1729,9 +1730,6 @@ var _spawn_kwarg_names = []string{"env", "opt_name", "fd_pipes",
 "uid", "gid", "groups", "umask", "logfile",
 "path_lookup", "pre_exec", "close_fds", "cgroup",
 "unshare_ipc", "unshare_mount", "unshare_pid", "unshare_net"}
-
-__slots__ = ("args",) +
-_spawn_kwarg_names + ("_pipe_logger", "_selinux_type",)
 
 func(s *SpawnProcess) _start(){
 	if s.fd_pipes == nil{
@@ -2157,9 +2155,9 @@ try:
 	pass
 
 	_close_fds()
-	portage.process._setup_pipes(fd_pipes, close_fds = false)
+	_setup_pipes(fd_pipes, false)
 
-	havecolor := m.settings.ValueDict["NOCOLOR"] == "yes" || m.settings.ValueDict["NOCOLOR"] == "true"
+	HaveColor = m.settings.ValueDict["NOCOLOR"] == "yes" || m.settings.ValueDict["NOCOLOR"] == "true"
 
 	m.vartree.dbapi._flush_cache_enabled = false
 
@@ -5581,6 +5579,7 @@ type  SchedulerInterface struct {
 	// slot
 	add_reader,
 	add_writer func()
+	remove_reader func(int)
 	call_at,
 	call_exception_handler,
 	call_later,
@@ -5592,7 +5591,6 @@ type  SchedulerInterface struct {
 	get_debug,
 	is_closed,
 	is_running,
-	remove_reader,
 	remove_writer,
 	run_in_executor,
 	run_until_complete,
