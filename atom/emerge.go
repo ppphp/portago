@@ -55,8 +55,9 @@ type AbstractEbuildProcess struct {
 	*SpawnProcess
 	// slot
 	settings *Config
-	phase, _build_dir, _build_dir_unlock, _ipc_daemon,
+	phase, _build_dir_unlock, _ipc_daemon,
 	_exit_command, _exit_timeout_id, _start_future string
+	_build_dir *EbuildBuildDir
 
 	_phases_without_builddir []string
 	_phases_interactive_whitelist []string
@@ -215,8 +216,7 @@ func (a *AbstractEbuildProcess)_start() {
 		if !Ins(a._phases_without_builddir, a.phase) {
 			start_ipc_daemon = true
 			if _, ok := a.settings.ValueDict["PORTAGE_BUILDDIR_LOCKED"]; !ok {
-				a._build_dir = EbuildBuildDir(
-					scheduler = a.scheduler, settings = a.settings)
+				a._build_dir = NewEbuildBuildDir(a.scheduler, a.settings)
 				a._start_future = a._build_dir.async_lock()
 				a._start_future.add_done_callback(
 					functools.partial(a._start_post_builddir_lock,
@@ -796,7 +796,7 @@ AttributeError:
 	l._registered = true
 	l._proc = SpawnProcess(
 		args = [portage._python_interpreter,
-		os.path.join(portage._bin_path, 'lock-helper.py'), l.path],
+		filepath.Join(portage._bin_path, 'lock-helper.py'), l.path],
 env = dict(os.environ, PORTAGE_PYM_PATH= portage._pym_path),
 fd_pipes ={0:out_pr, 1:in_pw, 2:sys.__stderr__.fileno()},
 scheduler = l.scheduler)
@@ -824,7 +824,7 @@ KeyError:
 	if not l._acquired:
 	if not(l.cancelled or
 	l._kill_test):
-	writemsg_level("_LockProcess: %s\n" % \
+	writemsg_level("_LockProcess: %s\n" % 
 	_("failed to acquire lock on '%s'") % (l.path,),
 	level = logging.ERROR, noiselevel=-1)
 	l._unregister()
@@ -833,12 +833,12 @@ KeyError:
 	return
 
 	if not l.cancelled
-	and \
+	and 
 	l._unlock_future
 	is
 None:
 	raise
-	AssertionError("lock process failed with returncode %s" \
+	AssertionError("lock process failed with returncode %s" 
 	% (proc.returncode,))
 
 	if l._unlock_future is
@@ -899,7 +899,7 @@ None:
 	AssertionError('lock not acquired yet')
 	if l.returncode != os.EX_OK:
 	raise
-	AssertionError("lock process failed with returncode %s" \
+	AssertionError("lock process failed with returncode %s" 
 	% (l.returncode,))
 	if l._unlock_future is
 	not
@@ -1097,6 +1097,576 @@ func NewAsynchronousTask() *AsynchronousTask{
 	a := &AsynchronousTask{}
 	a._cancelled_returncode = int(-syscall.SIGINT)
 	return a
+}
+
+type Binpkg struct {
+	*CompositeTask
+	//slot
+	find_blockers,
+	ldpath_mtimes, logger, opts,
+	 pkg_count, prefetcher, world_atom,
+	_bintree,  _build_prefix,
+	_ebuild_path, _fetched_pkg,
+	_image_dir, _infloc, _pkg_path, _tree, _verify string
+	settings *Config
+	pkg *PkgStr
+	_build_dir*EbuildBuildDir
+}
+
+// 0, 0
+func (b *Binpkg) _writemsg_level( msg string, level int, noiselevel) {
+	b.scheduler.output(msg, b.settings.ValueDict["PORTAGE_LOG_FILE"], nil, level , noiselevel)
+}
+
+func (b *Binpkg) _start() {
+
+	pkg := b.pkg
+	settings := b.settings
+	settings.SetCpv(pkg)
+	b._tree = "bintree"
+	b._bintree = b.pkg.root_config.trees[b._tree]
+	b._verify = not
+	b.opts.pretend
+
+	dir_path := filepath.Join(os.path.realpath(settings.ValueDict["PORTAGE_TMPDIR"]),
+		"portage", pkg.category, pkg.pf)
+	b._image_dir = filepath.Join(dir_path, "image")
+	b._infloc = filepath.Join(dir_path, "build-info")
+	b._ebuild_path = filepath.Join(b._infloc, pkg.pf+".ebuild")
+	settings.ValueDict["EBUILD"] = b._ebuild_path
+	doebuild_environment(b._ebuild_path, "setup", nil, b.settings, false, nil, b._bintree.dbapi)
+	if dir_path != b.settings.ValueDict["PORTAGE_BUILDDIR"] {
+		raise
+		AssertionError("'%s' != '%s'"%
+			(dir_path, b.settings.ValueDict["PORTAGE_BUILDDIR"]))
+	}
+	b._build_dir = NewEbuildBuildDir(b.scheduler, settings)
+	settings.configDict["pkg"]["EMERGE_FROM"] = "binary"
+	settings.configDict["pkg"]["MERGE_TYPE"] = "binary"
+
+	if eapiExportsReplaceVars(settings.ValueDict["EAPI"]) {
+		vardb := b.pkg.root_config.trees["vartree"].dbapi
+		settings.ValueDict["REPLACING_VERSIONS"] = " ".join(
+			set(portage.versions.cpv_getversion(x)
+		for x
+			in
+		vardb.match(b.pkg.slot_atom) +
+			vardb.match("="+b.pkg.cpv)))
+	}
+
+	prefetcher := b.prefetcher
+	if prefetcher is
+	None{
+		pass
+	} else if
+	prefetcher.isAlive()
+		and
+	prefetcher.poll()
+	is
+	None{
+
+		if not b.background{,
+		fetch_log = filepath.Join(
+		_emerge.emergelog._emerge_log_dir, "emerge-fetch.log")
+		msg = (
+		"Fetching in the background:",
+		prefetcher.pkg_path,
+		"To view fetch progress, run in another terminal:",
+		"tail -f %s" % fetch_log,
+	)
+		out = portage.output.EOutput()
+		for l
+		in
+		msg{
+		out.einfo(l)
+	}
+	}
+
+		b._current_task = prefetcher
+		prefetcher.addExitListener(b._prefetch_exit)
+		return
+	}
+
+	b._prefetch_exit(prefetcher)
+}
+
+func (b *Binpkg)_prefetch_exit(b, prefetcher){
+	if b._was_cancelled() {
+		b.wait()
+		return
+	}
+
+	if not(b.opts.pretend or
+	b.opts.fetchonly){
+		b._start_task(
+			AsyncTaskFuture(future = b._build_dir.async_lock()),
+		b._start_fetcher)
+	}else {
+		b._start_fetcher()
+	}
+}
+
+func (b *BinPkg) _start_fetcher( lock_task=None) {
+	if lock_task is
+	not
+None{
+	b._assert_current(lock_task)
+	if lock_task.cancelled{
+	b._default_final_exit(lock_task)
+	return
+}
+
+	lock_task.future.result()
+	portage.prepare_build_dirs(b.settings.ValueDict["ROOT"], b.settings, 1)
+	b._build_dir.clean_log()
+}
+
+	pkg = b.pkg
+	pkg_count = b.pkg_count
+	fetcher = None
+
+	if b.opts.getbinpkg and
+	b._bintree.isremote(pkg.cpv){
+
+	fetcher = BinpkgFetcher(background = b.background,
+		logfile = b.settings.ValueDict["PORTAGE_LOG_FILE"), pkg=b.pkg,
+		pretend = b.opts.pretend, scheduler=b.scheduler)
+
+	msg = " --- (%s of %s) Fetching Binary (%s::%s)" %
+	(pkg_count.curval, pkg_count.maxval, pkg.cpv,
+		fetcher.pkg_path)
+	short_msg = "emerge: (%s of %s) %s Fetch" % 
+	(pkg_count.curval, pkg_count.maxval, pkg.cpv)
+	b.logger.log(msg, short_msg = short_msg)
+
+	fetcher.addExitListener(b._fetcher_exit)
+	b._task_queued(fetcher)
+	b.scheduler.fetch.schedule(fetcher)
+	return
+	}
+
+	b._fetcher_exit(fetcher)
+}
+
+func (b *BinPkg) _fetcher_exit( fetcher) {
+
+	if fetcher is
+	not
+None{
+	b._fetched_pkg = fetcher.pkg_path
+	if b._default_exit(fetcher) != os.EX_OK{
+	b._async_unlock_builddir(returncode = b.returncode)
+	return
+}
+}
+
+	if b.opts.pretend {
+		b._current_task = None
+		b.returncode = os.EX_OK
+		b.wait()
+		return
+	}
+
+	verifier = None
+	if b._verify {
+		if b._fetched_pkg {
+			path = b._fetched_pkg
+		} else {
+			path = b.pkg.root_config.trees["bintree"].getname(
+				b.pkg.cpv)
+		}
+		logfile = b.settings.ValueDict["PORTAGE_LOG_FILE"]
+		verifier = BinpkgVerifier(background = b.background,
+			logfile = logfile, pkg=b.pkg, scheduler = b.scheduler,
+			_pkg_path=path)
+		b._start_task(verifier, b._verifier_exit)
+		return
+	}
+
+	b._verifier_exit(verifier)
+}
+
+func (b *BinPkg) _verifier_exit(verifier) {
+	if verifier is
+	not
+	None
+	and 
+	b._default_exit(verifier) != os.EX_OK{
+		b._async_unlock_builddir(returncode = b.returncode)
+		return
+	}
+
+	logger = b.logger
+	pkg = b.pkg
+	pkg_count = b.pkg_count
+
+	if b._fetched_pkg:
+	pkg_path = b._bintree.getname(
+		b._bintree.inject(pkg.cpv,
+			filename = b._fetched_pkg),
+	allocate_new = False) else:
+	pkg_path = b.pkg.root_config.trees["bintree"].getname(
+		b.pkg.cpv)
+
+	if pkg_path is
+	not
+None:
+	b.settings.ValueDict["PORTAGE_BINPKG_FILE"] = pkg_path
+	b._pkg_path = pkg_path
+
+	logfile = b.settings.ValueDict["PORTAGE_LOG_FILE")
+	if logfile is
+	not
+	None
+	and
+	os.path.isfile(logfile):
+try:
+	syscall.Unlink(logfile)
+	except
+OSError:
+	pass
+
+	if b.opts.fetchonly:
+	b._current_task = None
+	b.returncode = os.EX_OK
+	b.wait()
+	return
+
+	msg = " === (%s of %s) Merging Binary (%s::%s)" % 
+	(pkg_count.curval, pkg_count.maxval, pkg.cpv, pkg_path)
+	short_msg = "emerge: (%s of %s) %s Merge Binary" % 
+	(pkg_count.curval, pkg_count.maxval, pkg.cpv)
+	logger.log(msg, short_msg = short_msg)
+
+	phase = "clean"
+	settings = b.settings
+	ebuild_phase = EbuildPhase(background = b.background,
+		phase = phase, scheduler=b.scheduler,
+		settings = settings)
+
+	b._start_task(ebuild_phase, b._clean_exit)
+}
+
+func (b *BinPkg) _clean_exit( clean_phase) {
+	if b._default_exit(clean_phase) != os.EX_OK:
+	b._async_unlock_builddir(returncode = b.returncode)
+	return
+
+	b._start_task(
+		AsyncTaskFuture(future = b._unpack_metadata()),
+	b._unpack_metadata_exit)
+}
+
+@coroutine
+func (b *BinPkg) _unpack_metadata() {
+
+	dir_path = b.settings.ValueDict["PORTAGE_BUILDDIR"]
+
+	infloc = b._infloc
+	pkg = b.pkg
+	pkg_path = b._pkg_path
+
+	dir_mode = 0o755
+	for mydir
+	in(dir_path, b._image_dir, infloc):
+	portage.util.ensure_dirs(mydir, uid = portage.data.portage_uid,
+		gid = portage.data.portage_gid, mode = dir_mode)
+
+	portage.prepare_build_dirs(b.settings.ValueDict["ROOT"], b.settings, 1)
+	b._writemsg_level(">>> Extracting info\n")
+
+	yield
+	b._bintree.dbapi.unpack_metadata(b.settings, infloc)
+	check_missing_metadata = ("CATEGORY", "PF")
+	for k, v
+	in
+	zip(check_missing_metadata,
+		b._bintree.dbapi.aux_get(b.pkg.cpv, check_missing_metadata)):
+	if v:
+	continue
+	elif
+	k == "CATEGORY":
+	v = pkg.category
+	elif
+	k == "PF":
+	v = pkg.pf
+	else:
+	continue
+
+	f = io.open(_unicode_encode(filepath.Join(infloc, k),
+		encoding = _encodings['fs'], errors = 'strict'),
+	mode = 'w', encoding=_encodings['content'],
+		errors = 'backslashreplace')
+try:
+	f.write(_unicode_decode(v + "\n"))
+finally:
+	f.close()
+
+	if pkg_path is
+	not
+None:
+	md5sum, = b._bintree.dbapi.aux_get(b.pkg.cpv, ["MD5"])
+	if not md5sum:
+	md5sum = portage.checksum.perform_md5(pkg_path)
+	with
+	io.open(_unicode_encode(filepath.Join(infloc, "BINPKGMD5"),
+		encoding = _encodings['fs'], errors = 'strict'),
+	mode = 'w', encoding=_encodings['content'], errors = 'strict') as
+f:
+	f.write(_unicode_decode("{}\n".format(md5sum)))
+
+	env_extractor = BinpkgEnvExtractor(background = b.background,
+		scheduler = b.scheduler, settings=b.settings)
+	env_extractor.start()
+	yield
+	env_extractor.async_wait()
+	if env_extractor.returncode != os.EX_OK:
+	raise
+	portage.exception.PortageException("failed to extract environment for {}".format(b.pkg.cpv))
+}
+
+func (b *BinPkg) _unpack_metadata_exit( unpack_metadata) {
+	if b._default_exit(unpack_metadata) != 0 {
+		unpack_metadata.future.result()
+		b._async_unlock_builddir(returncode = b.returncode)
+		return
+	}
+
+	setup_phase := NewEbuildPhase(nil,  b.background, "setup",b.scheduler, b.settings, nil)
+
+	setup_phase.addExitListener(b._setup_exit)
+	b._task_queued(setup_phase)
+	b.scheduler.scheduleSetup(setup_phase)
+}
+
+func (b *BinPkg) _setup_exit( setup_phase) {
+	if b._default_exit(setup_phase) != os.EX_OK:
+	b._async_unlock_builddir(returncode = b.returncode)
+	return
+
+	b._writemsg_level(">>> Extracting %s\n" % b.pkg.cpv)
+	b._start_task(
+		AsyncTaskFuture(future = b._bintree.dbapi.unpack_contents(
+		b.settings,
+		b._image_dir)),
+	b._unpack_contents_exit)
+}
+
+func (b *BinPkg) _unpack_contents_exit( unpack_contents) {
+	if b._default_exit(unpack_contents) != os.EX_OK:
+	unpack_contents.future.result()
+	b._writemsg_level("!!! Error Extracting '%s'\n" % 
+	b._pkg_path, noiselevel = -1, level=logging.ERROR)
+	b._async_unlock_builddir(returncode = b.returncode)
+	return
+
+try:
+	with
+	io.open(_unicode_encode(filepath.Join(b._infloc, "EPREFIX"),
+		encoding = _encodings['fs'], errors = 'strict'), mode = 'r',
+		encoding=_encodings['repo.content'], errors = 'replace') as
+f:
+	b._build_prefix = f.read().rstrip("\n")
+	except
+IOError:
+	b._build_prefix = ""
+
+	if b._build_prefix == b.settings.ValueDict["EPREFIX"]:
+	ensure_dirs(b.settings.ValueDict["ED"])
+	b._current_task = None
+	b.returncode = os.EX_OK
+	b.wait()
+	return
+
+	env = b.settings.environ()
+	env["PYTHONPATH"] = b.settings.ValueDict["PORTAGE_PYTHONPATH"]
+	chpathtool = SpawnProcess(
+		args = [portage._python_interpreter,
+		filepath.Join(b.settings.ValueDict["PORTAGE_BIN_PATH"], "chpathtool.py"),
+		b.settings.ValueDict["D"], b._build_prefix, b.settings.ValueDict["EPREFIX"]],
+background = b.background, env = env,
+scheduler = b.scheduler,
+logfile = b.settings.ValueDict["PORTAGE_LOG_FILE"))
+b._writemsg_level(">>> Adjusting Prefix to %s\n" % b.settings.ValueDict["EPREFIX"])
+b._start_task(chpathtool, b._chpathtool_exit)
+}
+
+func (b *BinPkg) _chpathtool_exit( chpathtool) {
+	if b._final_exit(chpathtool) != os.EX_OK:
+	b._writemsg_level("!!! Error Adjusting Prefix to %s\n"%
+		(b.settings.ValueDict["EPREFIX"], ),
+		noiselevel = -1, level = logging.ERROR)
+	b._async_unlock_builddir(returncode = b.returncode)
+	return
+
+	with
+	io.open(_unicode_encode(filepath.Join(b._infloc, "EPREFIX"),
+		encoding = _encodings['fs'], errors = 'strict'), mode = 'w',
+		encoding = _encodings['repo.content'], errors = 'strict') as
+f:
+	f.write(b.settings.ValueDict["EPREFIX"] + "\n")
+
+	image_tmp_dir = filepath.Join(
+		b.settings.ValueDict["PORTAGE_BUILDDIR"], "image_tmp")
+	build_d = filepath.Join(b.settings.ValueDict["D"],
+		b._build_prefix.lstrip(os.sep)).rstrip(os.sep)
+	if not os.path.isdir(build_d):
+	shutil.rmtree(b._image_dir)
+	ensure_dirs(b.settings.ValueDict["ED"])
+	else:
+	os.rename(build_d, image_tmp_dir)
+	if build_d != b._image_dir:
+	shutil.rmtree(b._image_dir)
+	ensure_dirs(os.path.dirname(b.settings.ValueDict["ED"].rstrip(os.sep)))
+	os.rename(image_tmp_dir, b.settings.ValueDict["ED"])
+
+	b.wait()
+}
+
+func (b *BinPkg) _async_unlock_builddir(b, returncode=None) {
+	if b.opts.pretend or
+	b.opts.fetchonly:
+	if returncode is
+	not
+None:
+	b.returncode = returncode
+	b._async_wait()
+	return
+	if returncode is
+	not
+None:
+	b.returncode = None
+	portage.elog.elog_process(b.pkg.cpv, b.settings)
+	b._start_task(
+		AsyncTaskFuture(future = b._build_dir.async_unlock()),
+	functools.partial(b._unlock_builddir_exit, returncode = returncode))
+}
+
+func (b *BinPkg) _unlock_builddir_exit(unlock_task, returncode=None) {
+	b._assert_current(unlock_task)
+	if unlock_task.cancelled and
+	returncode
+	is
+	not
+None:
+	b._default_final_exit(unlock_task)
+	return
+
+	unlock_task.future.cancelled()
+	or
+	unlock_task.future.result()
+	if returncode is
+	not
+None:
+	b.returncode = returncode
+	b._async_wait()
+}
+
+func (b *BinPkg) create_install_task() {
+	task = EbuildMerge(exit_hook = b._install_exit,
+		find_blockers = b.find_blockers,
+		ldpath_mtimes=b.ldpath_mtimes, logger = b.logger,
+		pkg=b.pkg, pkg_count = b.pkg_count,
+		pkg_path=b._pkg_path, scheduler = b.scheduler,
+		settings=b.settings, tree = b._tree,
+		world_atom=b.world_atom)
+	return task
+}
+
+func (b *BinPkg) _install_exit(task) {
+	b.settings.pop("PORTAGE_BINPKG_FILE", None)
+	if task.returncode == os.EX_OK and 
+	"binpkg-logs"
+	not
+	in
+	b.settings.features
+	and 
+	b.settings.ValueDict["PORTAGE_LOG_FILE"):
+try:
+	syscall.Unlink(b.settings.ValueDict["PORTAGE_LOG_FILE"])
+	except
+OSError:
+	pass
+	b._async_unlock_builddir()
+	if b._current_task is
+None:
+	result = b.scheduler.create_future()
+	b.scheduler.call_soon(result.set_result, os.EX_OK) else:
+	result = b._current_task.async_wait()
+	return result
+}
+
+func NewBinPkg()*Binpkg{
+	b :=&Binpkg{}
+	return b
+}
+
+type BinpkgEnvExtractor struct {
+	*CompositeTask
+	settings *Config
+}
+
+func(b *BinpkgEnvExtractor) saved_env_exists() {
+	return os.path.exists(b._get_saved_env_path())
+}
+
+func(b *BinpkgEnvExtractor) dest_env_exists() {
+	return os.path.exists(b._get_dest_env_path())
+}
+
+func(b *BinpkgEnvExtractor) _get_saved_env_path(b) {
+	return filepath.Join(os.path.dirname(b.settings.ValueDict["EBUILD"]),
+		"environment.bz2")
+}
+
+func(b *BinpkgEnvExtractor) _get_dest_env_path() {
+	return filepath.Join(b.settings.ValueDict["T"], "environment")
+}
+
+func(b *BinpkgEnvExtractor) _start() {
+	saved_env_path = b._get_saved_env_path()
+	dest_env_path = b._get_dest_env_path()
+	shell_cmd = "${PORTAGE_BUNZIP2_COMMAND:-${PORTAGE_BZIP2_COMMAND} -d} -c -- %s > %s" % 
+	(_shell_quote(saved_env_path),
+		_shell_quote(dest_env_path))
+	extractor_proc = SpawnProcess(
+		args = [BASH_BINARY, "-c", shell_cmd],
+background = b.background,
+env = b.settings.environ(),
+scheduler = b.scheduler,
+logfile = b.settings.ValueDict["PORTAGE_LOG_FILE"))
+
+b._start_task(extractor_proc, b._extractor_exit)
+}
+
+func(b *BinpkgEnvExtractor) _remove_dest_env() {
+try:
+	syscall.Unlink(b._get_dest_env_path())
+	except
+	OSError
+	as
+e:
+	if e.errno != errno.ENOENT:
+	raise
+}
+
+func(b *BinpkgEnvExtractor) _extractor_exit( extractor_proc) {
+
+	if b._default_exit(extractor_proc) != os.EX_OK:
+	b._remove_dest_env()
+	b.wait()
+	return
+
+	open(_unicode_encode(b._get_dest_env_path()+".raw"), 'wb').close()
+
+	b._current_task = None
+	b.returncode = os.EX_OK
+	b.wait()
+}
+
+func NewBinPkgEnvExtractor()*BinpkgEnvExtractor{
+	b :=&BinpkgEnvExtractor{}
+	return b
 }
 
 type SubProcess struct {
@@ -2472,7 +3042,7 @@ AttributeError:
 func (f *FifoIpcDaemon) _reopen_input() {
 	f.scheduler.remove_reader(f._files.pipe_in)
 	os.close(f._files.pipe_in)
-	f._files.pipe_in = \
+	f._files.pipe_in = 
 	os.open(f.input_fifo, os.O_RDONLY|os.O_NONBLOCK)
 
 	if sys.hexversion < 0x3040000 and
@@ -2568,7 +3138,7 @@ None:
 	reply_hook()
 
 	else:
-	lock_filename = os.path.join(
+	lock_filename = filepath.Join(
 		filepath.Dir(e.input_fifo), '.ipc_lock')
 try:
 	lock_obj = lockfile(lock_filename, unlinkfile = true,
@@ -2596,7 +3166,7 @@ finally:
 	as
 e:
 	WriteMsgLevel()
-		"!!! EbuildIpcDaemon %s: %s\n" % \
+		"!!! EbuildIpcDaemon %s: %s\n" % 
 	(_('failed to send reply'), e),
 	level = logging.ERROR, noiselevel=-1)
 }
@@ -2625,7 +3195,7 @@ func (m *MiscFunctionsProcess) _spawn(args, **kwargs){
 kwargs.setdefault('free', false if m.ld_preload_sandbox is None else not m.ld_preload_sandbox)
 
 if m._dummy_pipe_fd is not None:
-m.settings["PORTAGE_PIPE_FD"] = str(m._dummy_pipe_fd)
+m.settings.ValueDict["PORTAGE_PIPE_FD"] = str(m._dummy_pipe_fd)
 
 if "fakeroot" in m.settings.features:
 kwargs["fakeroot"] = true
@@ -2635,7 +3205,7 @@ try:
 return spawn(" ".join(args), m.settings, **kwargs)
 finally:
 if phase_backup is not None:
-m.settings["EBUILD_PHASE"] = phase_backup
+m.settings.ValueDict["EBUILD_PHASE"] = phase_backup
 m.settings.pop("PORTAGE_PIPE_FD", None)
 }
 
@@ -3844,8 +4414,8 @@ false:
 	s._sched_iface.run_until_complete(
 		bintree.dbapi.unpack_metadata(settings, infloc))
 	ebuild_path =  filepath.Join(infloc, x.pf+".ebuild")
-	settings.configdict["pkg"]["EMERGE_FROM"] = "binary"
-	settings.configdict["pkg"]["MERGE_TYPE"] = "binary"
+	settings.configDict["pkg"]["EMERGE_FROM"] = "binary"
+	settings.configDict["pkg"]["MERGE_TYPE"] = "binary"
 
 	else:
 	tree = "porttree"
@@ -3855,11 +4425,11 @@ false:
 None:
 	raise
 	AssertionError("ebuild not found for '%s'" % x.cpv)
-	settings.configdict["pkg"]["EMERGE_FROM"] = "ebuild"
+	settings.configDict["pkg"]["EMERGE_FROM"] = "ebuild"
 	if s._build_opts.buildpkgonly:
-	settings.configdict["pkg"]["MERGE_TYPE"] = "buildonly"
+	settings.configDict["pkg"]["MERGE_TYPE"] = "buildonly"
 	else:
-	settings.configdict["pkg"]["MERGE_TYPE"] = "source"
+	settings.configDict["pkg"]["MERGE_TYPE"] = "source"
 
 	doebuild_environment(ebuild_path,
 		"pretend", nil, settings, false, nil,
@@ -5384,7 +5954,7 @@ type EbuildBuildDir struct {
 __slots__ = ("scheduler", "settings",
 "locked", "_catdir", "_lock_obj")
 
-func NewEbuildBuildDir( **kwargs)*EbuildBuildDir{
+func NewEbuildBuildDir(scheduler *SchedulerInterface, settings *Config **kwargs)*EbuildBuildDir{
 	e := &EbuildBuildDir{}
 	SlotObject.__init__(e, **kwargs)
 	e.locked = false
@@ -5393,7 +5963,7 @@ func NewEbuildBuildDir( **kwargs)*EbuildBuildDir{
 
 func (e*EbuildBuildDir) _assert_lock( async_lock) {
 	if async_lock.returncode != 0 {
-		raise AssertionError("AsynchronousLock failed with returncode %s" \
+		raise AssertionError("AsynchronousLock failed with returncode %s" 
 		% (async_lock.returncode,))
 	}
 }
@@ -5465,7 +6035,7 @@ func (e*EbuildBuildDir) async_lock() {
 
 		e._lock_obj = builddir_lock
 		e.locked = true
-		e.settings['PORTAGE_BUILDDIR_LOCKED'] = '1'
+		e.settings.ValueDict['PORTAGE_BUILDDIR_LOCKED'] = '1'
 		catdir_lock.async_unlock().add_done_callback(catdir_unlocked)
 	}
 
