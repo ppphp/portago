@@ -129,6 +129,7 @@ func isPrelinkElf(fname string) bool {
 	return len(magic) == 17 && bytes.HasPrefix(magic, []byte{'\x7f', 'E', 'L', 'F'}) && (magic[16] == '\x02' || magic[16] == '\x03')
 }
 
+// 0
 func performMd5(x string, calcPrelink int) []byte {
 	b, _ := performChecksum(x, "MD5", calcPrelink)
 	return b
