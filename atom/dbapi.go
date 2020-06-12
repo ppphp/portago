@@ -919,19 +919,9 @@ type vardbapi struct {
 	}
 	mtdircache                                                                                 map[string]int
 	_eroot, _dbroot, _conf_mem_file, _aux_cache_filename, _cache_delta_filename, _counter_path string
-	_fs_lock_obj                                                                               *struct {
-		string
-		int
-		bool
-		method func(int, int) error
-	}
-	_slot_locks map[*Atom]*struct {
-		s *struct {
-			string
-			int
-			bool
-			method func(int, int) error
-		}
+	_fs_lock_obj                                                                               *LockFileS
+	_slot_locks                                                                                map[*Atom]*struct {
+		s *LockFileS
 		int
 	}
 	_aux_cache_obj              *auxCache
@@ -989,13 +979,7 @@ func (v *vardbapi) _fs_lock() {
 		if v._fs_lock_obj != nil {
 			panic("already locked")
 		}
-		a, b, c, d, _ := Lockfile(v._conf_mem_file, false, false, "", 0)
-		v._fs_lock_obj = &struct {
-			string
-			int
-			bool
-			method func(int, int) error
-		}{a, b, c, d}
+		v._fs_lock_obj, _ = Lockfile(v._conf_mem_file, false, false, "", 0)
 		// if err == InvalidLocataion {
 		// v.settings.init_dirs()
 		//
@@ -1009,7 +993,7 @@ func (v *vardbapi) _fs_unlock() {
 		if v._fs_lock_obj == nil {
 			panic("not locked")
 		}
-		Unlockfile(v._fs_lock_obj.string, v._fs_lock_obj.int, v._fs_lock_obj.bool, v._fs_lock_obj.method)
+		Unlockfile(v._fs_lock_obj)
 		v._fs_lock_obj = nil
 	}
 	v._fs_lock_count -= 1
@@ -1021,21 +1005,10 @@ func (v *vardbapi) _slot_lock(slotAtom *Atom) {
 	if lock == nil {
 		lockPath := v.getpath(fmt.Sprintf("%s:%s", slotAtom.cp, slotAtom.slot), "")
 		ensureDirs(filepath.Dir(lockPath), -1, -1, -1, -1, nil, true)
-		a, b, c, d, _ := Lockfile(lockPath, true, false, "", 0)
-		lock = &struct {
-			string
-			int
-			bool
-			method func(int, int) error
-		}{a, b, c, d}
+		lock, _ = Lockfile(lockPath, true, false, "", 0)
 	}
 	v._slot_locks[slotAtom] = &struct {
-		s *struct {
-			string
-			int
-			bool
-			method func(int, int) error
-		}
+		s *LockFileS
 		int
 	}{lock, counter + 1}
 }
@@ -1048,7 +1021,7 @@ func (v *vardbapi) _slot_unlock(slotAtom *Atom) {
 	}
 	counter -= 1
 	if counter == 0 {
-		Unlockfile(lock.string, lock.int, lock.bool, lock.method)
+		Unlockfile(lock)
 		delete(v._slot_locks, slotAtom)
 	} else {
 		v._slot_locks[slotAtom] = &struct {
@@ -6849,13 +6822,13 @@ func (b *BinaryTree) Populate(getbinpkgs, getbinpkg_refresh bool, add_repos []st
 	update_pkgindex := b._populate_local(!b.settings.Features.Features["pkgdir-index-trusted"])
 
 	if update_pkgindex != nil && b.dbapi.writable() {
-		a, f, c, d, _ := Lockfile(b._pkgindex_file, true, false, "", 0)
+		l, _ := Lockfile(b._pkgindex_file, true, false, "", 0)
 		update_pkgindex = b._populate_local(true)
 		if update_pkgindex != nil {
 			b._pkgindex_write(update_pkgindex)
 		}
 		//if pkgindex_lock:
-		Unlockfile(a, f, c, d)
+		Unlockfile(l)
 	}
 
 	if len(add_repos) > 0 {
@@ -8288,15 +8261,16 @@ func (p *portdbapi) getRepositoryName(canonical_repo_path string) string {
 	//return nil
 }
 
-// nil
-func (p *portdbapi) getRepositories(catpkg=nil) {
+// ""
+func (p *portdbapi) getRepositories(catpkg string) []string {
 
-	if catpkg != nil && p._better_cache != nil {
-		return [repo.name
-		for repo
-		in
-		p._better_cache[catpkg]]
-}
+	if catpkg != "" && p._better_cache != nil {
+		ret := []string{}
+		for _, repo := range p._better_cache.__getitem__(catpkg) {
+			ret = append(ret, repo.Name)
+		}
+		return ret
+	}
 	return p._ordered_repo_name_list
 }
 
@@ -8310,7 +8284,7 @@ func (p *portdbapi) getIgnoredRepos() []sss{
 
 // nil, nil
 func (p *portdbapi) findname2(mycpv, mytree, myrepo string) (string,int) {
-	if not mycpv {
+	if mycpv == "" {
 		return "", 0
 	}
 
@@ -8319,12 +8293,12 @@ func (p *portdbapi) findname2(mycpv, mytree, myrepo string) (string,int) {
 		if mytree == "" {
 			return "", 0
 		}
-	}else if mytree != nil {
+	}else if mytree != "" {
 		myrepo = p.repositories.locationMap[mytree]
 	}
 
 	mysplit := strings.Split(mycpv, "/")
-	psplit := pkgSplit(mysplit[1])
+	psplit := pkgSplit(mysplit[1], "")
 	if psplit == [3]string{} || len(mysplit) != 2 {
 		//raise InvalidPackageName(mycpv)
 	}
@@ -8348,7 +8322,7 @@ func (p *portdbapi) findname2(mycpv, mytree, myrepo string) (string,int) {
 		//return "", 0
 		mytrees = []string{}
 		for _, repo := range repos {
-			if mytree != nil && mytree != repo.location {
+			if mytree != "" && mytree != repo.location {
 				continue
 			}
 			mytrees = append(mytrees, repo.location)
@@ -8623,8 +8597,8 @@ return result
 
 // nil, 0, ""
 func (p *portdbapi) getfetchsizes(mypkg string, useflags []string, debug int, myrepo string) {
-	myebuild, mytree := p.findname2(mypkg, myrepo = myrepo)
-	if myebuild == nil {
+	myebuild, mytree := p.findname2(mypkg, "", myrepo)
+	if myebuild == "" {
 		//raise AssertionError(_("ebuild not found for '%s'") % mypkg)
 	}
 	pkgdir := filepath.Dir(myebuild)

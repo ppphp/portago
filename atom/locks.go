@@ -72,7 +72,7 @@ func _close_fds() {
 	}
 }
 
-func lockdir(mydir string, flags int) (string, int, bool, func(int, int) error, error) { // 0
+func lockdir(mydir string, flags int) (*LockFileS, error) { // 0
 	return Lockfile(mydir, true, false, "", flags)
 }
 
@@ -80,26 +80,30 @@ func unlockdir(mylock string) bool {
 	return Unlockfile(mylock, 0, false, nil)
 }
 
+type LockFileS struct {
+	string
+	int
+	bool
+	f func(int, int) error
+}
+
 // false, false, "", 0
-func Lockfile(mypath string, wantnewlockfile, unlinkfile bool, waiting_msg string, flags int) (string, int, bool, func(int, int) error, error) {
-	var a string
-	var b int
-	var c bool
-	var d func(int, int) error
+func Lockfile(mypath string, wantnewlockfile, unlinkfile bool, waiting_msg string, flags int) (*LockFileS, error) {
+l := &LockFileS{}
 	var e error = nil
-	for a == "" {
-		a, b, c, d, e = _lockfile_iteration(mypath, wantnewlockfile, unlinkfile, waiting_msg, flags)
+	for l.string == "" {
+		l, e = _lockfile_iteration(mypath, wantnewlockfile, unlinkfile, waiting_msg, flags)
 		if e != nil {
-			return a, b, c, d, e
+			return l, e
 		}
-		if a == "" {
+		if l.string == "" {
 			WriteMsg("lockfile removed by previous lock holder, retrying\n", 1, nil)
 		}
 	}
-	return a, b, c, d, e
+	return l, e
 }
 
-func _lockfile_iteration(mypath string, wantnewlockfile, unlinkfile bool, waiting_msg string, flags int) (string, int, bool, func(int, int) error, error) { // false, false, "", 0
+func _lockfile_iteration(mypath string, wantnewlockfile, unlinkfile bool, waiting_msg string, flags int) (*LockFileS, error) { // false, false, "", 0
 	if mypath == "" {
 
 	}
@@ -137,7 +141,7 @@ func _lockfile_iteration(mypath string, wantnewlockfile, unlinkfile bool, waitin
 		if st, err := os.Stat(lockfilename); *secpass >= 1 && err == nil && st.Sys() != portage_gid {
 
 		}
-		if err := syscall.Chown(lockfilename, -1, gid); err != nil {
+		if err := syscall.Chown(lockfilename, -1, int(gid)); err != nil {
 			if err == syscall.ENONET || err == syscall.ESTALE {
 				return Lockfile(mypath, wantnewlockfile, unlinkfile, waiting_msg, flags)
 			} else {
@@ -166,7 +170,7 @@ func _lockfile_iteration(mypath string, wantnewlockfile, unlinkfile bool, waitin
 		return nil
 	}
 	if _, ok := os.LookupEnv("__PORTAGE_TEST_HARDLINK_LOCKS"); ok {
-		return "", 0, false, nil, syscall.ENOSYS //, "Function not implemented")
+		return nil, syscall.ENOSYS //, "Function not implemented")
 	}
 	var out *eOutput = nil
 	if err := locking_method(myfd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
@@ -214,13 +218,13 @@ func _lockfile_iteration(mypath string, wantnewlockfile, unlinkfile bool, waitin
 		syscall.Close(myfd)
 		link_success := hardlink_lockfile(lockfilename_path, waiting_msg, flags)
 		if !link_success {
-			return "", 0, false, nil, err
+			return nil, err
 		}
 		lockfilename = lockfilename_path
 		locking_method = nil
 		myfd = HARDLINK_FD
 	} else {
-		return "", 0, false, nil, err
+		return nil, err
 	}
 
 	if myfd != HARDLINK_FD && unlinkfile {
@@ -230,7 +234,7 @@ func _lockfile_iteration(mypath string, wantnewlockfile, unlinkfile bool, waitin
 
 		if removed {
 			syscall.Close(myfd)
-			return "", 0, false, nil, nil
+			return nil, nil
 		}
 	}
 	if myfd != HARDLINK_FD {
@@ -242,7 +246,7 @@ func _lockfile_iteration(mypath string, wantnewlockfile, unlinkfile bool, waitin
 	_open_fds[myfd] = true
 
 	WriteMsg(fmt.Sprintf("%v%v%v\n", lockfilename, myfd, unlinkfile), 1, nil)
-	return lockfilename, myfd, unlinkfile, locking_method, nil
+	return &LockFileS{lockfilename, myfd, unlinkfile, locking_method}, nil
 }
 
 func _lockfile_was_removed(lock_fd int, lock_path string) bool {
@@ -322,8 +326,11 @@ func _fstat_nlink(fd int) (int, error) {
 	}
 }
 
-func Unlockfile(lockfilename string, myfd int, unlinkfile bool, locking_method func(int, int) error) bool {
-
+func Unlockfile(s *LockFileS) bool {
+	lockfilename := s.string
+	myfd :=s.int
+	unlinkfile:= s.bool
+	locking_method:= s.f
 	if myfd == HARDLINK_FD {
 		unhardlink_lockfile(lockfilename, unlinkfile)
 		return true
@@ -453,8 +460,8 @@ func hardlink_lockfile(lockfilename string, waiting_msg string, flags int) bool 
 					continue
 				}
 			} else if !preexisting {
-				if *secpass >= 1 && int(myfd_st.Gid) != gid {
-					if err := syscall.Fchown(myfd, -1, gid); err != nil {
+				if *secpass >= 1 && myfd_st.Gid != gid {
+					if err := syscall.Fchown(myfd, -1, int(gid)); err != nil {
 						if err != syscall.ENOENT && err != syscall.ESTALE {
 							WriteMsg(fmt.Sprintf("%s: fchown('%s', -1, %d)\n", err, lockfilename, portage_gid), -1, nil)
 							WriteMsg(fmt.Sprintf("Cannot chown a lockfile: '%s'\n", lockfilename), -1, nil)

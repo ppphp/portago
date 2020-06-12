@@ -622,8 +622,7 @@ func(a *AsynchronousLock) _start() {
 
 	if not a._force_async:
 try:
-	a._imp = lockfile(a.path,
-		wantnewlockfile = true, flags = os.O_NONBLOCK)
+	a._imp := Lockfile(a.path, true, false, "", syscall.O_NONBLOCK)
 	except
 TryAgain:
 	pass
@@ -1631,6 +1630,382 @@ func NewBinPkgEnvExtractor(background bool, scheduler *SchedulerInterface, setti
 	b.scheduler = scheduler
 	b.settings = settings
 	return b
+}
+type BinpkgExtractorAsync struct {
+	*SpawnProcess
+	_shell_binary string
+
+	// slot
+	features,mage_dir,pkg,pkg_path string
+
+}
+
+func(b *BinpkgExtractorAsync) _start() {
+	tar_options := ""
+	if "xattr" in
+	b.features{
+		process = subprocess.Popen(["tar", "--help"], stdout = subprocess.PIPE, stderr = subprocess.PIPE)
+		output = process.communicate()[0]
+		if b"--xattrs" in output:
+		tar_options = ["--xattrs", "--xattrs-include='*'"]
+		for x in portage.util.shlex_split(b.env.get("PORTAGE_XATTR_EXCLUDE", "")){
+		tar_options.append(portage._shell_quote("--xattrs-exclude=%s" % x))
+	}
+		tar_options = " ".join(tar_options)
+	}
+decomp = _compressors.get(compression_probe(b.pkg_path))
+if decomp is not None{
+		decomp_cmd = decomp.get("decompress")
+	}else if tarfile.is_tarfile(portage._unicode_encode(b.pkg_path,
+encoding = portage._encodings['fs'], errors = 'strict')){
+	decomp_cmd = 'cat'
+	decomp = {
+	'compress': 'cat',
+	'package': 'sys-apps/coreutils',
+	}
+	}else{
+	decomp_cmd = None
+	}
+if decomp_cmd is None{
+		b.scheduler.output("!!! %s\n"%
+			_("File compression header unrecognized: %s")%
+			b.pkg_path, log_path = b.logfile,
+		background = b.background, level = logging.ERROR)
+		b.returncode = 1
+		b._async_wait()
+		return
+	}
+
+try:
+decompression_binary = shlex_split(varexpand(decomp_cmd, mydict = b.env))[0]
+except IndexError:
+decompression_binary = ""
+
+if find_binary(decompression_binary) is None{
+		if decomp.get("decompress_alt"){
+		decomp_cmd = decomp.get("decompress_alt")
+	}
+		try:
+		decompression_binary = shlex_split(varexpand(decomp_cmd, mydict = b.env))[0]
+		except IndexError:
+		decompression_binary = ""
+
+		if find_binary(decompression_binary) is None{
+		missing_package = decomp.get("package")
+		b.scheduler.output("!!! %s\n" %
+		_("File compression unsupported %s.\n Command was: %s.\n Maybe missing package: %s") %
+	(b.pkg_path, varexpand(decomp_cmd, mydict = b.env), missing_package), log_path = b.logfile,
+		background = b.background, level = logging.ERROR)
+		b.returncode = 1
+		b._async_wait()
+		return
+	}
+	}
+
+pkg_xpak = portage.xpak.tbz2(b.pkg_path)
+pkg_xpak.scan()
+
+b.args = [b._shell_binary, "-c",
+("cmd0=(head -c %d -- %s) cmd1=(%s) cmd2=(tar -xp %s -C %s -f -); " +
+'"${cmd0[@]}" | "${cmd1[@]}" | "${cmd2[@]}"; ' +
+"p=(${PIPESTATUS[@]}) ; for i in {0..2}; do " +
+"if [[ ${p[$i]} != 0 && ${p[$i]} != %d ]] ; then " +
+"echo command $(eval \"echo \\\"'\\${cmd$i[*]}'\\\"\") " +
+"failed with status ${p[$i]} ; exit ${p[$i]} ; fi ; done; " +
+"if [ ${p[$i]} != 0 ] ; then " +
+"echo command $(eval \"echo \\\"'\\${cmd$i[*]}'\\\"\") " +
+"failed with status ${p[$i]} ; exit ${p[$i]} ; fi ; " +
+"exit 0 ;") %
+(pkg_xpak.filestat.st_size - pkg_xpak.xpaksize,
+portage._shell_quote(b.pkg_path),
+decomp_cmd,
+tar_options,
+portage._shell_quote(b.image_dir),
+128 + signal.SIGPIPE)]
+
+SpawnProcess._start(b)
+}
+
+func NewBinpkgExtractorAsync() *BinpkgExtractorAsync{
+	b:= &BinpkgExtractorAsync{}
+	b._shell_binary=BashBinary
+	b.SpawnProcess=NewSpawnProcess()
+
+	return b
+}
+
+
+type BinpkgFetcher struct {
+	*CompositeTask
+
+	// slot
+	pkg,pretend,logfile,pkg_path string
+}
+
+func (b *BinpkgFetcher) _start() {
+	fetcher = _BinpkgFetcherProcess(background = b.background,
+		logfile = b.logfile, pkg=b.pkg, pkg_path = b.pkg_path,
+		pretend=b.pretend, scheduler = b.scheduler)
+
+	if not b.pretend {
+		portage.util.ensure_dirs(os.path.dirname(b.pkg_path))
+		if "distlocks" in
+		b.pkg.root_config.settings.features
+		{
+			b._start_task(
+				AsyncTaskFuture(future = fetcher.async_lock()),
+			functools.partial(b._start_locked, fetcher))
+			return
+		}
+	}
+
+	b._start_task(fetcher, b._fetcher_exit)
+}
+
+func (b *BinpkgFetcher) _start_locked(fetcher, lock_task) {
+	b._assert_current(lock_task)
+	if lock_task.cancelled {
+		b._default_final_exit(lock_task)
+		return
+	}
+
+	lock_task.future.result()
+	b._start_task(fetcher, b._fetcher_exit)
+}
+
+func (b *BinpkgFetcher) _fetcher_exit(fetcher) {
+	b._assert_current(fetcher)
+	if not b.pretend
+	and
+	fetcher.returncode == os.EX_OK{
+		fetcher.sync_timestamp()
+	}
+	if fetcher.locked {
+		b._start_task(
+			AsyncTaskFuture(future = fetcher.async_unlock()),
+		functools.partial(b._fetcher_exit_unlocked, fetcher))
+	}else {
+		b._fetcher_exit_unlocked(fetcher)
+	}
+}
+
+func (b *BinpkgFetcher) _fetcher_exit_unlocked(fetcher, unlock_task=None) {
+	if unlock_task is
+	not
+None{
+	b._assert_current(unlock_task)
+	if unlock_task.cancelled{
+	b._default_final_exit(unlock_task)
+	return
+}
+}
+
+	unlock_task.future.result()
+
+	b._current_task = None
+	b.returncode = fetcher.returncode
+	b._async_wait()
+}
+
+
+func NewBinpkgFetcher(**kwargs)*BinpkgFetcher {
+	b :=&BinpkgFetcher{}
+	b.CompositeTask= NewCompositeTask()
+	pkg := b.pkg
+	b.pkg_path = pkg.root_config.trees["bintree"].getname(
+		pkg.cpv) + ".partial"
+
+	return b
+}
+
+type _BinpkgFetcherProcess struct {
+	*SpawnProcess
+
+	// slot
+	pkg,pretend,locked,pkg_path,_lock_obj string
+}
+
+func (b *_BinpkgFetcherProcess) _start() {
+	pkg = b.pkg
+	pretend = b.pretend
+	bintree = pkg.root_config.trees["bintree"]
+	settings = bintree.settings
+	pkg_path = b.pkg_path
+
+	exists = os.path.exists(pkg_path)
+	resume = exists
+	and
+	os.path.basename(pkg_path)
+	in
+	bintree.invalids
+	if not(pretend or
+	resume){
+	try:
+		os.unlink(pkg_path)
+		except
+	OSError:
+		pass
+	}
+
+	if bintree._remote_has_index {
+		instance_key = bintree.dbapi._instance_key(pkg.cpv)
+		rel_uri = bintree._remotepkgs[instance_key].get("PATH")
+		if not rel_uri {
+			rel_uri = pkg.cpv + ".tbz2"
+		}
+		remote_base_uri = bintree._remotepkgs[
+			instance_key]["BASE_URI"]
+		uri = remote_base_uri.rstrip("/") + "/" + rel_uri.lstrip("/")
+	}else {
+		uri = settings["PORTAGE_BINHOST"].rstrip("/") + \
+		"/" + pkg.pf + ".tbz2"
+	}
+	if pretend {
+		portage.writemsg_stdout("\n%s\n"%uri, noiselevel = -1)
+		b.returncode = os.EX_OK
+		b._async_wait()
+		return
+	}
+
+	protocol = urllib_parse_urlparse(uri)[0]
+	fcmd_prefix = "FETCHCOMMAND"
+	if resume {
+		fcmd_prefix = "RESUMECOMMAND"
+	}
+	fcmd = settings.get(fcmd_prefix + "_" + protocol.upper())
+	if not fcmd {
+		fcmd = settings.get(fcmd_prefix)
+	}
+
+	fcmd_vars =
+	{
+		"DISTDIR" : os.path.dirname(pkg_path),
+		"URI"     : uri,
+		"FILE"    : os.path.basename(pkg_path)
+	}
+
+	for k
+	in("PORTAGE_SSH_OPTS", )
+	{
+		v = settings.get(k)
+		if v is
+		not
+		None{
+			fcmd_vars[k] = v
+		}
+	}
+
+	fetch_env = dict(settings.items())
+	fetch_args = [portage.util.varexpand(x, mydict = fcmd_vars) \
+	for x
+	in
+	portage.util.shlex_split(fcmd)]
+
+if b.fd_pipes is None{
+b.fd_pipes = {}
+}
+fd_pipes = b.fd_pipes
+
+fd_pipes.setdefault(0, portage._get_stdin().fileno())
+fd_pipes.setdefault(1, sys.__stdout__.fileno())
+fd_pipes.setdefault(2, sys.__stdout__.fileno())
+
+b.args = fetch_args
+b.env = fetch_env
+if settings.selinux_enabled(){
+b._selinux_type = settings["PORTAGE_FETCH_T"]
+}
+SpawnProcess._start(b)
+}
+
+func (b *_BinpkgFetcherProcess) _pipe( fd_pipes) {
+	if b.background or
+	not
+	sys.__stdout__.isatty()
+	{
+		return os.pipe()
+	}
+	stdout_pipe = None
+	if not b.background {
+		stdout_pipe = fd_pipes.get(1)
+	}
+	got_pty, master_fd, slave_fd =
+		_create_pty_or_pipe(copy_term_size = stdout_pipe)
+	return (master_fd, slave_fd)
+}
+
+func (b *_BinpkgFetcherProcess) sync_timestamp() {
+	bintree = b.pkg.root_config.trees["bintree"]
+	if bintree._remote_has_index {
+		remote_mtime = bintree._remotepkgs[
+			bintree.dbapi._instance_key(
+				b.pkg.cpv)].get("_mtime_")
+		if remote_mtime is
+		not
+		None{
+			try:
+			remote_mtime = long(remote_mtime)
+			except
+			ValueError:
+			pass else:
+			try:
+			local_mtime = os.stat(b.pkg_path)[stat.ST_MTIME]
+			except
+			OSError:
+			pass else:
+			if remote_mtime != local_mtime:
+			try:
+			os.utime(b.pkg_path,
+		(remote_mtime, remote_mtime))
+			except
+			OSError:
+			pass
+		}
+	}
+}
+
+func (b *_BinpkgFetcherProcess) async_lock() {
+	if b._lock_obj is
+	not
+	None{
+		raise b.AlreadyLocked((b._lock_obj, ))
+	}
+
+	result = b.scheduler.create_future()
+
+	acquired_lock := func(async_lock) {
+		if async_lock.wait() == os.EX_OK {
+			b.locked = True
+			result.set_result(None)
+		} else {
+			result.set_exception(AssertionError(
+				"AsynchronousLock failed with returncode %s"
+			% (async_lock.returncode,)))
+		}
+	}
+
+	b._lock_obj = AsynchronousLock(path = b.pkg_path,
+		scheduler = b.scheduler)
+	b._lock_obj.addExitListener(acquired_lock)
+	b._lock_obj.start()
+	return result
+}
+
+type AlreadyLocked
+{
+*PortageException
+}
+
+
+func (b *_BinpkgFetcherProcess) async_unlock() {
+	if b._lock_obj is
+	None{
+		raise AssertionError('already unlocked')
+	}
+	result = b._lock_obj.async_unlock()
+	b._lock_obj = None
+	b.locked = False
+	return result
 }
 
 type SubProcess struct {

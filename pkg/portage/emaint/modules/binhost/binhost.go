@@ -154,7 +154,7 @@ func(b *BinhostHandler) fix( onProgress func(int, int)) (bool, []string){
 	}
 
 	if len(missing)!= 0 || len(stale)!= 0 {
-		a, f, c, d, _ := atom.Lockfile(b._pkgindex_file, true, false, "", 0)
+		l, _ := atom.Lockfile(b._pkgindex_file, true, false, "", 0)
 
 		pkgindex := bintree._populate_local(true)
 		if pkgindex == nil {
@@ -211,7 +211,7 @@ func(b *BinhostHandler) fix( onProgress func(int, int)) (bool, []string){
 		bintree._update_pkgindex_header(b._pkgindex.header)
 		bintree._pkgindex_write(b._pkgindex)
 
-		atom.Unlockfile(a,f,c,d)
+		atom.Unlockfile(l)
 	}
 
 	if onProgress!= nil {
