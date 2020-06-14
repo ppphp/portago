@@ -332,9 +332,9 @@ func CreateTrees(config_root, target_root string, ts *TreesDict, env map[string]
 			return NewVarTree(mysettings.categories, mysettings)
 		}
 		//	trees[myroot].addLazySingleton("porttree",
-		//		PortageTree, settings=mysettings)
+		//		PortageTree, Settings=mysettings)
 		//	trees[myroot].addLazySingleton("bintree",
-		//		BinaryTree, pkgdir=mysettings["PKGDIR"], settings=mysettings)
+		//		BinaryTree, pkgdir=mysettings["PKGDIR"], Settings=mysettings)
 	}
 	return trees
 }
@@ -345,7 +345,7 @@ func CreateTrees(config_root, target_root string, ts *TreesDict, env map[string]
 var _legacy_global_var_names = []string{"archlist", "db", "features",
 	"groups", "mtimedb", "mtimedbfile", "pkglines",
 	"portdb", "profiledir", "root", "selinux_enabled",
-	"settings", "thirdpartymirrors"} // no use
+	"Settings", "thirdpartymirrors"} // no use
 var mtimedb, portdb int
 
 var _portdb *portdbapi = nil
@@ -832,9 +832,7 @@ func _do_global_updates(trees *TreesDict, prev_mtimes map[string]string, quiet, 
 
 	retupd := false
 	update_notice_printed := false
-	for repo_name
-		in
-	portdb.getRepositories() {
+	for _, repo_name:= range portdb.getRepositories("") {
 		repo := portdb.getRepositoryPath(repo_name)
 		updpath := filepath.Join(repo, "profiles", "updates")
 		if !pathIsDir(updpath) {

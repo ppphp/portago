@@ -2,6 +2,7 @@ package atom
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log/syslog"
 	"os"
@@ -10,20 +11,31 @@ import (
 	"syscall"
 )
 
-func filter_loglevels(logentries map[], loglevels []string) map[]{
-	rValue := map[]{}
+func filter_loglevels(logentries map[string][]struct{s string;ss []string}, loglevels map[string]bool)  map[string][]struct {s  string;ss []string }{
+	rValue := map[string][]struct {
+		s  string;
+		ss []string
+	}{}
 	for i := range loglevels {
-		loglevels[i] = strings.ToUpper(loglevels[i])
+		delete(loglevels, i)
+		loglevels[strings.ToUpper(i)] = true
 	}
-	for _, phase := range logentries {
-		for msgtype, msgcontent := range logentries[phase]{
-		if  ins(loglevels,strings.ToUpper(msgtype)) || ins(loglevels,"*)"{
-		if phase ! in rValue{
-		rValue[phase] = []
-	}
-		rValue[phase] = append(rValue[phase], (msgtype, msgcontent))
-	}
-	}
+	for phase := range logentries {
+		for _, v := range logentries[phase] {
+			msgtype, msgcontent := v.s, v.ss
+			if loglevels[strings.ToUpper(msgtype)] || loglevels["*"] {
+				if _, ok := rValue[phase]; !ok {
+					rValue[phase] = []struct {
+						s  string
+						ss []string
+					}{}
+				}
+				rValue[phase] = append(rValue[phase], struct {
+					s  string;
+					ss []string
+				}{msgtype, msgcontent})
+			}
+		}
 	}
 	return rValue
 }
@@ -44,52 +56,53 @@ func _preload_elog_modules(settings *Config) {
 	}
 }
 
-func _merge_logentries(a, b) {
-	rValue =
-	{
-	}
-	phases = set(a)
+func _merge_logentries(a, b) map[string][]struct{s string;ss []string} {
+	rValue := map[string][]struct {
+		s  string;
+		ss []string
+	}{}
+	phases := set(a)
 	phases.update(b)
-	for p
-	in
-phases:
-	merged_msgs = []
-	rValue[p] = merged_msgs
-	for d
-	in
-	a, b:
-	msgs = d.get(p)
-	if msgs:
-	merged_msgs.extend(msgs)
+	for p := range phases {
+		merged_msgs := []struct {
+			s  string
+			ss []string
+		}{}
+		rValue[p] = merged_msgs
+		for d
+			in
+		a, b {
+			msgs := d.get(p)
+			if len(msgs) > 0 {
+				merged_msgs = append(merged_msgs, msgs...)
+			}
+		}
+	}
 	return rValue
 }
 
-func _combine_logentries(logentries) {
-	rValue = []
-	for phase
-	in
-EBUILD_PHASES:
-	if ! phase
-	in
-logentries:
-	continue
-	previous_type = None
-	for msgtype, msgcontent
-	in
-	logentries[phase]:
-	if previous_type != msgtype:
-	previous_type = msgtype
-	rValue=append(,"%s: %s"%(msgtype, phase))
-	if isinstance(msgcontent, basestring):
-	rValue=append(,msgcontent.rstrip("\n"))
-	else:
-	for line
-	in
-msgcontent:
-	rValue=append(,line.rstrip("\n"))
-	if rValue:
-	rValue=append(,"")
-	return "\n".join(rValue)
+func _combine_logentries(logentries map[string][]struct {s  string;ss []string} ) string {
+	rValue := []string{}
+	for phase := range EBUILD_PHASES {
+		if _, ok := logentries[phase]; !ok {
+			continue
+		}
+		previous_type := ""
+		for _, v := range logentries[phase] {
+			msgtype, msgcontent := v.s, v.ss
+			if previous_type != msgtype {
+				previous_type = msgtype
+				rValue = append(rValue, fmt.Sprintf("%s: %s", msgtype, phase))
+			}
+			for _, line := range msgcontent {
+				rValue = append(rValue, strings.TrimRight(line, "\n"))
+			}
+		}
+	}
+	if len(rValue) > 0 {
+		rValue = append(rValue, "")
+	}
+	return strings.Join(rValue, "\n")
 }
 
 _elog_mod_imports = {}
@@ -107,13 +120,13 @@ func _load_mod(name) {
 	return m
 }
 
-var _elog_listeners = []
-func add_listener(listener) {
+var _elog_listeners = []func(*Config, string, interface{}, interface{})
+func add_listener(listener func(*Config, string, interface{}, interface{})) {
 	_elog_listeners = append(_elog_listeners, listener)
 }
 
-func remove_listener(listener) {
-	el:= []{}
+func remove_listener(listener func(*Config, string, interface{}, interface{})) {
+	el:= []func(*Config, string, interface{}, interface{}){}
 	for _, e :=range _elog_listeners{
 		for e != listener {
 			el =append(el, e)
@@ -124,86 +137,81 @@ func remove_listener(listener) {
 var _elog_atexit_handlers = []
 
 // nil
-func elog_process(cpv, mysettings, phasefilter=None) {
+func elog_process(cpv string, mysettings *Config, phasefilter []string) {
 	global
 	_elog_atexit_handlers
 
-	logsystems := strings.Fields(mysettings.ValueDict["PORTAGE_ELOG_SYSTEM"])
-	for _, s := range logsystems{
-		if strings.Contains(s,":") {
-			s, levels = s.split(":", 1)
-			levels = levels.split(",")
+	logsystems1 := strings.Fields(mysettings.ValueDict["PORTAGE_ELOG_SYSTEM"])
+	for _, s := range logsystems1 {
+		if strings.Contains(s, ":") {
+			s, levels = strings.SplitN(s, ":", 1)[0], strings.SplitN(s, ":", 1)[1]
+			levels = strings.Split(levels, ",")
 		}
 		s = strings.ReplaceAll(s, "-", "_")
+
 	try:
 		_load_mod("portage.elog.mod_" + s)
 		except
 	ImportError:
 		pass
 	}
-
-	if  Inmss(mysettings.ValueDict, "T") {
-		ebuild_logentries = collect_ebuild_messages(
-			filepath.Join(mysettings.ValueDict["T"], "logging"))
-	}else {
-		ebuild_logentries =
-		{
-		}
+	ebuild_logentries := map[string][]struct {
+		s  string
+		ss []string
+	}{}
+	if Inmss(mysettings.ValueDict, "T") {
+		ebuild_logentries = collect_ebuild_messages(filepath.Join(mysettings.ValueDict["T"], "logging"))
 	}
-	all_logentries = collect_messages(key = cpv, phasefilter = phasefilter)
-	if cpv in
-all_logentries{
-	all_logentries[cpv] =
-	_merge_logentries(all_logentries[cpv], ebuild_logentries)
-	}else {
+	all_logentries := collect_messages(cpv, phasefilter)
+	if _, ok := all_logentries[cpv]; ok {
+		all_logentries[cpv] = _merge_logentries(all_logentries[cpv], ebuild_logentries)
+	} else {
 		all_logentries[cpv] = ebuild_logentries
 	}
 
-	my_elog_classes = set(mysettings.ValueDict["PORTAGE_ELOG_CLASSES", "").split())
-	logsystems =
-	{
+	my_elog_classes := map[string]bool{}
+	for _, k := range strings.Fields(mysettings.ValueDict["PORTAGE_ELOG_CLASSES"]) {
+		my_elog_classes[k] = true
 	}
-	for _, token := range strings.Fields(mysettings.ValueDict["PORTAGE_ELOG_SYSTEM"]){
+	logsystems := map[string]map[string]bool{}
+	for _, token := range strings.Fields(mysettings.ValueDict["PORTAGE_ELOG_SYSTEM"]) {
+		s := token
+		levels := []string{}
 		if strings.Contains(token, ":") {
-			s, levels = token.split(":", 1)
-			levels = levels.split(",")
-		}else {
-			s = token
-			levels = ()
+			s = strings.SplitN(token, ":", 1)[0]
+			level := strings.SplitN(token, ":", 1)[1]
+			levels = strings.Split(level, ",")
 		}
-		levels_set = logsystems.get(s)
+		levels_set := logsystems[s]
 		if levels_set == nil {
-			levels_set = set()
+			levels_set = map[string]bool{}
 			logsystems[s] = levels_set
 		}
-		levels_set.update(levels)
+		for _, k := range levels {
+			levels_set[k] = true
+		}
 	}
 
-	for key
-	in
-all_logentries{
+	for key := range all_logentries {
 		default_logentries := filter_loglevels(all_logentries[key], my_elog_classes)
-		if len(default_logentries) == 0 &&(!strings.Contains(mysettings.ValueDict["PORTAGE_ELOG_SYSTEM"], ":")){
+		if len(default_logentries) == 0 && (!strings.Contains(mysettings.ValueDict["PORTAGE_ELOG_SYSTEM"], ":")) {
 			continue
 		}
 
 		default_fulllog := _combine_logentries(default_logentries)
 
-		for listener
-			in
-		_elog_listeners {
-			listener(mysettings, str(key), default_logentries, default_fulllog)
+		for _, listener := range _elog_listeners {
+			listener(mysettings, key, default_logentries, default_fulllog)
 		}
 
-		for s, levels
-			in
-		logsystems.items() {
-			if levels {
+		for s, levels := range logsystems {
+
+			mod_logentries := default_logentries
+			mod_fulllog := default_fulllog
+
+			if len(levels) > 0 {
 				mod_logentries = filter_loglevels(all_logentries[key], levels)
 				mod_fulllog = _combine_logentries(mod_logentries)
-			}else {
-				mod_logentries = default_logentries
-				mod_fulllog = default_fulllog
 			}
 			if len(mod_logentries) == 0 {
 				continue
@@ -258,7 +266,7 @@ func collect_ebuild_messages(path string)map[string][]struct{s string; ss []stri
 	}
 	if len(mylogfiles) == 0 {
 		return map[string][]struct {
-			s  string;
+			s  string
 			ss []string
 		}{}
 	}
@@ -327,121 +335,95 @@ func collect_ebuild_messages(path string)map[string][]struct{s string; ss []stri
 	return logentries
 }
 
-_msgbuffer = {}
-func _elog_base(level, msg, phase="other", key=None, color=None, out=None) {
+var _msgbuffer = map[string]map[string][]struct{s string; ss []string}{}
+// "other", "", "", nil
+func _elog_base(level, msg, phase, key, color string, out io.Writer) {
 
-	global
-	_msgbuffer
-
-	if out == nil:
-	out = sys.stdout
-
-	if color == nil:
-	color = "GOOD"
-
-	msg = _unicode_decode(msg,
-		encoding = _encodings['content'], errors = 'replace')
-
-	formatted_msg = colorize(color, " * ") + msg + "\n"
-
-	if out in(sys.stdout, sys.stderr):
-	formatted_msg = _unicode_encode(formatted_msg,
-		encoding = _encodings['stdio'], errors = 'backslashreplace')
-	if sys.hexversion >= 0x3000000:
-	out = out.buffer
-
-	out.write(formatted_msg)
-
-	if key !
-	in
-_msgbuffer:
-	_msgbuffer[key] =
-	{
+	if out == nil {
+		out = os.Stdout
 	}
-	if phase !
-	in
-	_msgbuffer[key]:
-	_msgbuffer[key][phase] = []
-	_msgbuffer[key][phase]=append(,(level, msg))
+
+	if color == "" {
+		color = "GOOD"
+	}
+
+	formatted_msg := colorize(color, " * ") + msg + "\n"
+
+	out.Write([]byte(formatted_msg))
+
+	if _, ok := _msgbuffer[key]; !ok {
+		_msgbuffer[key] = map[string][]struct{s string;ss []string}{}
+	}
+	if _, ok := _msgbuffer[key][phase]; !ok {
+		_msgbuffer[key][phase] = []struct{s string;ss []string}{}
+	}
+	_msgbuffer[key][phase]=append(_msgbuffer[key][phase],struct{s string;ss []string}{level, msg})
 }
 
-func collect_messages(key=None, phasefilter=None) {
-	global
-	_msgbuffer
-
-	if key == nil:
-	rValue = _msgbuffer
-	_reset_buffer()
-	else:
-	rValue =
-	{
+// "", nil
+func collect_messages(key string, phasefilter []string) map[string]map[string][]struct{s string;ss []string} {
+	var rValue map[string]map[string][]struct{s string;ss []string}
+	if key == "" {
+		rValue = _msgbuffer
+		_reset_buffer()
+	} else {
+		rValue = map[string]map[string][]struct{s string;ss []string}{}
+		if _, ok := _msgbuffer[key]; ok {
+			if phasefilter == nil {
+				rValue[key] = _msgbuffer[key]
+				delete(_msgbuffer, key)
+			} else {
+				rValue[key] = map[string][]struct{s string;ss []string}{}
+				for _, phase := range phasefilter {
+					rValue[key][phase] = _msgbuffer[key][phase]
+					delete(_msgbuffer[key], phase)
+				}
+				if len(_msgbuffer[key]) == 0 {
+					delete(_msgbuffer, key)
+				}
+			}
+		}
 	}
-	if key in
-_msgbuffer:
-	if phasefilter == nil:
-	rValue[key] = _msgbuffer.pop(key)
-	else:
-	rValue[key] =
-	{
-	}
-	for phase
-	in
-phasefilter:
-try:
-	rValue[key][phase] = _msgbuffer[key].pop(phase)
-	except
-KeyError:
-	pass
-	if ! _msgbuffer[key]:
-	del
-	_msgbuffer[key]
 	return rValue
 }
 
 func _reset_buffer() {
-	global
-	_msgbuffer
-
-	_msgbuffer =
-	{
-	}
+	_msgbuffer = {}
 }
 
-_functions = { "einfo": ("INFO", "GOOD"),
-"elog": ("LOG", "GOOD"),
-"ewarn": ("WARN", "WARN"),
-"eqawarn": ("QA", "WARN"),
-"eerror": ("ERROR", "BAD"),
+// "other", "",nil
+func einfo(msg, phase, key string, out io.Writer){
+	_elog_base( "INFO", msg, phase, key,"GOOD", out)
 }
 
-type _make_msgfunction struct{
-	_color, _level string
+// "other", "",nil
+func elog(msg, phase, key string, out io.Writer){
+	_elog_base( "LOG", msg, phase, key,"GOOD", out)
 }
 
-func NewMakeMsgFunction(level, color)*_make_msgfunction{
-	m := &_make_msgfunction{}
-	m._level = level
-	m._color = color
-	return m
+// "other", "",nil
+func ewarn(msg, phase, key string, out io.Writer){
+	_elog_base( "WARN", msg, phase, key,"WARN", out)
 }
 
-func (m *_make_msgfunction) __call__(msg, phase="other", key=None, out=None) {
-	_elog_base(m._level, msg, phase = phase,
-		key = key, color = self._color, out=out)
+// "other", "",nil
+func eqawarn(msg, phase, key string, out io.Writer){
+	_elog_base( "QA", msg, phase, key,"WARN", out)
 }
 
-for f in _functions{
-setattr(sys.modules[__name__], f, _make_msgfunction(_functions[f][0], _functions[f][1]))
-del f, _functions
+// "other", "",nil
+func eerror(msg, phase, key string, out io.Writer){
+	_elog_base( "ERROR", msg, phase, key,"BAD", out)
 }
 
 // -------------------------------------------------- custom
 
-func process(mysettings, key, logentries, fulltext) {
-	elogfilename = portage.elog.mod_save.process(mysettings, key, logentries, fulltext)
+func custom_process(mysettings *Config, key, logentries, fulltext) {
+	elogfilename := save_process(mysettings, key, logentries, fulltext)
 
-	if ! mysettings.ValueDict["PORTAGE_ELOG_COMMAND"):
-	raise
+	if mysettings.ValueDict["PORTAGE_ELOG_COMMAND"]== "" {
+		//raise
+	}
 	portage.exception.MissingParameter("!!! Custom logging requested but PORTAGE_ELOG_COMMAND is not defined")
 	else:
 	mylogcmd = mysettings.ValueDict["PORTAGE_ELOG_COMMAND"]
@@ -458,7 +440,7 @@ func process(mysettings, key, logentries, fulltext) {
 
 
 _items = []
-func process(mysettings, key, logentries, fulltext) {
+func echo_process(mysettings *Config, key, logentries, fulltext) {
 	global
 	_items
 	logfile = None
@@ -536,7 +518,7 @@ msgcontent:
 
 // --------------------------mail
 
-func process(mysettings, key, logentries, fulltext) {
+func mail_process(mysettings *Config, key, logentries, fulltext) {
 	if "PORTAGE_ELOG_MAILURI" in
 mysettings:
 	myrecipient = mysettings.ValueDict["PORTAGE_ELOG_MAILURI"].split()[0]
@@ -577,7 +559,7 @@ return
 _config_keys = ('PORTAGE_ELOG_MAILURI', 'PORTAGE_ELOG_MAILFROM',
 'PORTAGE_ELOG_MAILSUBJECT',)
 _items = {}
-func process(mysettings, key, logentries, fulltext) {
+func mail_summary_process(mysettings *Config, key, logentries, fulltext) {
 	global
 	_items
 	time_str = _unicode_decode(
@@ -667,7 +649,7 @@ e:
 // ---------------------save
 
 
-func process(mysettings, key, logentries, fulltext) {
+func save_process(mysettings *Config, key, logentries, fulltext) {
 
 	if mysettings.ValueDict["PORTAGE_LOGDIR"):
 	logdir = NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])
@@ -740,7 +722,7 @@ e:
 // ------------------------save summary
 
 
-func process(mysettings, key, logentries, fulltext) {
+func save_summary_process(mysettings *Config, key, logentries, fulltext) {
 	if mysettings.ValueDict["PORTAGE_LOGDIR"]:
 	logdir = NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])
 	else:
@@ -818,29 +800,22 @@ var _pri = map[string]syslog.Priority{
 	"QA":    syslog.LOG_WARNING,
 }
 
-func process(mysettings, key, logentries, fulltext) {
-	syslog.openlog("portage", syslog.LOG_ERR|syslog.LOG_WARNING|syslog.LOG_INFO|syslog.LOG_NOTICE, syslog.LOG_LOCAL5)
-	for phase
-	in
-EBUILD_PHASES:
-	if ! phase
-	in
-logentries:
-	continue
-	for msgtype, msgcontent
-	in
-	logentries[phase]:
-	if isinstance(msgcontent, basestring):
-	msgcontent = [msgcontent]
-	for line
-	in
-msgcontent:
-	line = "%s: %s: %s" % (key, phase, line)
-	if sys.hexversion < 0x3000000 &&
-	!
-	isinstance(line, bytes):
-	line = line.encode(_encodings['content'],
-		'backslashreplace')
-	syslog.syslog(_pri[msgtype], line.rstrip("\n"))
-	syslog.closelog()
+func syslog_process(mysettings *Config, key, logentries, fulltext) {
+	w, _ := syslog.New(syslog.LOG_ERR|syslog.LOG_WARNING|syslog.LOG_INFO|syslog.LOG_NOTICE| syslog.LOG_LOCAL5,"portage")
+	for phase := range  EBUILD_PHASES{
+		if ! phase in logentries{
+			continue
+		}
+		for msgtype, msgcontent
+			:= range
+		logentries[phase] {
+			if isinstance(msgcontent, basestring):
+			msgcontent = [msgcontent]
+			for _, line := range msgcontent {
+				line := fmt.Sprintf("%s: %s: %s" ,key, phase, line)
+				w.Write(_pri[msgtype], strings.TrimRight(line, "\n"))
+			}
+		}
+	}
+	w.Close()
 }

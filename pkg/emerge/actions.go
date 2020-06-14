@@ -22,6 +22,7 @@ func NewEmergeConfig(action string, args []string, opts map[string]string) *Emer
 	return e
 }
 
+// nil, nil, "", nil, nil
 func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, action string, args []string, opts map[string]string) *EmergeConfig {
 	if emergeConfig == nil {
 		emergeConfig = NewEmergeConfig(action, args, opts)
@@ -56,16 +57,10 @@ func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, action 
 
 func actionSync(emerge_config *EmergeConfig) int {
 	syncer := NewSyncRepos(emerge_config, false)
-	return_messages := false
-	for _, o := range emerge_config.opts {
-		if o == "--quiet" {
-			return_messages = true
-			break
-		}
-	}
+	return_messages := !atom.Inmss(emerge_config.opts, "--quiet")
 	options := map[string]interface{}{"return-messages": return_messages}
-	var msgs []string = nil
 	var success bool
+	var msgs []string
 	if len(emerge_config.args) > 0 {
 		options["repo"] = emerge_config.args
 		success, msgs = syncer.repo(options)
@@ -74,7 +69,10 @@ func actionSync(emerge_config *EmergeConfig) int {
 	}
 	if return_messages {
 		print_results(msgs)
+	} else if len(msgs) > 0 && !success {
+		atom.WriteMsgLevel(strings.Join(msgs, "\n")+"\n", 40, -1)
 	}
+
 	if success {
 		return 0
 	} else {
@@ -91,14 +89,45 @@ func print_results(results []string) {
 }
 
 func runAction(emergeConfig *EmergeConfig) int {
-	if map[string]bool{"help": true, "info": true, "sync": true, "version": true}[emergeConfig.action] && emergeConfig.opts["--package-moves"] != "n" {
-
-
+	if map[string]bool{"help": true, "info": true, "sync": true, "version": true}[emergeConfig.action] && emergeConfig.opts["--package-moves"] != "n" &&
+		atom._global_updates(emergeConfig.Trees,
+		emergeConfig.targetConfig.Mtimedb.dict["updates"],
+		 atom.Inmss( emergeConfig.opts,"--quiet"), false){
+		emergeConfig.targetConfig.Mtimedb.commit()
+			LoadEmergeConfig(emergeConfig, nil, "", nil, nil)
 	}
 
-	_, xterm_titles := emergeConfig.targetConfig.settings.Features.Features["notitles"]
+	_, xterm_titles := emergeConfig.targetConfig.Settings.Features.Features["notitles"]
 	if xterm_titles {
 		atom.XtermTitle("emerge", false)
+	}
+	
+	if atom.Inmss(emergeConfig.opts, "--digest") {
+		os.Setenv("FEATURES", os.Getenv("FEATURES")+ " digest")
+		LoadEmergeConfig(emergeConfig, nil, "", nil, nil)
+	}
+	if  atom.Inmss( emergeConfig.opts,"--buildpkgonly") {
+		emergeConfig.opts["--buildpkg"] = true
+	}
+
+	if  emergeConfig.targetConfig.Settings.Features.Features["getbinpkg"] {
+		emergeConfig.opts["--getbinpkg"] = true
+	}
+
+	if  atom.Inmss (emergeConfig.opts,"--getbinpkgonly") {
+		emergeConfig.opts["--getbinpkg"] = true
+	}
+
+	if  atom.Inmss( emergeConfig.opts,"--getbinpkgonly") {
+		emergeConfig.opts["--usepkgonly"] = true
+	}
+
+	if  atom.Inmss( emergeConfig.opts,"--getbinpkg"){
+		emergeConfig.opts["--usepkg"] = true
+	}
+
+	if  atom.Inmss( emergeConfig.opts,"--usepkgonly"){
+		emergeConfig.opts["--usepkg"] = true
 	}
 
 	if emergeConfig.action == "version" {
@@ -109,12 +138,10 @@ func runAction(emergeConfig *EmergeConfig) int {
 
 	switch emergeConfig.action {
 	case "config", "metadata", "regen", "sync":
-		for _, o := range emergeConfig.opts {
-			if o == "--pretend" {
-				os.Stderr.Write([]byte(fmt.Sprintf("emerge: The '%s' action does "+
-					"not support '--pretend'.\n", emergeConfig.action)))
-				return 1
-			}
+		if atom.Inmss(emergeConfig.opts, "--pretend"){
+			os.Stderr.Write([]byte(fmt.Sprintf("emerge: The '%s' action does "+
+				"not support '--pretend'.\n", emergeConfig.action)))
+			return 1
 		}
 	}
 	if "sync" == emergeConfig.action {

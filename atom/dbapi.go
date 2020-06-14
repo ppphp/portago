@@ -110,8 +110,8 @@ func cpv_expand(myCpv string, myDb *dbapi, useCache int, settings *Config) strin
 	}
 	if strings.HasPrefix(myKey, "virtual/") && len(myDb.cp_list(myKey, useCache)) == 0 {
 		//		if hasattr(myDb, "vartree"):
-		//		settings._populate_treeVirtuals_if_needed(myDb.vartree)
-		//		virts = settings.getvirtuals().get(myKey)
+		//		Settings._populate_treeVirtuals_if_needed(myDb.vartree)
+		//		virts = Settings.getvirtuals().get(myKey)
 		//		if virts:
 		//		mykey_orig = myKey
 		//		for vkey in virts:
@@ -147,8 +147,8 @@ func cpv_expand(myCpv string, myDb *dbapi, useCache int, settings *Config) strin
 		//
 		//	if not myKey && not isinstance(myDb, list):
 		//	if hasattr(myDb, "vartree"):
-		//	settings._populate_treeVirtuals_if_needed(myDb.vartree)
-		//	virts_p = settings.get_virts_p().get(myp)
+		//	Settings._populate_treeVirtuals_if_needed(myDb.vartree)
+		//	virts_p = Settings.get_virts_p().get(myp)
 		//	if virts_p:
 		//	myKey = virts_p[0]
 		//	if not myKey:
@@ -299,7 +299,7 @@ func (d *dbapi) _pkg_str(cpv *PkgStr, repo string) *PkgStr {
 	//metadata = dict(zip(d._pkg_str_aux_keys,
 	//d.aux_get(cpv, d._pkg_str_aux_keys, myrepo=repo)))
 	//
-	//return _pkg_str(cpv, metadata=metadata, settings=d.settings, db=d)
+	//return _pkg_str(cpv, metadata=metadata, Settings=d.Settings, db=d)
 }
 
 func (d *dbapi) _iter_match_repo(atom *Atom, cpvIter []*PkgStr) []*PkgStr {
@@ -981,7 +981,7 @@ func (v *vardbapi) _fs_lock() {
 		}
 		v._fs_lock_obj, _ = Lockfile(v._conf_mem_file, false, false, "", 0)
 		// if err == InvalidLocataion {
-		// v.settings.init_dirs()
+		// v.Settings.init_dirs()
 		//
 		// }
 	}
@@ -1868,7 +1868,7 @@ func (v *vardbapi) counter_tick_core(incrementing int) int {
 		// try:
 		write_atomic(v._counter_path, fmt.Sprint(counter), 0, true)
 		//except InvalidLocation:
-		//v.settings._init_dirs()
+		//v.Settings._init_dirs()
 		//write_atomic(v._counter_path, str(counter))
 	}
 	v._cached_counter = counter
@@ -2805,7 +2805,7 @@ func (d *dblink) _prune_plib_registry(unmerge bool,
 		//try:
 			slot := d.mycpv.slot
 			//except  AttributeError:
-			//slot = NewPkgStr(d.mycpv, slot = d.settings.ValueDict["SLOT"]).slot
+			//slot = NewPkgStr(d.mycpv, slot = d.Settings.ValueDict["SLOT"]).slot
 			plib_registry.unregister(d.mycpv, slot, counter)
 			if len(unmerge_preserve) > 0{
 				for _, path := range sorted(unmerge_preserve){
@@ -4071,7 +4071,7 @@ func (d *dblink) _remove_preserved_libs(cpv_lib_map) {
 
 }
 
-func (d *dblink) _collision_protect(srcroot, destroot, mypkglist,
+func (d *dblink) _collision_protect(srcroot string, mypkglist []*dblink,
 	file_list, symlink_list) {
 	real_relative_paths := map[string][]string{}
 
@@ -4227,9 +4227,7 @@ func (d *dblink) _collision_protect(srcroot, destroot, mypkglist,
 
 		isowned := false
 		full_path := filepath.Join(destroot, strings.TrimLeft(f, string(os.PathSeparator)))
-		for ver
-			in
-		mypkglist {
+		for _, ver:= range mypkglist {
 			if ver.isowner(f) {
 				isowned = true
 				break
@@ -4253,7 +4251,7 @@ func (d *dblink) _collision_protect(srcroot, destroot, mypkglist,
 		}
 	}
 
-	internal_collisions := map[]{}
+	internal_collisions := map[string]map[[2]string]{}
 	for real_relative_path, files := range real_relative_paths {
 		if len(files) >= 2 {
 			sort.Strings(files)
@@ -4313,7 +4311,10 @@ func (d *dblink) _security_check(installed_instances []*dblink) int {
 			file_paths[k]=true
 		}
 	}
-	inode_map := {}
+	inode_map := map[[2]uint64][]struct {
+		s string
+		s2 os.FileInfo
+	}{}
 	real_paths := map[string]bool{}
 	i := 0
 	for path := range file_paths{
@@ -4327,7 +4328,7 @@ func (d *dblink) _security_check(installed_instances []*dblink) int {
 			//del e
 			continue
 		}
-		if !s.Mode()&os.ModeIrregular != 0 {
+		if s.Mode()&os.ModeIrregular != 0 {
 			continue
 		}
 		path, _ = filepath.EvalSymlinks(path)
@@ -4335,20 +4336,26 @@ func (d *dblink) _security_check(installed_instances []*dblink) int {
 			continue
 		}
 		real_paths[path] = true
-		if s.st_nlink > 1 &&
-			s.st_mode & (stat.S_ISUID | stat.S_ISGID) {
-			k = (s.st_dev, s.st_ino)
+		if s.Sys().(*syscall.Stat_t).Nlink > 1 &&
+			s.Mode() & (unix.S_ISUID | unix.S_ISGID) != 0 {
+			k := [2]uint64{s.Sys().(*syscall.Stat_t).Dev, s.Sys().(*syscall.Stat_t).Ino}
 			if _, ok := inode_map[k]; !ok {
-				inode_map[k]= []string{}
+				inode_map[k]= []struct {
+					s string
+					s2 os.FileInfo
+				}{}
 			}
-			inode_map[k] = append(inode_map[k], (path, s))
+			inode_map[k] = append(inode_map[k], struct {
+				s string
+				s2 os.FileInfo
+			}{path, s})
 		}
 	}
 
-	suspicious_hardlinks := []
-	for _ , path_list := range inode_map.values(){
-		path, s = path_list[0]
-		if len(path_list) == s.st_nlink {
+	suspicious_hardlinks := [][]struct{s  string;s2 os.FileInfo}{}
+	for _ , path_list := range inode_map{
+		s := path_list[0].s2
+		if len(path_list) == int(s.Sys().(*syscall.Stat_t).Nlink) {
 			continue
 		}
 		suspicious_hardlinks=append(suspicious_hardlinks,path_list)
@@ -4360,10 +4367,11 @@ func (d *dblink) _security_check(installed_instances []*dblink) int {
 	msg := []string{}
 	msg=append(msg,"suid/sgid file(s) with suspicious hardlink(s):")
 	msg=append(msg,"")
-	for _, path_list := range suspicious_hardlinks{
-		for path, s in path_list{
-		msg = append(msg, fmt.Sprintf("\t%s" , path))
-	}
+	for _, path_list := range suspicious_hardlinks {
+		for _, v := range path_list {
+			path := v.s
+			msg = append(msg, fmt.Sprintf("\t%s", path))
+		}
 	}
 	msg=append(msg,"")
 	msg=append(msg,"See the Gentoo Security Handbook "+
@@ -4402,16 +4410,17 @@ func (d *dblink) _elog(funcname string, phase string, lines []string) {
 }
 
 // nil
-func (d *dblink) _elog_process(phasefilter) {
+func (d *dblink) _elog_process(phasefilter []string) {
 	cpv := d.mycpv
 	if d._pipe == nil {
-		elog_process(cpv, d.settings, phasefilter)
+		elog_process(cpv.string, d.settings, phasefilter)
 	}else {
 		logdir := filepath.Join(d.settings.ValueDict["T"], "logging")
 		ebuild_logentries := collect_ebuild_messages(logdir)
-		py_logentries := collect_messages(cpv, phasefilter).get(cpv,
-		{
-		})
+		py_logentries := collect_messages(cpv.string, phasefilter)[cpv.string]
+		if py_logentries == nil {
+			py_logentries = map[string][]struct{s string; ss []string}{}
+		}
 		logentries := _merge_logentries(py_logentries, ebuild_logentries)
 		funcnames := map[string]string{
 			"INFO":  "einfo",
@@ -4420,32 +4429,27 @@ func (d *dblink) _elog_process(phasefilter) {
 			"QA":    "eqawarn",
 			"ERROR": "eerror",
 		}
-		str_buffer = []
-		for phase, messages
-		in
-		logentries.items():
-		for key, lines
-		in
-	messages:
-		funcname = funcnames[key]
-		if isinstance(lines, basestring):
-		lines = [lines]
-		for line
-		in
-	lines:
-		for line
-		in
-		line.split("\n"):
-		fields = (funcname, phase, cpv, line)
-		str_buffer = append(, " ".join(fields))
-		str_buffer = append(, "\n")
-		if str_buffer:
-		str_buffer = _unicode_encode("".join(str_buffer))
-		while
-	str_buffer:
-		str_buffer = str_buffer[os.write(d._pipe, str_buffer):]
+		str_buffer = []string{}
+		for phase, messages := range logentries{
+			for _,v := range messages{
+				key, lines := v.s ,v.ss
+				funcname := funcnames[key]
+				for _, line := range lines {
+					for _, line:= range strings.Split(line,"\n") {
+						fields := []string{funcname, phase, cpv.string, line}
+						str_buffer = append(str_buffer, strings.Join(fields, " "))
+						str_buffer = append(str_buffer, "\n")
+					}
+				}
+			}
+		}
+		if len(str_buffer) >0 {
+			sb := strings.Join(str_buffer, "")
+			for sb!= ""{
+				sb = sb[os.write(d._pipe, sb):]
+			}
+		}
 	}
-
 }
 
 func (d *dblink) _emerge_log(msg) {emergelog(false, msg)}
@@ -4767,8 +4771,7 @@ not filelist && not linklist && others_in_slot:
 	blockers=append(blockers,blocker)
 
 	collisions, internal_collisions, dirs_ro, symlink_collisions, plib_collisions = 
-d._collision_protect(srcroot, destroot,
-	others_in_slot + blockers, filelist, linklist)
+d._collision_protect(srcroot, others_in_slot + blockers, filelist, linklist)
 
 		ro_checker = get_ro_checker()
 	rofilesystems = ro_checker(dirs_ro)
@@ -5898,7 +5901,7 @@ func NewDblink(cat, pkg, myroot string, settings *Config, treetype string,
 		syscall.EPERM}
 
 	if settings == nil {
-		//raise TypeError("settings argument is required")
+		//raise TypeError("Settings argument is required")
 	}
 
 	mysettings := settings
@@ -5906,8 +5909,8 @@ func NewDblink(cat, pkg, myroot string, settings *Config, treetype string,
 	d.cat = cat
 	d.pkg = pkg
 	mycpv := d.cat + "/" + d.pkg
-	//if d.mycpv == settings.mycpv &&	isinstance(settings.mycpv, _pkg_str):
-	//d.mycpv = settings.mycpv
+	//if d.mycpv == Settings.mycpv &&	isinstance(Settings.mycpv, _pkg_str):
+	//d.mycpv = Settings.mycpv
 	//else:
 	d.mycpv = NewPkgStr(mycpv, nil, nil, "", "", "", 0, 0, "", 0, nil)
 	d.mysplit = d.mycpv.cpvSplit[1:]
@@ -5947,29 +5950,26 @@ func NewDblink(cat, pkg, myroot string, settings *Config, treetype string,
 	return d
 }
 
-func merge(mycat, mypkg, pkgloc, infloc,
-	myroot=nil, settings=nil, myebuild=nil,
-	mytree=nil, mydbapi=nil, vartree=nil, prev_mtimes=nil, blockers=nil,
-	scheduler=nil, fd_pipes=nil) {
-
-	myroot = nil
-	if settings == nil:
-	raise TypeError("settings argument is required")
-	if not os.access(settings.ValueDict["EROOT"], os.W_OK):
-	WriteMsg(_("Permission denied: access('%s', W_OK)\n") % settings.ValueDict["EROOT"],
-		noiselevel=-1)
-	return errno.EACCES
-	background = (settings.ValueDict["PORTAGE_BACKGROUND") == "1")
-	merge_task = MergeProcess(
-		mycat=mycat, mypkg=mypkg, settings=settings,
-		treetype=mytree, vartree=vartree,
-		scheduler=(scheduler || asyncio._safe_loop()),
-	background=background, blockers=blockers, pkgloc=pkgloc,
-		infloc=infloc, myebuild=myebuild, mydbapi=mydbapi,
-		prev_mtimes=prev_mtimes, logfile=settings.ValueDict["PORTAGE_LOG_FILE"),
-		fd_pipes=fd_pipes)
+// nil, "", "", nil, nil, nil, nil, nil, nil
+func merge(mycat, mypkg, pkgloc, infloc string, settings *Config, myebuild, mytree string,
+	mydbapi DBAPI, vartree *varTree, prev_mtimes=nil, blockers=nil, scheduler=nil, fd_pipes=nil) int {
+	if settings == nil{
+		//raise TypeError("Settings argument is required")
+	}
+	if st, _:= os.Stat(settings.ValueDict["EROOT"]); st!= nil &&st.Mode()&unix.W_OK ==0 {
+		WriteMsg(fmt.Sprintf("Permission denied: access('%s', W_OK)\n", settings.ValueDict["EROOT"]), -1, nil)
+		return int(unix.EACCES)
+	}
+	background := settings.ValueDict["PORTAGE_BACKGROUND"] == "1"
+	merge_task := NewMergeProcess(
+		mycat, mypkg, settings, mytree, vartree,
+		(scheduler || asyncio._safe_loop()),
+	background, blockers, pkgloc,
+		infloc, myebuild, mydbapi,
+		prev_mtimes, settings.ValueDict["PORTAGE_LOG_FILE"],
+		fd_pipes)
 	merge_task.start()
-	retcode = merge_task.wait()
+	retcode := merge_task.wait()
 	return retcode
 }
 
@@ -5978,7 +5978,7 @@ func unmerge(cat, pkg string, settings *Config,
 	vartree *varTree, ldpath_mtimes=nil, scheduler=nil) int {
 
 	if settings == nil {
-		//raise TypeError("settings argument is required")
+		//raise TypeError("Settings argument is required")
 	}
 	mylink := NewDblink(cat, pkg, settings, "vartree", vartree, nil, scheduler, nil)
 	vartree = mylink.vartree
@@ -6034,8 +6034,8 @@ func write_contents(contents map[string][]string, root string, f io.WriteCloser)
 	}
 }
 
-func tar_contents(contents, root, tar, protect=nil, onProgress=nil,
-	xattrs=false) {
+// nil, nil, false
+func tar_contents(contents, root, tar, protect=nil, onProgress=nil, xattrs bool) {
 
 	os = _os_merge
 	encoding = _encodings['merge']
@@ -7985,7 +7985,7 @@ func NewBinaryTree(pkgDir string, settings *Config) *BinaryTree {
 		//raise TypeError("pkgdir parameter is required")
 	}
 	if settings != nil {
-		//raise TypeError("settings parameter is required")
+		//raise TypeError("Settings parameter is required")
 	}
 
 	b.pkgdir = NormalizePath(pkgDir)

@@ -828,7 +828,7 @@ func doebuild_environment(myebuild , mydo string, myroot=None, settings *Config,
 debug bool, use_cache=None, db DBAPI) {
 
 	if settings == nil {
-		//raise TypeError("settings argument is required")
+		//raise TypeError("Settings argument is required")
 	}
 
 	if db == nil {
@@ -1148,7 +1148,7 @@ fetchonly, cleanup, use_cache, fetchall int, tree string,
 mydbapi DBAPI, vartree *varTree, prev_mtimes=None,
 fd_pipes=None, returnpid bool) int {
 	if settings == nil {
-		//raise TypeError("settings parameter is required")
+		//raise TypeError("Settings parameter is required")
 	}
 	mysettings := settings
 	myroot := settings.ValueDict["EROOT"]
@@ -1816,9 +1816,8 @@ fd_pipes=None, returnpid bool) int {
 			_handle_self_update(mysettings)
 			retval = merge(mysettings.ValueDict["CATEGORY"], mysettings.ValueDict["PF"],
 				mysettings.ValueDict["D"], filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"],
-					"build-info"), myroot, mysettings,
-				myebuild = mysettings.ValueDict["EBUILD"], mytree = tree, mydbapi=mydbapi,
-				vartree = vartree, prev_mtimes=prev_mtimes,
+					"build-info"), myroot, mysettings, mysettings.ValueDict["EBUILD"],
+					tree, mydbapi, vartree, prev_mtimes=prev_mtimes,
 				fd_pipes = fd_pipes)
 		}
 	} else {
@@ -2328,7 +2327,7 @@ func _post_phase_userpriv_perms(mysettings *Config) {
 }
 
 // nil
-func _check_build_log(mysettings *Config, out=None) {
+func _check_build_log(mysettings *Config, out io.Writer) {
 
 	logfile := mysettings.ValueDict["PORTAGE_LOG_FILE"]
 	if logfile == "" {
@@ -2424,7 +2423,7 @@ func _check_build_log(mysettings *Config, out=None) {
 
 	_eerror := func(lines []string) {
 		for _, line := range lines {
-			eerror(line, phase = "install", key = mysettings.mycpv, out = out)
+			eerror(line, "install", mysettings.mycpv.string, out)
 		}
 	}
 
@@ -2469,7 +2468,7 @@ func _check_build_log(mysettings *Config, out=None) {
 
 	_eqawarn := func(lines []string) {
 		for _, line := range lines {
-			eqawarn(line, phase = "install", key = mysettings.mycpv, out = out)
+			eqawarn(line, "install", mysettings.mycpv.string, out)
 		}
 	}
 	wrap_width := 70

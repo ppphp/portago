@@ -2,6 +2,10 @@ package emerge
 
 import (
 	"fmt"
+	"github.com/ppphp/shlex"
+	"golang.org/x/sys/unix"
+	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -42,8 +46,24 @@ func (s *SyncRepos) all_repos() {
 	return
 }
 
-func (s *SyncRepos) repo(map[string]interface{}) (bool, []string) { // TODO
-	return false, nil
+func (s *SyncRepos) repo(options map[string]interface{}) (bool, []string) {
+	repo_names :=""
+	return_messages := false
+	if len(options) > 0 {
+		repo_names = options["repo"]
+		return_messages,_ = options["return-messages"].(bool)
+	} else {
+		return_messages := false
+	}
+	repo_namesS := strings.Fields(repo_names)
+	success, repos, msgs := s._get_repos(false, repo_namesS)
+	if ! success {
+		if return_messages {
+			return false, msgs
+		}
+		return false, nil
+	}
+	return s._sync(repos, return_messages, options)
 }
 
 func (s *SyncRepos) _match_repos(repos []*atom.RepoConfig, available map[string]*atom.RepoConfig) map[string]*atom.RepoConfig {
@@ -79,10 +99,10 @@ func (s *SyncRepos) _match_repos(repos []*atom.RepoConfig, available map[string]
 	return selected
 }
 
-func (s *SyncRepos) _get_repos(auto_sync_only bool, match_repos []*atom.RepoConfig) (bool, map[string]*atom.RepoConfig, []string) { // true, nil
+// true, nil
+func (s *SyncRepos) _get_repos(auto_sync_only bool, match_repos []*atom.RepoConfig) (bool, map[string]*atom.RepoConfig, []string) {
 	msgs := []string{}
-	panic(s.emerge_config.targetConfig.settings == nil)
-	repos := s.emerge_config.targetConfig.settings.Repositories.Prepos
+	repos := s.emerge_config.targetConfig.Settings.Repositories.Prepos
 	if match_repos != nil {
 		repos := s._match_repos(match_repos, repos)
 		if len(repos) < len(match_repos) {
@@ -186,11 +206,11 @@ func (s *SyncRepos) _sync(selected_repos map[string]*atom.RepoConfig, return_mes
 		}
 	}
 	syscall.Umask(022)
-	sync_manager := NewSyncManager(s.emerge_config.targetConfig.settings, emergelog)
+	sync_manager := NewSyncManager(s.emerge_config.targetConfig.Settings, emergelog)
 
 	var max_jobs string
 
-	if _, ok := s.emerge_config.targetConfig.settings.Features.Features["parallel-fetch"]; ok {
+	if _, ok := s.emerge_config.targetConfig.Settings.Features.Features["parallel-fetch"]; ok {
 		max_jobs, ok = s.emerge_config.opts["--jobs"]
 		if !ok {
 			max_jobs = "1"
@@ -273,34 +293,22 @@ func NewSyncRepos(emerge_config *EmergeConfig, emerge_logging bool) *SyncRepos {
 	s := &SyncRepos{}
 
 	if emerge_config == nil {
-		//actions, opts, _files := ParseOpts([]string, true)
-		//emerge_config = LoadEmergeConfig(nil, "sync", args=_files, opts=opts)
-		//cmdline = atom.ShlexSplit .shlex_split(
-		//	emerge_config.target_config.settings.get(
-		//	"EMERGE_DEFAULT_OPTS", ""))
-		//emerge_config.opts = parse_opts(cmdline, silent=True)[1]
+		_, opts, _files := ParseOpts([]string, true)
+		emerge_config = LoadEmergeConfig(nil, nil, "sync", _files, opts)
+		cmdline, _ := shlex.Split(strings.NewReader(emerge_config.targetConfig.Settings.ValueDict["EMERGE_DEFAULT_OPTS"]), false, true)
+		_, emerge_config.opts, _ = ParseOpts(cmdline, true)
 
-		//if hasattr(portage, 'settings'):
-		//	# cleanly destroy global objects
-		//	portage._reset_legacy_globals()
-		//	# update redundant global variables, for consistency
-		//	# and in order to conserve memory
-		//	portage.settings = emerge_config.target_config.settings
-		//	portage.db = emerge_config.trees
-		//	portage.root = portage.db._target_eroot
+		//atom.ResetLegacyGlobals()
+		//atom.Settings() = emerge_config.targetConfig.Settings
+		//atom.Db() = emerge_config.Trees
+		//atom.Root() = atom.Db()._target_eroot
 	}
 
 	s.emerge_config = emerge_config
 	if emerge_logging {
 		disable = false
 	}
-	s.xterm_titles = true
-	//for _, f := range s.emerge_config.target_config.settings.features {
-	//	if f == "notitles" {
-	//		s.xterm_titles = false
-	//		break
-	//	}
-	//}
+	s.xterm_titles = !s.emerge_config.targetConfig.Settings.Features.Features["notitles"]
 	emergelog(s.xterm_titles, " === sync", "")
 	return s
 }
@@ -378,7 +386,7 @@ type SyncManager struct {
 	emerge_config *EmergeConfig
 	settings      *atom.Config
 	logger        func(bool, string, string)
-	hooks         map[string]string
+	hooks         map[string]map[string]string
 }
 
 func (s *SyncManager) get_module_descriptions() {}
@@ -431,7 +439,23 @@ func (s *SyncManager) _sync_callback(proc interface{}) {
 
 func NewSyncManager(settings *atom.Config, logger func(bool, string, string)) *SyncManager {
 	s := &SyncManager{settings: settings, logger: logger}
-	s.hooks = map[string]string{}
+	syscall.Umask(022)
+
+	s.hooks = map[string]map[string]string{}
+	for _, _dir := range  []string{"repo.postsync.d", "postsync.d"} {
+		postsync_dir := filepath.Join(s.settings.ValueDict["PORTAGE_CONFIGROOT"],
+			atom.UserConfigPath, _dir)
+		hooks := map[string]string{}
+		for _, filepath := range atom.recursiveFileList(postsync_dir) {
+			name := strings.TrimLeft(strings.Split(filepath, postsync_dir)[1], string(os.PathSeparator))
+			if st ,_ := os.Stat(filepath); st!= nil && st.Mode()&unix.X_OK!= 0{
+				hooks[filepath] = name
+			}else {
+				atom.WriteMsgLevel(fmt.Sprintf(" %s %s hook: '%s' is not executable\n", atom.Warn("*"), _dir, name,), 30, 2)
+			}
+		}
+		s.hooks[_dir] = hooks
+	}
 
 	return s
 }
