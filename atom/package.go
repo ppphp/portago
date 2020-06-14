@@ -42,6 +42,12 @@ func (t *Task) repr() int {
 	return len(t.hashKey)
 }
 
+func NewTask () *Task {
+	t := &Task{}
+
+	return t
+}
+
 type iUse struct {
 	__weakref__, _pkg                  string
 	tokens                             []string

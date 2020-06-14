@@ -2223,6 +2223,347 @@ func NewBinpkgVerifier() *BinpkgVerifier {
 	return b
 }
 
+type Blocker struct {
+	*Task
+
+	//slot
+	root,atom,cp,eapi,priority,satisfied string
+}
+
+__hash__ = Task.__hash__
+
+func NewBlocker( **kwargs) {
+	b:=&Blocker{}
+	b.Task = NewTask( **kwargs)
+	b.cp = b.atom.cp
+	b._hash_key = ("blocks", b.root, b.atom, b.eapi)
+	b._hash_value = hash(self._hash_key)
+}
+
+
+type BlockerCache struct {
+	_cache_threshold int
+
+	_vardb           *vardbapi
+	_cache_filename  string
+	_cache_version   string
+	_modified        map[string]bool
+}
+
+type BlockerData struct {
+	// slot
+	__weakref__,atoms,counter
+}
+
+func NewBlockerData(counter, atoms)*BlockerData {
+	b := &BlockerData{}
+	b.counter = counter
+	b.atoms = atoms
+	return b
+}
+
+func NewBlockerCache(myroot string, vardb *vardbapi)*BlockerCache {
+	b := &BlockerCache{}
+	b._cache_threshold = 5
+
+	b._vardb = vardb
+	b._cache_filename = filepath.Join(vardb.settings.ValueDict["EROOT"], CachePath, "vdb_blockers.pickle")
+	b._cache_version = "1"
+	b._cache_data = nil
+	b._modified = map[string]bool{}
+	b._load()
+	return b
+}
+
+func (b *BlockerCache) _load() {
+	//try:
+	f, err := os.Open(b._cache_filename)
+	mypickle = pickle.Unpickler(f)
+try:
+	mypickle.find_global = nil
+	except
+AttributeError:
+	pass
+	b._cache_data = mypickle.load()
+	f.close()
+	del
+	f
+	except(SystemExit, KeyboardInterrupt):
+	raise
+	except
+	Exception
+	as
+e:
+	if isinstance(e, EnvironmentError) &&
+		getattr(e, 'errno', nil)
+		in(errno.ENOENT, errno.EACCES):
+	pass
+	else:
+	WriteMsg("!!! Error loading '%s': %s\n" %
+		(b._cache_filename, str(e)), noiselevel = -1)
+	del
+	e
+
+	cache_valid = b._cache_data&&
+		isinstance(b._cache_data, dict)&&
+		b._cache_data.get("version") == b._cache_version&&
+		isinstance(b._cache_data.get("blockers"), dict)
+	if cache_valid:
+	invalid_items = set()
+	for k, v
+		in
+	b._cache_data["blockers"].items():
+	if not isinstance(k, basestring):
+	invalid_items.add(k)
+	continue
+try:
+	if portage.catpkgsplit(k) == nil:
+	invalid_items.add(k)
+	continue
+	except
+	portage.exception.InvalidData:
+	invalid_items.add(k)
+	continue
+	if not isinstance(v, tuple)
+	or
+	len(v) != 2:
+	invalid_items.add(k)
+	continue
+	counter, atoms = v
+	if not isinstance(counter, (int, long)):
+	invalid_items.add(k)
+	continue
+	if not isinstance(atoms, (list, tuple)):
+	invalid_items.add(k)
+	continue
+	invalid_atom = false
+	for atom
+		in
+	atoms:
+	if not isinstance(atom, basestring):
+	invalid_atom = true
+	break
+	if atom[:1] != "!" or
+	not
+	portage.isvalidatom(
+		atom, allow_blockers = true):
+	invalid_atom = true
+	break
+	if invalid_atom:
+	invalid_items.add(k)
+	continue
+
+	for k
+		in
+	invalid_items:
+	del
+	b._cache_data["blockers"][k]
+	if not b._cache_data["blockers"]:
+	cache_valid = false
+
+	if not cache_valid:
+	b._cache_data =
+	{
+		"version":b._cache_version
+	}
+	b._cache_data["blockers"] =
+	{
+	}
+	b._modified.clear()
+}
+
+func (b *BlockerCache) flush() {
+	if len(b._modified) >= b._cache_threshold && *secpass >= 2:
+try:
+	f := NewAtomic_ofstream(b._cache_filename, os.O_RDWR|os.O_TRUNC|os.O_CREATE, true)
+	pickle.dump(b._cache_data, f, protocol = 2)
+	f.Close()
+	apply_secpass_permissions(
+		b._cache_filename, -1, *portage_gid, 0644, -1, nil, nil)
+	except(IOError, OSError):
+	pass
+	b._modified= map[string]bool{}
+}
+
+func (b *BlockerCache)  __setitem__( cpv, blocker_data) {
+	b._cache_data["blockers"][cpv] = (blocker_data.counter,
+		tuple(_unicode(x)
+	for x
+		in
+	blocker_data.atoms))
+	b._modified.add(cpv)
+}
+
+func (b *BlockerCache)  __iter__() []{
+	if b._cache_data == nil {
+		return []
+	}
+	return b._cache_data["blockers"]
+}
+
+func (b *BlockerCache)  __len__() int {
+	return len(b._cache_data["blockers"])
+}
+
+func (b *BlockerCache)  __delitem__( cpv) {
+	delete(b._cache_data["blockers"],cpv)
+}
+
+func (b *BlockerCache)  __getitem__(cpv) {
+	return NewBlockerData(*b._cache_data["blockers"][cpv])
+}
+
+type BlockerDB struct{
+	_vartree *varTree
+	_portdb *portdbapi
+	_dep_check_trees *TreesDict
+	_root_config  ,_fake_vartree string
+}
+
+func NewBlockerDB( fake_vartree)*BlockerDB {
+	b := &BlockerDB{}
+	root_config := fake_vartree._root_config
+	b._root_config = root_config
+	b._vartree = root_config.trees["vartree"]
+	b._portdb = root_config.trees["porttree"].dbapi
+
+	b._dep_check_trees = nil
+	b._fake_vartree = fake_vartree
+	b._dep_check_trees = &TreesDict{
+		valueDict: map[string]*Tree{b._vartree.settings.ValueDict["EROOT"]:
+		&Tree{
+			_porttree: fake_vartree,
+			_vartree:  fake_vartree,
+		},
+		},
+		_running_eroot: "",
+		_target_eroot:  "",
+	}
+	return b
+}
+
+func (b *BlockerDB)findInstalledBlockers( new_pkg) {
+	blocker_cache := NewBlockerCache("",
+		b._vartree.dbapi)
+	dep_keys := NewPackage()._runtime_keys
+	settings := b._vartree.settings
+	stale_cache := set(blocker_cache)
+	fake_vartree := b._fake_vartree
+	dep_check_trees := b._dep_check_trees
+	vardb := fake_vartree.dbapi
+	installed_pkgs := list(vardb)
+
+	for _, inst_pkg := range installed_pkgs {
+		stale_cache.discard(inst_pkg.cpv)
+		cached_blockers := blocker_cache.get(inst_pkg.cpv)
+		if cached_blockers != nil &&
+			cached_blockers.counter != inst_pkg.counter {
+			cached_blockers = nil
+		}
+		if cached_blockers != nil {
+			blocker_atoms = cached_blockers.atoms
+		} else {
+			depstr := strings.Join(vardb.aux_get(inst_pkg.cpv, dep_keys), " ")
+			success, atoms := dep_check(depstr,
+				vardb, settings, "yes", inst_pkg.use.enabled, 1, 0,
+				inst_pkg.root, dep_check_trees)
+			if success == 0 {
+				pkg_location := filepath.Join(inst_pkg.root,
+					VdbPath, inst_pkg.category, inst_pkg.pf)
+				WriteMsg(fmt.Sprintf("!!! %s/*DEPEND: %s\n",
+					pkg_location, atoms), -1, nil)
+				continue
+			}
+
+			blocker_atoms := [][]*Atom{{}}
+			for _, atom := range atoms {
+				if atom.startswith("!") {
+					blocker_atoms[0] = append(blocker_atoms[0], atom)
+				}
+			}
+			blocker_atoms.sort()
+			blocker_cache[inst_pkg.cpv] =
+				blocker_cache.BlockerData(inst_pkg.counter, blocker_atoms)
+		}
+	}
+	for cpv := range stale_cache {
+		delete(blocker_cache, cpv)
+	}
+	blocker_cache.flush()
+
+	blocker_parents = digraph()
+	blocker_atoms = []*Atom{}
+	for _, pkg := range installed_pkgs {
+		for blocker_atom
+			in
+		blocker_cache[pkg.cpv].atoms
+		{
+			blocker_atom = blocker_atom.lstrip("!")
+			blocker_atoms = append(blocker_atoms, blocker_atom)
+			blocker_parents.add(blocker_atom, pkg)
+		}
+	}
+
+	blocker_atoms = InternalPackageSet(initial_atoms = blocker_atoms)
+	blocking_pkgs = map[string]string{}
+	for atom
+		in
+	blocker_atoms.iterAtomsForPackage(new_pkg)
+	{
+		blocking_pkgs.update(blocker_parents.parent_nodes(atom))
+	}
+
+	depstr = " ".join(new_pkg._metadata[k]
+	for k
+		in
+	dep_keys)
+	success, atoms = dep_check(depstr,
+		vardb, settings, "yes", new_pkg.use.enabled, 1, 0,
+		new_pkg.root, dep_check_trees)
+	if success == 0 {
+		show_invalid_depstring_notice(new_pkg, atoms)
+		assert
+		false
+	}
+
+	blocker_atoms = [atom.lstrip("!")
+	for atom
+		in
+	atoms
+	if atom[:1] == "!"]
+if blocker_atoms{
+blocker_atoms = InternalPackageSet(initial_atoms = blocker_atoms)
+for inst_pkg in installed_pkgs{
+//try{
+next(blocker_atoms.iterAtomsForPackage(inst_pkg))
+//except (portage.exception.InvalidDependString, StopIteration){
+//continue
+//blocking_pkgs.add(inst_pkg)
+}
+}
+return blocking_pkgs
+}
+
+func (b *BlockerDB)discardBlocker( pkg) {
+	a, _ := NewAtom(fmt.Sprintf("=%s", pkg.cpv, ), nil, false, nil, nil, "", nil, nil)
+	for cpv_match
+		in
+	b._fake_vartree.dbapi.match_pkgs(a)
+	{
+		if cpv_match.cp == pkg.cp {
+			b._fake_vartree.cpv_discard(cpv_match)
+		}
+	}
+	for slot_match
+		in
+	b._fake_vartree.dbapi.match_pkgs(pkg.slot_atom)
+	{
+		if slot_match.cp == pkg.cp {
+			b._fake_vartree.cpv_discard(slot_match)
+		}
+	}
+}
+
 func (s *SubProcess) _cancel(){
 if s.isAlive() && s.pid != 0{
 	err := syscall.Kill(s.pid, syscall.SIGTERM)
@@ -2863,158 +3204,6 @@ func (e *EbuildSpawnProcess)_spawn( args, **kwargs) {
 
 	return e.spawn_func(args, env = env, **kwargs)
 }
-
-type BlockerDB struct{
-	_vartree *varTree
-	_portdb *portdbapi
-	_dep_check_trees *TreesDict
-	_root_config  ,_fake_vartree string
-}
-
-func NewBlockerDB( fake_vartree)*BlockerDB {
-	b := &BlockerDB{}
-	root_config := fake_vartree._root_config
-	b._root_config = root_config
-	b._vartree = root_config.trees["vartree"]
-	b._portdb = root_config.trees["porttree"].dbapi
-
-	b._dep_check_trees = nil
-	b._fake_vartree = fake_vartree
-	b._dep_check_trees = &TreesDict{
-		valueDict: map[string]*Tree{b._vartree.settings.ValueDict["EROOT"]:
-		&Tree{
-			_porttree: fake_vartree,
-			_vartree:  fake_vartree,
-		},
-		},
-		_running_eroot: "",
-		_target_eroot:  "",
-	}
-	return b
-}
-
-func (b *BlockerDB)findInstalledBlockers( new_pkg) {
-	blocker_cache := NewBlockerCache("",
-		b._vartree.dbapi)
-	dep_keys := NewPackage()._runtime_keys
-	settings := b._vartree.settings
-	stale_cache := set(blocker_cache)
-	fake_vartree := b._fake_vartree
-	dep_check_trees := b._dep_check_trees
-	vardb := fake_vartree.dbapi
-	installed_pkgs := list(vardb)
-
-	for _, inst_pkg := range installed_pkgs {
-		stale_cache.discard(inst_pkg.cpv)
-		cached_blockers := blocker_cache.get(inst_pkg.cpv)
-		if cached_blockers != nil &&
-			cached_blockers.counter != inst_pkg.counter {
-			cached_blockers = nil
-		}
-		if cached_blockers != nil {
-			blocker_atoms = cached_blockers.atoms
-		} else {
-			depstr := strings.Join(vardb.aux_get(inst_pkg.cpv, dep_keys), " ")
-			success, atoms := dep_check(depstr,
-				vardb, settings, "yes", inst_pkg.use.enabled, 1, 0,
-				inst_pkg.root, dep_check_trees)
-			if success == 0 {
-				pkg_location := filepath.Join(inst_pkg.root,
-					VdbPath, inst_pkg.category, inst_pkg.pf)
-				WriteMsg(fmt.Sprintf("!!! %s/*DEPEND: %s\n",
-					pkg_location, atoms), -1, nil)
-				continue
-			}
-
-			blocker_atoms := [][]*Atom{{}}
-			for _, atom := range atoms {
-				if atom.startswith("!") {
-					blocker_atoms[0] = append(blocker_atoms[0], atom)
-				}
-			}
-			blocker_atoms.sort()
-			blocker_cache[inst_pkg.cpv] =
-				blocker_cache.BlockerData(inst_pkg.counter, blocker_atoms)
-		}
-	}
-	for cpv := range stale_cache {
-		delete(blocker_cache, cpv)
-	}
-	blocker_cache.flush()
-
-	blocker_parents = digraph()
-	blocker_atoms = []*Atom{}
-	for _, pkg := range installed_pkgs {
-		for blocker_atom
-			in
-		blocker_cache[pkg.cpv].atoms
-		{
-			blocker_atom = blocker_atom.lstrip("!")
-			blocker_atoms = append(blocker_atoms, blocker_atom)
-			blocker_parents.add(blocker_atom, pkg)
-		}
-	}
-
-	blocker_atoms = InternalPackageSet(initial_atoms = blocker_atoms)
-	blocking_pkgs = map[string]string{}
-	for atom
-		in
-	blocker_atoms.iterAtomsForPackage(new_pkg)
-	{
-		blocking_pkgs.update(blocker_parents.parent_nodes(atom))
-	}
-
-	depstr = " ".join(new_pkg._metadata[k]
-	for k
-		in
-	dep_keys)
-	success, atoms = dep_check(depstr,
-		vardb, settings, "yes", new_pkg.use.enabled, 1, 0,
-		new_pkg.root, dep_check_trees)
-	if success == 0 {
-		show_invalid_depstring_notice(new_pkg, atoms)
-		assert
-		false
-	}
-
-	blocker_atoms = [atom.lstrip("!")
-	for atom
-		in
-	atoms
-	if atom[:1] == "!"]
-if blocker_atoms{
-blocker_atoms = InternalPackageSet(initial_atoms = blocker_atoms)
-for inst_pkg in installed_pkgs{
-//try{
-next(blocker_atoms.iterAtomsForPackage(inst_pkg))
-//except (portage.exception.InvalidDependString, StopIteration){
-//continue
-//blocking_pkgs.add(inst_pkg)
-}
-}
-return blocking_pkgs
-}
-
-func (b *BlockerDB)discardBlocker( pkg) {
-	a, _ := NewAtom(fmt.Sprintf("=%s", pkg.cpv, ), nil, false, nil, nil, "", nil, nil)
-	for cpv_match
-	in
-	b._fake_vartree.dbapi.match_pkgs(a)
-	{
-		if cpv_match.cp == pkg.cp {
-			b._fake_vartree.cpv_discard(cpv_match)
-		}
-	}
-	for slot_match
-	in
-	b._fake_vartree.dbapi.match_pkgs(pkg.slot_atom)
-	{
-		if slot_match.cp == pkg.cp {
-			b._fake_vartree.cpv_discard(slot_match)
-		}
-	}
-}
-
 
 type CompositeTask struct {
 	*AsynchronousTask
@@ -6259,178 +6448,6 @@ func (s *SchedulerInterface) output( msg , log_path string, background interface
 			f.Close()
 		}
 	}
-}
-
-type BlockerCache struct {
-	_cache_threshold int
-	
-	_vardb           *vardbapi
-	_cache_filename  string
-	_cache_version   string
-	_modified        map[string]bool
-}
-
-type BlockerData struct {
-	// slot
-	__weakref__,atoms,counter 
-}
-
-func NewBlockerData(counter, atoms)*BlockerData {
-	b := &BlockerData{}
-	b.counter = counter
-	b.atoms = atoms
-	return b
-}
-
-func NewBlockerCache(myroot string, vardb *vardbapi)*BlockerCache {
-	b := &BlockerCache{}
-	b._cache_threshold = 5
-
-	b._vardb = vardb
-	b._cache_filename = filepath.Join(vardb.settings.ValueDict["EROOT"], CachePath, "vdb_blockers.pickle")
-	b._cache_version = "1"
-	b._cache_data = nil
-	b._modified = map[string]bool{}
-	b._load()
-	return b
-}
-
-func (b *BlockerCache) _load() {
-//try:
-	f, err := os.Open(b._cache_filename)
-	mypickle = pickle.Unpickler(f)
-try:
-	mypickle.find_global = nil
-	except
-AttributeError:
-	pass
-	b._cache_data = mypickle.load()
-	f.close()
-	del
-	f
-	except(SystemExit, KeyboardInterrupt):
-	raise
-	except
-	Exception
-	as
-e:
-	if isinstance(e, EnvironmentError) && 
-	getattr(e, 'errno', nil)
-	in(errno.ENOENT, errno.EACCES):
-	pass
-	else:
-	WriteMsg("!!! Error loading '%s': %s\n" % 
-	(b._cache_filename, str(e)), noiselevel = -1)
-	del
-	e
-
-	cache_valid = b._cache_data&& 
-	isinstance(b._cache_data, dict)&& 
-	b._cache_data.get("version") == b._cache_version&& 
-	isinstance(b._cache_data.get("blockers"), dict)
-	if cache_valid:
-	invalid_items = set()
-	for k, v
-	in
-	b._cache_data["blockers"].items():
-	if not isinstance(k, basestring):
-	invalid_items.add(k)
-	continue
-try:
-	if portage.catpkgsplit(k) == nil:
-	invalid_items.add(k)
-	continue
-	except
-	portage.exception.InvalidData:
-	invalid_items.add(k)
-	continue
-	if not isinstance(v, tuple)
-	or 
-	len(v) != 2:
-	invalid_items.add(k)
-	continue
-	counter, atoms = v
-	if not isinstance(counter, (int, long)):
-	invalid_items.add(k)
-	continue
-	if not isinstance(atoms, (list, tuple)):
-	invalid_items.add(k)
-	continue
-	invalid_atom = false
-	for atom
-	in
-atoms:
-	if not isinstance(atom, basestring):
-	invalid_atom = true
-	break
-	if atom[:1] != "!" or 
-	not
-	portage.isvalidatom(
-		atom, allow_blockers = true):
-	invalid_atom = true
-	break
-	if invalid_atom:
-	invalid_items.add(k)
-	continue
-
-	for k
-	in
-invalid_items:
-	del
-	b._cache_data["blockers"][k]
-	if not b._cache_data["blockers"]:
-	cache_valid = false
-
-	if not cache_valid:
-	b._cache_data =
-	{
-		"version":b._cache_version
-	}
-	b._cache_data["blockers"] =
-	{
-	}
-	b._modified.clear()
-}
-
-func (b *BlockerCache) flush() {
-	if len(b._modified) >= b._cache_threshold && *secpass >= 2:
-try:
-	f := NewAtomic_ofstream(b._cache_filename, os.O_RDWR|os.O_TRUNC|os.O_CREATE, true)
-	pickle.dump(b._cache_data, f, protocol = 2)
-	f.Close()
-	apply_secpass_permissions(
-		b._cache_filename, -1, *portage_gid, 0644, -1, nil, nil)
-	except(IOError, OSError):
-	pass
-	b._modified= map[string]bool{}
-}
-
-func (b *BlockerCache)  __setitem__( cpv, blocker_data) {
-	b._cache_data["blockers"][cpv] = (blocker_data.counter,
-		tuple(_unicode(x)
-	for x
-	in
-	blocker_data.atoms))
-	b._modified.add(cpv)
-}
-
-func (b *BlockerCache)  __iter__() []{
-	if b._cache_data == nil {
-		return []
-	}
-	return b._cache_data["blockers"]
-}
-
-func (b *BlockerCache)  __len__() int {
-	return len(b._cache_data["blockers"])
-}
-
-func (b *BlockerCache)  __delitem__( cpv) {
-	delete(b._cache_data["blockers"],cpv)
-}
-
-func (b *BlockerCache)  __getitem__(cpv) {
-	return NewBlockerData(*b._cache_data["blockers"][cpv])
 }
 
 type EbuildBuildDir struct {
