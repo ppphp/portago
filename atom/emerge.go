@@ -1200,8 +1200,8 @@ func (b *Binpkg) _start_fetcher( lock_task=nil) {
 
 	if b.opts.getbinpkg && b._bintree.isremote(pkg.cpv){
 
-	fetcher = BinpkgFetcher(background = b.background,
-		logfile = b.settings.ValueDict["PORTAGE_LOG_FILE"), pkg=b.pkg,
+	fetcher := NewBinpkgFetcher(b.background,
+		b.settings.ValueDict["PORTAGE_LOG_FILE"], pkg=b.pkg,
 		pretend = b.opts.pretend, scheduler=b.scheduler)
 
 	msg := fmt.Sprintf(" --- (%s of %s) Fetching Binary (%s::%s)" ,
@@ -1739,16 +1739,17 @@ type BinpkgFetcher struct {
 	*CompositeTask
 
 	// slot
-	pkg,pretend,logfile,pkg_path string
+	pkg *PkgStr
+	pretend,logfile,pkg_path string
 }
 
 func (b *BinpkgFetcher) _start() {
-	fetcher = _BinpkgFetcherProcess(background = b.background,
+	fetcher := NewBinpkgFetcherProcess(background = b.background,
 		logfile = b.logfile, pkg=b.pkg, pkg_path = b.pkg_path,
 		pretend=b.pretend, scheduler = b.scheduler)
 
 	if not b.pretend {
-		portage.util.ensure_dirs(os.path.dirname(b.pkg_path))
+		portage.util.ensure_dirs(filepath.Dir(b.pkg_path))
 		if "distlocks" in
 		b.pkg.root_config.settings.features
 		{
@@ -1777,7 +1778,7 @@ func (b *BinpkgFetcher) _fetcher_exit(fetcher) {
 	b._assert_current(fetcher)
 	if not b.pretend
 	and
-	fetcher.returncode == os.EX_OK{
+	fetcher.returncode == 0{
 		fetcher.sync_timestamp()
 	}
 	if fetcher.locked {
@@ -1808,9 +1809,15 @@ None{
 }
 
 
-func NewBinpkgFetcher(**kwargs)*BinpkgFetcher {
+func NewBinpkgFetcher(background bool, logfile string, pkg *PkgStr, pretend interface{}, scheduler *SchedulerInterface, **kwargs)*BinpkgFetcher {
 	b :=&BinpkgFetcher{}
 	b.CompositeTask= NewCompositeTask()
+	b.background = background
+	b.logfile=logfile
+	b.pkg=pkg
+	b.pretend = pretend
+	b.scheduler=scheduler
+
 	pkg := b.pkg
 	b.pkg_path = pkg.root_config.trees["bintree"].getname(
 		pkg.cpv) + ".partial"
@@ -1822,38 +1829,34 @@ type _BinpkgFetcherProcess struct {
 	*SpawnProcess
 
 	// slot
-	pkg,pretend,locked,pkg_path,_lock_obj string
+	locked bool
+	pkg,pretend,pkg_path string
+	_lock_obj *AsynchronousLock
 }
 
 func (b *_BinpkgFetcherProcess) _start() {
 	pkg = b.pkg
-	pretend = b.pretend
-	bintree = pkg.root_config.trees["bintree"]
-	settings = bintree.settings
-	pkg_path = b.pkg_path
+	pretend := b.pretend
+	bintree := pkg.root_config.trees["bintree"]
+	settings := bintree.settings
+	pkg_path := b.pkg_path
 
-	exists = os.path.exists(pkg_path)
-	resume = exists
-	and
-	os.path.basename(pkg_path)
-	in
-	bintree.invalids
-	if not(pretend or
-	resume){
-	try:
-		os.unlink(pkg_path)
-		except
-	OSError:
-		pass
+	exists := pathExists(pkg_path)
+	resume := exists&&filepath.Base(pkg_path) in bintree.invalids
+	if !(pretend || resume){
+		if err := syscall.Unlink(pkg_path); err!= nil {
+			//except OSError:
+			//pass
+		}
 	}
 
 	if bintree._remote_has_index {
-		instance_key = bintree.dbapi._instance_key(pkg.cpv)
-		rel_uri = bintree._remotepkgs[instance_key].get("PATH")
-		if not rel_uri {
+		instance_key := bintree.dbapi._instance_key(pkg.cpv)
+		rel_uri := bintree._remotepkgs[instance_key].get("PATH")
+		if rel_uri == "" {
 			rel_uri = pkg.cpv + ".tbz2"
 		}
-		remote_base_uri = bintree._remotepkgs[
+		remote_base_uri := bintree._remotepkgs[
 			instance_key]["BASE_URI"]
 		uri = remote_base_uri.rstrip("/") + "/" + rel_uri.lstrip("/")
 	}else {
@@ -1862,26 +1865,25 @@ func (b *_BinpkgFetcherProcess) _start() {
 	}
 	if pretend {
 		portage.writemsg_stdout("\n%s\n"%uri, noiselevel = -1)
-		b.returncode = os.EX_OK
+		b.returncode = 0
 		b._async_wait()
 		return
 	}
 
-	protocol = urllib_parse_urlparse(uri)[0]
-	fcmd_prefix = "FETCHCOMMAND"
+	protocol := urllib_parse_urlparse(uri)[0]
+	fcmd_prefix := "FETCHCOMMAND"
 	if resume {
 		fcmd_prefix = "RESUMECOMMAND"
 	}
-	fcmd = settings.get(fcmd_prefix + "_" + protocol.upper())
+	fcmd := settings.get(fcmd_prefix + "_" + protocol.upper())
 	if not fcmd {
 		fcmd = settings.get(fcmd_prefix)
 	}
 
-	fcmd_vars =
-	{
-		"DISTDIR" : os.path.dirname(pkg_path),
+	fcmd_vars = map[string]string{
+		"DISTDIR" : filepath.Dir(pkg_path),
 		"URI"     : uri,
-		"FILE"    : os.path.basename(pkg_path)
+		"FILE"    : filepath.Base(pkg_path),
 	}
 
 	for k
@@ -1965,17 +1967,15 @@ func (b *_BinpkgFetcherProcess) sync_timestamp() {
 }
 
 func (b *_BinpkgFetcherProcess) async_lock() {
-	if b._lock_obj is
-	not
-	None{
-		raise b.AlreadyLocked((b._lock_obj, ))
+	if b._lock_obj != nil{
+		//raise b.AlreadyLocked((b._lock_obj, ))
 	}
 
-	result = b.scheduler.create_future()
+	result := b.scheduler.create_future()
 
 	acquired_lock := func(async_lock) {
-		if async_lock.wait() == os.EX_OK {
-			b.locked = True
+		if async_lock.wait() == 0 {
+			b.locked = true
 			result.set_result(None)
 		} else {
 			result.set_exception(AssertionError(
@@ -1984,8 +1984,7 @@ func (b *_BinpkgFetcherProcess) async_lock() {
 		}
 	}
 
-	b._lock_obj = AsynchronousLock(path = b.pkg_path,
-		scheduler = b.scheduler)
+	b._lock_obj = NewAsynchronousLock( b.pkg_path, b.scheduler)
 	b._lock_obj.addExitListener(acquired_lock)
 	b._lock_obj.start()
 	return result
@@ -2008,6 +2007,23 @@ func (b *_BinpkgFetcherProcess) async_unlock() {
 	return result
 }
 
+func NewBinpkgFetcherProcess(background bool,
+	logfile string, pkg *PkgStr, pkg_path string,
+	pretend interface{}, scheduler *SchedulerInterface)*_BinpkgFetcherProcess {
+	b := &_BinpkgFetcherProcess{}
+	b.SpawnProcess = NewSpawnProcess(nil, background,nil, scheduler,
+		logfile)
+
+	b.background=background
+	b.logfile=logfile
+	b.pkg=pkg
+	b.pkg_path=pkg_path
+	b.pretend=pretend
+	b.scheduler=scheduler
+
+	return b
+}
+
 type SubProcess struct {
 	*AbstractPollTask
 	pid, _waitpid_id int
@@ -2018,6 +2034,193 @@ type SubProcess struct {
 
 func (s *SubProcess) _poll() *int{
 	return s.returncode
+}
+
+type BinpkgPrefetcher struct {
+	*CompositeTask
+
+	// slot
+	pkg *PkgStr
+	pkg_path string
+	_bintree *BinaryTree
+}
+
+func (b *BinpkgPrefetcher)_start() {
+	b._bintree = b.pkg.root_config.trees["bintree"]
+	fetcher := NewBinpkgFetcher(b.background,
+		b.scheduler.fetch.log_file, b.pkg, nil,
+		b.scheduler)
+	b.pkg_path = fetcher.pkg_path
+	b._start_task(fetcher, b._fetcher_exit)
+}
+
+func (b *BinpkgPrefetcher) _fetcher_exit( fetcher) {
+	if b._default_exit(fetcher) != 0 {
+		b.wait()
+		return
+	}
+
+	verifier := BinpkgVerifier(background = b.background,
+		logfile = b.scheduler.fetch.log_file, pkg=b.pkg,
+		scheduler = b.scheduler, _pkg_path=b.pkg_path)
+	b._start_task(verifier, b._verifier_exit)
+}
+
+func (b *BinpkgPrefetcher) _verifier_exit(verifier) {
+	if b._default_exit(verifier) != 0 {
+		b.wait()
+		return
+	}
+
+	b._bintree.inject(b.pkg.cpv.string, b.pkg_path)
+
+	b._current_task = nil
+	i := 0
+	b.returncode = &i
+	b.wait()
+}
+
+func NewBinpkgPrefetcher()*BinpkgPrefetcher{
+	b := &BinpkgPrefetcher{}
+	b.CompositeTask = NewCompositeTask()
+
+	return b
+}
+
+type BinpkgVerifier struct {
+	*CompositeTask
+
+	// slot
+	logfile,  _digests, _pkg_path string
+	pkg *PkgStr
+}
+
+func (b *BinpkgVerifier) _start() {
+
+	bintree = b.pkg.root_config.trees["bintree"]
+	digests = bintree._get_digests(b.pkg)
+	if "size" not
+	in
+digests:
+	b.returncode = os.EX_OK
+	b._async_wait()
+	return
+
+	digests = _filter_unaccelarated_hashes(digests)
+	hash_filter = _hash_filter(
+		bintree.settings.get("PORTAGE_CHECKSUM_FILTER", ""))
+	if not hash_filter.transparent:
+	digests = _apply_hash_filter(digests, hash_filter)
+
+	b._digests = digests
+
+try:
+	size = os.stat(b._pkg_path).st_size
+	except
+	OSError
+	as
+e:
+	if e.errno not
+	in(errno.ENOENT, errno.ESTALE):
+	raise
+	b.scheduler.output(("!!! Fetching Binary failed "
+	"for '%s'\n") % b.pkg.cpv, log_path = b.logfile,
+		background=b.background)
+	b.returncode = 1
+	b._async_wait()
+	return
+	else:
+	if size != digests["size"]:
+	b._digest_exception("size", size, digests["size"])
+	b.returncode = 1
+	b._async_wait()
+	return
+
+	b._start_task(FileDigester(file_path = b._pkg_path,
+		hash_names = (k
+	for k
+	in
+	digests
+	if k != "size"),
+	background = b.background, logfile=b.logfile,
+		scheduler = b.scheduler),
+	b._digester_exit)
+}
+
+func (b *BinpkgVerifier) _digester_exit(digester) {
+
+	if b._default_exit(digester) != os.EX_OK:
+	b.wait()
+	return
+
+	for hash_name
+	in
+	digester.hash_names:
+	if digester.digests[hash_name] != b._digests[hash_name]:
+	b._digest_exception(hash_name,
+		digester.digests[hash_name], b._digests[hash_name])
+	b.returncode = 1
+	b.wait()
+	return
+
+	if b.pkg.root_config.settings.get("PORTAGE_QUIET") != "1":
+	b._display_success()
+
+	b.returncode = os.EX_OK
+	b.wait()
+}
+
+func (b *BinpkgVerifier) _display_success() {
+	stdout_orig = sys.stdout
+	stderr_orig = sys.stderr
+	global_havecolor = portage.output.havecolor
+	out = io.StringIO()
+try:
+	sys.stdout = out
+	sys.stderr = out
+	if portage.output.havecolor:
+	portage.output.havecolor = not
+	b.background
+
+	path = b._pkg_path
+	if path.endswith(".partial"):
+	path = path[:-len(".partial")]
+	eout = EOutput()
+	eout.ebegin("%s %s ;-)"%(filepath.Base(path),
+		" ".join(sorted(b._digests))))
+	eout.eend(0)
+
+finally:
+	sys.stdout = stdout_orig
+	sys.stderr = stderr_orig
+	portage.output.havecolor = global_havecolor
+
+	b.scheduler.output(out.getvalue(), log_path = b.logfile,
+		background = b.background)
+}
+
+func (b *BinpkgVerifier) _digest_exception( name, value, expected) {
+
+	head, tail = os.path.split(b._pkg_path)
+	temp_filename = _checksum_failure_temp_file(b.pkg.root_config.settings, head, tail)
+
+	b.scheduler.output((
+		"\n!!! Digest verification failed:\n"
+	"!!! %s\n"
+	"!!! Reason: Failed on %s verification\n"
+	"!!! Got: %s\n"
+	"!!! Expected: %s\n"
+	"File renamed to '%s'\n") %
+	(b._pkg_path, name, value, expected, temp_filename),
+	log_path = b.logfile,
+		background=b.background)
+}
+
+func NewBinpkgVerifier() *BinpkgVerifier {
+	b := &BinpkgVerifier{}
+	b.CompositeTask = NewCompositeTask()
+
+	return b
 }
 
 func (s *SubProcess) _cancel(){
@@ -3348,7 +3551,7 @@ func (f *FifoIpcDaemon) _start() {
 	f._files = f._files_dict()
 
 	f._files.pipe_in = 
-	os.open(f.input_fifo, os.O_RDONLY|os.O_NONBLOCK)
+	os.open(f.input_fifo, os.O_RDONLY|syscall.O_NONBLOCK)
 
 	if sys.hexversion < 0x3040000 and
 	fcntl

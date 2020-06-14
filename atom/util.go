@@ -1460,7 +1460,8 @@ type preservedLibsRegistry struct {
 	_json_write      bool
 	_json_write_opts map[string]bool
 	_root, _filename string
-	_data, _lock     interface{}
+	_data interface{}
+	_lock     *LockFileS
 }
 
 func(p*preservedLibsRegistry) lock() {
