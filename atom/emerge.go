@@ -835,9 +835,9 @@ KeyError:
 	if !l._acquired:
 	if not(l.cancelled or
 	l._kill_test):
-	writemsg_level("_LockProcess: %s\n" % 
+	WriteMsgLevel("_LockProcess: %s\n" %
 	_("failed to acquire lock on '%s'") % (l.path,),
-	level = logging.ERROR, noiselevel=-1)
+	level = 40, noiselevel=-1)
 	l._unregister()
 	l.returncode = proc.returncode
 	l._async_wait()
@@ -1447,7 +1447,7 @@ func (b *Binpkg) _unpack_contents_exit( unpack_contents) {
 	if b._default_exit(unpack_contents) != 0 {
 		unpack_contents.future.result()
 		b._writemsg_level(fmt.Sprintf"!!! Error Extracting '%s'\n",
-			b._pkg_path), -1, logging.ERROR)
+			b._pkg_path), -1, 40)
 		b._async_unlock_builddir(b.returncode)
 		return
 	}
@@ -1695,7 +1695,7 @@ if decomp_cmd is None{
 		b.scheduler.output("!!! %s\n"%
 			_("File compression header unrecognized: %s")%
 			b.pkg_path, log_path = b.logfile,
-		background = b.background, level = logging.ERROR)
+		background = b.background, level = 40)
 		b.returncode = 1
 		b._async_wait()
 		return
@@ -1720,7 +1720,7 @@ if find_binary(decompression_binary) is None{
 		b.scheduler.output("!!! %s\n" %
 		_("File compression unsupported %s.\n Command was: %s.\n Maybe missing package: %s") %
 	(b.pkg_path, varexpand(decomp_cmd, mydict = b.env), missing_package), log_path = b.logfile,
-		background = b.background, level = logging.ERROR)
+		background = b.background, level = 40)
 		b.returncode = 1
 		b._async_wait()
 		return
@@ -4058,7 +4058,7 @@ e:
 	WriteMsgLevel(
 		"!!! EbuildIpcDaemon %s: %s\n" % 
 	(_('failed to send reply'), e),
-	level = logging.ERROR, noiselevel=-1)
+	level = 40, noiselevel=-1)
 }
 
 type MiscFunctionsProcess struct {
@@ -5096,7 +5096,7 @@ func (s *Scheduler) _generate_digests() {
 	if not digestgen(mysettings = pkgsettings, myportdb = portdb):
 	WriteMsgLevel(
 		"!!! Unable to generate manifest for '%s'.\n" 
-	% x.cpv, level = logging.ERROR, noiselevel=-1)
+	% x.cpv, level = 40, noiselevel=-1)
 	return FAILURE
 
 	return 0
@@ -5565,7 +5565,7 @@ log_file:
 	zlib.error
 	as
 e:
-	WriteMsgLevel("%s\n"%(e, ), level = logging.ERROR,
+	WriteMsgLevel("%s\n"%(e, ), level = 40,
 		noiselevel = -1)
 finally:
 	log_file.close()

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
 
 func filter_loglevels(logentries map[string][]struct{s string;ss []string}, loglevels map[string]bool)  map[string][]struct {s  string;ss []string }{
@@ -48,31 +49,40 @@ func _preload_elog_modules(settings *Config) {
 			s = strings.SplitN(s, ":", 2)[0]
 		}
 		s = strings.ReplaceAll(s, "-", "_")
-	try:
-		_load_mod("portage.elog.mod_" + s)
-		except
-	ImportError:
-		pass
+	//try:
+	//	_load_mod("portage.elog.mod_" + s)
+	//	except
+	//ImportError:
+	//	pass
 	}
 }
 
-func _merge_logentries(a, b) map[string][]struct{s string;ss []string} {
+func _merge_logentries(a, b map[string][]struct {
+	s  string
+	ss []string
+}) map[string][]struct{s string;ss []string} {
 	rValue := map[string][]struct {
 		s  string;
 		ss []string
 	}{}
-	phases := set(a)
-	phases.update(b)
+	phases := map[string]bool{}
+	for k := range a {
+		phases[k] = true
+	}
+	for k := range b {
+		phases[k] = true
+	}
 	for p := range phases {
 		merged_msgs := []struct {
 			s  string
 			ss []string
 		}{}
 		rValue[p] = merged_msgs
-		for d
-			in
-		a, b {
-			msgs := d.get(p)
+		for _, d := range []map[string][]struct {
+			s  string
+			ss []string
+		}{a, b} {
+			msgs := d[p]
 			if len(msgs) > 0 {
 				merged_msgs = append(merged_msgs, msgs...)
 			}
@@ -105,20 +115,20 @@ func _combine_logentries(logentries map[string][]struct {s  string;ss []string} 
 	return strings.Join(rValue, "\n")
 }
 
-_elog_mod_imports = {}
-func _load_mod(name) {
-	global
-	_elog_mod_imports
-	m = _elog_mod_imports.get(name)
-	if m == nil:
-	m = __import__(name)
-	for comp
-	in
-	name.split(".")[1:]:
-	m = getattr(m, comp)
-	_elog_mod_imports[name] = m
-	return m
-}
+//_elog_mod_imports = {}
+//func _load_mod(name) {
+//	global
+//	_elog_mod_imports
+//	m = _elog_mod_imports.get(name)
+//	if m == nil:
+//	m = __import__(name)
+//	for comp
+//	in
+//	name.split(".")[1:]:
+//	m = getattr(m, comp)
+//	_elog_mod_imports[name] = m
+//	return m
+//}
 
 var _elog_listeners = []func(*Config, string, interface{}, interface{})
 func add_listener(listener func(*Config, string, interface{}, interface{})) {
@@ -128,7 +138,7 @@ func add_listener(listener func(*Config, string, interface{}, interface{})) {
 func remove_listener(listener func(*Config, string, interface{}, interface{})) {
 	el:= []func(*Config, string, interface{}, interface{}){}
 	for _, e :=range _elog_listeners{
-		for e != listener {
+		for &e != &listener {
 			el =append(el, e)
 		}
 	}
@@ -138,22 +148,21 @@ var _elog_atexit_handlers = []
 
 // nil
 func elog_process(cpv string, mysettings *Config, phasefilter []string) {
-	global
-	_elog_atexit_handlers
 
 	logsystems1 := strings.Fields(mysettings.ValueDict["PORTAGE_ELOG_SYSTEM"])
 	for _, s := range logsystems1 {
 		if strings.Contains(s, ":") {
-			s, levels = strings.SplitN(s, ":", 1)[0], strings.SplitN(s, ":", 1)[1]
-			levels = strings.Split(levels, ",")
+			s= strings.SplitN(s, ":", 1)[0]
+			levelss :=  strings.SplitN(s, ":", 1)[1]
+			levels = strings.Split(levelss, ",")
 		}
 		s = strings.ReplaceAll(s, "-", "_")
 
-	try:
-		_load_mod("portage.elog.mod_" + s)
-		except
-	ImportError:
-		pass
+	//try:
+	//	_load_mod("portage.elog.mod_" + s)
+	//	except
+	//ImportError:
+	//	pass
 	}
 	ebuild_logentries := map[string][]struct {
 		s  string
@@ -217,19 +226,36 @@ func elog_process(cpv string, mysettings *Config, phasefilter []string) {
 				continue
 			}
 			s = strings.ReplaceAll(s, "-", "_")
-		try:
-			m = _load_mod("portage.elog.mod_" + s)
-		try:
-			AlarmSignal.register(60)
-			m.process(mysettings, str(key), mod_logentries, mod_fulllog)
-		finally:
-			AlarmSignal.unregister()
+		//try:
+		//	AlarmSignal.register(60)
+			switch s {
+			case "custom":
+				custom_process(mysettings, key, mod_logentries, mod_fulllog)
+			case "echo":
+				echo_process(mysettings, key, mod_logentries, mod_fulllog)
+			case "mail":
+				mail_process(mysettings, key, mod_logentries, mod_fulllog)
+			case "mail_summary":
+				mail_summary_process(mysettings, key, mod_logentries, mod_fulllog)
+			case "save":
+				save_process(mysettings, key, mod_logentries, mod_fulllog)
+			case "save_summary":
+				save_summary_process(mysettings, key, mod_logentries, mod_fulllog)
+			case "syslog":
+				syslog_process(mysettings, key, mod_logentries, mod_fulllog)
+			}
+		//finally:
+		//	AlarmSignal.unregister()
+			switch s {
+			case "echo":
+
+			}
 			if hasattr(m, "finalize") &&
 				!
 					m.finalize
 				in
 		_elog_atexit_handlers:
-			_elog_atexit_handlers = append(, m.finalize)
+			_elog_atexit_handlers = append(_elog_atexit_handlers, m.finalize)
 			atexit_register(m.finalize)
 			except(ImportError, AttributeError)
 			as
@@ -357,7 +383,7 @@ func _elog_base(level, msg, phase, key, color string, out io.Writer) {
 	if _, ok := _msgbuffer[key][phase]; !ok {
 		_msgbuffer[key][phase] = []struct{s string;ss []string}{}
 	}
-	_msgbuffer[key][phase]=append(_msgbuffer[key][phase],struct{s string;ss []string}{level, msg})
+	_msgbuffer[key][phase]=append(_msgbuffer[key][phase],struct{s string;ss []string}{level, []string{msg}})
 }
 
 // "", nil
@@ -388,7 +414,10 @@ func collect_messages(key string, phasefilter []string) map[string]map[string][]
 }
 
 func _reset_buffer() {
-	_msgbuffer = {}
+	_msgbuffer = map[string]map[string][]struct {
+		s  string
+		ss []string
+	}{}
 }
 
 // "other", "",nil
@@ -418,211 +447,177 @@ func eerror(msg, phase, key string, out io.Writer){
 
 // -------------------------------------------------- custom
 
-func custom_process(mysettings *Config, key, logentries, fulltext) {
+func custom_process(mysettings *Config, key string, logentries map[string][]struct {s  string;ss []string}, fulltext string) {
 	elogfilename := save_process(mysettings, key, logentries, fulltext)
 
 	if mysettings.ValueDict["PORTAGE_ELOG_COMMAND"]== "" {
-		//raise
+		//raise portage.exception.MissingParameter("!!! Custom logging requested but PORTAGE_ELOG_COMMAND is not defined")
+	}else {
+		mylogcmd := mysettings.ValueDict["PORTAGE_ELOG_COMMAND"]
+		mylogcmd = strings.ReplaceAll(mylogcmd, "${LOGFILE}", elogfilename)
+		mylogcmd = strings.ReplaceAll(mylogcmd,"${PACKAGE}", key)
+		retval = portage.process.spawn_bash(mylogcmd)
+		if retval != 0 {
+			//raise portage.exception.PortageException("!!! PORTAGE_ELOG_COMMAND failed with exitcode %d" % retval)
+		}
 	}
-	portage.exception.MissingParameter("!!! Custom logging requested but PORTAGE_ELOG_COMMAND is not defined")
-	else:
-	mylogcmd = mysettings.ValueDict["PORTAGE_ELOG_COMMAND"]
-	mylogcmd = mylogcmd.replace("${LOGFILE}", elogfilename)
-	mylogcmd = mylogcmd.replace("${PACKAGE}", key)
-	retval = portage.process.spawn_bash(mylogcmd)
-	if retval != 0:
-	raise
-	portage.exception.PortageException("!!! PORTAGE_ELOG_COMMAND failed with exitcode %d" % retval)
 	return
 }
 
 // -------------------------------------------------- echo
 
 
-_items = []
-func echo_process(mysettings *Config, key, logentries, fulltext) {
-	global
-	_items
-	logfile = None
-	if (key == mysettings.mycpv &&
-	"PORTAGE_LOGDIR"
-	in
-	mysettings
-	&&
-	"PORTAGE_LOG_FILE"
-	in
-	mysettings):
-	logfile = mysettings.ValueDict["PORTAGE_LOG_FILE"]
-	_items=append(,(mysettings.ValueDict["ROOT"], key, logentries, logfile))
-}
-
-func finalize() {
-	sys.stdout.flush()
-	sys.stderr.flush()
-	stderr = sys.stderr
-try:
-	sys.stderr = sys.stdout
-	_finalize()
-finally:
-	sys.stderr = stderr
-	sys.stdout.flush()
-	sys.stderr.flush()
-}
-
-func _finalize() {
-	global
-	_items
-	printer = EOutput()
-	for root, key, logentries, logfile
-	in
-_items:
-	print()
-	if root == "/":
-	printer.einfo(_("Messages for package %s:") %
-		colorize("INFORM", key))
-	else:
-	printer.einfo(_("Messages for package %(pkg)s merged to %(root)s:") %
-	{
-		"pkg": colorize("INFORM", key), "root": root
-	})
-	if logfile !=nil:
-	printer.einfo(_("Log file: %s") % colorize("INFORM", logfile))
-	print()
-	for phase
-	in
-EBUILD_PHASES:
-	if phase !
-	in
-logentries:
-	continue
-	for msgtype, msgcontent
-	in
-	logentries[phase]:
-	fmap =
-	{
-		"INFO": printer.einfo,
-		"WARN": printer.ewarn,
-		"ERROR": printer.eerror,
-		"LOG": printer.einfo,
-		"QA": printer.ewarn
+var _echo_items = []*struct{s1,s2 string; ss map[string][]struct {s  string;ss []string}; s3 string}
+func echo_process(mysettings *Config, key string, logentries map[string][]struct {s  string;ss []string}, fulltext string) {
+	logfile := ""
+	if key == mysettings.mycpv.string && Inmss(mysettings.ValueDict,"PORTAGE_LOGDIR") && Inmss(mysettings.ValueDict,"PORTAGE_LOG_FILE") {
+		logfile = mysettings.ValueDict["PORTAGE_LOG_FILE"]
 	}
-	if isinstance(msgcontent, basestring):
-	msgcontent = [msgcontent]
-	for line
-	in
-msgcontent:
-	fmap[msgtype](line.strip("\n"))
-	_items = []
+	_echo_items=append(_echo_items,&struct{s1,s2 string; ss map[string][]struct {s  string;ss []string}; s3 string}{mysettings.ValueDict["ROOT"], key, logentries, logfile})
+}
+
+func echo_finalize() {
+	stderr := os.Stderr
+//try:
+	os.Stderr = os.Stdout
+	_echo_finalize()
+//finally:
+	os.Stderr = stderr
+}
+
+func _echo_finalize() {
+	printer := NewEOutput(false)
+	for _, v := range _echo_items{
+		root, key, logentries, logfile := v.s1, v.s2, v.ss, v.s3
+		print()
+		if root == "/" {
+			printer.einfo(fmt.Sprintf("Messages for package %s:",
+				colorize("INFORM", key))
+		}else {
+			printer.einfo(fmt.Sprintf("Messages for package %s merged to %s:",
+				colorize("INFORM", key),  root))
+		}
+		if logfile !="" {
+			printer.einfo(fmt.Sprintf("Log file: %s", colorize("INFORM", logfile)))
+		}
+		print()
+		for phase:= range EBUILD_PHASES{
+			if _, ok := logentries[phase];!ok {
+				continue
+			}
+			for _, v := range logentries[phase]{
+				msgtype, msgcontent := v.s, v.ss
+				fmap :=map[string]func(string){
+					"INFO": printer.einfo,
+					"WARN": printer.ewarn,
+					"ERROR": printer.eerror,
+					"LOG": printer.einfo,
+					"QA": printer.ewarn,
+				}
+				for _, line:= range msgcontent{
+					fmap[msgtype](strings.Trim(line, "\n"))
+				}
+			}
+		}
+	}
+	_echo_items = []*struct{s1,s2 string; ss map[string][]struct {s  string;ss []string}; s3 string}{}
 	return
 }
 
 // --------------------------mail
 
-func mail_process(mysettings *Config, key, logentries, fulltext) {
-	if "PORTAGE_ELOG_MAILURI" in
-mysettings:
-	myrecipient = mysettings.ValueDict["PORTAGE_ELOG_MAILURI"].split()[0]
-	else:
-	myrecipient = "root@localhost"
+func mail_process(mysettings *Config, key string, logentries map[string][]struct {s  string;ss []string}, fulltext string) {
+	myrecipient := "root@localhost"
+	if Inmss(mysettings.ValueDict, "PORTAGE_ELOG_MAILURI") {
+		myrecipient = strings.Fields(mysettings.ValueDict["PORTAGE_ELOG_MAILURI"])[0]
+	}
+	myfrom := mysettings.ValueDict["PORTAGE_ELOG_MAILFROM"]
+	myfrom = strings.ReplaceAll(myfrom, "${HOST}", socket.getfqdn())
+	mysubject := mysettings.ValueDict["PORTAGE_ELOG_MAILSUBJECT"]
+	mysubject = strings.ReplaceAll(mysubject, "${PACKAGE}", key)
+	mysubject = strings.ReplaceAll(mysubject, "${HOST}", socket.getfqdn())
 
-	myfrom = mysettings.ValueDict["PORTAGE_ELOG_MAILFROM"]
-	myfrom = myfrom.replace("${HOST}", socket.getfqdn())
-	mysubject = mysettings.ValueDict["PORTAGE_ELOG_MAILSUBJECT"]
-	mysubject = mysubject.replace("${PACKAGE}", key)
-	mysubject = mysubject.replace("${HOST}", socket.getfqdn())
+	action := "merged"
+	for phase := range logentries {
+		if phase == "postrm" || phase == "prerm" {
+			action = "unmerged"
+		}
+	}
+	if action == "unmerged" {
+		for phase := range logentries {
+			if phase != "postrm" && phase != "prerm" && phase != "postrm" {
+				action = "unknown"
+			}
+		}
+	}
 
-	action = _("merged")
-	for phase
-	in
-logentries:
-	if phase in
-	["postrm", "prerm"]:
-action = _("unmerged")
-if action == _("unmerged"):
-for phase in logentries:
-if phase ! in ["postrm", "prerm", "other"]:
-action = _("unknown")
+	mysubject = strings.ReplaceAll(mysubject, "${ACTION}", action)
 
-mysubject = mysubject.replace("${ACTION}", action)
-
-mymessage = portage.mail.create_message(myfrom, myrecipient, mysubject, fulltext)
+	mymessage := portage.mail.create_message(myfrom, myrecipient, mysubject, fulltext)
 try:
-portage.mail.send_mail(mysettings, mymessage)
-except PortageException as e:
-WriteMsg("%s\n" % str(e), noiselevel = -1)
+	portage.mail.send_mail(mysettings, mymessage)
+	except PortageException as e:
+	WriteMsg("%s\n"%str(e), noiselevel = -1)
 
-return
+	return
 }
 
 // --------------------------mail summary
 
-_config_keys = ('PORTAGE_ELOG_MAILURI', 'PORTAGE_ELOG_MAILFROM',
-'PORTAGE_ELOG_MAILSUBJECT',)
-_items = {}
-func mail_summary_process(mysettings *Config, key, logentries, fulltext) {
-	global
-	_items
-	time_str = _unicode_decode(
-		time.strftime("%Y%m%d-%H%M%S %Z", time.localtime(time.time())),
-		encoding = _encodings['content'], errors = 'replace')
-	header = _(">>> Messages generated for package %(pkg)s by process %(pid)d on %(time)s:\n\n") % \
-	{
-		"pkg": key, "pid": os.getpid(), "time": time_str
+var _config_keys = []string{"PORTAGE_ELOG_MAILURI", "PORTAGE_ELOG_MAILFROM",
+"PORTAGE_ELOG_MAILSUBJECT",}
+var mail_summary_items = map[string]*struct{ms1, ms2 map[string]string}{}
+func mail_summary_process(mysettings *Config, key string, logentries map[string][]struct {s  string;ss []string}, fulltext string) {
+	time_str := time.Now().Format("20060102-150405 07:00") //%Y%m%d-%H%M%S %Z
+	header := fmt.Sprintf(">>> Messages generated for package %s by process %d on %s:\n\n", key, os.Getpid(),  time_str)
+	config_root := mysettings.ValueDict["PORTAGE_CONFIGROOT"]
+	config_dict := map[string] string{}
+	for _,  k:= range _config_keys {
+		v := mysettings.ValueDict[k]
+		if v != "" {
+			config_dict[k] = v
+		}
 	}
-	config_root = mysettings.ValueDict["PORTAGE_CONFIGROOT"]
-
-	config_dict =
-	{
+	if _, ok := mail_summary_items[config_root]; !ok {
+		mail_summary_items[config_root] = &struct{ms1, ms2 map[string]string}{config_dict, map[string]string{}}
 	}
-	for k
-	in
-_config_keys:
-	v = mysettings.ValueDict[k)
-	if v !=nil:
-	config_dict[k] = v
-
-	config_dict, items = _items.setdefault(config_root, (config_dict,
-	{
-	}))
+	v := mail_summary_items[config_root]
+	items :=  v.ms2
 	items[key] = header + fulltext
 }
 
-func finalize() {
-	global
-	_items
-	for mysettings, items
-	in
-	_items.values():
-	_finalize(mysettings, items)
-	_items.clear()
+func mail_summary_finalize() {
+	for mysettings, items := range mail_summary_items {
+		_mail_summary_finalize(mysettings, items)
+	}
+	mail_summary_items = map[string]*struct{ ms1, ms2 map[string]string }{}
 }
 
-func _finalize(mysettings, items) {
-	if len(items) == 0:
-	return
-	elif
-	len(items) == 1:
-	count = _("one package")
-	else:
-	count = _("multiple packages")
-	if "PORTAGE_ELOG_MAILURI" in
-mysettings:
-	myrecipient = mysettings.ValueDict["PORTAGE_ELOG_MAILURI"].split()[0]
-	else:
-	myrecipient = "root@localhost"
+func _mail_summary_finalize(mysettings , items map[string]string) {
+	count := ""
+	if len(items) == 0 {
+		return
+	} else if
+	len(items) == 1 {
+		count = "one package"
+	} else {
+		count = "multiple packages"
+	}
+	myrecipient := "root@localhost"
+	if Inmss(mysettings, "PORTAGE_ELOG_MAILURI") {
+		myrecipient = strings.Fields(mysettings["PORTAGE_ELOG_MAILURI"])[0]
+	}
+	myfrom := mysettings["PORTAGE_ELOG_MAILFROM"]
+	myfrom = strings.ReplaceAll(myfrom, "${HOST}", socket.getfqdn())
+	mysubject := mysettings["PORTAGE_ELOG_MAILSUBJECT"]
+	mysubject = strings.ReplaceAll(mysubject, "${PACKAGE}", count)
+	mysubject = strings.ReplaceAll(mysubject, "${HOST}", socket.getfqdn())
 
-	myfrom = mysettings.ValueDict["PORTAGE_ELOG_MAILFROM", "")
-	myfrom = myfrom.replace("${HOST}", socket.getfqdn())
-	mysubject = mysettings.ValueDict["PORTAGE_ELOG_MAILSUBJECT", "")
-	mysubject = mysubject.replace("${PACKAGE}", count)
-	mysubject = mysubject.replace("${HOST}", socket.getfqdn())
-
-	mybody = _("elog messages for the following packages generated by "
-	"process %(pid)d on host %(host)s:\n") % {"pid": os.getpid(), "host": socket.getfqdn()}
-	for key
-	in
-items:
-	mybody += "- %s\n" % key
+	mybody := fmt.Sprintf("elog messages for the following packages generated by "+
+		"process %d on host %s:\n", os.Getpid(), socket.getfqdn())
+	for key := range items {
+		mybody += fmt.Sprintf("- %s\n", key)
+	}
 
 	mymessage = portage.mail.create_message(myfrom, myrecipient, mysubject,
 		mybody, attachments = list(items.values()))
@@ -649,33 +644,35 @@ e:
 // ---------------------save
 
 
-func save_process(mysettings *Config, key, logentries, fulltext) {
+func save_process(mysettings *Config, key string, logentries map[string][]struct {s  string;ss []string}, fulltext string) {
+	logdir := ""
+	if mysettings.ValueDict["PORTAGE_LOGDIR"]!= "" {
+		logdir = NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])
+	}else {
+		logdir = filepath.Join(string(os.PathSeparator), strings.TrimLeft(mysettings.ValueDict["EPREFIX"], string(os.PathSeparator)),
+			"var", "log", "portage")
+	}
 
-	if mysettings.ValueDict["PORTAGE_LOGDIR"):
-	logdir = NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])
-	else:
-	logdir = filepath.Join(string(os.PathSeparator), mysettings.ValueDict["EPREFIX"].lstrip(string(os.PathSeparator)),
-		"var", "log", "portage")
+	if ! pathIsDir(logdir) {
+		uid := -1
+		if *secpass >= 2 {
+			uid = *portage_uid
+		}
+		ensureDirs(logdir, uint32(uid), *portage_gid, 02770, -1,nil,true)
+	}
 
-	if ! pathIsDir(logdir):
-	uid = -1
-	if portage.data.secpass >= 2:
-	uid = portage_uid
-	ensure_dirs(logdir, uid = uid, gid = portage_gid, mode = 0o2770)
+	cat, pf := catsplit(key)[0], catsplit(key)[1]
 
-	cat, pf = portage.catsplit(key)
+	elogfilename := pf + ":" + time.Now().Format("20060102-150405")
 
-	elogfilename = pf + ":" + _unicode_decode(
-		time.strftime("%Y%m%d-%H%M%S", time.gmtime(time.time())),
-		encoding = _encodings['content'], errors = 'replace') + ".log"
-
-	if "split-elog" in
-	mysettings.features:
-	log_subdir = filepath.Join(logdir, "elog", cat)
-	elogfilename = filepath.Join(log_subdir, elogfilename)
-	else:
-	log_subdir = filepath.Join(logdir, "elog")
-	elogfilename = filepath.Join(log_subdir, cat+':'+elogfilename)
+	log_subdir := ""
+	if mysettings.Features.Features[ "split-elog"] {
+		log_subdir = filepath.Join(logdir, "elog", cat)
+		elogfilename = filepath.Join(log_subdir, elogfilename)
+	}else {
+		log_subdir = filepath.Join(logdir, "elog")
+		elogfilename = filepath.Join(log_subdir, cat+":"+elogfilename)
+	}
 	_ensure_log_subdirs(logdir, log_subdir)
 
 try:
@@ -722,23 +719,26 @@ e:
 // ------------------------save summary
 
 
-func save_summary_process(mysettings *Config, key, logentries, fulltext) {
-	if mysettings.ValueDict["PORTAGE_LOGDIR"]:
-	logdir = NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])
-	else:
-	logdir = filepath.Join(string(os.PathSeparator), mysettings.ValueDict["EPREFIX"].lstrip(string(os.PathSeparator)),
-		"var", "log", "portage")
+func save_summary_process(mysettings *Config, key string, logentries map[string][]struct {s  string;ss []string}, fulltext string) {
+	logdir := ""
+	if mysettings.ValueDict["PORTAGE_LOGDIR"] != "" {
+		logdir = NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])
+	}else {
+		logdir = filepath.Join(string(os.PathSeparator), strings.TrimLeft(mysettings.ValueDict["EPREFIX"], string(os.PathSeparator)),
+			"var", "log", "portage")
+	}
 
-	if ! pathIsDir(logdir):
-	logdir_uid = -1
-	if portage.data.secpass >= 2:
-	logdir_uid = portage_uid
-	ensure_dirs(logdir, uid = logdir_uid, gid = portage_gid, mode = 0o2770)
-
-	elogdir = filepath.Join(logdir, "elog")
+	if ! pathIsDir(logdir) {
+		logdir_uid := -1
+		if *secpass >= 2 {
+			logdir_uid = *portage_uid
+		}
+		ensureDirs(logdir, uint32(logdir_uid), *portage_gid, 02770, -1, nil, false)
+	}
+	elogdir := filepath.Join(logdir, "elog")
 	_ensure_log_subdirs(logdir, elogdir)
 
-	elogfilename = elogdir + "/summary.log"
+	elogfilename := elogdir + "/summary.log"
 try:
 	elogfile = io.open(_unicode_encode(elogfilename,
 		encoding = _encodings['fs'], errors = 'strict'),
@@ -800,17 +800,14 @@ var _pri = map[string]syslog.Priority{
 	"QA":    syslog.LOG_WARNING,
 }
 
-func syslog_process(mysettings *Config, key, logentries, fulltext) {
+func syslog_process(mysettings *Config, key string, logentries map[string][]struct {s  string;ss []string}, fulltext string) {
 	w, _ := syslog.New(syslog.LOG_ERR|syslog.LOG_WARNING|syslog.LOG_INFO|syslog.LOG_NOTICE| syslog.LOG_LOCAL5,"portage")
 	for phase := range  EBUILD_PHASES{
-		if ! phase in logentries{
+		if _, ok := logentries[phase]; !ok {
 			continue
 		}
-		for msgtype, msgcontent
-			:= range
-		logentries[phase] {
-			if isinstance(msgcontent, basestring):
-			msgcontent = [msgcontent]
+		for _, v:= range logentries[phase] {
+			msgtype, msgcontent := v.s, v.ss
 			for _, line := range msgcontent {
 				line := fmt.Sprintf("%s: %s: %s" ,key, phase, line)
 				w.Write(_pri[msgtype], strings.TrimRight(line, "\n"))
