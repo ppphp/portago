@@ -13,7 +13,7 @@ type ProgressHandler struct {
 	min_display_latency time.Duration
 }
 
-func (p *ProgressHandler) reset() {
+func (p *ProgressHandler) Reset() {
 	p.curval = 0
 	p.maxval = 0
 	p.last_update = time.Unix(0, 0)
@@ -36,7 +36,7 @@ func (p *ProgressHandler) display() {
 
 func NewProgressHandler() *ProgressHandler {
 	p := &ProgressHandler{}
-	p.reset()
+	p.Reset()
 	return p
 }
 
@@ -67,7 +67,7 @@ func NewProgressBar2(isatty bool, fd *os.File, title string, maxval int, label s
 	return p
 }
 
-func (p *ProgressBar2) start() func(int64, int64) {
+func (p *ProgressBar2) Start() func(int64, int64) {
 	if p.isatty {
 		p.progressBar = NewTermProgressBar(p.fd, p.title, p.maxval, p.label, p.max_desc_length)
 		p.c = make(chan os.Signal, 0)
@@ -87,11 +87,11 @@ func (p *ProgressBar2) start() func(int64, int64) {
 	return p.onProgress
 }
 
-func (p *ProgressBar2) set_label(_label string) {
+func (p *ProgressBar2) SetLabel(_label string) {
 	p.label = _label
 }
 
-func (p *ProgressBar2) display() {
+func (p *ProgressBar2) Display() {
 	p.progressBar.set(int(p.curval), int(p.maxval))
 }
 
@@ -99,6 +99,6 @@ func (p *ProgressBar2) sigwinch_handler(signum, frame int) {
 	_, p.progressBar.term_columns, _ = get_term_size(0)
 }
 
-func (p *ProgressBar2) stop() {
+func (p *ProgressBar2) Stop() {
 	p.cancel <- true
 }

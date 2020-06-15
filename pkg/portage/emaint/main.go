@@ -143,7 +143,7 @@ func NewTaskHandler(show_progress_bar, verbose bool, callback func(), module_out
 	t.module_output = module_output
 	_, err := unix.IoctlGetTermios(int(os.Stdout.Fd()), unix.TCGETS)
 	t.isatty = os.Getenv("TERM") != "dumb" && err == nil
-	t.progress_bar = NewProgressBar2(t.isatty, os.Stdout, "Emaint", 0, "", 27)
+	t.progress_bar = atom.NewProgressBar2(t.isatty, os.Stdout, "Emaint", 0, "", 27)
 	return t
 }
 
@@ -158,10 +158,11 @@ func (t *TaskHandler) run_tasks(tasks []task, fun, status, verbose bool, options
 		if show_progress && hasattr(inst, "can_progressbar") {
 			show_progress = inst.can_progressbar(fun)
 		}
+		var onProgress func(int64, int64)
 		if show_progress {
-			t.progress_bar.reset()
-			t.progress_bar.set_label(fun + " " + inst.name())
-			onProgress = t.progress_bar.start()
+			t.progress_bar.Reset()
+			t.progress_bar.SetLabel(fun + " " + inst.name())
+			onProgress = t.progress_bar.Start()
 		} else {
 			onProgress = nil
 		}
@@ -173,9 +174,9 @@ func (t *TaskHandler) run_tasks(tasks []task, fun, status, verbose bool, options
 		returncode, msgs := getattr(inst, fun)(**kwargs)
 		returncodes = append(retruncodes, returncode)
 		if show_progress {
-			t.progress_bar.display()
+			t.progress_bar.Display()
 			print()
-			t.progress_bar.stop()
+			t.progress_bar.Stop()
 		}
 		if t.callback != nil {
 			t.callback(msgs)
