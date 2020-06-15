@@ -2029,18 +2029,6 @@ func NewBinpkgFetcherProcess(background bool,
 	return b
 }
 
-type SubProcess struct {
-	*AbstractPollTask
-	pid, _waitpid_id int
-	_dummy_pipe_fd int
-	_files []*os.File
-	_cancel_timeout int
-}
-
-func (s *SubProcess) _poll() *int{
-	return s.returncode
-}
-
 type BinpkgPrefetcher struct {
 	*CompositeTask
 
@@ -2571,6 +2559,18 @@ func (b *BlockerDB)discardBlocker( pkg) {
 			b._fake_vartree.cpv_discard(slot_match)
 		}
 	}
+}
+
+type SubProcess struct {
+	*AbstractPollTask
+	pid, _waitpid_id int
+	_dummy_pipe_fd int
+	_files []*os.File
+	_cancel_timeout int
+}
+
+func (s *SubProcess) _poll() *int{
+	return s.returncode
 }
 
 func (s *SubProcess) _cancel(){
