@@ -2471,7 +2471,7 @@ type dblink struct {
 	_contents_inodes    map[[2]uint64][]string
 	_installed_instance *dblink
 	_scheduler          *SchedulerInterface
-	_device_path_map    map[uint64]bool
+	_device_path_map    map[uint64]string
 	_pipe               int
 }
 
@@ -2601,7 +2601,7 @@ func (d *dblink) delete() {
 	d.vartree.dbapi._remove(d)
 
 	ls, _ := os.Lstat(d.dbroot)
-	d._merged_path(d.dbroot, ls)
+	d._merged_path(d.dbroot, ls, true)
 
 	d._post_merge_sync()
 }
@@ -2849,7 +2849,7 @@ func (d *dblink) _prune_plib_registry(unmerge bool,
 
 // nil, true, nil, nil, nil, nil
 // @_slot_locked
-func (d *dblink) unmerge(pkgfiles=nil, cleanup bool,
+func (d *dblink) unmerge(pkgfiles map[string][]string, cleanup bool,
 	ldpath_mtimes=nil, others_in_slot []*dblink, needed=nil,
 	preserve_paths=nil) {
 
@@ -2872,7 +2872,7 @@ func (d *dblink) unmerge(pkgfiles=nil, cleanup bool,
 		background = true
 	}
 
-	d.vartree.dbapi._bump_mtime(d.mycpv)
+	d.vartree.dbapi._bump_mtime(d.mycpv.string)
 	showMessage := d._display_merge
 	if d.vartree.dbapi._categories != nil {
 		d.vartree.dbapi._categories = nil
@@ -2883,20 +2883,22 @@ func (d *dblink) unmerge(pkgfiles=nil, cleanup bool,
 	if others_in_slot == nil {
 		slot := d.vartree.dbapi._pkg_str(d.mycpv, "").slot
 		slot_matches := d.vartree.dbapi.match(
-			fmt.Sprintf("%s:%s", cpvGetKey(d.mycpv, ""), slot))
+			fmt.Sprintf("%s:%s", cpvGetKey(d.mycpv.string, ""), slot), 1)
 		others_in_slot = []*dblink{}
 		for cur_cpv
 		in
-	slot_matches:
-		if cur_cpv == d.mycpv:
-		continue
-		others_in_slot = append(others_in_slot, NewDblink(d.cat, catsplit(cur_cpv)[1], "",
-			d.settings, "vartree", d.vartree,
-			nil, nil, d._pipe))
-
+	slot_matches {
+			if cur_cpv == d.mycpv {
+				continue
+			}
+			others_in_slot = append(others_in_slot, NewDblink(d.cat, catsplit(cur_cpv)[1], "",
+				d.settings, "vartree", d.vartree,
+				nil, nil, d._pipe))
+		}
 		retval = d._security_check([d] + others_in_slot)
-		if retval:
-		return retval
+		if retval {
+			return retval
+		}
 	}
 
 	contents := d.getcontents()
@@ -2919,50 +2921,41 @@ func (d *dblink) unmerge(pkgfiles=nil, cleanup bool,
 	}
 	eapi_unsupported := false
 //try:
-	doebuild_environment(myebuildpath, "prerm",
-		nil,d.settings,false, nil, d.vartree.dbapi)
+	doebuild_environment(myebuildpath, "prerm", nil,d.settings,false, nil, d.vartree.dbapi)
 	//except UnsupportedAPIException as e:
 	//eapi_unsupported = e
 
-	if d._preserve_libs &&  Ins(
-strings.Fields(d.settings.ValueDict["PORTAGE_RESTRICT"]), "preserve-libs") {
+	if d._preserve_libs && Ins(strings.Fields(d.settings.ValueDict["PORTAGE_RESTRICT"]), "preserve-libs") {
 		d._preserve_libs = false
 	}
 
-	builddir_lock = nil
+	var builddir_lock *EbuildBuildDir
 	scheduler := d._scheduler
-	retval :=
-try:
-			if  !Inmss(d.settings.ValueDict,"PORTAGE_BUILDDIR_LOCKED"){
-	builddir_lock = EbuildBuildDir(
-		scheduler=scheduler,
-		settings=d.settings)
-	scheduler.run_until_complete(builddir_lock.async_lock())
-	prepare_build_dirs(settings=d.settings, cleanup=true)
-	log_path = d.settings.ValueDict["PORTAGE_LOG_FILE")
+	retval := 0
+//try:
+			if  !Inmss(d.settings.ValueDict,"PORTAGE_BUILDDIR_LOCKED") {
+				builddir_lock = NewEbuildBuildDir(scheduler, d.settings)
+				scheduler.run_until_complete(builddir_lock.async_lock())
+				prepare_build_dirs(settings = d.settings, cleanup = true)
+				log_path = d.settings.ValueDict["PORTAGE_LOG_FILE"]
 			}
-			if not caller_handles_backup {
-					retval = d._pre_unmerge_backup(background)
-					if retval != 0 {
-						showMessage(fmt.Sprintf("!!! FAILED prerm: quickpkg: %s\n".retval),
-							40, -1)
-						return retval
-					}
+			if ! caller_handles_backup {
+				retval = d._pre_unmerge_backup(background)
+				if retval != 0 {
+					showMessage(fmt.Sprintf("!!! FAILED prerm: quickpkg: %s\n", retval),
+						40, -1)
+					return retval
 				}
+			}
 
-	d._prune_plib_registry(unmerge=true, needed, preserve_paths)
+	d._prune_plib_registry(true, needed, preserve_paths)
 
 			if eapi_unsupported {
 				failures += 1
-				showMessage(_("!!! FAILED prerm: %s\n")%
-					filepath.Join(d.dbdir, "EAPI"),
-					level = logging.ERROR, noiselevel = -1)
-				showMessage("%s\n"%(eapi_unsupported, ),
-					level = logging.ERROR, noiselevel = -1)
+				showMessage(fmt.Sprintf("!!! FAILED prerm: %s\n", filepath.Join(d.dbdir, "EAPI")), 40, -1)
+				showMessage(fmt.Sprintf("%s\n", eapi_unsupported, ), 40, -1)
 			}else if os.path.isfile(myebuildpath) {
-				phase = EbuildPhase(background = background,
-					phase = ebuild_phase, scheduler=scheduler,
-					settings = d.settings)
+				phase := NewEbuildPhase(nil, background, ebuild_phase, scheduler, d.settings, nil)
 				phase.start()
 				retval = phase.wait()
 
@@ -2974,28 +2967,27 @@ try:
 			}
 
 	d.vartree.dbapi._fs_lock()
-try:
+//try:
 	d._unmerge_pkgfiles(pkgfiles, others_in_slot)
-finally:
+//finally:
 	d.vartree.dbapi._fs_unlock()
 	d._clear_contents_cache()
 
-	if not eapi_unsupported && os.path.isfile(myebuildpath):
-	ebuild_phase = "postrm"
-	phase = EbuildPhase(background=background,
-		phase=ebuild_phase, scheduler=scheduler,
-		settings=d.settings)
-	phase.start()
-	retval = phase.wait()
+	if ! eapi_unsupported && os.path.isfile(myebuildpath) {
+		ebuild_phase := "postrm"
+		phase := NewEbuildPhase(nil, background, ebuild_phase, scheduler, d.settings, nil)
+		phase.start()
+		retval = phase.wait()
 
-		if retval != os.EX_OK:
-	failures += 1
-	showMessage(_("!!! FAILED postrm: %s\n") % retval,
-		level=logging.ERROR, noiselevel=-1)
+		if retval != 0 {
+			failures += 1
+		}
+		showMessage(fmt.Sprintf("!!! FAILED postrm: %s\n", retval), 40, -1)
+	}
 
-finally:
+//finally:
 	d.vartree.dbapi._bump_mtime(d.mycpv)
-try:
+//try:
 	if ! eapi_unsupported && os.path.isfile(myebuildpath) {
 		if retval != 0 {
 			msg_lines := []string{}
@@ -3035,59 +3027,64 @@ try:
 		}
 	}
 
-	d._elog_process(phasefilter=("prerm", "postrm"))
+	d._elog_process([]string{"prerm", "postrm"})
 
 	if retval == 0 {
-	try:
-		doebuild_environment(myebuildpath, "cleanrm", nil
-		d.settings, false, nil, d.vartree.dbapi)
-		except
-	UnsupportedAPIException:
-		pass
-		phase = NewEbuildPhase(nil, background, "cleanrm", scheduler,
+	//try:
+		doebuild_environment(myebuildpath, "cleanrm", nil, d.settings, false, nil, d.vartree.dbapi)
+		//except UnsupportedAPIException:
+		//pass
+		phase := NewEbuildPhase(nil, background, "cleanrm", scheduler,
 			d.settings, nil)
 		phase.start()
 		retval = phase.wait()
 	}
-finally:
-	if builddir_lock != nil:
-	scheduler.run_until_complete(
-		builddir_lock.async_unlock())
+//finally:
+	if builddir_lock != nil {
+		scheduler.run_until_complete(
+			builddir_lock.async_unlock())
+	}
 
-	if log_path != nil:
+	if log_path != nil {
 
-	if not failures && 'unmerge-logs' not in d.settings.features:
-try:
-	syscall.Unlink(log_path)
-	except OSError:
-	pass
+		if failures == 0 && !d.settings.Features.Features["unmerge-logs"] {
+			if err := syscall.Unlink(log_path); err != nil {
+				//except OSError:
+				//pass
+			}
+		}
 
-try:
-	st = os.Stat(log_path)
-	except OSError:
-	pass
-	else:
-	if st.st_size == 0:
-try:
-	syscall.Unlink(log_path)
-	except OSError:
-	pass
+		st, err := os.Stat(log_path)
+		if err != nil {
+			//except OSError:
+			//pass
+		} else {
+			if st.Size() == 0 {
+				if err := syscall.Unlink(log_path); err != nil {
+					//except OSError:
+					//pass
+				}
+			}
+		}
+	}
 
-	if log_path != nil && pathExists(log_path):
-							d.settings.ValueDict["PORTAGE_LOG_FILE"] = log_path
-	else:
-	d.settings.pop("PORTAGE_LOG_FILE", nil)
+	if log_path != "" && pathExists(log_path) {
+		d.settings.ValueDict["PORTAGE_LOG_FILE"] = log_path
+	}else {
+		delete(d.settings.ValueDict, "PORTAGE_LOG_FILE")
+	}
 
 	env_update(target_root=d.settings.ValueDict["ROOT"],
 		prev_mtimes=ldpath_mtimes,
 		contents=contents, env=d.settings,
 		WriteMsg_level=d._display_merge, vardbapi=d.vartree.dbapi)
 
-	unmerge_with_replacement = preserve_paths != nil
-	if not unmerge_with_replacement:
-							d._prune_plib_registry()
+	unmerge_with_replacement := preserve_paths != nil
+	if ! unmerge_with_replacement {
+		d._prune_plib_registry(false, nil, nil)
+	}
 
-	return os.EX_OK
+	return 0
 
 }
 
@@ -3096,27 +3093,30 @@ func (d *dblink) _display_merge(msg string, level, noiselevel int){
 	if ! d._verbose && noiselevel >= 0 && level < 30 {
 		return
 	}
-	if d._scheduler == nil:
-	WriteMsg_level(msg, level=level, noiselevel=noiselevel)
-	else:
-	log_path = nil
-	if d.settings.ValueDict["PORTAGE_BACKGROUND") != "subprocess":
-	log_path = d.settings.ValueDict["PORTAGE_LOG_FILE"]
-	background = d.settings.ValueDict["PORTAGE_BACKGROUND"] == "1"
+	if d._scheduler == nil {
+		WriteMsgLevel(msg, level, noiselevel)
+	}else {
+		log_path := ""
+		if d.settings.ValueDict["PORTAGE_BACKGROUND"] != "subprocess" {
+			log_path = d.settings.ValueDict["PORTAGE_LOG_FILE"]
+		}
+		background := d.settings.ValueDict["PORTAGE_BACKGROUND"] == "1"
 
-	if background && log_path == nil:
-	if level >= 30:
-	WriteMsg_level(msg, level=level, noiselevel=noiselevel)
-	else:
-	d._scheduler.output(msg,
-		log_path=log_path, background=background,
-		level=level, noiselevel=noiselevel)
-
+		if background && log_path == "" {
+			if level >= 30 {
+				WriteMsgLevel(msg, level, noiselevel)
+			}
+		} else {
+			d._scheduler.output(msg,
+				log_path = log_path, background = background,
+				level = level, noiselevel=noiselevel)
+		}
+	}
 }
 
 func (d *dblink) _show_unmerge(zing, desc, file_type, file_name) {
 	d._display_merge(fmt.Sprintf("%s %s %s %s\n",
-		zing, desc.ljust(8), file_type, file_name))
+		zing, desc.ljust(8), file_type, file_name), 0, 0)
 }
 
 func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot []*dblink) {
@@ -3455,22 +3455,22 @@ func (d *dblink) _unmerge_protected_symlinks(others_in_slot, infodirs_inodes,
 	if dblnk.isowner(f):
 				return
 
-	msg = []
-	msg=append(,"")
-	msg=append(,_("Directory symlink(s) may need protection:"))
-	msg=append(,"")
+	msg := []string{}
+	msg=append(msg,"")
+	msg=append(msg,_("Directory symlink(s) may need protection:"))
+	msg=append(msg,"")
 
 	for f in flat_list:
 	msg=append(,"\t%s" % 
 filepath.Join(real_root, f.lstrip(string(os.PathSeparator))))
 
-	msg=append(,"")
-	msg=append(,"Use the UNINSTALL_IGNORE variable to exempt specific symlinks")
-	msg=append(,"from the following search (see the make.conf man page).")
-	msg=append(,"")
-	msg=append(,_("Searching all installed"+
+	msg=append(msg,"")
+	msg=append(msg,"Use the UNINSTALL_IGNORE variable to exempt specific symlinks")
+	msg=append(msg,"from the following search (see the make.conf man page).")
+	msg=append(msg,"")
+	msg=append(msg,_("Searching all installed"+
 	" packages for files installed via above symlink(s)..."))
-	msg=append(,"")
+	msg=append(msg,"")
 	d._elog("elog", "postrm", msg)
 
 	d.lockdb()
@@ -3485,10 +3485,10 @@ finally:
 	owners.pop(owner, nil)
 
 	if not owners:
-	msg = []
-	msg=append(,_("The above directory symlink(s) are all "+
+	msg := []string{}
+	msg=append(msg,_("The above directory symlink(s) are all "+
 	"safe to remove. Removing them now..."))
-	msg=append(,"")
+	msg=append(msg,"")
 	d._elog("elog", "postrm", msg)
 	dirs = map[string]bool{}
 	for unmerge_syms in protected_symlinks.values():
@@ -3524,111 +3524,112 @@ try:
 func (d *dblink) _unmerge_dirs(dirs, infodirs_inodes,
 	protected_symlinks, unmerge_desc, unlink, os) {
 
-	show_unmerge = d._show_unmerge
-	infodir_cleanup = d._infodir_cleanup
-	ignored_unlink_errnos = d._ignored_unlink_errnos
-	ignored_rmdir_errnos = d._ignored_rmdir_errnos
-	real_root = d.settings.ValueDict["ROOT"]
+	show_unmerge := d._show_unmerge
+	infodir_cleanup := d._infodir_cleanup
+	ignored_unlink_errnos := d._ignored_unlink_errnos
+	ignored_rmdir_errnos := d._ignored_rmdir_errnos
+	real_root := d.settings.ValueDict["ROOT"]
 
-	dirs = sorted(dirs)
-	revisit = {}
+	dirs := sorted(dirs)
+	revisit := {}
 
-	while true:
-try:
-	obj, inode_key = dirs.pop()
-	except IndexError:
-	break
-				if inode_key in infodirs_inodes || 
-filepath.Base(obj) == "info":
-try:
-	remaining = os.listdir(obj)
-	except OSError:
-	pass
-	else:
-	cleanup_info_dir = ()
-	if remaining &&
-len(remaining) <= len(infodir_cleanup):
-	if not set(remaining).difference(infodir_cleanup):
-	cleanup_info_dir = remaining
+	for{
+	try:
+		obj, inode_key = dirs.pop()
+		except IndexError:
+		break
+		if inode_key in infodirs_inodes ||
+			filepath.Base(obj) == "info":
+	try:
+		remaining = os.listdir(obj)
+		except OSError:
+		pass
+		else:
+		cleanup_info_dir = ()
+		if remaining &&
+			len(remaining) <= len(infodir_cleanup):
+		if not set(remaining).difference(infodir_cleanup):
+		cleanup_info_dir = remaining
 
-	for child in cleanup_info_dir:
-	child = filepath.Join(obj, child)
-try:
-	lstatobj = os.Lstat(child)
-	if stat.S_ISREG(lstatobj.st_mode):
-	unlink(child, lstatobj)
-	show_unmerge("<<<", "", "obj", child)
-	except EnvironmentError as e:
-	if err not in ignored_unlink_errnos:
-	raise
-	del e
-	show_unmerge("!!!", "", "obj", child)
+		for child in cleanup_info_dir:
+		child = filepath.Join(obj, child)
+	try:
+		lstatobj = os.Lstat(child)
+		if stat.S_ISREG(lstatobj.st_mode):
+		unlink(child, lstatobj)
+		show_unmerge("<<<", "", "obj", child)
+		except EnvironmentError as e:
+		if err not in ignored_unlink_errnos:
+		raise
+		del e
+		show_unmerge("!!!", "", "obj", child)
 
-try:
-	parent_name = filepath.Dir(obj)
-	parent_stat = os.Stat(parent_name)
+	try:
+		parent_name = filepath.Dir(obj)
+		parent_stat = os.Stat(parent_name)
 
-	if bsd_chflags:
-	lstatobj = os.Lstat(obj)
-	if lstatobj.st_flags != 0:
-	bsd_chflags.lchflags(obj, 0)
+		if bsd_chflags:
+		lstatobj = os.Lstat(obj)
+		if lstatobj.st_flags != 0:
+		bsd_chflags.lchflags(obj, 0)
 
-				pflags = parent_stat.st_flags
-	if pflags != 0:
-	bsd_chflags.chflags(parent_name, 0)
-try:
-	os.rmdir(obj)
-finally:
-	if bsd_chflags && pflags != 0:
+		pflags = parent_stat.st_flags
+		if pflags != 0:
+		bsd_chflags.chflags(parent_name, 0)
+	try:
+		os.rmdir(obj)
+	finally:
+		if bsd_chflags && pflags != 0:
 		bsd_chflags.chflags(parent_name, pflags)
 
-						d._merged_path(filepath.EvalSymlinks(parent_name), parent_stat)
+		d._merged_path(filepath.EvalSymlinks(parent_name), parent_stat)
 
-	show_unmerge("<<<", "", "dir", obj)
-	except EnvironmentError as e:
-	if err not in ignored_rmdir_errnos:
-	raise
-	if err != syscall.ENOENT:
-	show_unmerge("---", unmerge_desc["!empty"], "dir", obj)
-	revisit[obj] = inode_key
+		show_unmerge("<<<", "", "dir", obj)
+		except EnvironmentError as e:
+		if err not in ignored_rmdir_errnos:
+		raise
+		if err != syscall.ENOENT:
+		show_unmerge("---", unmerge_desc["!empty"], "dir", obj)
+		revisit[obj] = inode_key
 
-								try:
-	dir_stat = os.Stat(obj)
-	except OSError:
-	pass
-	else:
-	if dir_stat.st_dev in d._device_path_map:
-	d._merged_path(filepath.EvalSymlinks(obj), dir_stat)
+	try:
+		dir_stat = os.Stat(obj)
+		except OSError:
+		pass
+		else:
+		if dir_stat.st_dev in d._device_path_map:
+		d._merged_path(filepath.EvalSymlinks(obj), dir_stat)
 
-	else:
-				unmerge_syms = protected_symlinks.pop(inode_key, nil)
-	if unmerge_syms != nil:
-	parents = []
-	for relative_path in unmerge_syms:
-	obj = filepath.Join(real_root,
-		relative_path.lstrip(string(os.PathSeparator)))
-try:
-	unlink(obj, os.Lstat(obj))
-	show_unmerge("<<<", "", "sym", obj)
-	except (OSError, IOError) as e:
-	if err not in ignored_unlink_errnos:
-	raise
-	del e
-	show_unmerge("!!!", "", "sym", obj)
-	else:
-	parents=append(,filepath.Dir(obj))
+		else:
+		unmerge_syms = protected_symlinks.pop(inode_key, nil)
+		if unmerge_syms != nil:
+		parents = []
+		for relative_path in unmerge_syms:
+		obj = filepath.Join(real_root,
+			relative_path.lstrip(string(os.PathSeparator)))
+	try:
+		unlink(obj, os.Lstat(obj))
+		show_unmerge("<<<", "", "sym", obj)
+		except (OSError, IOError) as e:
+		if err not in ignored_unlink_errnos:
+		raise
+		del e
+		show_unmerge("!!!", "", "sym", obj)
+		else:
+		parents=append(,filepath.Dir(obj))
 
-	if parents:
+		if parents:
 		recursive_parents = []
-	for parent in set(parents):
-	while parent in revisit:
-	recursive_parents=append(,parent)
-	parent = filepath.Dir(parent)
-	if parent == "/":
-	break
+		for parent in set(parents):
+		while parent in revisit:
+		recursive_parents=append(,parent)
+		parent = filepath.Dir(parent)
+		if parent == "/":
+		break
 
-	for parent in sorted(set(recursive_parents)):
-	dirs=append(,(parent, revisit.pop(parent)))
+		for parent in sorted(set(recursive_parents)):
+		dirs=append(,(parent, revisit.pop(parent)))
+	}
 
 }
 
@@ -3718,9 +3719,10 @@ func (d *dblink) _linkmap_rebuild(**kwargs) {
 	if d._linkmap_broken || 
 d.vartree.dbapi._linkmap == nil || 
 d.vartree.dbapi._plib_registry == nil || 
-("preserve-libs" not in d.settings.features &&
-not d.vartree.dbapi._plib_registry.hasEntries()):
-	return
+( ! d.settings.Features.Features["preserve-libs"] &&
+! d.vartree.dbapi._plib_registry.hasEntries()) {
+		return
+	}
 try:
 	d.vartree.dbapi._linkmap.rebuild(**kwargs)
 	except CommandNotFound as e:
@@ -3736,72 +3738,70 @@ func (d *dblink) _find_libs_to_preserve(unmerge bool) {
 	if d._linkmap_broken || 
 d.vartree.dbapi._linkmap == nil || 
 d.vartree.dbapi._plib_registry == nil || 
-(not unmerge && d._installed_instance == nil) ||
-not d._preserve_libs:
-	return map[string]bool{}
+(! unmerge && d._installed_instance == nil) ||
+! d._preserve_libs {
+		return map[string]bool{}
+	}
 
 	os = _os_merge
-	linkmap = d.vartree.dbapi._linkmap
-	if unmerge:
-	installed_instance = d
-	else:
-	installed_instance = d._installed_instance
-	old_contents = installed_instance.getcontents()
-	root = d.settings.ValueDict["ROOT"]
-	root_len = len(root) - 1
-	lib_graph = digraph()
-	path_node_map = {}
+	linkmap := d.vartree.dbapi._linkmap
+	var installed_instance *dblink
+	if unmerge {
+		installed_instance = d
+	}else {
+		installed_instance = d._installed_instance
+	}
+	old_contents := installed_instance.getcontents()
+	root := d.settings.ValueDict["ROOT"]
+	root_len := len(root) - 1
+	lib_graph := digraph()
+	path_node_map := {}
 
-	def path_to_node(path):
-	node = path_node_map.get(path)
-	if node == nil:
-	node = LinkageMap._LibGraphNode(linkmap._obj_key(path))
-	alt_path_node = lib_graph.get(node)
-	if alt_path_node != nil:
-	node = alt_path_node
-	node.alt_paths.add(path)
-	path_node_map[path] = node
-	return node
+	path_to_node:= func(path) {
+		node := path_node_map[path]
+		if node == nil {
+			node = LinkageMap._LibGraphNode(linkmap._obj_key(path))
+			alt_path_node = lib_graph.get(node)
+			if alt_path_node != nil {
+				node = alt_path_node
+			}
+			node.alt_paths.add(path)
+			path_node_map[path] = node
+		}
+		return node
+	}
 
-	consumer_map = {}
-	provider_nodes = map[string]bool{}
-		for f_abs in old_contents:
+	consumer_map := {}
+	provider_nodes := map[string]bool{}
+		for f_abs := range old_contents{
 
-	if os is _os_merge:
-try:
-	_unicode_encode(f_abs,
-		encoding=_encodings['merge'], errors='strict')
-	except UnicodeEncodeError:
-					try:
-	_unicode_encode(f_abs,
-		encoding=_encodings['fs'], errors='strict')
-	except UnicodeEncodeError:
-	pass
-	else:
-	os = portage.os
-
-	f = f_abs[root_len:]
-try:
-	consumers = linkmap.findConsumers(f,
+		f := f_abs[root_len:]
+		try:
+		consumers = linkmap.findConsumers(f,
 		exclude_providers=(installed_instance.isowner,))
-	except KeyError:
-	continue
-	if not consumers:
-	continue
-	provider_node = path_to_node(f)
-	lib_graph.add(provider_node, nil)
-	provider_nodes.add(provider_node)
-	consumer_map[provider_node] = consumers
-
-			for provider_node, consumers in consumer_map.items():
-	for c in consumers:
-	consumer_node = path_to_node(c)
-	if installed_instance.isowner(c) &&
-consumer_node not in provider_nodes:
+		except KeyError:
 		continue
-	lib_graph.add(provider_node, consumer_node)
+		if not consumers {
+			continue
+		}
+		provider_node = path_to_node(f)
+		lib_graph.add(provider_node, nil)
+		provider_nodes.add(provider_node)
+		consumer_map[provider_node] = consumers
+	}
 
-					preserve_nodes = map[string]bool{}
+	for provider_node, consumers in consumer_map.items(){
+		for c in consumers{
+			consumer_node = path_to_node(c)
+			if installed_instance.isowner(c) &&
+			consumer_node not in provider_nodes{
+			continue
+		}
+			lib_graph.add(provider_node, consumer_node)
+		}
+	}
+
+	preserve_nodes = map[string]bool{}
 	for consumer_node in lib_graph.root_nodes():
 	if consumer_node in provider_nodes:
 	continue
@@ -4087,20 +4087,18 @@ func (d *dblink) _collision_protect(srcroot string, mypkglist []*dblink,
 		collision_ignore = append(collision_ignore, x)
 	}
 
-	plib_cpv_map := map[string]{}
+	plib_cpv_map := map[string]string{}
 	plib_paths := map[string]bool{}
 	plib_inodes := map[[2]uint64]map[string]bool{}
 	if d.vartree.dbapi._plib_registry == nil {
 	} else {
-		plib_dict = d.vartree.dbapi._plib_registry.getPreservedLibs()
+		plib_dict := d.vartree.dbapi._plib_registry.getPreservedLibs()
 		plib_cpv_map = map[string]{}
-		for cpv, paths
-			in
-		plib_dict.items() {
-			plib_paths.update(paths)
-			for f
-				in
-			paths {
+		for cpv, paths := range plib_dict {
+			for _,k := range paths{
+				plib_paths[k]=true
+			}
+			for _, f:= range paths {
 				plib_cpv_map[f] = cpv
 			}
 		}
@@ -4277,10 +4275,10 @@ func (d *dblink) _collision_protect(srcroot string, mypkglist []*dblink,
 	return collisions, internal_collisions, dirs_ro, symlink_collisions, plib_collisions
 }
 
-func (d *dblink) _lstat_inode_map(path_iter []string)map[[2]uint64]map[string]bool {
+func (d *dblink) _lstat_inode_map(path_iter map[string]bool)map[[2]uint64]map[string]bool {
 	root := d.settings.ValueDict["ROOT"]
 	inode_map := map[[2]uint64]map[string]bool{}
-	for _, f := range path_iter{
+	for f := range path_iter{
 		path := filepath.Join(root, strings.TrimLeft(f, string(os.PathSeparator)))
 		st, err := os.Lstat(path)
 		if err != nil {
@@ -5283,23 +5281,24 @@ try:
 
 func (d *dblink) mergeme(srcroot, destroot, outfile, secondhand, stufftomerge, cfgfiledict, thismtime) {
 
-	showMessage = d._display_merge
-	WriteMsg = d._display_merge
+	showMessage := d._display_merge
+	WriteMsg := d._display_merge
 
 	os = _os_merge
-	sep = string(os.PathSeparator)
-	join = filepath.Join
-	srcroot = NormalizePath(srcroot).rstrip(sep) + sep
-	destroot = NormalizePath(destroot).rstrip(sep) + sep
-	calc_prelink = "prelink-checksums" in d.settings.features
+	sep := string(os.PathSeparator)
+	join := filepath.Join
+	srcroot := strings.TrimRight(NormalizePath(srcroot), sep) + sep
+	destroot := strings.TrimRight(NormalizePath(destroot), sep) + sep
+	calc_prelink :=  d.settings.Features.Features["prelink-checksums"]
 
-	protect_if_modified = 
-"config-protect-if-modified" in d.settings.features &&
-d._installed_instance != nil
+	protect_if_modified := d.settings.Features.Features["config-protect-if-modified"] && d._installed_instance != nil
 
 		if isinstance(stufftomerge, basestring):
-			mergelist = [join(stufftomerge, child) for child in 
-os.listdir(join(srcroot, stufftomerge))]
+	mergelist = []string{}
+			for child in os.listdir(join(srcroot, stufftomerge))
+	{
+		mergelist = append(mergelist,join(stufftomerge, child))
+	}
 	else:
 	mergelist = stufftomerge[:]
 
@@ -5399,13 +5398,13 @@ filepath.Base(mydest).startswith(".keep"):
 	if mydmode != nil && stat.S_ISDIR(mydmode):
 	if not protected:
 		newdest = d._new_backup_path(mydest)
-	msg = []
-	msg=append(,"")
-	msg=append(,_("Installation of a symlink is blocked by a directory:"))
-	msg=append(,"  '%s'" % mydest)
-	msg=append(,_("This symlink will be merged with a different name:"))
-	msg=append(,"  '%s'" % newdest)
-	msg=append(,"")
+	msg := []string{}
+	msg=append(msg,"")
+	msg=append(msg,_("Installation of a symlink is blocked by a directory:"))
+	msg=append(msg,"  '%s'" % mydest)
+	msg=append(msg,_("This symlink will be merged with a different name:"))
+	msg=append(msg,"  '%s'" % newdest)
+	msg=append(msg,"")
 	d._eerror("preinst", msg)
 	mydest = newdest
 
@@ -5425,9 +5424,7 @@ filepath.Base(mydest).startswith(".keep"):
 
 	if mymtime != nil:
 			if not (os.path.lexists(myrealto)||	os.path.lexists(join(srcroot, myabsto))):
-	d._eqawarn("preinst",
-	[_("QA Notice: Symbolic link /%s points to /%s which does not exist.")
-	% (relative_path, myabsto)])
+	d._eqawarn("preinst", []string{fmt.Sprintf("QA Notice: Symbolic link /%s points to /%s which does not exist.", relative_path, myabsto)})
 
 	showMessage("%s %s -> %s\n" % (zing, mydest, myto))
 	if sys.hexversion >= 0x3030000:
@@ -5465,13 +5462,13 @@ not os.access(mydest, os.W_OK):
 	bsd_chflags.lchflags(mydest, dflags)
 	else:
 		backup_dest = d._new_backup_path(mydest)
-	msg = []
-	msg=append(,"")
-	msg=append(,_("Installation of a directory is blocked by a file:"))
-	msg=append(,"  '%s'" % mydest)
-	msg=append(,_("This file will be renamed to a different name:"))
-	msg=append(,"  '%s'" % backup_dest)
-	msg=append(,"")
+	msg := []string{}
+	msg=append(msg,"")
+	msg=append(msg,_("Installation of a directory is blocked by a file:"))
+	msg=append(msg,"  '%s'" % mydest)
+	msg=append(msg,_("This file will be renamed to a different name:"))
+	msg=append(msg,"  '%s'" % backup_dest)
+	msg=append(msg,"")
 	d._eerror("preinst", msg)
 	if movefile(mydest, backup_dest,
 	mysettings=d.settings,
@@ -5529,13 +5526,13 @@ not os.access(mydest, os.W_OK):
 		if not protected &&
 mydmode != nil && stat.S_ISDIR(mydmode):
 		newdest = d._new_backup_path(mydest)
-	msg = []
-	msg=append(,"")
-	msg=append(,_("Installation of a regular file is blocked by a directory:"))
-	msg=append(,"  '%s'" % mydest)
-	msg=append(,_("This file will be merged with a different name:"))
-	msg=append(,"  '%s'" % newdest)
-	msg=append(,"")
+	msg := []string{}
+	msg=append(msg,"")
+	msg=append(msg,_("Installation of a regular file is blocked by a directory:"))
+	msg=append(msg,"  '%s'" % mydest)
+	msg=append(msg,_("This file will be merged with a different name:"))
+	msg=append(msg,"  '%s'" % newdest)
+	msg=append(msg,"")
 	d._eerror("preinst", msg)
 	mydest = newdest
 
@@ -5590,47 +5587,55 @@ mydmode != nil && stat.S_ISDIR(mydmode):
 
 	}
 
-func (d *dblink) _protect(cfgfiledict, protect_if_modified, src_md5,
-	src_link, dest, dest_real, dest_mode, dest_md5, dest_link) {
+func (d *dblink) _protect(cfgfiledict map[string][]string, protect_if_modified bool, src_md5,
+	src_link, dest, dest_real, dest_mode, dest_md5, dest_link string) {
 
-	move_me = true
-	protected = true
-	force = false
-	k = false
-	if d._installed_instance != nil:
-	k = d._installed_instance._match_contents(dest_real)
-	if k is not false:
-	if dest_mode == nil:
-							force = true
+	move_me := true
+	protected := true
+	force := false
+	k := ""
+	if d._installed_instance != nil {
+		k = d._installed_instance._match_contents(dest_real)
+	}
+	if k != "" {
+		if dest_mode == nil {
+			force = true
+		} else if protect_if_modified {
+			data := d._installed_instance.getcontents()[k]
+			if data[0] == "obj" && data[2] == dest_md5 {
+				protected = false
+			} else if data[0] == "sym" && data[2] == dest_link {
+				protected = false
+			}
+		}
+	}
 
-	else if protect_if_modified:
-	data = d._installed_instance.getcontents()[k]
-	if data[0] == "obj" && data[2] == dest_md5:
-	protected = false
-	else if data[0] == "sym" && data[2] == dest_link:
-	protected = false
+	if protected && dest_mode != nil {
+		if src_md5 == dest_md5 {
+			protected = false
+		} else if src_md5 == cfgfiledict[dest_real][0] {
+			move_me = protected = bool(cfgfiledict["IGNORE"])
+		}
 
-	if protected && dest_mode != nil:
-		if src_md5 == dest_md5:
-	protected = false
+		if protected &&
+			(dest_link != nil || src_link != nil) &&
+			dest_link != src_link:
+		force = true
 
-	else if src_md5 == cfgfiledict.get(dest_real, [nil])[0]:
-					move_me = protected = bool(cfgfiledict["IGNORE"])
+		if move_me {
+			cfgfiledict[dest_real] = []string{src_md5}
+		}else if dest_md5 == cfgfiledict[dest_real][0] {
+			delete(cfgfiledict, dest_real)
+		}
+	}
 
-	if protected &&
-(dest_link != nil || src_link != nil) &&
-dest_link != src_link:
-				force = true
-
-	if move_me:
-			cfgfiledict[dest_real] = [src_md5]
-	else if dest_md5 == cfgfiledict.get(dest_real, [nil])[0]:
-				del cfgfiledict[dest_real]
-
-	if protected && move_me:
-	dest = new_protect_filename(dest,
-		newmd5=(dest_link || src_md5),
-	force=force)
+	if protected && move_me {
+		nm := dest_link
+		if nm == "" {
+			nm = src_md5
+		}
+		dest = new_protect_filename(dest, nm, force)
+	}
 
 	return dest, protected, move_me
 
@@ -5639,13 +5644,11 @@ dest_link != src_link:
 // true
 func (d *dblink) _merged_path(path string, lstatobj os.FileInfo, exists bool) {
 	previous_path := d._device_path_map[lstatobj.Sys().(*syscall.Stat_t).Dev]
-	if previous_path == nil || previous_path is false || 
-(exists && len(path) < len(previous_path))
-	{
+	if previous_path == "" || (exists && len(path) < len(previous_path)) {
 		if exists {
 			d._device_path_map[lstatobj.Sys().(*syscall.Stat_t).Dev] = path
 		}else {
-			d._device_path_map[lstatobj.Sys().(*syscall.Stat_t).Dev] = false
+			d._device_path_map[lstatobj.Sys().(*syscall.Stat_t).Dev] = ""
 		}
 	}
 }
@@ -5657,10 +5660,11 @@ func (d *dblink) _post_merge_sync() {
 
 	returncode = nil
 	if runtime.GOOS == "linux"{
-		paths := []
-		for path in d._device_path_map.values(){
-			if path is not false:
-			paths=append(,path)
+		paths := []string{}
+		for _, path := range d._device_path_map{
+			if path != "" {
+				paths = append(paths, path)
+			}
 		}
 		paths = tuple(paths)
 
@@ -5941,7 +5945,7 @@ func NewDblink(cat, pkg, myroot string, settings *Config, treetype string,
 	d._contents_inodes = nil
 	d._contents_basenames = nil
 	d._linkmap_broken = false
-	d._device_path_map = map[string]string{}
+	d._device_path_map = map[uint64]string{}
 	d._hardlink_merge_map = map[string]string{}
 	d._hash_key = []string{d._eroot, d.mycpv.string}
 	d._protect_obj = nil
@@ -8755,37 +8759,38 @@ func (p *portdbapi) cpv_exists(mykey, myrepo string) int {
 	}
 }
 
-func (p *portdbapi) cp_all(categories=nil, trees=nil, reverse=false, sort=true) {
+// nil, nil, false, true
+func (p *portdbapi) cp_all(categories map[string]bool, trees []string, reverse, sort bool) {
 
 	d := map{}
-	if categories is
-nil:
-	categories = p.settings.categories
-	if trees is
-nil:
-	trees = p.porttrees
-	for x
-	in
-categories:
-	for oroot
-	in
-trees:
-	for y
-	in
-	listdir(oroot+"/"+x, EmptyOnError = 1, ignorecvs = 1, dirsonly = 1):
-try:
-	atom = Atom("%s/%s"%(x, y))
-	except
-InvalidAtom:
-	continue
-	if atom != atom.cp:
-	continue
-	d[atom.cp] = nil
+	if categories == nil {
+		categories = p.settings.categories
+	}
+	if trees ==nil {
+		trees = p.porttrees
+	}
+	for x:= range categories{
+		for _, oroot:= range trees{
+			for y
+				in
+			listdir(oroot+"/"+x, EmptyOnError = 1, ignorecvs = 1, dirsonly = 1):
+		try:
+			atom = Atom("%s/%s"%(x, y))
+			except
+		InvalidAtom:
+			continue
+			if atom != atom.cp:
+			continue
+			d[atom.cp] = nil
+		}
+	}
 	l = list(d)
-	if sort:
-	l.sort(reverse = reverse)
+	if sort {
+		l.sort(reverse = reverse)
+	}
 	return l
 }
+
 // 1, nil
 func (p *portdbapi) cp_list(mycp, use_cache=1, mytree=nil) {
 	if p.frozen &&
