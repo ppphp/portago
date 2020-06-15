@@ -1460,8 +1460,8 @@ type preservedLibsRegistry struct {
 	_json_write      bool
 	_json_write_opts map[string]bool
 	_root, _filename string
-	_data interface{}
-	_lock     *LockFileS
+	_data            map[string][]string
+	_lock            *LockFileS
 }
 
 func(p*preservedLibsRegistry) lock() {
@@ -1478,7 +1478,52 @@ func(p*preservedLibsRegistry) unlock() {
 	p._lock = Unlockfile(p._lock)
 }
 
-func(p*preservedLibsRegistry) load() {}
+func(p*preservedLibsRegistry) load() {
+	p._data = nil
+	content, err := ioutil.ReadFile(p._filename)
+	if err != nil {
+		//except EnvironmentError as e:
+		//if not hasattr(e, 'errno'):
+		//raise
+		//elif e.errno == errno.ENOENT:
+		//pass
+		//elif e.errno == PermissionDenied.errno:
+		//raise PermissionDenied(self._filename)
+		//else:
+		//raise
+	}
+	if len(content) > 0 {
+	try:
+		p._data = json.loads(_unicode_decode(content,
+			encoding=_encodings['repo.content'], errors='strict'))
+		except SystemExit:
+		raise
+		except Exception as e:
+	try:
+		p._data = pickle.loads(content)
+		except SystemExit:
+		raise
+		except Exception:
+		writemsg_level(_("!!! Error loading '%s': %s\n") %
+			(p._filename, e), level=logging.ERROR,
+			noiselevel=-1)
+	}
+
+	if p._data == nil {
+		p._data = {}
+	} else{
+
+		for k, v := range p._data{
+
+		}
+		if isinstance(v, (list, tuple)) and len(v) == 3 and \
+		isinstance(v[2], set):
+		p._data[k] = (v[0], v[1], list(v[2]))
+	}
+
+	p._data_orig = p._data.copy()
+	p.pruneNonExisting()
+}
 
 func(p*preservedLibsRegistry) store() {}
 
@@ -1486,13 +1531,29 @@ func(p*preservedLibsRegistry) _normalize_counter() {}
 
 func(p*preservedLibsRegistry) register() {}
 
-func(p*preservedLibsRegistry) unregister() {}
+func(p*preservedLibsRegistry) unregister() {
+	p.register(cpv, slot, counter, [])
+}
 
 func(p*preservedLibsRegistry) pruneNonExisting() {}
 
-func(p*preservedLibsRegistry) hasEntries() {}
+func(p*preservedLibsRegistry) hasEntries() bool {
+	if p._data == nil {
+		p.load()
+	}
+	return len(p._data) > 0
+}
 
-func(p*preservedLibsRegistry) getPreservedLibs() {}
+func(p*preservedLibsRegistry) getPreservedLibs()map[string]string {
+	if p._data == nil {
+		p.load()
+	}
+	rValue := map[string]string{}
+	for cps := range p._data {
+		rValue[p._data[cps][0]] = p._data[cps][2]
+	}
+	return rValue
+}
 
 func NewPreservedLibsRegistry(root, filename string) *preservedLibsRegistry {
 	p := &preservedLibsRegistry{_json_write: true, _json_write_opts: map[string]bool{
