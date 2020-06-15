@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -5655,26 +5656,28 @@ func (d *dblink) _post_merge_sync() {
 	}
 
 	returncode = nil
-	if platform.system() == "Linux":
+	if runtime.GOOS == "linux"{
+		paths := []
+		for path in d._device_path_map.values(){
+			if path is not false:
+			paths=append(,path)
+		}
+		paths = tuple(paths)
 
-	paths = []
-	for path in d._device_path_map.values():
-	if path is not false:
-	paths=append(,path)
-	paths = tuple(paths)
+		proc = SyncfsProcess(paths=paths,
+			scheduler=(d._scheduler || asyncio._safe_loop()))
+		proc.start()
+		returncode = proc.wait()
+	}
 
-	proc = SyncfsProcess(paths=paths,
-		scheduler=(d._scheduler || asyncio._safe_loop()))
-	proc.start()
-	returncode = proc.wait()
-
-	if returncode == nil || returncode != os.EX_OK:
-try:
-	proc = subprocess.Popen(["sync"])
-	except EnvironmentError:
-	pass
-	else:
-	proc.wait()
+	if returncode == nil || returncode != os.EX_OK{
+	try:
+		proc = subprocess.Popen(["sync"])
+		except EnvironmentError:
+		pass
+		else:
+		proc.wait()
+	}
 }
 
 // nil, nil, 0,nil, nil, nil
@@ -5713,8 +5716,8 @@ func (d *dblink) merge(mergeroot, inforoot , myebuild string, cleanup int,
 				myebuild = filepath.Join(inforoot, d.pkg+".ebuild")
 			}
 
-			doebuild_environment(myebuild, "clean",
-				settings=d.settings, db=mydbapi)
+			doebuild_environment(myebuild, "clean", nil,
+				d.settings, false, nil, mydbapi)
 			phase2 := NewEbuildPhase(nil, false, "clean", d._scheduler, d.settings, nil)
 			phase2.start()
 			phase2.wait()
@@ -5728,7 +5731,7 @@ func (d *dblink) merge(mergeroot, inforoot , myebuild string, cleanup int,
 	}else {
 		d.vartree.dbapi._linkmap._clear_cache()
 	}
-	d.vartree.dbapi._bump_mtime(d.mycpv)
+	d.vartree.dbapi._bump_mtime(d.mycpv.string)
 	if ! parallel_install {
 		d.unlockdb()
 	}
