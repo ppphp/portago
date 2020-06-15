@@ -1879,7 +1879,7 @@ func (v *vardbapi) counter_tick_core(incrementing int) int {
 
 func (v *vardbapi) _dblink(cpv string) *dblink {
 	category, pf := catsplit(cpv)[0], catsplit(cpv)[1]
-	return NewDblink(category, pf, "", v.settings, "vartree", v.vartree, nil, nil, nil)
+	return NewDblink(category, pf, "", v.settings, "vartree", v.vartree, nil, nil, 0)
 }
 
 // true
@@ -2471,6 +2471,7 @@ type dblink struct {
 	_installed_instance *dblink
 	_scheduler          *SchedulerInterface
 	_device_path_map    map[uint64]bool
+	_pipe               int
 }
 
 func (d *dblink) __hash__() {
@@ -2806,7 +2807,7 @@ func (d *dblink) _prune_plib_registry(unmerge bool,
 			slot := d.mycpv.slot
 			//except  AttributeError:
 			//slot = NewPkgStr(d.mycpv, slot = d.Settings.ValueDict["SLOT"]).slot
-			plib_registry.unregister(d.mycpv, slot, counter)
+			plib_registry.unregister(d.mycpv.string, slot, counter)
 			if len(unmerge_preserve) > 0{
 				for _, path := range sorted(unmerge_preserve){
 					contents_key := d._match_contents(path)
@@ -2816,7 +2817,7 @@ func (d *dblink) _prune_plib_registry(unmerge bool,
 					obj_type := d.getcontents()[contents_key][0]
 					d._display_merge(fmt.Sprintf(">>> needed   %s %s\n", obj_type, contents_key),0, -1)
 				}
-				plib_registry.register(d.mycpv, slot, counter, unmerge_preserve)
+				plib_registry.register(d.mycpv.string, slot, counter, unmerge_preserve)
 				d.vartree.dbapi.removeFromContents(d, unmerge_preserve, true)
 			}
 		}
@@ -2848,7 +2849,7 @@ func (d *dblink) _prune_plib_registry(unmerge bool,
 // nil, true, nil, nil, nil, nil
 // @_slot_locked
 func (d *dblink) unmerge(pkgfiles=nil, cleanup bool,
-	ldpath_mtimes=nil, others_in_slot=nil, needed=nil,
+	ldpath_mtimes=nil, others_in_slot []*dblink, needed=nil,
 	preserve_paths=nil) {
 
 	background := false
@@ -2882,15 +2883,15 @@ func (d *dblink) unmerge(pkgfiles=nil, cleanup bool,
 		slot := d.vartree.dbapi._pkg_str(d.mycpv, "").slot
 		slot_matches := d.vartree.dbapi.match(
 			fmt.Sprintf("%s:%s", cpvGetKey(d.mycpv, ""), slot))
-		others_in_slot = []
+		others_in_slot = []*dblink{}
 		for cur_cpv
 		in
 	slot_matches:
 		if cur_cpv == d.mycpv:
 		continue
-		others_in_slot = append(, dblink(d.cat, catsplit(cur_cpv)[1],
-			settings = d.settings, vartree = d.vartree,
-			treetype="vartree", pipe = d._pipe))
+		others_in_slot = append(others_in_slot, NewDblink(d.cat, catsplit(cur_cpv)[1], "",
+			d.settings, "vartree", d.vartree,
+			nil, nil, d._pipe))
 
 		retval = d._security_check([d] + others_in_slot)
 		if retval:
@@ -4412,7 +4413,7 @@ func (d *dblink) _elog(funcname string, phase string, lines []string) {
 // nil
 func (d *dblink) _elog_process(phasefilter []string) {
 	cpv := d.mycpv
-	if d._pipe == nil {
+	if d._pipe == 0 {
 		elog_process(cpv.string, d.settings, phasefilter)
 	}else {
 		logdir := filepath.Join(d.settings.ValueDict["T"], "logging")
@@ -4446,7 +4447,8 @@ func (d *dblink) _elog_process(phasefilter []string) {
 		if len(str_buffer) >0 {
 			sb := strings.Join(str_buffer, "")
 			for sb!= ""{
-				sb = sb[os.write(d._pipe, sb):]
+				n, _ := syscall.Write(d._pipe, []byte(sb))
+				sb = sb[n:]
 			}
 		}
 	}
@@ -5879,9 +5881,9 @@ func (d *dblink) _quickpkg_dblink(backup_dblink *dblink, background bool, logfil
 	return *quickpkg_proc.wait()
 }
 
-// "", nil, "", nil, nil, nil, nil
+// "", nil, "", nil, nil, nil, 0
 func NewDblink(cat, pkg, myroot string, settings *Config, treetype string,
-	vartree *varTree, blockers, scheduler, pipe interface{}) *dblink {
+	vartree *varTree, blockers, scheduler interface{}, pipe int) *dblink {
 	d := &dblink{}
 
 	d._normalize_needed = regexp.MustCompile("//|^[^/]|./$|(^|/)\\.\\.?(/|$)")
@@ -5980,7 +5982,7 @@ func unmerge(cat, pkg string, settings *Config,
 	if settings == nil {
 		//raise TypeError("Settings argument is required")
 	}
-	mylink := NewDblink(cat, pkg, settings, "vartree", vartree, nil, scheduler, nil)
+	mylink := NewDblink(cat, pkg, settings, "vartree", vartree, nil, scheduler, 0)
 	vartree = mylink.vartree
 	parallel_install := settings.Features.Features["parallel-install"]
 	if ! parallel_install {

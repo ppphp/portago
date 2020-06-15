@@ -380,7 +380,7 @@ func contents(argv []string) int {
 	}
 	cat, pkg := atom.catsplit(cpv)[0], atom.catsplit(cpv)[1]
 	db := atom.NewDblink(cat, pkg, root, vartree.settings,
-		"vartree", vartree, nil, nil, nil)
+		"vartree", vartree, nil, nil, 0)
 	atom.WriteMsgStdout(strings.Join(sorted(db.getcontents()), "\n")+"\n", -1)
 	return 0
 }
@@ -432,11 +432,13 @@ func owners(argv []string) int {
 	owners := vardb._owners.get_owners(files)
 
 	msg := []string{}
-	for pkg, owned_files := range owners.items() {
+	for pkg, owned_files := range owners {
 		cpv := pkg.mycpv
 		msg = append(msg, fmt.Sprintf("%s\n", cpv))
 		stowned_files := []string{}
-		copy(stowned_files, owned_files)
+		for k := range owned_files{
+			stowned_files = append(stowned_files, k)
+		}
 		sort.Strings(stowned_files)
 		for _, f := range stowned_files {
 			f_abs := filepath.Join(root, strings.TrimLeft(f, (string(os.PathSeparator))))
@@ -954,7 +956,7 @@ func available_eclasses(argv []string) int {
 		//print("")
 		//return 1
 		//}else{
-		print(strings.Join(sorted(repo.eclass_db.eclasses), " "))
+		print(strings.Join(sorted(repo.eclassDb.eclasses), " "))
 	}
 	return 0
 }

@@ -246,9 +246,9 @@ func main() {
 			discard_digests(ebuild, tmpsettings, atom.Portdb())
 		}
 		print(ebuild, arg, tmpsettings, debug, mytree, atom.Db().Values()[atom.Root()].VarTree())
-		a := atom.doebuild(ebuild, arg, settings = tmpsettings,
-			debug = debug, tree=mytree,
-			vartree = atom.Db().Values()[atom.Root()].VarTree())
+		a := atom.doebuild(ebuild, arg, tmpsettings,
+			debug, 0, 0, 0, 1, 0, mytree, nil, atom.Db().Values()[atom.Root()].VarTree(),
+			nil, nil, false)
 		//except KeyboardInterrupt{
 		//print("Interrupted.")
 		//a = 1
@@ -290,12 +290,11 @@ func discard_digests(myebuild string, mysettings *atom.Config, mydbapi *atom.por
 
 	pkgdir := filepath.Dir(myebuild)
 	fetchlist_dict := atom.NewFetchlistDict(pkgdir, mysettings, mydbapi)
-	mf := mysettings.Repositories.getRepoForLocation(
+	rc := mysettings.Repositories.getRepoForLocation(
 		filepath.Dir(filepath.Dir(pkgdir)))
-	mf = mf.load_manifest(pkgdir, mysettings.ValueDict["DISTDIR"],
-		fetchlist_dict = fetchlist_dict)
-	mf.create(requiredDistfiles = nil,
-		assumeDistHashesSometimes = true, assumeDistHashesAlways = true)
+	mf := rc.load_manifest(pkgdir, mysettings.ValueDict["DISTDIR"],
+		fetchlist_dict, false)
+	mf.create(false, true, true, nil)
 	distfiles := fetchlist_dict[cpv]
 	for _, myfile := range distfiles {
 		//try{

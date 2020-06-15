@@ -21,31 +21,32 @@ import (
 // SlotObject
 type AbstractDepPriority struct {
 	// slot
-	buildtime,buildtime_slot_op,runtime,runtime_post,runtime_slot_op string
+	buildtime bool
+	buildtime_slot_op,runtime,runtime_post,runtime_slot_op string
 }
 
-func(a *AbstractDepPriority) __lt__( other) {
-	return a.__int__() < other
+func(a *AbstractDepPriority) __lt__( other *AbstractDepPriority) {
+	return a.__int__() < other.__int__()
 }
 
-func(a *AbstractDepPriority) __le__(other) {
-	return a.__int__() <= other
+func(a *AbstractDepPriority) __le__(other *AbstractDepPriority) {
+	return a.__int__() <= other.__int__()
 }
 
-func(a *AbstractDepPriority) __eq__(other) {
-	return a.__int__() == other
+func(a *AbstractDepPriority) __eq__(other *AbstractDepPriority) {
+	return a.__int__() == other.__int__()
 }
 
-func(a *AbstractDepPriority) __ne__(other) {
-	return a.__int__() != other
+func(a *AbstractDepPriority) __ne__(other *AbstractDepPriority) {
+	return a.__int__() != other.__int__()
 }
 
-func(a *AbstractDepPriority) __gt__(other) {
-	return a.__int__() > other
+func(a *AbstractDepPriority) __gt__(other *AbstractDepPriority) {
+	return a.__int__() > other.__int__()
 }
 
-func(a *AbstractDepPriority) __ge__(other) {
-	return a.__int__() >= other
+func(a *AbstractDepPriority) __ge__(other *AbstractDepPriority) {
+	return a.__int__() >= other.__int__()
 }
 
 func(a *AbstractDepPriority) copy() {
@@ -656,23 +657,27 @@ func(a *AsynchronousLock) _imp_exit(imp) {
 }
 
 func(a *AsynchronousLock) _cancel() {
-	if isinstance(a._imp, AsynchronousTask):
-	a._imp.cancel()
+	if b, ok := a._imp.(*AsynchronousTask); ok {
+		b.cancel()
+	}
 }
 
 func(a *AsynchronousLock) _poll() {
-	if isinstance(a._imp, AsynchronousTask):
-	a._imp.poll()
+	if b, ok := a._imp.(*AsynchronousTask); ok {
+		b.poll()
+	}
 	return a.returncode
 }
 
 func(a *AsynchronousLock) async_unlock() {
-	if a._imp == nil:
-	raise
-	AssertionError('not locked')
-	if a._unlock_future != nil:
-	raise
-	AssertionError("already unlocked")
+	if a._imp == nil {
+		raise
+		AssertionError('not locked')
+	}
+	if a._unlock_future != nil {
+		raise
+		AssertionError("already unlocked")
+	}
 	if isinstance(a._imp, (_LockProcess, _LockThread)):
 	unlock_future = a._imp.async_unlock()
 	else:
@@ -696,8 +701,8 @@ func NewAsynchronousLock(path string, scheduler *SchedulerInterface)*Asynchronou
 
 type _LockThread struct {
 	*AbstractPollTask
-	path,_force_dummy,_lock_obj,_thread,_unlock_future string
-
+	path,_force_dummy,_thread,_unlock_future string
+	_lock_obj *LockFileS
 }
 
 func(l *_LockThread) _start() {
@@ -711,13 +716,14 @@ func(l *_LockThread) _start() {
 }
 
 func(l *_LockThread) _run_lock() {
-	l._lock_obj = lockfile(l.path, wantnewlockfile = true)
+	l._lock_obj = Lockfile(l.path, true, false, "", 0)
 	l.scheduler.call_soon_threadsafe(l._run_lock_cb)
 }
 
 func(l *_LockThread) _run_lock_cb() {
 	l._unregister()
-	l.returncode = 0
+	i := 0
+	l.returncode = &i
 	l._async_wait()
 }
 
@@ -726,17 +732,20 @@ func(l *_LockThread) _cancel() {
 }
 
 func(l *_LockThread) _unlock() {
-	if l._lock_obj == nil:
-	raise
-	AssertionError('not locked')
-	if l.returncode == nil:
-	raise
-	AssertionError('lock not acquired yet')
-	if l._unlock_future != nil:
-	raise
-	AssertionError("already unlocked")
+	if l._lock_obj == nil {
+		raise
+		AssertionError('not locked')
+	}
+	if l.returncode == nil {
+		raise
+		AssertionError('lock not acquired yet')
+	}
+	if l._unlock_future != nil {
+		raise
+		AssertionError("already unlocked")
+	}
 	l._unlock_future = l.scheduler.create_future()
-	unlockfile(l._lock_obj)
+	Unlockfile(l._lock_obj)
 	l._lock_obj = nil
 }
 
@@ -762,7 +771,9 @@ func NewLockThread()*_LockThread{
 
 type _LockProcess struct {
 	AbstractPollTask
-	path,_acquired,_kill_test,_proc,_files,_unlock_future string
+	//slot
+	path,_kill_test,_proc,_unlock_future string
+	_acquired bool
 	_files map[string]int
 }
 
@@ -803,24 +814,25 @@ fd_pipes ={0:out_pr, 1:in_pw, 2:sys.__stderr__.fileno()},
 scheduler = l.scheduler)
 l._proc.addExitListener(l._proc_exit)
 l._proc.start()
-os.close(out_pr)
-os.close(in_pw)
+syscall.Close(out_pr)
+syscall.Close(in_pw)
 }
 
 func(l *_LockProcess) _proc_exit(proc) {
 
 	if l._files != nil:
 try:
-	pipe_out = l._files.pop('pipe_out')
+	pipe_out = l._files["pipe_out"]
+	delete(l._files, "pipe_out")
 	except
 KeyError:
 	pass
 	else:
-	os.close(pipe_out)
+	syscall.Close(pipe_out)
 
 	if proc.returncode != 0:
 
-	if not l._acquired:
+	if !l._acquired:
 	if not(l.cancelled or
 	l._kill_test):
 	writemsg_level("_LockProcess: %s\n" % 
@@ -855,12 +867,14 @@ func(l *_LockProcess) _poll() {
 }
 
 func(l *_LockProcess) _output_handler() {
-	buf = l._read_buf(l._files['pipe_in'])
-	if buf:
-	l._acquired = true
-	l._unregister()
-	l.returncode = 0
-	l._async_wait()
+	buf := l._read_buf(l._files["pipe_in"])
+	if len(buf) > 0 {
+		l._acquired = true
+		l._unregister()
+		i := 0
+		l.returncode = &i
+		l._async_wait()
+	}
 
 	return true
 }
@@ -876,27 +890,30 @@ KeyError:
 	pass
 	else:
 	l.scheduler.remove_reader(pipe_in)
-	os.close(pipe_in)
+	syscall.Close(pipe_in)
 }
 
 func(l *_LockProcess) _unlock() {
-	if l._proc == nil:
-	raise
-	AssertionError('not locked')
-	if not l._acquired:
-	raise
-	AssertionError('lock not acquired yet')
-	if l.returncode != 0:
-	raise
-	AssertionError("lock process failed with returncode %s" 
-	% (l.returncode,))
-	if l._unlock_future != nil:
-	raise
-	AssertionError("already unlocked")
+	if l._proc == nil {
+		raise
+		AssertionError('not locked')
+	}
+	if !l._acquired {
+		raise
+		AssertionError('lock not acquired yet')
+	}
+	if l.returncode != nil && *l.returncode != 0 {
+		raise
+		AssertionError("lock process failed with returncode %s"
+		% (l.returncode,))
+	}
+	if l._unlock_future != nil {
+		raise
+		AssertionError("already unlocked")
+	}
 	l._unlock_future = l.scheduler.create_future()
-	os.write(l._files['pipe_out'], b
-	'\0')
-	os.close(l._files['pipe_out'])
+	syscall.Write(l._files["pipe_out"], []byte{0})
+	syscall.Close(l._files["pipe_out"])
 	l._files = nil
 }
 
@@ -2073,9 +2090,12 @@ func (b *BinpkgPrefetcher) _verifier_exit(verifier ) {
 	b.wait()
 }
 
-func NewBinpkgPrefetcher()*BinpkgPrefetcher{
+func NewBinpkgPrefetcher(background bool, pkg *PkgStr, scheduler *SchedulerInterface)*BinpkgPrefetcher{
 	b := &BinpkgPrefetcher{}
 	b.CompositeTask = NewCompositeTask()
+	b.background = background
+	b.pkg= pkg
+	b.scheduler= scheduler
 
 	return b
 }
@@ -2666,6 +2686,119 @@ func NewCompositeTask()*CompositeTask {
 	return c
 }
 
+// slot object
+type Dependency struct {
+	// slot
+	atom,blocker,child,
+	parent,onlydeps,root,want_update,
+	collapsed_parent
+	depth int
+	collapsed_priority, priority *DepPriority
+}
+
+func NewDependency()*Dependency{
+	d := &Dependency{}
+	SlotObject.__init__(d, **kwargs)
+	if d.priority is None:
+	d.priority = NewDepPriority()
+	if d.depth is None:
+	d.depth = 0
+	if d.collapsed_parent is None:
+	d.collapsed_parent = d.parent
+	if d.collapsed_priority is None:
+	d.collapsed_priority = d.priority
+	return d
+}
+
+type DependencyArg struct {
+	// slot
+	arg                                    string
+	root_config                            *RootConfig
+	force_reinstall, internal, reset_depth bool
+}
+
+func(d*DependencyArg) __eq__(other*DependencyArg) bool{
+	return d.arg == other.arg&& d.root_config.root == other.root_config.root
+}
+
+func(d*DependencyArg) __hash__() {
+	return hash((d.arg, d.root_config.root))
+}
+
+func(d*DependencyArg) __str__() string {
+	return fmt.Sprintf("%s" ,d.arg,)
+}
+
+// "", false, false, true, nil
+func NewDependencyArg(arg string, force_reinstall, internal,
+	reset_depth bool, root_config*RootConfig)*DependencyArg {
+	d := &DependencyArg{}
+	d.arg = arg
+	d.force_reinstall = force_reinstall
+	d.internal = internal
+	d.reset_depth = reset_depth
+	d.root_config = root_config
+	return d
+}
+
+type DepPriority struct{
+	*AbstractDepPriority
+
+	// slot
+	satisfied, optional, ignored
+}
+
+func(d*DepPriority) __int__() int {
+	if d.optional {
+		return -4
+	}
+	if d.buildtime_slot_op {
+		return 0
+	}
+	if d.buildtime {
+		return -1
+	}
+	if d.runtime {
+		return -2
+	}
+	if d.runtime_post {
+		return -3
+	}
+	return -5
+}
+
+func(d *DepPriority) __str__() string {
+	if d.ignored {
+		return "ignored"
+	}
+	if d.optional {
+		return "optional"
+	}
+	if d.buildtime_slot_op {
+		return "buildtime_slot_op"
+	}
+	if d.buildtime {
+		return "buildtime"
+	}
+	if d.runtime_slot_op {
+		return "runtime_slot_op"
+	}
+	if d.runtime {
+		return "runtime"
+	}
+	if d.runtime_post {
+		return "runtime_post"
+	}
+	return "soft"
+}
+
+func NewDepPriority(buildTime bool)*DepPriority {
+	d := &DepPriority{}
+	d.AbstractDepPriority = &AbstractDepPriority{}
+	d.buildtime = buildTime
+	return d
+}
+
 type SubProcess struct {
 	*AbstractPollTask
 	pid, _waitpid_id int
@@ -2971,14 +3104,18 @@ func(s *SpawnProcess) _cgroup_cleanup() {
 	}
 }
 
-func(s *SpawnProcess) _elog(elog_funcname, lines){
-	elog_func = getattr(NewEOutput(), elog_funcname)
+func(s *SpawnProcess) _elog(elog_funcname string, lines []string){
+	var elog_func func(string)
+	switch elog_funcname {
+	case "eerror":
+		elog_func = NewEOutput(false).eerror
+	}
 	for _, line := range lines{
 		elog_func(line)
 	}
 }
 
-func NewSpawnProcess(args []string, background bool, env map[string]string, scheduler, logfile string) *SpawnProcess {
+func NewSpawnProcess(args []string, background bool, env map[string]string, scheduler *SchedulerInterface, logfile string) *SpawnProcess {
 	s := &SpawnProcess{}
 	s.args =args
 	s.background = background
@@ -3621,7 +3758,7 @@ func (e *EbuildPhase) _ebuild_exit_unlocked( ebuild_process, unlock_task=nil) {
 	if post_phase_cmds != nil {
 		if logfile != nil && e.phase =="install" {
 			fd, logfile = tempfile.mkstemp()
-			os.close(fd)
+			syscall.Close(fd)
 		}
 		post_phase = _PostPhaseCommands(background = e.background,
 			commands = post_phase_cmds, elog=e._elog, fd_pipes = e.fd_pipes,
@@ -3800,7 +3937,7 @@ AttributeError:
 
 func (f *FifoIpcDaemon) _reopen_input() {
 	f.scheduler.remove_reader(f._files.pipe_in)
-	os.close(f._files.pipe_in)
+	syscall.Close(f._files.pipe_in)
 	f._files.pipe_in = 
 	os.open(f.input_fifo, os.O_RDONLY|os.O_NONBLOCK)
 
@@ -3844,7 +3981,7 @@ func (f *FifoIpcDaemon) _unregister() {
 	in
 	f._files.values():
 	f.scheduler.remove_reader(f)
-	os.close(f)
+	syscall.Close(f)
 	f._files = nil
 }
 
@@ -3911,9 +4048,9 @@ try:
 	output_fd = os.open(e.output_fifo,
 		os.O_WRONLY|os.O_NONBLOCK)
 try:
-	os.write(output_fd, pickle.dumps(reply))
+	syscall.Write(output_fd, pickle.dumps(reply))
 finally:
-	os.close(output_fd)
+	syscall.Close(output_fd)
 	except
 	OSError
 	as
@@ -4127,7 +4264,8 @@ type PollScheduler struct {
 	_scheduling, _terminated_tasks, _background bool
 	_term_rlock                                 sync.Mutex
 	_max_jobs                                   int
-	_max_load float64
+	_max_load                                   float64
+	_sched_iface                                *SchedulerInterface
 }
 
 _loadavg_latency = nil
@@ -4255,8 +4393,8 @@ func NewPollScheduler( main bool, event_loop=nil)*PollScheduler {
 	}else {
 		p._event_loop = asyncio._safe_loop()
 	}
-	p._sched_iface = SchedulerInterface(p._event_loop,
-		is_background = p._is_background)
+	p._sched_iface = NewSchedulerInterface(p._event_loop,
+		p._is_background)
 	return p
 }
 
@@ -4288,6 +4426,10 @@ type  Scheduler struct {
 	_deep_system_deps        map[string]string
 	_unsatisfied_system_deps map[string]string
 	_failed_pkgs_all         *_failed_pkg
+	_jobs                    int
+	_pkg_count               *_pkg_count_class
+	_config_pool             map[string][]*Config
+	_failed_pkgs             []*_failed_pkg
 }
 
 type  _iface_class struct {
@@ -4321,7 +4463,7 @@ type  _binpkg_opts_class struct {
 // SlotObject
 type  _pkg_count_class struct {
 	// slot
-	curval, maxval string
+	curval, maxval int
 }
 
 // SlotObject
@@ -4349,7 +4491,7 @@ type  _ConfigPool struct {
 	_deallocate func(*Config)
 }
 
-func NewConfigPool(root, allocate func(string), deallocate func(*Config)) *_ConfigPool {
+func NewConfigPool(root string, allocate func(string), deallocate func(*Config)) *_ConfigPool {
 	c := &_ConfigPool{}
 	c._root = root
 	c._allocate = allocate
@@ -4448,34 +4590,35 @@ func NewScheduler(settings *Config, trees, mtimedb, myopts, spinner, mergelist, 
 		xterm_titles = (!settings.Features.Features["notitles"]))
 	s._max_load = myopts.get("--load-average")
 	max_jobs = myopts.get("--jobs")
-	if max_jobs == nil:
-	max_jobs = 1
+	if max_jobs == nil {
+		max_jobs = 1
+	}
 	s._set_max_jobs(max_jobs)
 	s._running_root = trees[trees._running_eroot]["root_config"]
 	s.edebug = 0
-	if  settings.ValueDict["PORTAGE_DEBUG"] == "1":
-	s.edebug = 1
+	if  settings.ValueDict["PORTAGE_DEBUG"] == "1" {
+		s.edebug = 1
+	}
 	s.pkgsettings =
 	{
 	}
-	s._config_pool =
-	{
-	}
+	s._config_pool = map[string][]*Config{}
 	for root
 	in
-	s.trees:
-	s._config_pool[root] = []
+	s.trees {
+		s._config_pool[root] = []*Config{}
+	}
 
 	s._fetch_log =  filepath.Join(_emerge.emergelog._emerge_log_dir,
 		'emerge-fetch.log')
-	fetch_iface = _fetch_iface_class{(log_file = s._fetch_log,
-		schedule = s._schedule_fetch)}
-	s._sched_iface = _iface_class{(
+	fetch_iface := &_fetch_iface_class{log_file : s._fetch_log,
+		schedule : s._schedule_fetch}
+	s._sched_iface = &_iface_class{(
 		s._event_loop,
 		is_background = s._is_background,
-		fetch = fetch_iface,
-		scheduleSetup=s._schedule_setup,
-		scheduleUnpack = s._schedule_unpack)}
+		fetch : fetch_iface,
+		scheduleSetup:s._schedule_setup,
+		scheduleUnpack : s._schedule_unpack)}
 
 	s._prefetchers = weakref.WeakValueDictionary()
 	s._pkg_queue = []
@@ -4503,8 +4646,7 @@ func NewScheduler(settings *Config, trees, mtimedb, myopts, spinner, mergelist, 
 	merge_count++
 			}
 	}
-s._pkg_count = s._pkg_count_class(
-curval = 0, maxval = merge_count)
+s._pkg_count = &_pkg_count_class{curval : 0, maxval : merge_count}
 s._status_display.maxval = s._pkg_count.maxval
 
 s._job_delay_max = 5
@@ -4552,27 +4694,29 @@ return s
 
 func (s *Scheduler) _handle_self_update() {
 
-	if s._opts_no_s_update.intersection(s.myopts):
-	return 0
+	if s._opts_no_s_update.intersection(s.myopts) {
+		return 0
+	}
 
 	for x
 	in
-	s._mergelist:
-	if not isinstance(x, Package):
-	continue
-	if x.operation != "merge":
-	continue
-	if x.root != s._running_root.root:
-	continue
-	if not portage.dep.match_from_list(
-		portage.
-	const.PORTAGE_PACKAGE_ATOM, [x]):
-	continue
-	rval = _check_temp_dir(s.settings)
-	if rval != 0:
-	return rval
-	_prepare_s_update(s.settings)
-	break
+	s._mergelist {
+		if not isinstance(x, Package):
+		continue
+		if x.operation != "merge":
+		continue
+		if x.root != s._running_root.root:
+		continue
+		if not portage.dep.match_from_list(
+			portage.
+		const.PORTAGE_PACKAGE_ATOM, [x]):
+		continue
+		rval = _check_temp_dir(s.settings)
+		if rval != 0:
+		return rval
+		_prepare_s_update(s.settings)
+		break
+	}
 
 	return 0
 }
@@ -4581,17 +4725,20 @@ func (s*Scheduler)_terminate_tasks() {
 	s._status_display.quiet = true
 	for task
 	in
-	list(s._running_tasks.values()):
-	if task.isAlive():
-	task.cancel()
-	else:
-	del
-	s._running_tasks[id(task)]
+	list(s._running_tasks.values()) {
+		if task.isAlive() {
+			task.cancel()
+		}else {
+			del
+			s._running_tasks[id(task)]
+		}
+	}
 
 	for q
 	in
-	s._task_queues.values():
-	q.clear()
+	s._task_queues.values() {
+		q.clear()
+	}
 }
 
 func (s*Scheduler) _init_graph( graph_config) {
@@ -4607,15 +4754,17 @@ func (s*Scheduler) _init_graph( graph_config) {
 		"--ignore-built-slot-operator-deps", "n") == "y"
 	for root
 	in
-	s.trees:
-	if graph_config == nil:
-	fake_vartree = FakeVartree(s.trees[root]["root_config"],
-		pkg_cache = s._pkg_cache, dynamic_deps = dynamic_deps,
-		ignore_built_slot_operator_deps=ignore_built_slot_operator_deps)
-	fake_vartree.sync()
-	else:
-	fake_vartree = graph_config.trees[root]['vartree']
-	s._blocker_db[root] = BlockerDB(fake_vartree)
+	s.trees {
+		if graph_config == nil {
+			fake_vartree = FakeVartree(s.trees[root]["root_config"],
+				pkg_cache = s._pkg_cache, dynamic_deps = dynamic_deps,
+				ignore_built_slot_operator_deps=ignore_built_slot_operator_deps)
+			fake_vartree.sync()
+		}else {
+			fake_vartree = graph_config.trees[root]['vartree']
+		}
+		s._blocker_db[root] = NewBlockerDB(fake_vartree)
+	}
 }
 
 func (s *Scheduler) _destroy_graph() {
@@ -4635,8 +4784,7 @@ func (s *Scheduler) _set_max_jobs( max_jobs int) {
 func (s*Scheduler) _background_mode() {
 	background = (s._max_jobs
 	is
-	true
-	|| 
+	true ||
 	s._max_jobs > 1 ||
 	"--quiet"
 	in
@@ -4645,43 +4793,47 @@ func (s*Scheduler) _background_mode() {
 	not
 	bool(s._opts_no_background.intersection(s.myopts))
 
-	if background:
-	interactive_tasks = s._get_interactive_tasks()
-	if interactive_tasks:
-	background = false
-	WriteMsgLevel(">>> Sending package output to stdio due " + 
-	"to interactive package(s):\n",
-		level = logging.INFO, noiselevel=-1)
-	msg = [""]
-	for pkg
-	in
-interactive_tasks:
-	pkg_str = "  " + colorize("INFORM", str(pkg.cpv))
-	if pkg.root_config.settings.ValueDict["ROOT"] != "/":
-	pkg_str += " for " + pkg.root
-	msg.append(pkg_str)
-	msg.append("")
-	WriteMsgLevel("".join("%s\n" % (l, )
-	for l
-	in
-	msg),
-	level = logging.INFO, noiselevel=-1)
-	if s._max_jobs is
-	true
- ||
-	s._max_jobs > 1:
-	s._set_max_jobs(1)
-	WriteMsgLevel(">>> Setting --jobs=1 due " + 
-	"to the above interactive package(s)\n",
-		level = logging.INFO, noiselevel=-1)
-	WriteMsgLevel(">>> In order to temporarily mask " + 
-	"interactive updates, you may\n" + 
-	">>> specify --accept-properties=-interactive\n",
-		level = logging.INFO, noiselevel=-1)
+	if background {
+		interactive_tasks = s._get_interactive_tasks()
+		if interactive_tasks{
+			background = false
+			WriteMsgLevel(">>> Sending package output to stdio due "+
+				"to interactive package(s):\n",
+				level = logging.INFO, noiselevel = -1)
+			msg = []string{""}
+			for pkg
+				in
+			interactive_tasks {
+				pkg_str = "  " + colorize("INFORM", str(pkg.cpv))
+				if pkg.root_config.settings.ValueDict["ROOT"] != "/" {
+					pkg_str += " for " + pkg.root
+				}
+				msg.append(pkg_str)
+			}
+			msg.append("")
+			WriteMsgLevel("".join("%s\n" % (l, )
+			for l
+				in
+			msg),
+			level = logging.INFO, noiselevel = -1)
+			if s._max_jobs is
+			true ||
+				s._max_jobs > 1
+			{
+				s._set_max_jobs(1)
+				WriteMsgLevel(">>> Setting --jobs=1 due "+
+					"to the above interactive package(s)\n",
+					level = logging.INFO, noiselevel = -1)
+				WriteMsgLevel(">>> In order to temporarily mask "+
+					"interactive updates, you may\n"+
+					">>> specify --accept-properties=-interactive\n",
+					level = logging.INFO, noiselevel = -1)
+			}
+		}
+	}
 	s._status_display.quiet = 
 	not
-	background
-	|| 
+	background ||
 	("--quiet"
 	in
 	s.myopts&& 
@@ -4775,8 +4927,9 @@ func _set_graph_config( graph_config) {
 
 func (s *Scheduler) _find_system_deps() {
 	params = create_depgraph_params(s.myopts, nil)
-	if not params["implicit_system_deps"]:
-	return
+	if not params["implicit_system_deps"] {
+		return
+	}
 
 	deep_system_deps = s._deep_system_deps
 	deep_system_deps.clear()
@@ -4831,7 +4984,7 @@ cpv_map:
 	in
 	cpv_map[pkg.cpv]:
 	s._digraph.add(earlier_pkg, pkg,
-		priority = DepPriority(buildtime = true))
+		priority = NewDepPriority(true))
 	cpv_map[pkg.cpv].append(pkg)
 }
 
@@ -4919,10 +5072,8 @@ func (s *Scheduler) _generate_digests() {
 	for x
 	in
 	s._mergelist:
-	if not isinstance(x, Package)
-	|| 
-	x.type_name != 'ebuild'
-	|| 
+	if not isinstance(x, Package) ||
+	x.type_name != 'ebuild' ||
 	x.operation != 'merge':
 	continue
 	pkgsettings = s.pkgsettings.ValueDict[x.root]
@@ -5024,8 +5175,7 @@ func (s *Scheduler) _add_prefetchers() {
 	for pkg
 	in
 	s._mergelist:
-	if not isinstance(pkg, Package)
- ||
+	if not isinstance(pkg, Package) ||
 	pkg.operation == "uninstall":
 	continue
 	prefetcher = s._create_prefetcher(pkg)
@@ -5034,39 +5184,34 @@ func (s *Scheduler) _add_prefetchers() {
 	s._task_queues.fetch.add(prefetcher)
 }
 
-func (s *Scheduler) _create_prefetcher( pkg) {
+func (s *Scheduler) _create_prefetcher( pkg *Package) {
 	prefetcher = nil
 
-	if not isinstance(pkg, Package):
-	pass
+	if pkg.type_name == "ebuild" {
 
-	else if
-	pkg.type_name == "ebuild":
-
-	prefetcher = EbuildFetcher(background = true,
-		config_pool = s._ConfigPool(pkg.root,
-		s._allocate_config, s._deallocate_config),
-		fetchonly=1, fetchall = s._build_opts.fetch_all_uri,
-		logfile=s._fetch_log,
-		pkg = pkg, prefetch=true, scheduler = s._sched_iface)
-
-	else if
-	pkg.type_name == "binary"&& 
-	"--getbinpkg"
-	in
-	s.myopts&& 
-	pkg.root_config.trees["bintree"].isremote(pkg.cpv):
-
-	prefetcher = BinpkgPrefetcher(background = true,
-		pkg = pkg, scheduler=s._sched_iface)
+		prefetcher = NewEbuildFetcher(background = true,
+			config_pool = NewConfigPool(pkg.root,
+			s._allocate_config, s._deallocate_config),
+			fetchonly=1, fetchall = s._build_opts.fetch_all_uri,
+			logfile=s._fetch_log,
+			pkg = pkg, prefetch=true, scheduler = s._sched_iface)
+	} else if
+	pkg.type_name == "binary" &&
+		"--getbinpkg"
+		in
+	s.myopts &&
+		pkg.root_config.trees["bintree"].isremote(pkg.cpv)
+	{
+		prefetcher = NewBinpkgPrefetcher(true, pkg, s._sched_iface)
+	}
 
 	return prefetcher
 }
 
 func (s *Scheduler) _run_pkg_pretend() {
 
-	failures = 0
-	sched_iface = s._sched_iface
+	failures := 0
+	sched_iface := s._sched_iface
 
 	for x
 	in
@@ -5101,8 +5246,7 @@ func (s *Scheduler) _run_pkg_pretend() {
 		"portage", x.category, x.pf)
 	existing_builddir = pathIsDir(build_dir_path)
 	settings.ValueDict["PORTAGE_BUILDDIR"] = build_dir_path
-	build_dir = EbuildBuildDir(scheduler = sched_iface,
-		settings = settings)
+	build_dir = NewEbuildBuildDir(sched_iface, settings)
 	sched_iface.run_until_complete(build_dir.async_lock())
 	current_task = nil
 
@@ -5125,8 +5269,7 @@ try:
 	ebuild.doebuild.doebuild_environment(
 		ebuild_path, "clean", settings = settings,
 		db = s.trees[settings.ValueDict['EROOT']][tree].dbapi)
-	clean_phase = EbuildPhase(background = false,
-		phase = 'clean', scheduler=sched_iface, settings = settings)
+	clean_phase = NewEbuildPhase(nil, false, "clean", sched_iface, settings, nil)
 	current_task = clean_phase
 	clean_phase.start()
 	clean_phase.wait()
@@ -5149,8 +5292,8 @@ false:
 	filename = bintree.getname(x.cpv)
 	else:
 	filename = fetched
-	verifier = BinpkgVerifier(pkg = x,
-		scheduler = sched_iface, _pkg_path=filename)
+	verifier = NewBinpkgVerifier(false, "", x,
+		sched_iface, filename)
 	current_task = verifier
 	verifier.start()
 	if verifier.wait() != 0:
@@ -5510,7 +5653,7 @@ msgcontent:
 func (s *Scheduler) _elog_listener(mysettings *Config, key, logentries logentries map[string][][2]string, fulltext) {
 	errors := filter_loglevels(logentries, map[string]bool{"ERROR":true})
 	if len(errors) > 0 {
-		s._failed_pkgs_die_msgs = append(_failed_pkgs_die_msgs
+		s._failed_pkgs_die_msgs = append(s._failed_pkgs_die_msgs,
 			(mysettings, key, errors))
 	}
 }
@@ -5620,10 +5763,10 @@ func (s *Scheduler) _do_merge_exit( merge) {
 	build_dir =  settings.ValueDict["PORTAGE_BUILDDIR")
 	build_log =  settings.ValueDict["PORTAGE_LOG_FILE")
 
-	s._failed_pkgs.append(s._failed_pkg(
+	s._failed_pkgs=append(s._failed_pkgs, &_failed_pkg{
 		build_dir = build_dir, build_log = build_log,
 		pkg = pkg,
-		returncode=merge.returncode))
+		returncode=merge.returncode})
 	if not s._terminated_tasks:
 	s._failed_pkg_msg(s._failed_pkgs[-1], "install", "to")
 	s._status_display.failed = len(s._failed_pkgs)
@@ -5891,18 +6034,21 @@ func (s *Scheduler) _dependent_on_scheduled_merges( pkg, later) {
 	return dependent
 }
 
-func (s *Scheduler) _allocate_config( root) {
-	if s._config_pool[root]:
-	temp_settings = s._config_pool[root].pop()
-	else:
-	temp_settings = portage.config(clone = s.pkgsettings.ValueDict[root])
+func (s *Scheduler) _allocate_config( root string) *Config {
+	var temp_settings *Config
+	if s._config_pool[root] != nil {
+		temp_settings = s._config_pool[root][len(s._config_pool[root])-1]
+		s._config_pool[root]=s._config_pool[root][:len(s._config_pool[root])-1]
+	}else {
+		temp_settings = NewConfig(s.pkgsettings.ValueDict[root], nil, "", nil, "", "", "", "", true, nil, false, nil)
+	}
 	temp_settings.reload()
 	temp_settings.reset()
 	return temp_settings
 }
 
-func (s *Scheduler) _deallocate_config(settings) {
-	s._config_pool[settings.ValueDict["EROOT"]].append(settings)
+func (s *Scheduler) _deallocate_config(settings *Config) {
+	s._config_pool[settings.ValueDict["EROOT"]]=append(s._config_pool[settings.ValueDict["EROOT"]], settings)
 }
 
 func (s *Scheduler) _keep_scheduling() {
