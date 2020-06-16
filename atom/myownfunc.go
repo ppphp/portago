@@ -160,12 +160,12 @@ func pathIsDir(filename string) bool {
 	return st != nil && st.IsDir()
 }
 
-func pathAccess(filename string) bool {
+func osAccess(filename string, mode os.FileMode) bool {
 	st, _ := os.Stat(filename)
 	if st == nil {
 		return false
 	}
-	return st.Mode()&os.ModePerm== 0
+	return st.Mode()&mode != 0
 }
 
 func reversed (a []string)[]string {
