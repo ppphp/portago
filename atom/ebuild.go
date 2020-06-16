@@ -479,7 +479,7 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *portdbapi) 
 }
 
 // false, nil, nil
-func digestcheck(myfiles, mysettings *Config, strict bool, mf *Manifest) {
+func digestcheck(myfiles []string, mysettings *Config, strict bool, mf *Manifest) {
 
 	if mysettings.ValueDict["EBUILD_SKIP_MANIFEST"] == "1" {
 		return 1
@@ -515,13 +515,10 @@ try:
 			eout.eend(0)
 		}
 	}
-	for f
-			in
-		myfiles{
+	for _, f := range myfiles{
 		eout.ebegin(fmt.Sprintf("checking %s ;-)", f))
-		ftype = mf.findFile(f)
-		if ftype is
-	None:
+		ftype := mf.findFile(f)
+		if ftype == "":
 		if mf.allow_missing:
 		continue
 		eout.eend(1)

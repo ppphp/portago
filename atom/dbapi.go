@@ -2881,48 +2881,48 @@ func (d *dblink) unmerge(pkgfiles map[string][]string, cleanup bool,
 		d.vartree.dbapi._categories = nil
 	}
 
-	caller_handles_backup:= others_in_slot != nil
+	caller_handles_backup := others_in_slot != nil
 
 	if others_in_slot == nil {
 		slot := d.vartree.dbapi._pkg_str(d.mycpv, "").slot
 		slot_matches := d.vartree.dbapi.match(
 			fmt.Sprintf("%s:%s", cpvGetKey(d.mycpv.string, ""), slot), 1)
 		others_in_slot = []*dblink{}
-		for _, := range cur_cpv:= range slot_matches {
-			if cur_cpv == d.mycpv {
+		for _, cur_cpv := range slot_matches {
+			if cur_cpv.string == d.mycpv.string {
 				continue
 			}
-			others_in_slot = append(others_in_slot, NewDblink(d.cat, catsplit(cur_cpv)[1], "",
+			others_in_slot = append(others_in_slot, NewDblink(d.cat, catsplit(cur_cpv.string)[1], "",
 				d.settings, "vartree", d.vartree,
 				nil, nil, d._pipe))
 		}
-		retval = d._security_check([d] + others_in_slot)
-		if retval {
+		retval := d._security_check(append([]*dblink{d}, others_in_slot...))
+		if retval != 0 {
 			return retval
 		}
 	}
 
 	contents := d.getcontents()
-	myebuildpath := filepath.Join(d.dbdir, d.pkg + ".ebuild")
+	myebuildpath := filepath.Join(d.dbdir, d.pkg+".ebuild")
 	failures := 0
 	ebuild_phase := "prerm"
 	mystuff, _ := listDir(d.dbdir)
 	for _, x := range mystuff {
-		if strings.HasSuffix(x,".ebuild") {
+		if strings.HasSuffix(x, ".ebuild") {
 			if x[:len(x)-7] != d.pkg {
 				os.Rename(filepath.Join(d.dbdir, x), myebuildpath)
-				write_atomic(filepath.Join(d.dbdir, "PF"), d.pkg+"\n", 0 ,true)
+				write_atomic(filepath.Join(d.dbdir, "PF"), d.pkg+"\n", 0, true)
 			}
 			break
 		}
 	}
 
-	if d.mycpv.string != d.settings.mycpv.string ||  ! Inmss( d.settings.configDict["pkg"], "EAPI"){
+	if d.mycpv.string != d.settings.mycpv.string || !Inmss(d.settings.configDict["pkg"], "EAPI") {
 		d.settings.SetCpv(d.mycpv, d.vartree.dbapi)
 	}
 	eapi_unsupported := false
-//try:
-	doebuild_environment(myebuildpath, "prerm", nil,d.settings,false, nil, d.vartree.dbapi)
+	//try:
+	doebuild_environment(myebuildpath, "prerm", nil, d.settings, false, nil, d.vartree.dbapi)
 	//except UnsupportedAPIException as e:
 	//eapi_unsupported = e
 
@@ -2933,48 +2933,48 @@ func (d *dblink) unmerge(pkgfiles map[string][]string, cleanup bool,
 	var builddir_lock *EbuildBuildDir
 	scheduler := d._scheduler
 	retval := 0
-//try:
-			if  !Inmss(d.settings.ValueDict,"PORTAGE_BUILDDIR_LOCKED") {
-				builddir_lock = NewEbuildBuildDir(scheduler, d.settings)
-				scheduler.run_until_complete(builddir_lock.async_lock())
-				prepare_build_dirs(settings = d.settings, cleanup = true)
-				log_path = d.settings.ValueDict["PORTAGE_LOG_FILE"]
-			}
-			if ! caller_handles_backup {
-				retval = d._pre_unmerge_backup(background)
-				if retval != 0 {
-					showMessage(fmt.Sprintf("!!! FAILED prerm: quickpkg: %s\n", retval),
-						40, -1)
-					return retval
-				}
-			}
+	//try:
+	if !Inmss(d.settings.ValueDict, "PORTAGE_BUILDDIR_LOCKED") {
+		builddir_lock = NewEbuildBuildDir(scheduler, d.settings)
+		scheduler.run_until_complete(builddir_lock.async_lock())
+		prepare_build_dirs(settings = d.settings, cleanup = true)
+		log_path = d.settings.ValueDict["PORTAGE_LOG_FILE"]
+	}
+	if !caller_handles_backup {
+		retval = d._pre_unmerge_backup(background)
+		if retval != 0 {
+			showMessage(fmt.Sprintf("!!! FAILED prerm: quickpkg: %s\n", retval),
+				40, -1)
+			return retval
+		}
+	}
 
 	d._prune_plib_registry(true, needed, preserve_paths)
 
-			if eapi_unsupported {
-				failures += 1
-				showMessage(fmt.Sprintf("!!! FAILED prerm: %s\n", filepath.Join(d.dbdir, "EAPI")), 40, -1)
-				showMessage(fmt.Sprintf("%s\n", eapi_unsupported, ), 40, -1)
-			}else if os.path.isfile(myebuildpath) {
-				phase := NewEbuildPhase(nil, background, ebuild_phase, scheduler, d.settings, nil)
-				phase.start()
-				retval = phase.wait()
+	if eapi_unsupported {
+		failures += 1
+		showMessage(fmt.Sprintf("!!! FAILED prerm: %s\n", filepath.Join(d.dbdir, "EAPI")), 40, -1)
+		showMessage(fmt.Sprintf("%s\n", eapi_unsupported, ), 40, -1)
+	} else if os.path.isfile(myebuildpath) {
+		phase := NewEbuildPhase(nil, background, ebuild_phase, scheduler, d.settings, nil)
+		phase.start()
+		retval = phase.wait()
 
-				if retval != 0 {
-					failures += 1
-					showMessage(fmt.Sprintf("!!! FAILED prerm: %s\n",retval),
-						40, -1)
-				}
-			}
+		if retval != 0 {
+			failures += 1
+			showMessage(fmt.Sprintf("!!! FAILED prerm: %s\n", retval),
+				40, -1)
+		}
+	}
 
 	d.vartree.dbapi._fs_lock()
-//try:
+	//try:
 	d._unmerge_pkgfiles(pkgfiles, others_in_slot)
-//finally:
+	//finally:
 	d.vartree.dbapi._fs_unlock()
 	d._clear_contents_cache()
 
-	if ! eapi_unsupported && os.path.isfile(myebuildpath) {
+	if !eapi_unsupported && os.path.isfile(myebuildpath) {
 		ebuild_phase := "postrm"
 		phase := NewEbuildPhase(nil, background, ebuild_phase, scheduler, d.settings, nil)
 		phase.start()
@@ -2986,10 +2986,10 @@ func (d *dblink) unmerge(pkgfiles map[string][]string, cleanup bool,
 		showMessage(fmt.Sprintf("!!! FAILED postrm: %s\n", retval), 40, -1)
 	}
 
-//finally:
+	//finally:
 	d.vartree.dbapi._bump_mtime(d.mycpv)
-//try:
-	if ! eapi_unsupported && os.path.isfile(myebuildpath) {
+	//try:
+	if !eapi_unsupported && os.path.isfile(myebuildpath) {
 		if retval != 0 {
 			msg_lines := []string{}
 			msg := fmt.Sprintf("The '%s' "+
@@ -3031,7 +3031,7 @@ func (d *dblink) unmerge(pkgfiles map[string][]string, cleanup bool,
 	d._elog_process([]string{"prerm", "postrm"})
 
 	if retval == 0 {
-	//try:
+		//try:
 		doebuild_environment(myebuildpath, "cleanrm", nil, d.settings, false, nil, d.vartree.dbapi)
 		//except UnsupportedAPIException:
 		//pass
@@ -3040,7 +3040,7 @@ func (d *dblink) unmerge(pkgfiles map[string][]string, cleanup bool,
 		phase.start()
 		retval = phase.wait()
 	}
-//finally:
+	//finally:
 	if builddir_lock != nil {
 		scheduler.run_until_complete(
 			builddir_lock.async_unlock())
@@ -3071,17 +3071,17 @@ func (d *dblink) unmerge(pkgfiles map[string][]string, cleanup bool,
 
 	if log_path != "" && pathExists(log_path) {
 		d.settings.ValueDict["PORTAGE_LOG_FILE"] = log_path
-	}else {
+	} else {
 		delete(d.settings.ValueDict, "PORTAGE_LOG_FILE")
 	}
 
-	env_update(target_root=d.settings.ValueDict["ROOT"],
-		prev_mtimes=ldpath_mtimes,
-		contents=contents, env=d.settings,
-		WriteMsg_level=d._display_merge, vardbapi=d.vartree.dbapi)
+	env_update(target_root = d.settings.ValueDict["ROOT"],
+		prev_mtimes = ldpath_mtimes,
+		contents = contents, env=d.settings,
+		WriteMsg_level = d._display_merge, vardbapi=d.vartree.dbapi)
 
 	unmerge_with_replacement := preserve_paths != nil
-	if ! unmerge_with_replacement {
+	if !unmerge_with_replacement {
 		d._prune_plib_registry(false, nil, nil)
 	}
 
@@ -3767,7 +3767,7 @@ d.vartree.dbapi._plib_registry == nil ||
 	path_to_node:= func(path) {
 		node := path_node_map[path]
 		if node == nil {
-			node = LinkageMap._LibGraphNode(linkmap._obj_key(path))
+			node = New_LibGraphNode(linkmap._obj_key(path))
 			alt_path_node = lib_graph.get(node)
 			if alt_path_node != nil {
 				node = alt_path_node
@@ -3923,15 +3923,13 @@ func (d *dblink) _find_unused_preserved_libs(unmerge_no_replacement bool) map[st
 		 return node
 	 }
 
-	for cpv, plibs in plib_dict.items(){
-		for f
-		in
-		plibs{
+	for cpv, plibs := range plib_dict{
+		for _, f:= range plibs{
 			path_cpv_map[f] = cpv
-			preserved_node = path_to_node(f)
-			if not preserved_node.file_exists(){
-			continue
-		}
+			preserved_node := path_to_node(f)
+			if not preserved_node.file_exists() {
+				continue
+			}
 			lib_graph.add(preserved_node, nil)
 			preserved_paths.add(f)
 			preserved_nodes.add(preserved_node)

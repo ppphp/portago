@@ -1667,6 +1667,741 @@ type linkageMapELF struct {
 	_libs, _obj_properties, _obj_key_cache, _defpath, _path_key_cache map[string]string
 }
 
+type _obj_properties_class struct{
+	//slot
+	arch,needed,runpaths,soname,alt_paths,owner
+}
+
+func New_obj_properties_class(arch, needed, runpaths, soname, alt_paths, owner)*_obj_properties_class{
+	o := &_obj_properties_class{}
+	o.arch = arch
+	o.needed = needed
+	o.runpaths = runpaths
+	o.soname = soname
+	o.alt_paths = alt_paths
+	o.owner = owner
+	return o
+}
+
+func (o*linkageMapELF) _clear_cache() {
+	o._libs= map[string]string{}
+	o._obj_properties= map[string]string{}
+	o._obj_key_cache= map[string]string{}
+	o._defpath= map[string]string{}
+	o._path_key_cache= map[string]string{}
+}
+
+func (o*linkageMapELF) _path_key( path string)  *_ObjectKey{
+	key := o._path_key_cache[path]
+	if key == "" {
+		key = New_ObjectKey(path, o._root)
+	}
+	o._path_key_cache[path] = key
+	return key
+}
+
+func (o*linkageMapELF) _obj_key(path) *_ObjectKey {
+	key := o._obj_key_cache[path]
+	if key == "" {
+		key = New_ObjectKey(path, o._root)
+	}
+	o._obj_key_cache[path] = key
+	return key
+}
+
+
+type _ObjectKey struct{
+	_key
+}
+
+func(o*_ObjectKey) __hash__() {
+	return hash(o._key)
+}
+
+func(o*_ObjectKey) __eq__( other *_ObjectKey) bool {
+	return o._key == other._key
+}
+
+func(o*_ObjectKey) _generate_object_key(obj, root) {
+
+	abs_path = os.path.join(root, obj.lstrip(os.sep))
+try:
+	object_stat = os.stat(abs_path)
+	except
+OSError:
+	return os.path.realpath(abs_path)
+	return (object_stat.st_dev, object_stat.st_ino)
+}
+
+func(o*_ObjectKey) file_exists() {
+	return isinstance(o._key, tuple)
+}
+
+func New_ObjectKey(obj, root)*_ObjectKey {
+	o := &_ObjectKey{}
+	o._key = o._generate_object_key(obj, root)
+	return o
+}
+
+type _LibGraphNode struct{
+	*_ObjectKey
+	// slot
+	alt_paths map[string]bool
+}
+
+func( l*_LibGraphNode) __str__() string {
+	return str(sorted(l.alt_paths))
+}
+
+func New_LibGraphNode( key ) *_LibGraphNode{
+	l := &_LibGraphNode{}
+	l._key = key._key
+	l.alt_paths = map[string]bool{}
+	return l
+}
+
+func (o*linkageMapELF) rebuild(exclude_pkgs=None, include_file=None,
+preserve_paths=None) {
+
+	os = _os_merge
+	root := o._root
+	root_len := len(root) - 1
+	o._clear_cache()
+	o._defpath.update(getlibpaths(o._dbapi.settings['EROOT'],
+		env = o._dbapi.settings))
+	libs := o._libs
+	obj_properties := o._obj_properties
+
+	lines := []
+
+	if include_file is
+	not
+None:
+	for line
+	in
+	grabfile(include_file):
+	lines.append((None, include_file, line))
+
+	aux_keys = [o._needed_aux_key]
+	can_lock = os.access(os.path.dirname(o._dbapi._dbroot), os.W_OK)
+	if can_lock:
+	o._dbapi.lock()
+try:
+	for cpv
+	in
+	o._dbapi.cpv_all():
+	if exclude_pkgs is
+	not
+	None
+	and
+	cpv
+	in
+exclude_pkgs:
+	continue
+	needed_file = o._dbapi.getpath(cpv,
+		filename = o._needed_aux_key)
+	for line
+	in
+	o._dbapi.aux_get(cpv, aux_keys)[0].splitlines():
+	lines.append((cpv, needed_file, line))
+finally:
+	if can_lock:
+	o._dbapi.unlock()
+
+	plibs =
+	{
+	}
+	if preserve_paths is
+	not
+None:
+	plibs.update((x, None)
+	for x
+	in
+	preserve_paths)
+	if o._dbapi._plib_registry and \
+	o._dbapi._plib_registry.hasEntries():
+	for cpv, items
+	in \
+	o._dbapi._plib_registry.getPreservedLibs().items():
+	if exclude_pkgs is
+	not
+	None
+	and
+	cpv
+	in
+exclude_pkgs:
+	continue
+	plibs.update((x, cpv)
+	for x
+	in
+	items)
+	if plibs:
+	args = [os.path.join(EPREFIX or
+	"/", "usr/bin/scanelf"), "-qF", "%a;%F;%S;%r;%n"]
+args.extend(os.path.join(root, x.lstrip("." + os.sep)) \
+for x in plibs)
+try:
+proc = subprocess.Popen(args, stdout = subprocess.PIPE)
+except EnvironmentError as e:
+if e.errno != errno.ENOENT:
+raise
+raise CommandNotFound(args[0]) else:
+for l in proc.stdout:
+try:
+l = _unicode_decode(l,
+encoding = _encodings['content'], errors = 'strict')
+except UnicodeDecodeError:
+l = _unicode_decode(l,
+encoding = _encodings['content'], errors ='replace')
+writemsg_level(_("\nError decoding characters " \
+"returned from scanelf: %s\n\n") % (l, ),
+level = logging.ERROR, noiselevel = -1)
+l = l[3:].rstrip("\n")
+if not l:
+continue
+try:
+entry = NeededEntry.parse("scanelf", l)
+except InvalidData as e:
+writemsg_level("\n%s\n\n" % (e, ),
+level = logging.ERROR, noiselevel = -1)
+continue
+try:
+with open(_unicode_encode(entry.filename,
+encoding = _encodings['fs'],
+errors = 'strict'), 'rb') as f:
+elf_header = ELFHeader.read(f)
+except EnvironmentError as e:
+if e.errno != errno.ENOENT:
+raise
+continue
+
+if not entry.soname:
+try:
+proc = subprocess.Popen([b'file',
+_unicode_encode(entry.filename,
+encoding =_encodings['fs'], errors = 'strict')],
+stdout = subprocess.PIPE)
+out, err = proc.communicate()
+proc.wait()
+except EnvironmentError:
+pass else:
+if b'SB shared object' in out:
+entry.soname = os.path.basename(entry.filename)
+
+entry.multilib_category = compute_multilib_category(elf_header)
+entry.filename = entry.filename[root_len:]
+owner = plibs.pop(entry.filename, None)
+lines.append((owner, "scanelf", _unicode(entry)))
+proc.wait()
+proc.stdout.close()
+
+if plibs:
+for x, cpv in plibs.items():
+lines.append((cpv, "plibs", ";".join(['', x, '', '', ''])))
+
+frozensets = {}
+owner_entries = collections.defaultdict(list)
+
+while True:
+try:
+owner, location, l = lines.pop()
+except IndexError:
+break
+l = l.rstrip("\n")
+if not l:
+continue
+if '\0' in l:
+writemsg_level(_("\nLine contains null byte(s) " \
+"in %s: %s\n\n") % (location, l),
+level = logging.ERROR, noiselevel = -1)
+continue
+try:
+entry = NeededEntry.parse(location, l)
+except InvalidData as e:
+writemsg_level("\n%s\n\n" % (e, ),
+level =logging.ERROR, noiselevel = -1)
+continue
+
+if entry.multilib_category is None:
+entry.multilib_category = _approx_multilib_categories.get(
+entry.arch, entry.arch)
+
+entry.filename = normalize_path(entry.filename)
+expand = {"ORIGIN": os.path.dirname(entry.filename)}
+entry.runpaths = frozenset(normalize_path(
+varexpand(x, expand, error_leader = lambda: "%s: " % location))
+for x in entry.runpaths)
+entry.runpaths = frozensets.setdefault(entry.runpaths, entry.runpaths)
+owner_entries[owner].append(entry)
+
+for owner, entries in owner_entries.items():
+if owner is None:
+continue
+
+providers = {}
+for entry in entries:
+if entry.soname:
+providers[SonameAtom(entry.multilib_category, entry.soname)] = entry
+
+for entry in entries:
+implicit_runpaths = []
+for soname in entry.needed:
+soname_atom = SonameAtom(entry.multilib_category, soname)
+provider = providers.get(soname_atom)
+if provider is None:
+continue
+provider_dir = os.path.dirname(provider.filename)
+if provider_dir not in entry.runpaths:
+implicit_runpaths.append(provider_dir)
+
+if implicit_runpaths:
+entry.runpaths = frozenset(
+itertools.chain(entry.runpaths, implicit_runpaths))
+entry.runpaths = frozensets.setdefault(
+entry.runpaths, entry.runpaths)
+
+for owner, entry in ((owner, entry)
+for (owner, entries) in owner_entries.items()
+for entry in entries):
+arch = entry.multilib_category
+obj = entry.filename
+soname = entry.soname
+path = entry.runpaths
+needed = frozenset(entry.needed)
+
+needed = frozensets.setdefault(needed, needed)
+
+obj_key = o._obj_key(obj)
+indexed = True
+myprops = obj_properties.get(obj_key)
+if myprops is None:
+indexed = False
+myprops = o._obj_properties_class(
+arch, needed, path, soname, [], owner)
+obj_properties[obj_key] = myprops
+myprops.alt_paths.append(obj)
+
+if indexed:
+continue
+
+arch_map = libs.get(arch)
+if arch_map is None:
+arch_map = {}
+libs[arch] = arch_map
+if soname:
+soname_map = arch_map.get(soname)
+if soname_map is None:
+soname_map = o._soname_map_class(
+providers = [], consumers = [])
+arch_map[soname] = soname_map
+soname_map.providers.append(obj_key)
+for needed_soname in needed:
+soname_map = arch_map.get(needed_soname)
+if soname_map is None:
+soname_map = o._soname_map_class(
+providers = [], consumers =[])
+arch_map[needed_soname] = soname_map
+soname_map.consumers.append(obj_key)
+
+for arch, sonames in libs.items():
+for soname_node in sonames.values():
+soname_node.providers = tuple(set(soname_node.providers))
+soname_node.consumers = tuple(set(soname_node.consumers))
+}
+
+func (o*linkageMapELF) listBrokenBinaries( debug=False) {
+
+	os = _os_merge
+
+	class
+	_LibraryCache(object):
+
+	def
+	__init__(cache_o):
+	cache_o.cache =
+	{
+	}
+
+	def
+	get(cache_o, obj):
+
+	if obj in
+	cache_o.cache:
+	return cache_o.cache[obj]
+	else:
+	obj_key = o._obj_key(obj)
+	if obj_key.file_exists():
+	obj_props = o._obj_properties.get(obj_key)
+	if obj_props is
+None:
+	arch = None
+	soname = None
+	else:
+	arch = obj_props.arch
+	soname = obj_props.soname
+	return cache_o.cache.setdefault(obj, \
+	(arch, soname, obj_key, True)) else:
+	return cache_o.cache.setdefault(obj, \
+	(None, None, obj_key, False))
+
+	rValue =
+	{
+	}
+	cache = _LibraryCache()
+	providers = o.listProviders()
+
+	for obj_key, sonames
+	in
+	providers.items():
+	obj_props = o._obj_properties[obj_key]
+	arch = obj_props.arch
+	path = obj_props.runpaths
+	objs = obj_props.alt_paths
+	path = path.union(o._defpath)
+	for soname, libraries
+	in
+	sonames.items():
+	validLibraries = set()
+	for directory
+	in
+path:
+	cachedArch, cachedSoname, cachedKey, cachedExists = \
+	cache.get(os.path.join(directory, soname))
+	if cachedSoname == soname and
+	cachedArch == arch:
+	validLibraries.add(cachedKey)
+	if debug and
+	cachedKey
+	not
+	in \
+	set(map(o._obj_key_cache.get,
+	libraries)):
+	writemsg_level(
+		_("Found provider outside of findProviders:") + \
+	(" %s -> %s %s\n" % (os.path.join(directory, soname),
+		o._obj_properties[cachedKey].alt_paths, libraries)),
+	level = logging.DEBUG,
+		noiselevel=-1)
+	break
+	if debug and
+	cachedArch == arch
+	and \
+	cachedKey
+	in
+	o._obj_properties:
+	writemsg_level((_("Broken symlink or missing/bad soname: " + \
+	"%(dir_soname)s -> %(cachedKey)s " + \
+	"with soname %(cachedSoname)s but expecting %(soname)s") % \
+	{"dir_soname":os.path.join(directory, soname),
+	"cachedKey": o._obj_properties[cachedKey],
+	"cachedSoname": cachedSoname, "soname":soname}) + "\n",
+		level = logging.DEBUG,
+		noiselevel=-1)
+	if not validLibraries:
+	for obj
+	in
+objs:
+	rValue.setdefault(obj, set()).add(soname)
+	for lib
+	in
+libraries:
+	rValue.setdefault(lib, set()).add(soname)
+	if debug:
+	if not os.path.isfile(lib):
+	writemsg_level(_("Missing library:")+" %s\n"%(lib, ),
+		level = logging.DEBUG,
+		noiselevel = -1) else:
+	writemsg_level(_("Possibly missing symlink:") + \
+	"%s\n"%(os.path.join(os.path.dirname(lib), soname)),
+		level = logging.DEBUG,
+		noiselevel=-1)
+	return rValue
+}
+
+func (o*linkageMapELF) listProviders() {
+	rValue =
+	{
+	}
+	if not o._libs:
+	o.rebuild()
+	for obj_key
+	in
+	o._obj_properties:
+	rValue.setdefault(obj_key, o.findProviders(obj_key))
+	return rValue
+}
+
+func (o*linkageMapELF) isMasterLink( obj) {
+	os = _os_merge
+	obj_key = o._obj_key(obj)
+	if obj_key not
+	in
+	o._obj_properties:
+	raise
+	KeyError("%s (%s) not in object list"%(obj_key, obj))
+	basename = os.path.basename(obj)
+	soname = o._obj_properties[obj_key].soname
+	return len(basename) < len(soname)
+	and \
+	basename.endswith(".so")
+	and \
+	soname.startswith(basename[:-3])
+}
+
+func (o*linkageMapELF) listLibraryObjects() {
+	rValue = []
+	if not o._libs:
+	o.rebuild()
+	for arch_map
+	in
+	o._libs.values():
+	for soname_map
+	in
+	arch_map.values():
+	for obj_key
+	in
+	soname_map.providers:
+	rValue.extend(o._obj_properties[obj_key].alt_paths)
+	return rValue
+}
+
+func (o*linkageMapELF) getOwners( obj) {
+	if not o._libs:
+	o.rebuild()
+	if isinstance(obj, o._ObjectKey):
+	obj_key = obj
+	else:
+	obj_key = o._obj_key_cache.get(obj)
+	if obj_key is
+None:
+	raise
+	KeyError("%s not in object list" % obj)
+	obj_props = o._obj_properties.get(obj_key)
+	if obj_props is
+None:
+	raise
+	KeyError("%s not in object list" % obj_key)
+	if obj_props.owner is
+None:
+	return ()
+	return (obj_props.owner,)
+}
+
+func (o*linkageMapELF) getSoname( obj) {
+	if not o._libs:
+	o.rebuild()
+	if isinstance(obj, o._ObjectKey):
+	obj_key = obj
+	if obj_key not
+	in
+	o._obj_properties:
+	raise
+	KeyError("%s not in object list" % obj_key)
+	return o._obj_properties[obj_key].soname
+	if obj not
+	in
+	o._obj_key_cache:
+	raise
+	KeyError("%s not in object list" % obj)
+	return o._obj_properties[o._obj_key_cache[obj]].soname
+}
+
+func (o*linkageMapELF) findProviders( obj) {
+
+	os = _os_merge
+
+	rValue =
+	{
+	}
+
+	if not o._libs:
+	o.rebuild()
+
+	# Determine
+	the
+	obj_key
+	from
+	the
+	arguments.
+	if isinstance(obj, o._ObjectKey):
+	obj_key = obj
+	if obj_key not
+	in
+	o._obj_properties:
+	raise
+	KeyError("%s not in object list" % obj_key)
+	else:
+	obj_key = o._obj_key(obj)
+	if obj_key not
+	in
+	o._obj_properties:
+	raise
+	KeyError("%s (%s) not in object list"%(obj_key, obj))
+
+	obj_props = o._obj_properties[obj_key]
+	arch = obj_props.arch
+	needed = obj_props.needed
+	path = obj_props.runpaths
+	path_keys = set(o._path_key(x)
+	for x
+	in
+	path.union(o._defpath))
+	for soname
+	in
+needed:
+	rValue[soname] = set()
+	if arch not
+	in
+	o._libs
+	or
+	soname
+	not
+	in
+	o._libs[arch]:
+	continue
+	for provider_key
+	in
+	o._libs[arch][soname].providers:
+	providers = o._obj_properties[provider_key].alt_paths
+	for provider
+	in
+providers:
+	if o._path_key(os.path.dirname(provider)) in
+path_keys:
+	rValue[soname].add(provider)
+	return rValue
+}
+
+func (o*linkageMapELF) findConsumers( obj, exclude_providers=None, greedy=True) {
+
+	os = _os_merge
+
+	if not o._libs:
+	o.rebuild()
+
+	if isinstance(obj, o._ObjectKey):
+	obj_key = obj
+	if obj_key not
+	in
+	o._obj_properties:
+	raise
+	KeyError("%s not in object list" % obj_key)
+	objs = o._obj_properties[obj_key].alt_paths
+	else:
+	objs = set([obj])
+	obj_key = o._obj_key(obj)
+	if obj_key not
+	in
+	o._obj_properties:
+	raise
+	KeyError("%s (%s) not in object list"%(obj_key, obj))
+
+	if not isinstance(obj, o._ObjectKey):
+	soname = o._obj_properties[obj_key].soname
+	soname_link = os.path.join(o._root,
+		os.path.dirname(obj).lstrip(os.path.sep), soname)
+	obj_path = os.path.join(o._root, obj.lstrip(os.sep))
+try:
+	soname_st = os.stat(soname_link)
+	obj_st = os.stat(obj_path)
+	except
+OSError:
+	pass
+	else:
+	if (obj_st.st_dev, obj_st.st_ino) != \
+	(soname_st.st_dev, soname_st.st_ino):
+	return set()
+
+	obj_props = o._obj_properties[obj_key]
+	arch = obj_props.arch
+	soname = obj_props.soname
+
+	soname_node = None
+	arch_map = o._libs.get(arch)
+	if arch_map is
+	not
+None:
+	soname_node = arch_map.get(soname)
+
+	defpath_keys = set(o._path_key(x)
+	for x
+	in
+	o._defpath)
+	satisfied_consumer_keys = set()
+	if soname_node is
+	not
+None:
+	if exclude_providers is
+	not
+	None
+	or
+	not
+greedy:
+	relevant_dir_keys = set()
+	for provider_key
+	in
+	soname_node.providers:
+	if not greedy
+	and
+	provider_key == obj_key:
+	continue
+	provider_objs = o._obj_properties[provider_key].alt_paths
+	for p
+	in
+provider_objs:
+	provider_excluded = False
+	if exclude_providers is
+	not
+None:
+	for excluded_provider_isowner
+	in
+exclude_providers:
+	if excluded_provider_isowner(p):
+	provider_excluded = True
+	break
+	if not provider_excluded:
+	relevant_dir_keys.add(
+		o._path_key(os.path.dirname(p)))
+
+	if relevant_dir_keys:
+	for consumer_key
+	in
+	soname_node.consumers:
+	path = o._obj_properties[consumer_key].runpaths
+	path_keys = defpath_keys.copy()
+	path_keys.update(o._path_key(x)
+	for x
+	in
+	path)
+	if relevant_dir_keys.intersection(path_keys):
+	satisfied_consumer_keys.add(consumer_key)
+
+	rValue = set()
+	if soname_node is
+	not
+None:
+	objs_dir_keys = set(o._path_key(os.path.dirname(x))
+	for x
+	in
+	objs)
+	for consumer_key
+	in
+	soname_node.consumers:
+	if consumer_key in
+satisfied_consumer_keys:
+	continue
+	consumer_props = o._obj_properties[consumer_key]
+	path = consumer_props.runpaths
+	consumer_objs = consumer_props.alt_paths
+	path_keys = defpath_keys.union(o._path_key(x)
+	for x
+	in
+	path)
+	if objs_dir_keys.intersection(path_keys):
+	rValue.update(consumer_objs)
+	return rValue
+}
+
 func NewLinkageMapELF(vardbapi *vardbapi) *linkageMapELF {
 	l := &linkageMapELF{}
 	l._dbapi = vardbapi
