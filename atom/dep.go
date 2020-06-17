@@ -2246,7 +2246,7 @@ for _, pkg := range matches{
 	}
 
 mychoices := []string{}
-if!pkgs &&!portdb.cp_list(x.cp) {
+if!pkgs &&len(portdb.cp_list(x.cp)) == 0 {
 	myvartree := mytrees.VarTree()
 	if myvartree != nil {
 		mysettings._populate_treeVirtuals_if_needed(myvartree)

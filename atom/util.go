@@ -3145,3 +3145,162 @@ func NewNeededEntry() *NeededEntry {
 
 	return n
 }
+
+type InstallMask struct {
+	_unanchored []*_pattern
+	_anchored map[string][]*_pattern
+}
+
+type _pattern struct{
+	orig_index int
+	is_inclusive bool
+	pattern string
+	leading_slash bool
+}
+
+func NewInstallMask( install_mask string)*InstallMask {
+	i := &InstallMask{}
+	i._unanchored = []*_pattern{}
+
+	i._anchored = _defaultdict_tree()
+	for orig_index, pattern := range strings.Fields(install_mask) {
+		is_inclusive := !strings.HasPrefix(pattern, "-")
+		if !is_inclusive {
+			pattern = pattern[1:]
+		}
+		pattern_obj := &_pattern{orig_index, is_inclusive, pattern, strings.HasPrefix(pattern, "/")}
+		if pattern_obj.leading_slash {
+			current_dir := i._anchored
+			for _, component:= range strings.Split(pattern, "/"){
+				if component== ""{
+					continue
+				}
+				if strings.Contains(component, "*"){
+					break
+				} else {
+					current_dir = current_dir[component]
+				}
+				if _, ok := current_dir["."]; !ok {
+					current_dir["."] = []*_pattern{}
+				}
+
+				current_dir["."]=append(current_dir["."], pattern_obj)
+			}
+		} else {
+			i._unanchored = append(i._unanchored, pattern_obj)
+		}
+	}
+	return i
+}
+
+func(i*InstallMask) _iter_relevant_patterns( path string) {
+	current_dir := i._anchored
+	components := []string{}
+	for _, v := range strings.Split(path, "/"){
+		components = append(components,v)
+	}
+	patterns := []string{}
+	patterns= append(patterns, current_dir["."]...)
+	for _, component:= range components {
+		next_dir := current_dir[component]
+		if next_dir is
+		None{
+			break
+		}
+		current_dir = next_dir
+		patterns = append(patterns, current_dir["."]...)
+	}
+
+	if len(patterns) > 0 {
+		patterns.extend(i._unanchored)
+		if any(not pattern.is_inclusive
+		for pattern
+			in
+		patterns){
+			patterns.sort(key = operator.attrgetter('orig_index'))
+		}
+		return iter(patterns)
+	}
+
+	return iter(i._unanchored)
+}
+
+func(i*InstallMask) match( path string) bool {
+	ret := false
+
+	for pattern_obj
+		in
+	i._iter_relevant_patterns(path) {
+		is_inclusive, pattern := pattern_obj.is_inclusive, pattern_obj.pattern
+		if pattern_obj.leading_slash {
+			if path.endswith('/') {
+				pattern = pattern.rstrip('/') + '/'
+			}
+			if (fnmatch.fnmatch(path, pattern[1:])
+				or
+			fnmatch.fnmatch(path, pattern[1:].rstrip('/')+'/*')){
+				ret = is_inclusive
+			}
+		} else {
+			if fnmatch.fnmatch(filepath.Base(path), pattern) {
+				ret = is_inclusive
+			}
+		}
+	}
+	return ret
+}
+
+_exc_map = {
+	errno.EISDIR: IsADirectory,
+	errno.ENOENT: FileNotFound,
+	errno.EPERM: OperationNotPermitted,
+	errno.EACCES: PermissionDenied,
+	errno.EROFS: ReadOnlyFileSystem,
+}
+
+
+func(i*InstallMask) _raise_exc(e){
+	wrapper_cls = _exc_map.get(e.errno)
+	if wrapper_cls is None:
+		raise
+	wrapper = wrapper_cls(_unicode(e))
+	wrapper.__cause__ = e
+	raise wrapper
+}
+
+// nil
+func install_mask_dir(base_dir string, install_mask *InstallMask, onerror=None) {
+	if onerror == nil {
+		onerror = _raise_exc
+	}
+	base_dir = NormalizePath(base_dir)
+	base_dir_len := len(base_dir) + 1
+	dir_stack := []string{}
+
+	filepath.Walk(base_dir, func(path string, info os.FileInfo, err error) error {
+		dir_stack = append(dir_stack, path)
+		if !info.IsDir() {
+			abs_path := filepath.Join(path, info.Name())
+			relative_path := abs_path[base_dir_len:]
+			if install_mask.match(relative_path) {
+				if err := syscall.Unlink(abs_path); err != nil {
+					//except OSError as e:
+					onerror(e)
+				}
+			}
+		}
+		return nil
+	})
+
+	for len(dir_stack) > 0{
+		dir_path := dir_stack[len(dir_stack)-1]
+		dir_stack = dir_stack[:len(dir_stack)-1]
+
+		if install_mask.match(dir_path[base_dir_len:] + "/") {
+			if err := os.RemoveAll(dir_path); err != nil {
+				//except OSError:
+				//pass
+			}
+		}
+	}
+}

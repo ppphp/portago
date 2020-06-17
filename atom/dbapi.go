@@ -3856,8 +3856,9 @@ try:
 
 func (d *dblink) _add_preserve_libs_to_contents(preserve_paths) {
 
-	if not preserve_paths:
-	return
+	if not preserve_paths {
+		return
+	}
 
 	os = _os_merge
 	showMessage = d._display_merge
@@ -4588,29 +4589,25 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
 	phase := NewMiscFunctionsProcess(false, []string{"preinst_mask"}, "preinst", "", nil, d._scheduler, d.settings)
 	phase.start()
 	phase.wait()
-try:
-	with
-	io.open(_unicode_encode(filepath.Join(inforoot, "INSTALL_MASK"),
-		encoding = _encodings['fs'], errors = 'strict'),
-	mode = 'r', encoding=_encodings['repo.content'],
-		errors = 'replace') as
-f:
-	install_mask = InstallMask(f.read())
-	except
-EnvironmentError:
-	install_mask = nil
+	f, err := ioutil.ReadFile(filepath.Join(inforoot, "INSTALL_MASK"))
+	if err != nil {
+		//except EnvironmentError:
+		//install_mask = nil
+	}
+	install_mask := NewInstallMask(string(f))
 
-	if install_mask:
-	install_mask_dir(d.settings.ValueDict["ED"], install_mask)
-	if any(x in
-	d.settings.features
-	for x
-	in("nodoc", "noman", "noinfo")):
-try:
-	os.rmdir(filepath.Join(d.settings.ValueDict["ED"], "usr", "share"))
-	except
-OSError:
-	pass
+	if install_mask!= nil {
+		install_mask_dir(d.settings.ValueDict["ED"], install_mask)
+		if any(x in
+		d.settings.features
+		for x
+		in("nodoc", "noman", "noinfo")):
+	try:
+		os.rmdir(filepath.Join(d.settings.ValueDict["ED"], "usr", "share"))
+		except
+	OSError:
+		pass
+	}
 
 	unicode_errors = []
 	line_ending_re = re.compile("[\n\r]")
@@ -5613,7 +5610,7 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile, secondhand, stufftom
 }
 
 func (d *dblink) _protect(cfgfiledict map[string][]string, protect_if_modified bool, src_md5,
-	src_link, dest, dest_real string, dest_mode os.FileMode, dest_md5, dest_link string) (string, bool,bool){
+	src_link, dest, dest_real string, dest_mode os.FileMode, dest_md5, dest_link string) (string, bool,bool) {
 
 	move_me := true
 	protected := true
@@ -5639,17 +5636,17 @@ func (d *dblink) _protect(cfgfiledict map[string][]string, protect_if_modified b
 		if src_md5 == dest_md5 {
 			protected = false
 		} else if src_md5 == cfgfiledict[dest_real][0] {
-			move_me = protected = bool(cfgfiledict["IGNORE"])
+			protected = len(cfgfiledict["IGNORE"]) == 0
+			move_me = protected
 		}
 
-		if protected &&
-			(dest_link != nil || src_link != nil) &&
-			dest_link != src_link:
-		force = true
+		if protected && (dest_link != "" || src_link != "") && dest_link != src_link {
+			force = true
+		}
 
 		if move_me {
 			cfgfiledict[dest_real] = []string{src_md5}
-		}else if dest_md5 == cfgfiledict[dest_real][0] {
+		} else if dest_md5 == cfgfiledict[dest_real][0] {
 			delete(cfgfiledict, dest_real)
 		}
 	}
