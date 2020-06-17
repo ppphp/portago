@@ -2854,7 +2854,7 @@ func (d *dblink) _prune_plib_registry(unmerge bool,
 // @_slot_locked
 func (d *dblink) unmerge(pkgfiles map[string][]string, cleanup bool,
 	ldpath_mtimes=nil, others_in_slot []*dblink, needed=nil,
-	preserve_paths=nil) {
+	preserve_paths=nil) int {
 
 	background := false
 	log_path := d.settings.ValueDict["PORTAGE_LOG_FILE"]
@@ -4597,245 +4597,209 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
 	install_mask := NewInstallMask(string(f))
 
 	if install_mask!= nil {
-		install_mask_dir(d.settings.ValueDict["ED"], install_mask)
-		if any(x in
-		d.settings.features
-		for x
-		in("nodoc", "noman", "noinfo")):
-	try:
-		os.rmdir(filepath.Join(d.settings.ValueDict["ED"], "usr", "share"))
-		except
-	OSError:
-		pass
+		install_mask_dir(d.settings.ValueDict["ED"], install_mask, nil)
+		if d.settings.Features.Features["nodoc"]||d.settings.Features.Features["noman"]||d.settings.Features.Features["noinfo"]{
+			if err := os.RemoveAll(filepath.Join(d.settings.ValueDict["ED"], "usr", "share")); err != nil {
+				//except OSError:
+				//pass
+			}
+		}
 	}
 
-	unicode_errors = []
-	line_ending_re = re.compile("[\n\r]")
-	srcroot_len = len(srcroot)
-	ed_len = len(d.settings.ValueDict["ED"])
-	eprefix_len = len(d.settings.ValueDict["EPREFIX"])
+	unicode_errors := []string{}
+	line_ending_re := regexp.MustCompile("[\\n\\r]")
+	srcroot_len := len(srcroot)
+	ed_len := len(d.settings.ValueDict["ED"])
 
-	while
-true:
+	filelist := []string{}
+	linklist := []string{}
+	paths_with_newlines := []string{}
+	for {
+		unicode_error := false
+		eagain_error := false
 
-	unicode_error = false
-	eagain_error = false
+		filelist = []string{}
+		linklist = []string{}
+		paths_with_newlines = []string{}
+		onerror := func(e) {
+			raise
+		}
 
-	filelist = []
-	linklist = []
-	paths_with_newlines = []
-	def
-	onerror(e):
-	raise
-	walk_iter = os.walk(srcroot, onerror = onerror)
-	while
-true:
-try:
-	parent, dirs, files = next(walk_iter)
-	except
-StopIteration:
-	break
-	except
-	OSError
-	as
-e:
-	if err != errno.EAGAIN:
-	raise
-	eagain_error = true
-	break
+		filepath.Walk(srcroot, func(path string, info os.FileInfo, err error) error {
+			if !info.IsDir() {
 
-try:
-	parent = _unicode_decode(parent,
-		encoding = _encodings['merge'], errors = 'strict')
-	except
-UnicodeDecodeError:
-	new_parent = _unicode_decode(parent,
-		encoding = _encodings['merge'], errors = 'replace')
-	new_parent = _unicode_encode(new_parent,
-		encoding = 'ascii', errors = 'backslashreplace')
-	new_parent = _unicode_decode(new_parent,
-		encoding = _encodings['merge'], errors = 'replace')
-	os.rename(parent, new_parent)
-	unicode_error = true
-	unicode_errors = append(, new_parent[ed_len:])
-	break
+				relative_path := path[srcroot_len:]
 
-	for fname in files:
-	try:
-	fname = _unicode_decode(fname,
-	encoding=_encodings['merge'], errors='strict')
-	except UnicodeDecodeError:
-	fpath = portage._filepath.Join(
-	parent.encode(_encodings['merge']), fname)
-	new_fname = _unicode_decode(fname,
-	encoding=_encodings['merge'], errors='replace')
-	new_fname = _unicode_encode(new_fname,
-	encoding='ascii', errors='backslashreplace')
-	new_fname = _unicode_decode(new_fname,
-	encoding=_encodings['merge'], errors='replace')
-	new_fpath = filepath.Join(parent, new_fname)
-	os.rename(fpath, new_fpath)
-	unicode_error = true
-	unicode_errors=append(,new_fpath[ed_len:])
-	fname = new_fname
-	fpath = new_fpath
-	else:
-	fpath = filepath.Join(parent, fname)
+				if line_ending_re.MatchString(relative_path) {
+					paths_with_newlines = append(paths_with_newlines, relative_path)
+				}
 
-	relative_path = fpath[srcroot_len:]
+				file_mode := info.Mode()
+				if unix.S_IFREG&file_mode != 0 {
+					filelist = append(filelist, relative_path)
+				} else if unix.S_IFLNK & file_mode {
+					linklist = append(linklist, relative_path)
 
-	if line_ending_re.search(relative_path) != nil:
-	paths_with_newlines=append(,relative_path)
-
-	file_mode = os.Lstat(fpath).st_mode
-	if syscall.S_IFREG&file_mode):
-	filelist=append(,relative_path)
-	else if syscall.S_IFLNK&file_mode):
-				linklist=append(,relative_path)
-
-	myto = _unicode_decode(
-	_os.readlink(_unicode_encode(fpath,
-	encoding=_encodings['merge'], errors='strict')),
-	encoding=_encodings['merge'], errors='replace')
-	if line_ending_re.search(myto) != nil:
-	paths_with_newlines=append(,relative_path)
-
-	if unicode_error:
-	break
-
-	if not (unicode_error || eagain_error):
-	break
-
-	if unicode_errors:
-	d._elog("eqawarn", "preinst",
-	_merge_unicode_error(unicode_errors))
-
-	if paths_with_newlines:
-	msg = []
-	msg=append(msg,_("This package installs one or more files containing line ending characters:"))
-	msg=append(msg,"")
-	paths_with_newlines.sort()
-	for f in paths_with_newlines:
-	msg=append(msg,"\t/%s" % (f.replace("\n", "\\n").replace("\r", "\\r")))
-	msg=append(msg,"")
-	msg=append(msg,_("package %s NOT merged") % d.mycpv)
-	msg=append(msg,"")
-	eerror(msg)
-	return 1
-
-			if d.settings.ValueDict["PORTAGE_PACKAGE_EMPTY_ABORT") == "1" &&
-not filelist && not linklist && others_in_slot:
-	installed_files = nil
-	for other_dblink in others_in_slot:
-	installed_files = other_dblink.getcontents()
-	if not installed_files:
-	continue
-	from textwrap import wrap
-	wrap_width = 72
-	msg = []
-	d = {
-	"new_cpv":d.mycpv,
-	"old_cpv":other_dblink.mycpv
+					myto, _ := filepath.EvalSymlinks(path)
+					if line_ending_re.MatchString(myto) {
+						paths_with_newlines = append(paths_with_newlines, relative_path)
+					}
+				}
+			}
+			return nil
+		})
+		if !(unicode_error || eagain_error) {
+			break
+		}
 	}
-	msg=append(,wrap(_("The '%(new_cpv)s' package will not install "+
-	"any files, but the currently installed '%(old_cpv)s'"+
-	" package has the following files: ") % d, wrap_width))
-	msg=append(msg,"")
-	msg=append(msg,sorted(installed_files))
-	msg=append(msg,"")
-	msg=append(msg,_("package %s NOT merged") % d.mycpv)
-	msg=append(msg,"")
-	msg=append(msg,wrap(
-	_("Manually run `emerge --unmerge =%s` if you "+
-	"really want to remove the above files. Set "+
-	"PORTAGE_PACKAGE_EMPTY_ABORT=\"0\" in "+
-	"/etc/portage/make.conf if you do not want to "+
-	"abort in cases like this.") % other_dblink.mycpv,
-	wrap_width))
-	eerror(msg)
-	if installed_files:
-	return 1
 
-			if myebuild == nil:
-	myebuild = filepath.Join(inforoot, d.pkg + ".ebuild")
-	doebuild_environment(myebuild, "preinst",
-	settings=d.settings, db=mydbapi)
-	dsvrv := []string{}
-	for _, other := range others_in_slot {
-		dsvrv = append(dsvrv, cpvGetVersion(other.mycpv.string, ""))
+	if len(unicode_errors) > 0 {
+		d._elog("eqawarn", "preinst",
+			_merge_unicode_error(unicode_errors))
 	}
-	d.settings.ValueDict["REPLACING_VERSIONS"] = strings.Join(dsvrv, " ")
-	prepare_build_dirs(settings=d.settings, cleanup=cleanup)
 
-		blockers = []
-	for blocker in d._blockers :
-	blocker = d.vartree.dbapi._dblink(blocker.cpv)
-			if blocker.exists():
-	blockers=append(blockers,blocker)
+	if len(paths_with_newlines) > 0 {
+		msg := []string{}
+		msg = append(msg, ("This package installs one or more files containing line ending characters:"))
+		msg = append(msg, "")
+		sort.Strings(paths_with_newlines)
+		for _, f := range paths_with_newlines{
+			msg = append(msg, fmt.Sprintf("\t/%s", strings.ReplaceAll(strings.ReplaceAll(f, "\n", "\\n"),"\r", "\\r")))
+		}
+		msg = append(msg, "")
+		msg = append(msg, fmt.Sprintf("package %s NOT merged", d.mycpv))
+		msg = append(msg, "")
+		eerror(msg)
+		return 1
+	}
 
-	collisions, internal_collisions, dirs_ro, symlink_collisions, plib_collisions = 
+	if d.settings.ValueDict["PORTAGE_PACKAGE_EMPTY_ABORT"] == "1" && len( filelist) == 0 && len( linklist) == 0 && len(others_in_slot) > 0{
+		var installed_files map[string][]string
+		for _, other_dblink := range others_in_slot {
+			installed_files = other_dblink.getcontents()
+			if len( installed_files)==0 {
+				continue
+			}
+			msg := []string{}
+			msg = append(msg, SplitSubN(fmt.Sprintf("The '%s' package will not install "+
+				"any files, but the currently installed '%s'"+
+				" package has the following files: ", d.mycpv, other_dblink.mycpv), 72))
+			msg = append(msg, "")
+			ifs := []string{}
+			for k := range installed_files {
+				ifs = append(ifs, k)
+			}
+			sort.Strings(ifs)
+			msg = append(msg, ifs...)
+			msg = append(msg, "")
+			msg = append(msg, fmt.Sprintf("package %s NOT merged", d.mycpv))
+			msg = append(msg, "")
+			msg = append(msg, SplitSubN(
+				fmt.Sprintf("Manually run `emerge --unmerge =%s` if you "+
+					"really want to remove the above files. Set "+
+					"PORTAGE_PACKAGE_EMPTY_ABORT=\"0\" in "+
+					"/etc/portage/make.conf if you do not want to "+
+					"abort in cases like this.",other_dblink.mycpv), 72)...)
+			eerror(msg)
+		}
+		if len( installed_files)>0 {
+			return 1
+		}
+	}
+
+	if myebuild == "" {
+		myebuild = filepath.Join(inforoot, d.pkg+".ebuild")
+		doebuild_environment(myebuild, "preinst", nil, d.settings, false, nil, mydbapi)
+		dsvrv := []string{}
+		for _, other := range others_in_slot {
+			dsvrv = append(dsvrv, cpvGetVersion(other.mycpv.string, ""))
+		}
+		d.settings.ValueDict["REPLACING_VERSIONS"] = strings.Join(dsvrv, " ")
+		prepare_build_dirs(settings = d.settings, cleanup = cleanup)
+	}
+
+	blockers = []
+	for blocker in d._blockers{
+		blocker = d.vartree.dbapi._dblink(blocker.cpv)
+		if blocker.exists(){
+		blockers = append(blockers, blocker)
+	}
+	}
+
+	collisions, internal_collisions, dirs_ro, symlink_collisions, plib_collisions :=
 d._collision_protect(srcroot, others_in_slot + blockers, filelist, linklist)
 
-		ro_checker = get_ro_checker()
-	rofilesystems = ro_checker(dirs_ro)
+		ro_checker := get_ro_checker()
+	rofilesystems := ro_checker(dirs_ro)
 
-	if rofilesystems:
-	msg = _("One or more files installed to this package are "+
-	"set to be installed to read-only filesystems. "+
-	"Please mount the following filesystems as read-write "+
-	"and retry.")
-	msg = textwrap.wrap(msg, 70)
-	msg=append(msg,"")
-	for f in rofilesystems:
-	msg=append(msg,"\t%s" % f)
-	msg=append(msg,"")
-	d._elog("eerror", "preinst", msg)
+	if rofilesystems {
+		msg = _("One or more files installed to this package are " +
+			"set to be installed to read-only filesystems. " +
+			"Please mount the following filesystems as read-write " +
+			"and retry.")
+		msg = textwrap.wrap(msg, 70)
+		msg = append(msg, "")
+		for f
+		in
+	rofilesystems:
+		msg = append(msg, "\t%s"%f)
+		msg = append(msg, "")
+		d._elog("eerror", "preinst", msg)
 
-	msg = _("Package '%s' NOT merged due to read-only file systems.") % 
-d.settings.mycpv
-	msg += _(" If necessary, refer to your elog "+
-	"messages for the whole content of the above message.")
-	msg = textwrap.wrap(msg, 70)
-	eerror(msg)
-	return 1
+		msg = _("Package '%s' NOT merged due to read-only file systems.") %
+			d.settings.mycpv
+		msg += _(" If necessary, refer to your elog " +
+			"messages for the whole content of the above message.")
+		msg = textwrap.wrap(msg, 70)
+		eerror(msg)
+		return 1
+	}
 
-	if internal_collisions:
-	msg = _("Package '%s' has internal collisions between non-identical files "+
-	"(located in separate directories in the installation image (${D}) "+
-	"corresponding to merged directories in the target "+
-	"filesystem (${ROOT})):") % d.settings.mycpv
-	msg = textwrap.wrap(msg, 70)
-	msg=append(msg,"")
-	for k, v in sorted(internal_collisions.items(), key=operator.itemgetter(0)):
-	msg=append(msg,"\t%s" % filepath.Join(destroot, k.lstrip(string(os.PathSeparator))))
-	for (file1, file2), differences in sorted(v.items()):
-	msg=append(msg,"\t\t%s" % filepath.Join(destroot, file1.lstrip(string(os.PathSeparator))))
-	msg=append(msg,"\t\t%s" % filepath.Join(destroot, file2.lstrip(string(os.PathSeparator))))
-	msg=append(msg,"\t\t\tDifferences: %s" % ", ".join(differences))
-	msg=append(msg,"")
-	d._elog("eerror", "preinst", msg)
+	if internal_collisions {
+		msg = _("Package '%s' has internal collisions between non-identical files "+
+			"(located in separate directories in the installation image (${D}) "+
+			"corresponding to merged directories in the target "+
+			"filesystem (${ROOT})):") % d.settings.mycpv
+		msg = textwrap.wrap(msg, 70)
+		msg = append(msg, "")
+		for k, v
+		in
+		sorted(internal_collisions.items(), key = operator.itemgetter(0)):
+		msg = append(msg, "\t%s"%filepath.Join(destroot, k.lstrip(string(os.PathSeparator))))
+		for (file1, file2), differences
+		in
+		sorted(v.items()):
+		msg = append(msg, "\t\t%s"%filepath.Join(destroot, file1.lstrip(string(os.PathSeparator))))
+		msg = append(msg, "\t\t%s"%filepath.Join(destroot, file2.lstrip(string(os.PathSeparator))))
+		msg = append(msg, "\t\t\tDifferences: %s"%", ".join(differences))
+		msg = append(msg, "")
+		d._elog("eerror", "preinst", msg)
 
-	msg = _("Package '%s' NOT merged due to internal collisions "+
-	"between non-identical files.") % d.settings.mycpv
-	msg += _(" If necessary, refer to your elog messages for the whole "+
-	"content of the above message.")
-	eerror(textwrap.wrap(msg, 70))
-	return 1
+		msg = _("Package '%s' NOT merged due to internal collisions "+
+			"between non-identical files.") % d.settings.mycpv
+		msg += _(" If necessary, refer to your elog messages for the whole " +
+			"content of the above message.")
+		eerror(textwrap.wrap(msg, 70))
+		return 1
+	}
 
-	if symlink_collisions:
-			msg = _("Package '%s' has one or more collisions "+
-	"between symlinks and directories, which is explicitly "+
-	"forbidden by PMS section 13.4 (see bug #326685):") % \
-			(d.settings.mycpv,)
-	msg = textwrap.wrap(msg, 70)
-	msg=append(msg,"")
-	for f in symlink_collisions:
-	msg=append(msg,"\t%s" % filepath.Join(destroot,
-	f.lstrip(string(os.PathSeparator))))
-	msg=append(msg,"")
-	d._elog("eerror", "preinst", msg)
+	if symlink_collisions {
+		msg = _("Package '%s' has one or more collisions "+
+			"between symlinks and directories, which is explicitly "+
+			"forbidden by PMS section 13.4 (see bug #326685):") % \
+		(d.settings.mycpv,)
+		msg = textwrap.wrap(msg, 70)
+		msg = append(msg, "")
+		for f
+		in
+	symlink_collisions:
+		msg = append(msg, "\t%s"%filepath.Join(destroot,
+			f.lstrip(string(os.PathSeparator))))
+		msg = append(msg, "")
+		d._elog("eerror", "preinst", msg)
+	}
 
-	if collisions:
+	if collisions{
 	collision_protect = "collision-protect" in d.settings.features
 	protect_owned = "protect-owned" in d.settings.features
 	msg = _("This package will overwrite one or more files that"+
@@ -4952,37 +4916,39 @@ d.settings.mycpv
 
 	if abort:
 	return 1
+	}
 
-			try:
-	syscall.Unlink(filepath.Join(
-	filepath.Dir(NormalizePath(srcroot)), ".installed"))
-	except OSError as e:
-	if err != syscall.ENOENT:
-	raise
-	del e
-
+	if err := syscall.Unlink(filepath.Join(
+	filepath.Dir(NormalizePath(srcroot)), ".installed")); err != nil {
+		//except OSError as e:
+		if err != syscall.ENOENT {
+			//raise
+		}
+		//del e
+	}
 	d.dbdir = d.dbtmpdir
 	d.delete()
-	ensure_dirs(d.dbtmpdir)
+	ensureDirs(d.dbtmpdir,-1,-1,-1,-1,nil,true)
 
-	downgrade = false
-	if d._installed_instance != nil &&
-vercmp(d.mycpv.version,
-	d._installed_instance.mycpv.version) < 0:
-	downgrade = true
+	downgrade := false
+	v, _ := verCmp(d.mycpv.version,
+		d._installed_instance.mycpv.version)
+	if d._installed_instance != nil && v< 0 {
+		downgrade = true
+	}
 
-	if d._installed_instance != nil:
-	rval = d._pre_merge_backup(d._installed_instance, downgrade)
-	if rval != os.EX_OK:
-	showMessage(_("!!! FAILED preinst: ") +
-	"quickpkg: %s\n" % rval,
-	level=logging.ERROR, noiselevel=-1)
-	return rval
+	if d._installed_instance != nil {
+		rval := d._pre_merge_backup(d._installed_instance, downgrade)
+		if rval != 0 {
+			showMessage(fmt.Sprintf("!!! FAILED preinst: " +
+				"quickpkg: %s\n", rval), 40, -1)
+			return rval
+		}
+	}
 
-		showMessage(_(">>> Merging %(cpv)s to %(destroot)s\n") % 
-{"cpv":d.mycpv, "destroot":destroot})
-	phase = EbuildPhase(background=false, phase="preinst",
-	scheduler=d._scheduler, settings=d.settings)
+	showMessage(fmt.Sprintf(">>> Merging %s to %s\n", d.mycpv, destroot),0,0)
+	phase := NewEbuildPhase(nil, false, "preinst",
+	d._scheduler, d.settings, nil)
 	phase.start()
 	a = phase.wait()
 
@@ -5196,11 +5162,12 @@ filepath.Join(d.dbpkgdir, "environment.bz2")
 	finally:
 	d.settings.pop("PORTAGE_UPDATE_ENV", nil)
 
-	if a != os.EX_OK:
-			d._postinst_failure = true
-	d._elog("eerror", "postinst", []string{
-		fmt.Sprintf("FAILED postinst: %s", a, ),
-	})
+	if a != 0 {
+		d._postinst_failure = true
+		d._elog("eerror", "postinst", []string{
+			fmt.Sprintf("FAILED postinst: %s", a, ),
+		})
+	}
 
 		env_update(
 	target_root=d.settings.ValueDict["ROOT"], prev_mtimes=prev_mtimes,
@@ -5210,7 +5177,7 @@ filepath.Join(d.dbpkgdir, "environment.bz2")
 			d._prune_plib_registry()
 	d._post_merge_sync()
 
-	return os.EX_OK
+	return 0
 }
 
 func (d *dblink) _new_backup_path(p string) string {
@@ -5899,7 +5866,7 @@ func (d *dblink) _quickpkg_dblink(backup_dblink *dblink, background bool, logfil
 	quickpkg_proc := NewSpawnProcess(
 		[]string{_python_interpreter, quickpkg_binary,
 		fmt.Sprintf("=%s" , backup_dblink.mycpv.string)},
-		background, env,
+		background, env, nil,
 		d._scheduler, logfile)
 	quickpkg_proc.start()
 

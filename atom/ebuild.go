@@ -501,38 +501,39 @@ try:
 		if _, ok:= mf.fhashdict["EBUILD"]; ok {
 			eout.ebegin("checking ebuild checksums ;-)")
 			mf.checkTypeHashes("EBUILD", false, hash_filter)
-			eout.eend(0)
+			eout.eend(0, "")
 		}
 		if _, ok := mf.fhashdict["AUX"]; ok {
 			eout.ebegin("checking auxfile checksums ;-)")
 			mf.checkTypeHashes("AUX", false, hash_filter)
-			eout.eend(0)
+			eout.eend(0, "")
 		}
 		if mf.strict_misc_digests &&
 			mf.fhashdict.get("MISC") {
 			eout.ebegin("checking miscfile checksums ;-)")
 			mf.checkTypeHashes("MISC", true, hash_filter)
-			eout.eend(0)
+			eout.eend(0, "")
 		}
 	}
 	for _, f := range myfiles{
 		eout.ebegin(fmt.Sprintf("checking %s ;-)", f))
 		ftype := mf.findFile(f)
-		if ftype == "":
-		if mf.allow_missing:
-		continue
-		eout.eend(1)
-		WriteMsg(_("\n!!! Missing digest for '%s'\n") % (f, ),
-			noiselevel = -1)
-		return 0
-		mf.checkFileHashes(ftype, f, hash_filter = hash_filter)
-		eout.eend(0)
+		if ftype == "" {
+			if mf.allow_missing {
+				continue
+			}
+			eout.eend(1, "")
+			WriteMsg(fmt.Sprintf("\n!!! Missing digest for '%s'\n", f, ), -1, nil)
+			return 0
+		}
+		mf.checkFileHashes(ftype, f, false, hash_filter)
+		eout.eend(0, "")
 	}
 	except
 	FileNotFound
 	as
 e:
-	eout.eend(1)
+	eout.eend(1, "")
 	WriteMsg(_("\n!!! A file listed in the Manifest could not be found: %s\n")%str(e),
 		noiselevel = -1)
 	return 0
@@ -540,7 +541,7 @@ e:
 	DigestException
 	as
 e:
-	eout.eend(1)
+	eout.eend(1, "")
 	WriteMsg(_("\n!!! Digest verification failed:\n"), noiselevel = -1)
 	WriteMsg("!!! %s\n"%e.value[0], noiselevel = -1)
 	WriteMsg(_("!!! Reason: %s\n")%e.value[1], noiselevel = -1)
@@ -2756,8 +2757,8 @@ new_contents, mode="wb")
 		}
 
 mystat, _ := os.Lstat(fpath)
-if stat.S_ISREG(mystat.st_mode) &&
-! counted_inodes(mystat.Sys().(*syscall.Stat_t).Ino){
+if unix.S_IFREG&mystat.Mode()!=0 &&
+! counted_inodes[mystat.Sys().(*syscall.Stat_t).Ino]{
 				counted_inodes[mystat.Sys().(*syscall.Stat_t).Ino]=true
 				size += mystat.Size()
 			}
@@ -2823,7 +2824,7 @@ func _reapply_bsdflags_to_image(mysettings *Config) {
 	}
 }
 
-func _post_src_install_soname_symlinks(mysettings *Config, out) {
+func _post_src_install_soname_symlinks(mysettings *Config, out io.Writer) {
 
 	image_dir := mysettings.ValueDict["D"]
 	needed_filename := filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"],
@@ -2950,7 +2951,7 @@ func _post_src_install_soname_symlinks(mysettings *Config, out) {
 		requires_exclude = ""
 	}
 
-	missing_symlinks := []
+	missing_symlinks := [][2]string{}
 	unrecognized_elf_files := []*NeededEntry{}
 	soname_deps := SonameDepsProcessor(provides_exclude, requires_exclude)
 
@@ -2990,7 +2991,7 @@ func _post_src_install_soname_symlinks(mysettings *Config, out) {
 		obj := entry.filename
 		soname := entry.soname
 
-		if !soname {
+		if soname == "" {
 			continue
 		}
 		if !is_libdir(filepath.Dir(obj)) {
@@ -3011,7 +3012,7 @@ func _post_src_install_soname_symlinks(mysettings *Config, out) {
 			continue
 		}
 
-		missing_symlinks = append(missing_symlinks, (obj, soname))
+		missing_symlinks = append(missing_symlinks, [2]string{obj, soname})
 	}
 
 	needed_file.Close()
@@ -3034,11 +3035,11 @@ func _post_src_install_soname_symlinks(mysettings *Config, out) {
 		qa_msg := []string{"QA Notice: Unrecognized ELF file(s):"}
 		qa_msg = append(qa_msg, "")
 		for _, entry := range unrecognized_elf_files {
-			qa_msg = append(qa_msg, fmt.Sprintf("\t%s", strings.TrimRight(entry, "")))
+			qa_msg = append(qa_msg, fmt.Sprintf("\t%s", strings.TrimRight(entry.__str__(), "")))
 		}
 		qa_msg = append(qa_msg, "")
 		for _, line := range qa_msg {
-			eqawarn(line, key = mysettings.mycpv, out = out)
+			eqawarn(line, "other", mysettings.mycpv.string, out)
 		}
 	}
 
@@ -3048,14 +3049,15 @@ func _post_src_install_soname_symlinks(mysettings *Config, out) {
 
 	qa_msg := []string{"QA Notice: Missing soname symlink(s):"}
 	qa_msg = append(qa_msg, "")
-	for obj, soname := range missing_symlinks {
+	for _, v := range missing_symlinks {
+		obj, soname := v[0], v[1]
 		qa_msg = append(qa_msg, fmt.Sprintf("\t%s -> %s", filepath.Join(
 			strings.TrimLeft(filepath.Dir(obj), string(os.PathSeparator)), soname),
 			filepath.Base(obj)))
 	}
 	qa_msg = append(qa_msg, "")
 	for _, line := range qa_msg {
-		eqawarn(line, key = mysettings.mycpv, out = out)
+		eqawarn(line, "other", mysettings.mycpv.string, out)
 	}
 }
 
@@ -3096,8 +3098,7 @@ func _merge_unicode_error(errors []string) []string {
 
 func _prepare_self_update(settings *Config) {
 
-	if portage._bin_path != portage.
-	const.PORTAGE_BIN_PATH{
+	if portage._bin_path != PORTAGE_BIN_PATH{
 		return
 	}
 

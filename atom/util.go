@@ -3259,7 +3259,7 @@ _exc_map = {
 }
 
 
-func(i*InstallMask) _raise_exc(e){
+func(i*InstallMask) _raise_exc(e error){
 	wrapper_cls = _exc_map.get(e.errno)
 	if wrapper_cls is None:
 		raise

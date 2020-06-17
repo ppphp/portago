@@ -524,7 +524,7 @@ func NewAbstractEbuildProcess(actionmap Actionmap, background bool, fd_pipes map
 	a._exit_timeout = 10
 	a._enable_ipc_daemon = true
 
-	a.SpawnProcess = NewSpawnProcess(actionmap, background, fd_pipes, logfile, phase, scheduler, settings,**kwargs)
+	a.SpawnProcess = NewSpawnProcess(actionmap, background, env, fd_pipes, logfile, phase, scheduler, settings,**kwargs)
 	if a.phase == "" {
 		phase := a.settings.ValueDict["EBUILD_PHASE"]
 		if phase == "" {
@@ -772,7 +772,8 @@ func NewLockThread()*_LockThread{
 type _LockProcess struct {
 	AbstractPollTask
 	//slot
-	path,_kill_test,_proc,_unlock_future string
+	_proc *SpawnProcess
+	path,_kill_test,_unlock_future string
 	_acquired bool
 	_files map[string]int
 }
@@ -806,12 +807,11 @@ AttributeError:
 
 	l.scheduler.add_reader(in_pr, l._output_handler)
 	l._registered = true
-	l._proc = NewSpawnProcess(
-		args = [portage._python_interpreter,
-		filepath.Join(portage._bin_path, 'lock-helper.py'), l.path],
-env = dict(os.environ, PORTAGE_PYM_PATH= portage._pym_path),
-fd_pipes ={0:out_pr, 1:in_pw, 2:sys.__stderr__.fileno()},
-scheduler = l.scheduler)
+	l._proc = NewSpawnProcess([]string{portage._python_interpreter,
+		filepath.Join(portage._bin_path, 'lock-helper.py'), l.path},false, 
+		dict(os.environ, PORTAGE_PYM_PATH= portage._pym_path),
+ map[int]int{0:out_pr, 1:in_pw, 2:sys.__stderr__.fileno()},
+ l.scheduler, "")
 l._proc.addExitListener(l._proc_exit)
 l._proc.start()
 syscall.Close(out_pr)
@@ -866,7 +866,7 @@ func(l *_LockProcess) _poll() {
 	return l.returncode
 }
 
-func(l *_LockProcess) _output_handler() {
+func(l *_LockProcess) _output_handler() bool{
 	buf := l._read_buf(l._files["pipe_in"])
 	if len(buf) > 0 {
 		l._acquired = true
@@ -895,21 +895,16 @@ KeyError:
 
 func(l *_LockProcess) _unlock() {
 	if l._proc == nil {
-		raise
-		AssertionError('not locked')
+		//raise AssertionError('not locked')
 	}
 	if !l._acquired {
-		raise
-		AssertionError('lock not acquired yet')
+		//raise AssertionError('lock not acquired yet')
 	}
 	if l.returncode != nil && *l.returncode != 0 {
-		raise
-		AssertionError("lock process failed with returncode %s"
-		% (l.returncode,))
+		//raise AssertionError("lock process failed with returncode %s"% (l.returncode,))
 	}
 	if l._unlock_future != nil {
-		raise
-		AssertionError("already unlocked")
+		//raise AssertionError("already unlocked")
 	}
 	l._unlock_future = l.scheduler.create_future()
 	syscall.Write(l._files["pipe_out"], []byte{0})
@@ -1218,27 +1213,25 @@ func (b *Binpkg) _start_fetcher( lock_task=nil) {
 		b._build_dir.clean_log()
 	}
 
-	pkg = b.pkg
-	pkg_count = b.pkg_count
-	fetcher = nil
+	pkg := b.pkg
+	pkg_count := b.pkg_count
+	fetcher := nil
 
-	if b.opts.getbinpkg && b._bintree.isremote(pkg.cpv){
+	if b.opts.getbinpkg && b._bintree.isremote(pkg.cpv) {
 
-	fetcher := NewBinpkgFetcher(b.background,
-		b.settings.ValueDict["PORTAGE_LOG_FILE"], pkg=b.pkg,
-		pretend = b.opts.pretend, scheduler=b.scheduler)
+		fetcher := NewBinpkgFetcher(b.background, b.settings.ValueDict["PORTAGE_LOG_FILE"], b.pkg, b.opts.pretend, b.scheduler)
 
-	msg := fmt.Sprintf(" --- (%s of %s) Fetching Binary (%s::%s)" ,
-	pkg_count.curval, pkg_count.maxval, pkg.cpv,
-		fetcher.pkg_path)
-	short_msg := fmt.Sprintf("emerge: (%s of %s) %s Fetch" ,
-	pkg_count.curval, pkg_count.maxval, pkg.cpv)
-	b.logger.log(msg, short_msg = short_msg)
+		msg := fmt.Sprintf(" --- (%s of %s) Fetching Binary (%s::%s)",
+			pkg_count.curval, pkg_count.maxval, pkg.cpv,
+			fetcher.pkg_path)
+		short_msg := fmt.Sprintf("emerge: (%s of %s) %s Fetch",
+			pkg_count.curval, pkg_count.maxval, pkg.cpv)
+		b.logger.log(msg, short_msg = short_msg)
 
-	fetcher.addExitListener(b._fetcher_exit)
-	b._task_queued(fetcher)
-	b.scheduler.fetch.schedule(fetcher)
-	return
+		fetcher.addExitListener(b._fetcher_exit)
+		b._task_queued(fetcher)
+		b.scheduler.fetch.schedule(fetcher)
+		return
 	}
 
 	b._fetcher_exit(fetcher)
@@ -1446,25 +1439,22 @@ func (b *Binpkg) _setup_exit( setup_phase *SpawnProcess) {
 func (b *Binpkg) _unpack_contents_exit( unpack_contents) {
 	if b._default_exit(unpack_contents) != 0 {
 		unpack_contents.future.result()
-		b._writemsg_level(fmt.Sprintf"!!! Error Extracting '%s'\n",
+		b._writemsg_level(fmt.Sprintf("!!! Error Extracting '%s'\n",
 			b._pkg_path), -1, 40)
 		b._async_unlock_builddir(b.returncode)
 		return
 	}
 
-try:
-	with
-	io.open(_unicode_encode(filepath.Join(b._infloc, "EPREFIX"),
-		encoding = _encodings['fs'], errors = 'strict'), mode = 'r',
-		encoding=_encodings['repo.content'], errors = 'replace') as
-f:
-	b._build_prefix = f.read().rstrip("\n")
-	except
-IOError:
-	b._build_prefix = ""
+	f, err := ioutil.ReadFile(filepath.Join(b._infloc, "EPREFIX"))
+	if err != nil {
+		//except IOError:
+		b._build_prefix = ""
+	} else {
+		b._build_prefix = strings.TrimRight(string(f),"\n")
+	}
 
 	if b._build_prefix == b.settings.ValueDict["EPREFIX"] {
-		ensureDirs(b.settings.ValueDict["ED"])
+		ensureDirs(b.settings.ValueDict["ED"],-1,-1,-1,-1,nil,true)
 		b._current_task = nil
 		i := 0
 		b.returncode = &i
@@ -1472,16 +1462,14 @@ IOError:
 		return
 	}
 
-	env = b.settings.environ()
+	env := b.settings.environ()
 	env["PYTHONPATH"] = b.settings.ValueDict["PORTAGE_PYTHONPATH"]
 	chpathtool := NewSpawnProcess(
-		args = []string{portage._python_interpreter},
+		 []string{portage._python_interpreter,
 		filepath.Join(b.settings.ValueDict["PORTAGE_BIN_PATH"], "chpathtool.py"),
-		b.settings.ValueDict["D"], b._build_prefix, b.settings.ValueDict["EPREFIX"]],
-background = b.background, env = env,
-scheduler = b.scheduler,
-logfile = b.settings.ValueDict["PORTAGE_LOG_FILE"))
-b._writemsg_level(">>> Adjusting Prefix to %s\n" % b.settings.ValueDict["EPREFIX"])
+		b.settings.ValueDict["D"], b._build_prefix, b.settings.ValueDict["EPREFIX"]},
+ b.background, env, nil, b.scheduler, b.settings.ValueDict["PORTAGE_LOG_FILE"])
+b._writemsg_level(fmt.Sprintf(">>> Adjusting Prefix to %s\n" , b.settings.ValueDict["EPREFIX"]), 0,0)
 b._start_task(chpathtool, b._chpathtool_exit)
 }
 
@@ -1494,25 +1482,20 @@ func (b *Binpkg) _chpathtool_exit( chpathtool) {
 		return
 	}
 
-	with
-	io.open(_unicode_encode(filepath.Join(b._infloc, "EPREFIX"),
-		encoding = _encodings['fs'], errors = 'strict'), mode = 'w',
-		encoding = _encodings['repo.content'], errors = 'strict') as
-f:
-	f.write(b.settings.ValueDict["EPREFIX"] + "\n")
+	ioutil.WriteFile(filepath.Join(b._infloc, "EPREFIX"), []byte(b.settings.ValueDict["EPREFIX"] + "\n"), 0644)
 
-	image_tmp_dir = filepath.Join(
+	image_tmp_dir := filepath.Join(
 		b.settings.ValueDict["PORTAGE_BUILDDIR"], "image_tmp")
-	build_d := filepath.Join(b.settings.ValueDict["D"],
-		b._build_prefix.lstrip(string(os.Separator))).rstrip(string(os.Separator))
+	build_d := strings.TrimLeft(filepath.Join(b.settings.ValueDict["D"],
+		strings.TrimLeft(b._build_prefix, string(os.PathSeparator))), string(os.PathSeparator))
 	if pathIsDir(build_d) {
 		shutil.rmtree(b._image_dir)
-		ensureDirs(b.settings.ValueDict["ED"])
+		ensureDirs(b.settings.ValueDict["ED"],-1,-1,-1,-1,nil,true)
 	}else {
 		os.Rename(build_d, image_tmp_dir)
 		if build_d != b._image_dir:
 		shutil.rmtree(b._image_dir)
-		ensureDirs(filepath.Dir(b.settings.ValueDict["ED"].rstrip(string(os.Separator))))
+		ensureDirs(strings.TrimRight(filepath.Dir(b.settings.ValueDict["ED"]), string(os.PathSeparator)), -1, -1, -1, -1, nil, true)
 		os.Rename(image_tmp_dir, b.settings.ValueDict["ED"])
 	}
 
@@ -1531,7 +1514,7 @@ func (b *Binpkg) _async_unlock_builddir(returncode *int) {
 	if returncode != nil {
 		b.returncode = nil
 	}
-	elog_process(b.pkg.cpv, b.settings)
+	elog_process(b.pkg.cpv, b.settings, nil)
 	b._start_task(
 		AsyncTaskFuture(future = b._build_dir.async_unlock()),
 	func(unlock_task) { 
@@ -3483,15 +3466,12 @@ func (e*EbuildBuildDir) async_lock() {
 	}
 
 	builddir_locked := func(builddir_lock *AsynchronousLock) {
-	try:
+	//try:
 		e._assert_lock(builddir_lock)
-		except
-		AssertionError
-		as
-	e:
-		catdir_lock.async_unlock.add_done_callback(
-			functools.partial(catdir_unlocked, exception = e))
-		return
+		//except AssertionError as e:
+		//catdir_lock.async_unlock.add_done_callback(
+		//	functools.partial(catdir_unlocked, exception = e))
+		//return
 
 		e._lock_obj = builddir_lock
 		e.locked = true
@@ -3500,12 +3480,11 @@ func (e*EbuildBuildDir) async_lock() {
 	}
 
 	catdir_unlocked := func(future, exception = nil) {
-		if !(exception == nil
-		&&
-		future.exception()
-		== nil):
-		result.set_exception(exception || future.exception()) else:
-		result.set_result(nil)
+		if !(exception == nil && future.exception()== nil) {
+			result.set_exception(exception || future.exception())
+		}else {
+			result.set_result(nil)
+		}
 	}
 
 	//try:
@@ -3709,7 +3688,7 @@ func(s *SpawnProcess) _start(){
 		fd_pipes[2] = slave_fd
 	}else{
 		s._dummy_pipe_fd = slave_fd
-		fd_pipes[int(slave_fd.Fd())] = slave_fd
+		fd_pipes[slave_fd] = slave_fd
 	}
 
 	kwargs = {}
@@ -3883,13 +3862,14 @@ func(s *SpawnProcess) _elog(elog_funcname string, lines []string){
 	}
 }
 
-func NewSpawnProcess(args []string, background bool, env map[string]string, scheduler *SchedulerInterface, logfile string) *SpawnProcess {
+func NewSpawnProcess(args []string, background bool, env map[string]string, fd_pipes map[int]int, scheduler *SchedulerInterface, logfile string) *SpawnProcess {
 	s := &SpawnProcess{}
 	s.args =args
 	s.background = background
 	s.env = env
 	s.scheduler = scheduler
 	s.logfile = logfile
+	s.fd_pipes = fd_pipes
 	s._CGROUP_CLEANUP_RETRY_MAX = 8
 	s.SubProcess = NewSubProcess()
 	return s
@@ -4120,7 +4100,7 @@ try:
 try:
 	if m.unmerge {
 		if !mylink.exists() {
-			rval = syscall.EX_OK
+			rval = 0
 		} else if mylink.unmerge(
 			ldpath_mtimes = m.prev_mtimes) == 0{
 			mylink.lockdb()
@@ -5193,7 +5173,7 @@ type  Scheduler struct {
 	edebug                   int
 	_deep_system_deps        map[string]string
 	_unsatisfied_system_deps map[string]string
-	_failed_pkgs_all         *_failed_pkg
+	_failed_pkgs_all         []*_failed_pkg
 	_jobs                    int
 	_pkg_count               *_pkg_count_class
 	_config_pool             map[string][]*Config
@@ -5399,8 +5379,8 @@ func NewScheduler(settings *Config, trees, mtimedb, myopts, spinner, mergelist, 
 	s._main_loadavg_handle = nil
 	s._schedule_merge_wakeup_task = nil
 
-	s._failed_pkgs = []
-	s._failed_pkgs_all = []
+	s._failed_pkgs = []*_failed_pkg{}
+	s._failed_pkgs_all = []*_failed_pkg{}
 	s._failed_pkgs_die_msgs = []
 	s._post_mod_echo_msgs = []
 	s._parallel_fetch = false
@@ -6263,7 +6243,7 @@ mtimedb:
 	failed_pkgs:
 	mergelist.remove(list(failed_pkg.pkg))
 
-	s._failed_pkgs_all.extend(failed_pkgs)
+	s._failed_pkgs_all =append(s._failed_pkgs_all, failed_pkgs...)
 	del
 	failed_pkgs[:]
 
@@ -6426,40 +6406,42 @@ func (s *Scheduler) _elog_listener(mysettings *Config, key, logentries logentrie
 	}
 }
 
-func (s *Scheduler) _locate_failure_log( failed_pkg) {
+func (s *Scheduler) _locate_failure_log( failed_pkg) string {
 
 	log_paths := []string{failed_pkg.build_log}
 
-	for log_path
-	in
-log_paths:
-	if not log_path:
-	continue
+	for _, log_path:= range log_paths {
+		if log_path == "" {
+			continue
+		}
+		st, err := os.Stat(log_path)
+		if err != nil {
+			//except OSError:
+			continue
+		}
+		log_size := st.Size()
 
-try:
-	log_size = os.Stat(log_path).st_size
-	except
-OSError:
-	continue
+		if log_size == 0 {
+			continue
+		}
 
-	if log_size == 0:
-	continue
+		return log_path
+	}
 
-	return log_path
-
-	return nil
+	return ""
 }
 
 func (s *Scheduler) _add_packages() {
-	pkg_queue = s._pkg_queue
+	pkg_queue := s._pkg_queue
 	for pkg
 	in
-	s._mergelist:
-	if isinstance(pkg, Package):
-	pkg_queue.append(pkg)
-	else if
-	isinstance(pkg, Blocker):
-	pass
+	s._mergelist {
+		if isinstance(pkg, Package):
+		pkg_queue.append(pkg)
+		else if
+		isinstance(pkg, Blocker):
+		pass
+	}
 }
 
 func (s *Scheduler) _system_merge_started(merge) {
@@ -6526,29 +6508,30 @@ func (s *Scheduler) _merge_exit(merge) {
 
 func (s *Scheduler) _do_merge_exit( merge) {
 	pkg = merge.merge.pkg
-	if merge.returncode != 0:
-	settings = merge.merge.settings
-	build_dir =  settings.ValueDict["PORTAGE_BUILDDIR")
-	build_log =  settings.ValueDict["PORTAGE_LOG_FILE")
+	if merge.returncode != 0 {
+		settings := merge.merge.settings
+		build_dir := settings.ValueDict["PORTAGE_BUILDDIR"]
+		build_log := settings.ValueDict["PORTAGE_LOG_FILE"]
 
-	s._failed_pkgs=append(s._failed_pkgs, &_failed_pkg{
-		build_dir = build_dir, build_log = build_log,
-		pkg = pkg,
-		returncode=merge.returncode})
-	if not s._terminated_tasks:
-	s._failed_pkg_msg(s._failed_pkgs[-1], "install", "to")
-	s._status_display.failed = len(s._failed_pkgs)
-	return
+		s._failed_pkgs = append(s._failed_pkgs, &_failed_pkg{
+			build_dir, build_log,
+			pkg, nil,
+			merge.returncode})
+		if not s._terminated_tasks {
+			s._failed_pkg_msg(s._failed_pkgs[len(s._failed_pkgs)-1], "install", "to")
+			s._status_display.failed = len(s._failed_pkgs)
+		}
+		return
+	}
 
-	if merge.postinst_failure:
-	s._failed_pkgs_all.append(s._failed_pkg(
-		build_dir = merge.merge. settings.ValueDict["PORTAGE_BUILDDIR"),
-		build_log = merge.merge. settings.ValueDict["PORTAGE_LOG_FILE"),
-		pkg = pkg,
-		postinst_failure=true,
-		returncode = merge.returncode))
-	s._failed_pkg_msg(s._failed_pkgs_all[-1],
-		"execute postinst for", "for")
+	if merge.postinst_failure {
+		s._failed_pkgs_all = append(s._failed_pkgs_all, &_failed_pkg{
+			merge.merge.settings.ValueDict["PORTAGE_BUILDDIR"],
+			merge.merge.settings.ValueDict["PORTAGE_LOG_FILE"],
+			pkg, true, merge.returncode})
+		s._failed_pkg_msg(s._failed_pkgs_all[len(s._failed_pkgs_all)-1],
+			"execute postinst for", "for")
+	}
 
 	s._task_complete(pkg)
 	pkg_to_replace = merge.merge.pkg_to_replace
@@ -6919,7 +6902,7 @@ func (s *Scheduler) _job_delay() {
 	s._max_load
 	!= nil:
 
-	current_time = time.time()
+	current_time = time.Now()
 
 	if s._sigcont_time != nil:
 
@@ -6991,7 +6974,7 @@ func (s *Scheduler) _schedule_tasks_imp() bool{
 			merge.addExitListener(s._merge_exit)
 		} else if pkg.built{
 			s._jobs += 1
-			s._previous_job_start_time = time.time()
+			s._previous_job_start_time = time.Now()
 			s._status_display.running = s._jobs
 			s._running_tasks[id(task)] = task
 			task.scheduler = s._sched_iface
@@ -6999,7 +6982,7 @@ func (s *Scheduler) _schedule_tasks_imp() bool{
 			task.addExitListener(s._extract_exit)
 		} else{
 			s._jobs += 1
-			s._previous_job_start_time = time.time()
+			s._previous_job_start_time = time.Now()
 			s._status_display.running = s._jobs
 			s._running_tasks[id(task)] = task
 			task.scheduler = s._sched_iface
@@ -7294,7 +7277,7 @@ operation=nil, myrepo=nil) {
 
 type  SchedulerInterface struct {
 	// slot
-	add_reader,
+	add_reader func(int, func() bool)
 	add_writer func()
 	remove_reader func(int)
 	call_at,

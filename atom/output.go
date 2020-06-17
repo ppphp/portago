@@ -411,6 +411,7 @@ func (e *eOutput) ebegin(msg string) {
 	e.__last_e_cmd = "ebegin"
 }
 
+// ""
 func (e *eOutput) eend(errno int, msg string) {
 	if !e.quiet {
 		e.__eend("eend", errno, msg)
