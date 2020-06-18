@@ -2787,17 +2787,20 @@ func (d *dblink) _prune_plib_registry(unmerge bool,
 		d.vartree.dbapi._fs_lock()
 		plib_registry:= d.vartree.dbapi._plib_registry
 		plib_registry.lock()
-	try:
+		defer func() {
+			plib_registry.unlock()
+			d.vartree.dbapi._fs_unlock()
+		}()
 		plib_registry.load()
 
 		unmerge_with_replacement := unmerge&&preserve_paths!=nil
+
+		var exclude_pkgs []*PkgStr
 		if unmerge_with_replacement {
-			exclude_pkgs = (d.mycpv,)
-		}else {
-			exclude_pkgs = nil
+			exclude_pkgs = []*PkgStr{d.mycpv,}
 		}
 
-		d._linkmap_rebuild(exclude_pkgs = exclude_pkgs,
+		d._linkmap_rebuild(exclude_pkgs,
 			include_file = needed, preserve_paths = preserve_paths)
 
 		if unmerge{
@@ -2843,9 +2846,6 @@ func (d *dblink) _prune_plib_registry(unmerge bool,
 		}
 
 		plib_registry.store()
-	//finally:
-		plib_registry.unlock()
-		d.vartree.dbapi._fs_unlock()
 	}
 
 }
@@ -3360,7 +3360,7 @@ func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot 
 		except OSError:
 		continue
 
-		if not syscall.S_IFREG&child_lstat.st_mode):
+		if syscall.S_IFREG&child_lstat.st_mode==0:
 		all_owned = false
 		break
 
@@ -3722,7 +3722,7 @@ func (d *dblink) _match_contents(filename string) string {
 	return ""
 }
 
-func (d *dblink) _linkmap_rebuild(**kwargs) {
+func (d *dblink) _linkmap_rebuild(exclude_pkgs []*PkgStr,include_file string, preserve_paths) {
 	if d._linkmap_broken || 
 d.vartree.dbapi._linkmap == nil || 
 d.vartree.dbapi._plib_registry == nil || 
@@ -3730,13 +3730,13 @@ d.vartree.dbapi._plib_registry == nil ||
 ! d.vartree.dbapi._plib_registry.hasEntries()) {
 		return
 	}
-try:
-	d.vartree.dbapi._linkmap.rebuild(**kwargs)
-	except CommandNotFound as e:
-	d._linkmap_broken = true
-	d._display_merge(_("!!! Disabling preserve-libs " 
-"due to error: Command Not Found: %s\n") % (e,),
-	level=logging.ERROR, noiselevel=-1)
+//try:
+	d.vartree.dbapi._linkmap.rebuild(exclude_pkgs,include_file,preserve_paths)
+	//except CommandNotFound as e:
+	//d._linkmap_broken = true
+	//d._display_merge(_("!!! Disabling preserve-libs "
+//"due to error: Command Not Found: %s\n") % (e,),
+//	level=logging.ERROR, noiselevel=-1)
 }
 
 // false
@@ -4031,12 +4031,16 @@ func (d *dblink) _remove_preserved_libs(cpv_lib_map) {
 	{
 		files_to_remove.update(files)
 	}
-	files_to_remove := sorted(files_to_remove)
+	ftr := []string{}
+	for f := range files_to_remove{
+		ftr := append(ftr,f)
+	}
+	sort.Strings(ftr)
 	showMessage := d._display_merge
 	root := d.settings.ValueDict["ROOT"]
 
 	parent_dirs := map[string]bool{}
-	for _, obj := range files_to_remove {
+	for _, obj := range ftr {
 		obj = filepath.Join(root, strings.TrimLeft(obj, string(os.PathSeparator)))
 		parent_dirs[filepath.Dir(obj)] = true
 		obj_type := ""
@@ -4079,8 +4083,7 @@ func (d *dblink) _remove_preserved_libs(cpv_lib_map) {
 
 }
 
-func (d *dblink) _collision_protect(srcroot string, mypkglist []*dblink,
-	file_list, symlink_list) {
+func (d *dblink) _collision_protect(srcroot string, mypkglist []*dblink, file_list, symlink_list []string) {
 	real_relative_paths := map[string][]string{}
 
 	collision_ignore := []string{}
@@ -4099,7 +4102,7 @@ func (d *dblink) _collision_protect(srcroot string, mypkglist []*dblink,
 	if d.vartree.dbapi._plib_registry == nil {
 	} else {
 		plib_dict := d.vartree.dbapi._plib_registry.getPreservedLibs()
-		plib_cpv_map = map[string]{}
+		plib_cpv_map = map[string]string{}
 		for cpv, paths := range plib_dict {
 			for _,k := range paths{
 				plib_paths[k]=true
@@ -4312,23 +4315,23 @@ func (d *dblink) _security_check(installed_instances []*dblink) int {
 	}
 	showMessage := d._display_merge
 	file_paths := map[string]bool{}
-	for _, dblnk := range installed_instances{
+	for _, dblnk := range installed_instances {
 		for k := range dblnk.getcontents() {
-			file_paths[k]=true
+			file_paths[k] = true
 		}
 	}
 	inode_map := map[[2]uint64][]struct {
-		s string
+		s  string
 		s2 os.FileInfo
 	}{}
 	real_paths := map[string]bool{}
 	i := 0
-	for path := range file_paths{
+	for path := range file_paths {
 		i++
 		s, err := os.Lstat(path)
 		if err != nil {
 			//except OSError as e:
-			if err != syscall.ENOENT&& err != syscall.ENOTDIR{
+			if err != syscall.ENOENT && err != syscall.ENOTDIR {
 				//raise
 			}
 			//del e
@@ -4338,50 +4341,53 @@ func (d *dblink) _security_check(installed_instances []*dblink) int {
 			continue
 		}
 		path, _ = filepath.EvalSymlinks(path)
-		if  real_paths[path]{
+		if real_paths[path] {
 			continue
 		}
 		real_paths[path] = true
 		if s.Sys().(*syscall.Stat_t).Nlink > 1 &&
-			s.Mode() & (unix.S_ISUID | unix.S_ISGID) != 0 {
+			s.Mode()&(unix.S_ISUID|unix.S_ISGID) != 0 {
 			k := [2]uint64{s.Sys().(*syscall.Stat_t).Dev, s.Sys().(*syscall.Stat_t).Ino}
 			if _, ok := inode_map[k]; !ok {
-				inode_map[k]= []struct {
-					s string
+				inode_map[k] = []struct {
+					s  string
 					s2 os.FileInfo
 				}{}
 			}
 			inode_map[k] = append(inode_map[k], struct {
-				s string
+				s  string
 				s2 os.FileInfo
 			}{path, s})
 		}
 	}
 
-	suspicious_hardlinks := [][]struct{s  string;s2 os.FileInfo}{}
-	for _ , path_list := range inode_map{
+	suspicious_hardlinks := [][]struct {
+		s  string;
+		s2 os.FileInfo
+	}{}
+	for _, path_list := range inode_map {
 		s := path_list[0].s2
 		if len(path_list) == int(s.Sys().(*syscall.Stat_t).Nlink) {
 			continue
 		}
-		suspicious_hardlinks=append(suspicious_hardlinks,path_list)
+		suspicious_hardlinks = append(suspicious_hardlinks, path_list)
 	}
-	if len(suspicious_hardlinks)== 0 {
+	if len(suspicious_hardlinks) == 0 {
 		return 0
 	}
 
 	msg := []string{}
-	msg=append(msg,"suid/sgid file(s) with suspicious hardlink(s):")
-	msg=append(msg,"")
+	msg = append(msg, "suid/sgid file(s) with suspicious hardlink(s):")
+	msg = append(msg, "")
 	for _, path_list := range suspicious_hardlinks {
 		for _, v := range path_list {
 			path := v.s
 			msg = append(msg, fmt.Sprintf("\t%s", path))
 		}
 	}
-	msg=append(msg,"")
-	msg=append(msg,"See the Gentoo Security Handbook "+
-	"guide for advice on how to proceed.")
+	msg = append(msg, "")
+	msg = append(msg, "See the Gentoo Security Handbook "+
+		"guide for advice on how to proceed.")
 
 	d._eerror("preinst", msg)
 
@@ -4435,7 +4441,7 @@ func (d *dblink) _elog_process(phasefilter []string) {
 			"QA":    "eqawarn",
 			"ERROR": "eerror",
 		}
-		str_buffer = []string{}
+		str_buffer := []string{}
 		for phase, messages := range logentries{
 			for _,v := range messages{
 				key, lines := v.s ,v.ss
@@ -4459,11 +4465,10 @@ func (d *dblink) _elog_process(phasefilter []string) {
 	}
 }
 
-func (d *dblink) _emerge_log(msg) {emergelog(false, msg)}
+func (d *dblink) _emerge_log(msg string) {emergelog(false, msg)}
 
 // 0, nil, nil, 0
-func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
-	mydbapi DBAPI, prev_mtimes=nil, counter int) {
+func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydbapi DBAPI, prev_mtimes=nil, counter int) int {
 
 	destroot := d.settings.ValueDict["ROOT"]
 
@@ -4621,8 +4626,8 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
 		filelist = []string{}
 		linklist = []string{}
 		paths_with_newlines = []string{}
-		onerror := func(e) {
-			raise
+		onerror := func(e error) {
+			//raise
 		}
 
 		filepath.Walk(srcroot, func(path string, info os.FileInfo, err error) error {
@@ -4637,7 +4642,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
 				file_mode := info.Mode()
 				if unix.S_IFREG&file_mode != 0 {
 					filelist = append(filelist, relative_path)
-				} else if unix.S_IFLNK & file_mode {
+				} else if unix.S_IFLNK & file_mode != 0 {
 					linklist = append(linklist, relative_path)
 
 					myto, _ := filepath.EvalSymlinks(path)
@@ -4683,7 +4688,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int,
 			msg := []string{}
 			msg = append(msg, SplitSubN(fmt.Sprintf("The '%s' package will not install "+
 				"any files, but the currently installed '%s'"+
-				" package has the following files: ", d.mycpv, other_dblink.mycpv), 72))
+				" package has the following files: ", d.mycpv, other_dblink.mycpv), 72)...)
 			msg = append(msg, "")
 			ifs := []string{}
 			for k := range installed_files {
@@ -4733,11 +4738,10 @@ d._collision_protect(srcroot, others_in_slot + blockers, filelist, linklist)
 	rofilesystems := ro_checker(dirs_ro)
 
 	if rofilesystems {
-		msg = _("One or more files installed to this package are " +
+		msg := SplitSubN("One or more files installed to this package are " +
 			"set to be installed to read-only filesystems. " +
 			"Please mount the following filesystems as read-write " +
-			"and retry.")
-		msg = textwrap.wrap(msg, 70)
+			"and retry.", 70)
 		msg = append(msg, "")
 		for f
 		in
@@ -4756,166 +4760,187 @@ d._collision_protect(srcroot, others_in_slot + blockers, filelist, linklist)
 	}
 
 	if internal_collisions {
-		msg = _("Package '%s' has internal collisions between non-identical files "+
+		msg := fmt.Sprintf("Package '%s' has internal collisions between non-identical files "+
 			"(located in separate directories in the installation image (${D}) "+
 			"corresponding to merged directories in the target "+
-			"filesystem (${ROOT})):") % d.settings.mycpv
-		msg = textwrap.wrap(msg, 70)
-		msg = append(msg, "")
+			"filesystem (${ROOT})):", d.settings.mycpv)
+		msgs := SplitSubN(msg, 70)
+		msgs = append(msgs, "")
 		for k, v
 		in
-		sorted(internal_collisions.items(), key = operator.itemgetter(0)):
-		msg = append(msg, "\t%s"%filepath.Join(destroot, k.lstrip(string(os.PathSeparator))))
-		for (file1, file2), differences
-		in
-		sorted(v.items()):
-		msg = append(msg, "\t\t%s"%filepath.Join(destroot, file1.lstrip(string(os.PathSeparator))))
-		msg = append(msg, "\t\t%s"%filepath.Join(destroot, file2.lstrip(string(os.PathSeparator))))
-		msg = append(msg, "\t\t\tDifferences: %s"%", ".join(differences))
-		msg = append(msg, "")
-		d._elog("eerror", "preinst", msg)
+		sorted(internal_collisions.items(), key = operator.itemgetter(0)){
+			msgs = append(msgs, "\t%s"%filepath.Join(destroot, k.lstrip(string(os.PathSeparator))))
+			for (file1, file2), differences
+			in
+			sorted(v.items())
+			{
+				msgs = append(msgs, fmt.Sprintf("\t\t%s",filepath.Join(destroot, strings.TrimLeft(file1,string(os.PathSeparator)))))
+				msgs = append(msgs, fmt.Sprintf("\t\t%s",filepath.Join(destroot, strings.TrimLeft(file2,string(os.PathSeparator)))))
+				msgs = append(msgs, fmt.Sprintf("\t\t\tDifferences: %s", strings.Join(differences,", ")))
+				msgs = append(msgs, "")
+			}
+		}
+		d._elog("eerror", "preinst", msgs)
 
-		msg = _("Package '%s' NOT merged due to internal collisions "+
-			"between non-identical files.") % d.settings.mycpv
-		msg += _(" If necessary, refer to your elog messages for the whole " +
+		msg = fmt.Sprintf("Package '%s' NOT merged due to internal collisions "+
+			"between non-identical files.", d.settings.mycpv)
+		msg += (" If necessary, refer to your elog messages for the whole " +
 			"content of the above message.")
-		eerror(textwrap.wrap(msg, 70))
+		eerror(SplitSubN(msg, 70))
 		return 1
 	}
 
 	if symlink_collisions {
-		msg = _("Package '%s' has one or more collisions "+
+		msg := fmt.Sprintf("Package '%s' has one or more collisions "+
 			"between symlinks and directories, which is explicitly "+
-			"forbidden by PMS section 13.4 (see bug #326685):") % \
-		(d.settings.mycpv,)
-		msg = textwrap.wrap(msg, 70)
-		msg = append(msg, "")
+			"forbidden by PMS section 13.4 (see bug #326685):",
+			d.settings.mycpv, )
+		msgs := SplitSubN(msg, 70)
+		msgs = append(msgs, "")
 		for f
-		in
-	symlink_collisions:
-		msg = append(msg, "\t%s"%filepath.Join(destroot,
-			f.lstrip(string(os.PathSeparator))))
-		msg = append(msg, "")
-		d._elog("eerror", "preinst", msg)
+			in
+		symlink_collisions {
+			msgs = append(msgs, fmt.Sprintf("\t%s", filepath.Join(destroot,
+				strings.TrimLeft(f, string(os.PathSeparator)))))
+		}
+		msgs = append(msgs, "")
+		d._elog("eerror", "preinst", msgs)
 	}
 
-	if collisions{
-	collision_protect = "collision-protect" in d.settings.features
-	protect_owned = "protect-owned" in d.settings.features
-	msg = _("This package will overwrite one or more files that"+
-	" may belong to other packages (see list below).")
-	if not (collision_protect||protect_owned):
-	msg += _(" Add either \"collision-protect\" or"+
-	" \"protect-owned\" to FEATURES in"+
-	" make.conf if you would like the merge to abort"+
-	" in cases like this. See the make.conf man page for"+
-	" more information about these features.")
-	if d.settings.ValueDict["PORTAGE_QUIET") != "1":
-	msg += _(" You can use a command such as"+
-	" `portageq owners / <filename>` to identify the"+
-	" installed package that owns a file. If portageq"+
-	" reports that only one package owns a file then do NOT"+
-	" file a bug report. A bug report is only useful if it"+
-	" identifies at least two or more packages that are known"+
-	" to install the same file(s)."+
-	" If a collision occurs and you"+
-	" can not explain where the file came from then you"+
-	" should simply ignore the collision since there is not"+
-	" enough information to determine if a real problem"+
-	" exists. Please do NOT file a bug report at"+
-	" https://bugs.gentoo.org/ unless you report exactly which"+
-	" two packages install the same file(s). See"+
-	" https://wiki.gentoo.org/wiki/Knowledge_Base:Blockers"+
-	" for tips on how to solve the problem. And once again,"+
-	" please do NOT file a bug report unless you have"+
-	" completely understood the above message.")
+	if collisions {
+		collision_protect := d.settings.Features.Features["collision-protect"]
+		protect_owned := d.settings.Features.Features["protect-owned"]
+		msg := "This package will overwrite one or more files that" +
+					" may belong to other packages (see list below)."
+		if !(collision_protect || protect_owned) {
+			msg += " Add either \"collision-protect\" or" +
+							" \"protect-owned\" to FEATURES in" +
+							" make.conf if you would like the merge to abort" +
+							" in cases like this. See the make.conf man page for" +
+							" more information about these features."
+		}
+		if d.settings.ValueDict["PORTAGE_QUIET"] != "1" {
+			msg += " You can use a command such as" +
+							" `portageq owners / <filename>` to identify the" +
+							" installed package that owns a file. If portageq" +
+							" reports that only one package owns a file then do NOT" +
+							" file a bug report. A bug report is only useful if it" +
+							" identifies at least two or more packages that are known" +
+							" to install the same file(s)." +
+							" If a collision occurs and you" +
+							" can not explain where the file came from then you" +
+							" should simply ignore the collision since there is not" +
+							" enough information to determine if a real problem" +
+							" exists. Please do NOT file a bug report at" +
+							" https://bugs.gentoo.org/ unless you report exactly which" +
+							" two packages install the same file(s). See" +
+							" https://wiki.gentoo.org/wiki/Knowledge_Base:Blockers" +
+							" for tips on how to solve the problem. And once again," +
+							" please do NOT file a bug report unless you have" +
+							" completely understood the above message."
+		}
 
-	d.settings.ValueDict["EBUILD_PHASE"] = "preinst"
-	from textwrap import wrap
-	msg = wrap(msg, 70)
-	if collision_protect:
-	msg=append(msg,"")
-	msg=append(msg,_("package %s NOT merged") % d.settings.mycpv)
-	msg=append(msg,"")
-	msg=append(msg,_("Detected file collision(s):"))
-	msg=append(msg,"")
+		d.settings.ValueDict["EBUILD_PHASE"] = "preinst"
+		msgs := SplitSubN(msg, 70)
+		if collision_protect {
+			msgs = append(msgs, "")
+			msgs = append(msgs, fmt.Sprintf("package %s NOT merged",d.settings.mycpv))
+			msgs = append(msgs, "")
+			msgs = append(msgs, "Detected file collision(s):")
+			msgs = append(msgs, "")
+		}
 
-	for f in collisions:
-	msg=append(,"\t%s" % 
-filepath.Join(destroot, f.lstrip(string(os.PathSeparator))))
+		for f := range collisions {
+			msgs = append(msgs, fmt.Sprintf("\t%s" ,
+				filepath.Join(destroot, strings.TrimLeft(f, string(os.PathSeparator)))))
+		}
 
-	eerror(msg)
+		eerror(msgs)
 
-	owners = nil
-	if collision_protect || protect_owned || symlink_collisions:
-	msg = []
-	msg=append(msg,"")
-	msg=append(msg,_("Searching all installed"+
-	" packages for file collisions..."))
-	msg=append(msg,"")
-	msg=append(msg,_("Press Ctrl-C to Stop"))
-	msg=append(msg,"")
-	eerror(msg)
+		var owners   map[*dblink]map[string]bool
+		if collision_protect || protect_owned || symlink_collisions {
+			msg := []string{}
+			msg = append(msg, "")
+			msg = append(msg, "Searching all installed"+
+							" packages for file collisions...")
+			msg = append(msg, "")
+			msg = append(msg, "Press Ctrl-C to Stop")
+			msg = append(msg, "")
+			eerror(msg)
 
-	if len(collisions) > 20:
-			collisions = collisions[:20]
+			if len(collisions) > 20 {
+				collisions = collisions[:20]
+			}
 
-	pkg_info_strs = {}
-	d.lockdb()
-	try:
-	owners = d.vartree.dbapi._owners.get_owners(collisions)
-	d.vartree.dbapi.flush_cache()
+			pkg_info_strs := map[string]string{}
+			d.lockdb()
+		//try:
+			owners = d.vartree.dbapi._owners.get_owners(collisions)
+			d.vartree.dbapi.flush_cache()
 
-	for pkg in owners:
-	pkg = d.vartree.dbapi._pkg_str(pkg.mycpv, nil)
-	pkg_info_str = "%s%s%s" % (pkg,
-	_slot_separator, pkg.slot)
-	if pkg.repo != _unknown_repo:
-	pkg_info_str += "%s%s" % (_repo_separator,
-	pkg.repo)
-	pkg_info_strs[pkg] = pkg_info_str
+			for pkg := range owners {
+				pkg := d.vartree.dbapi._pkg_str(pkg.mycpv, nil)
+				pkg_info_str := fmt.Sprintf("%s%s%s" ,pkg,
+					_slot_separator, pkg.slot)
+				if pkg.repo != _unknown_repo {
+					pkg_info_str += fmt.Sprintf("%s%s" ,_repo_separator,
+						pkg.repo)
+				}
+				pkg_info_strs[pkg.string] = pkg_info_str
+			}
 
-	finally:
-	d.unlockdb()
+		//finally:
+			d.unlockdb()
 
-	for pkg, owned_files in owners.items():
-	msg = []
-	msg=append(,pkg_info_strs[pkg.mycpv])
-	for f in sorted(owned_files):
-	msg=append(,"\t%s" % filepath.Join(destroot,
-	f.lstrip(string(os.PathSeparator))))
-	msg=append(,"")
-	eerror(msg)
+			for pkg, owned_files:= range owners {
+				msg := []string{}
+				msg = append(msg, pkg_info_strs[pkg.mycpv.string])
+				of := []string{}
+				for k := range owned_files {
+					of = append(of, k)
+				}
+				sort.Strings(of)
+				for _, f := range of {
+					msg = append(msg, fmt.Sprintf("\t%s", filepath.Join(destroot,
+						strings.TrimLeft(f, string(os.PathSeparator)))))
+				}
+				msg = append(msg, "")
+				eerror(msg)
+			}
 
-	if not owners:
-	eerror([]string{"nil of the installed"+
-	" packages claim the file(s).", ""})
+			if len(owners) ==0 {
+				eerror([]string{"nil of the installed" +
+					" packages claim the file(s).", ""})
+			}
+		}
 
-	symlink_abort_msg =_("Package '%s' NOT merged since it has "+
-	"one or more collisions between symlinks and directories, "+
-	"which is explicitly forbidden by PMS section 13.4 "+
-	"(see bug  #326685).")
-					abort = false
-	if symlink_collisions:
-	abort = true
-	msg = symlink_abort_msg % (d.settings.mycpv,)
-	else if collision_protect:
-	abort = true
-	msg = _("Package '%s' NOT merged due to file collisions.") % 
-d.settings.mycpv
-	else if protect_owned && owners:
-	abort = true
-	msg = _("Package '%s' NOT merged due to file collisions.") % 
-d.settings.mycpv
-	else:
-	msg = _("Package '%s' merged despite file collisions.") % 
-d.settings.mycpv
-	msg += _(" If necessary, refer to your elog "+
-	"messages for the whole content of the above message.")
-	eerror(wrap(msg, 70))
+		symlink_abort_msg := "Package '%s' NOT merged since it has " +
+					"one or more collisions between symlinks and directories, " +
+					"which is explicitly forbidden by PMS section 13.4 " +
+					"(see bug  #326685)."
+		abort := false
+		if symlink_collisions {
+			abort = true
+			msg = fmt.Sprintf(symlink_abort_msg, d.settings.mycpv,)
+		}else if collision_protect {
+			abort = true
+			msg = fmt.Sprintf("Package '%s' NOT merged due to file collisions.",
+				d.settings.mycpv)
+		}else if protect_owned && len(owners) > 0 {
+			abort = true
+			msg = fmt.Sprintf("Package '%s' NOT merged due to file collisions.",
+				d.settings.mycpv)
+		}else {
+			msg = fmt.Sprintf("Package '%s' merged despite file collisions.",
+				d.settings.mycpv)
+		}
+		msg += " If necessary, refer to your elog " +
+					"messages for the whole content of the above message."
+		eerror(SplitSubN(msg, 70))
 
-	if abort:
-	return 1
+		if abort {
+			return 1
+		}
 	}
 
 	if err := syscall.Unlink(filepath.Join(
@@ -4952,199 +4977,223 @@ d.settings.mycpv
 	phase.start()
 	a = phase.wait()
 
-		if a != os.EX_OK:
-	showMessage(_("!!! FAILED preinst: ")+str(a)+"\n",
-	level=logging.ERROR, noiselevel=-1)
-	return a
+	if a != 0 {
+		showMessage(fmt.Sprintf("!!! FAILED preinst: ")+str(a)+"\n",
+			40, -1)
+		return a
+	}
 
-		for x in os.listdir(inforoot):
-	d.copyfile(inforoot+"/"+x)
+	xs, _:= listDir(inforoot)
+	for _, x := range xs{
+		d.copyfile(inforoot + "/" + x)
+	}
 
-		if counter == nil:
-	counter = d.vartree.dbapi.counter_tick(mycpv=d.mycpv)
-	with io.open(_unicode_encode(filepath.Join(d.dbtmpdir, "COUNTER"),
-	encoding=_encodings['fs'], errors='strict'),
-	mode='w', encoding=_encodings['repo.content'],
-	errors='backslashreplace') as f:
-	f.write("%s" % counter)
+	if counter == nil {
+		counter = d.vartree.dbapi.counter_tick()
+	}
+	ioutil.WriteFile(filepath.Join(d.dbtmpdir, "COUNTER"), []byte(fmt.Sprintf("%s" , counter)), 0644)
 
 	d.updateprotect()
 
-		d.vartree.dbapi._fs_lock()
+	d.vartree.dbapi._fs_lock()
 	try:
-						plib_registry = d.vartree.dbapi._plib_registry
-	if plib_registry:
-	plib_registry.lock()
-	try:
+		plib_registry := d.vartree.dbapi._plib_registry
+	if plib_registry!= nil {
+		plib_registry.lock()
+	}
+	//try:
 	plib_registry.load()
 	plib_registry.store()
-	finally:
+	//finally:
 	plib_registry.unlock()
 
-				cfgfiledict = grabdict(d.vartree.dbapi._conf_mem_file)
-	if "NOCONFMEM" in d.settings || downgrade:
-	cfgfiledict["IGNORE"]=1
-	else:
-	cfgfiledict["IGNORE"]=0
+	cfgfiledict := grabDict(d.vartree.dbapi._conf_mem_file,false, false, false, true, false)
+	if  Inmss(d.settings.ValueDict,"NOCONFMEM") || downgrade{
+		cfgfiledict["IGNORE"] = 1
+	}else {
+		cfgfiledict["IGNORE"] = 0
+	}
 
 	rval = d._merge_contents(srcroot, destroot, cfgfiledict)
-	if rval != os.EX_OK:
-	return rval
-	finally:
+	if rval != 0 {
+		return rval
+	}
+	//finally:
 	d.vartree.dbapi._fs_unlock()
 
-						for dblnk in others_in_slot:
-	dblnk._clear_contents_cache()
+	for _, dblnk := range others_in_slot{
+		dblnk._clear_contents_cache()
+	}
 	d._clear_contents_cache()
 
-	linkmap = d.vartree.dbapi._linkmap
-	plib_registry = d.vartree.dbapi._plib_registry
+	linkmap := d.vartree.dbapi._linkmap
+	plib_registry := d.vartree.dbapi._plib_registry
 					
-	preserve_paths = map[string]bool{}
-	needed = nil
-	if not (d._linkmap_broken || linkmap == nil||	plib_registry == nil):
-	d.vartree.dbapi._fs_lock()
-	plib_registry.lock()
-	try:
-	plib_registry.load()
-	needed = filepath.Join(inforoot, linkmap._needed_aux_key)
-	d._linkmap_rebuild(include_file=needed)
+	preserve_paths := map[string]bool{}
+	needed := ""
+	if ! (d._linkmap_broken || linkmap == nil||	plib_registry == nil) {
+		d.vartree.dbapi._fs_lock()
+		plib_registry.lock()
+	//try:
+		plib_registry.load()
+		needed = filepath.Join(inforoot, linkmap._needed_aux_key)
+		d._linkmap_rebuild(nil,needed, nil)
 
-						preserve_paths = d._find_libs_to_preserve()
-	finally:
-	plib_registry.unlock()
-	d.vartree.dbapi._fs_unlock()
+		preserve_paths := d._find_libs_to_preserve(false)
+	//finally:
+		plib_registry.unlock()
+		d.vartree.dbapi._fs_unlock()
 
-	if preserve_paths:
-	d._add_preserve_libs_to_contents(preserve_paths)
+		if preserve_paths {
+			d._add_preserve_libs_to_contents(preserve_paths)
+		}
+	}
 
-				reinstall_d = false
-	if d.myroot == "/" &&
-match_from_list(PORTAGE_PACKAGE_ATOM, [d.mycpv]):
-	reinstall_d = true
+	reinstall_self := false
+	if d.myroot == "/" && matchFromList(PORTAGE_PACKAGE_ATOM, [d.mycpv]) {
+		reinstall_self = true
+	}
 
-	emerge_log = d._emerge_log
+	emerge_log := d._emerge_log
 
-					autoclean = d.settings.ValueDict["AUTOCLEAN", "yes") == "yes" ||preserve_paths
+	autoclean := d.settings.ValueDict["AUTOCLEAN"] == "yes" || d.settings.ValueDict["AUTOCLEAN"] == "" ||preserve_paths
 
-	if autoclean:
-	emerge_log(_(" >>> AUTOCLEAN: %s") % (slot_atom,))
+	if autoclean {
+		emerge_log(fmt.Sprintf(" >>> AUTOCLEAN: %s", slot_atom, ))
+	}
 
-	others_in_slot=append(,d)  	for dblnk in list(others_in_slot):
-	if dblnk is d:
-	continue
-	if not (autoclean || dblnk.mycpv == d.mycpv || reinstall_d):
-	continue
-	showMessage(_(">>> Safely unmerging already-installed instance...\n"))
-	emerge_log(_(" === Unmerging... (%s)") % (dblnk.mycpv,))
-	others_in_slot.remove(dblnk) 	dblnk._linkmap_broken = d._linkmap_broken
-	dblnk.settings.ValueDict["REPLACED_BY_VERSION"] = portage.versions.cpv_getversion(d.mycpv)
-	dblnk.settings.BackupChanges("REPLACED_BY_VERSION")
-	unmerge_rval = dblnk.unmerge(ldpath_mtimes=prev_mtimes,
-	others_in_slot=others_in_slot, needed=needed,
-	preserve_paths=preserve_paths)
-	dblnk.settings.pop("REPLACED_BY_VERSION", nil)
+	others_in_slot=append(others_in_slot,d)
+	for _, dblnk := range others_in_slot{
+		if dblnk == d {
+			continue
+		}
+		if !(autoclean || dblnk.mycpv == d.mycpv || reinstall_self) {
+			continue
+		}
+		showMessage((">>> Safely unmerging already-installed instance...\n"), 0,0)
+		emerge_log(fmt.Sprintf(" === Unmerging... (%s)",dblnk.mycpv, ))
+		others_in_slot.remove(dblnk)
+		dblnk._linkmap_broken = d._linkmap_broken
+		dblnk.settings.ValueDict["REPLACED_BY_VERSION"] = portage.versions.cpv_getversion(d.mycpv)
+		dblnk.settings.BackupChanges("REPLACED_BY_VERSION")
+		unmerge_rval = dblnk.unmerge(nil, true, prev_mtimes,
+		others_in_slot, needed, preserve_paths)
+		delete(dblnk.settings.ValueDict,"REPLACED_BY_VERSION")
 
-	if unmerge_rval == os.EX_OK:
-	emerge_log(_(" >>> unmerge success: %s") % (dblnk.mycpv,))
-	else:
-	emerge_log(_(" !!! unmerge FAILURE: %s") % (dblnk.mycpv,))
+		if unmerge_rval == 0 {
+			emerge_log(fmt.Sprintf(" >>> unmerge success: %s", dblnk.mycpv, ))
+		}else {
+			emerge_log(fmt.Sprintf(" !!! unmerge FAILURE: %s", dblnk.mycpv, ))
+		}
 
-	d.lockdb()
-	try:
+		d.lockdb()
+	//try:
 		dblnk.delete()
-	finally:
-	d.unlockdb()
-	showMessage(_(">>> Original instance of package unmerged safely.\n"))
+	//finally:
+		d.unlockdb()
+		showMessage_(">>> Original instance of package unmerged safely.\n"))
+	}
 
-	if len(others_in_slot) > 1:
-	showMessage(colorize("WARN", _("WARNING:"))
-	+ _(" AUTOCLEAN is disabled.  This can cause serious"+
-	" problems due to overlapping packages.\n"),
-	level=30, noiselevel=-1)
+	if len(others_in_slot) > 1 {
+		showMessage(colorize("WARN", ("WARNING:"))
+		+ (" AUTOCLEAN is disabled.  This can cause serious"+
+			" problems due to overlapping packages.\n"), 30,-1)
+	}
 
-		d.dbdir = d.dbpkgdir
+	d.dbdir = d.dbpkgdir
 	d.lockdb()
-	try:
+	//try:
 	d.delete()
 	_movefile(d.dbtmpdir, d.dbpkgdir, mysettings=d.settings)
 	d._merged_path(d.dbpkgdir, os.Lstat(d.dbpkgdir))
 	d.vartree.dbapi._cache_delta.recordEvent(
 	"add", d.mycpv, slot, counter)
-	finally:
+	//finally:
 	d.unlockdb()
 
-				d._clear_contents_cache()
-	contents = d.getcontents()
-	destroot_len = len(destroot) - 1
+	d._clear_contents_cache()
+	contents := d.getcontents()
+	destroot_len := len(destroot) - 1
 	d.lockdb()
-	try:
-	for blocker in blockers:
-	d.vartree.dbapi.removeFromContents(blocker, iter(contents),
-	relative_paths=false)
-	finally:
+	//try:
+	for blocker in blockers{
+		d.vartree.dbapi.removeFromContents(blocker, iter(contents),
+			relative_paths = false)
+	}
+	//finally:
 	d.unlockdb()
 
 	plib_registry = d.vartree.dbapi._plib_registry
-	if plib_registry:
-	d.vartree.dbapi._fs_lock()
-	plib_registry.lock()
+	if plib_registry {
+		d.vartree.dbapi._fs_lock()
+		plib_registry.lock()
 	try:
-	plib_registry.load()
+		plib_registry.load()
 
-	if preserve_paths:
+		if preserve_paths:
 		plib_registry.register(d.mycpv, slot, counter,
-	sorted(preserve_paths))
+			sorted(preserve_paths))
 
-			plib_dict = plib_registry.getPreservedLibs()
-	for cpv, paths in plib_collisions.items():
-	if cpv not in plib_dict:
-	continue
-	has_vdb_entry = false
-	if cpv != d.mycpv:
-					d.vartree.dbapi.lock()
+		plib_dict = plib_registry.getPreservedLibs()
+		for cpv, paths
+		in
+		plib_collisions.items():
+		if cpv not
+		in
+	plib_dict:
+		continue
+		has_vdb_entry = false
+		if cpv != d.mycpv:
+		d.vartree.dbapi.lock()
 	try:
 	try:
-	slot = d.vartree.dbapi._pkg_str(cpv, nil).slot
-	counter = d.vartree.dbapi.cpv_counter(cpv)
-	except (KeyError, InvalidData):
-	pass
-	else:
-	has_vdb_entry = true
-	d.vartree.dbapi.removeFromContents(
-	cpv, paths)
+		slot = d.vartree.dbapi._pkg_str(cpv, nil).slot
+		counter = d.vartree.dbapi.cpv_counter(cpv)
+		except(KeyError, InvalidData):
+		pass
+		else:
+		has_vdb_entry = true
+		d.vartree.dbapi.removeFromContents(
+			cpv, paths)
 	finally:
-	d.vartree.dbapi.unlock()
+		d.vartree.dbapi.unlock()
 
-	if not has_vdb_entry:
-				has_registry_entry = false
-	for plib_cps, (plib_cpv, plib_counter, plib_paths) in 
-plib_registry._data.items():
-	if plib_cpv != cpv:
-	continue
+		if not has_vdb_entry:
+		has_registry_entry = false
+		for plib_cps, (plib_cpv, plib_counter, plib_paths) in
+		plib_registry._data.items():
+		if plib_cpv != cpv:
+		continue
 	try:
-	cp, slot = plib_cps.split(":", 1)
-	except ValueError:
-	continue
-	counter = plib_counter
-	has_registry_entry = true
-	break
+		cp, slot = plib_cps.split(":", 1)
+		except
+	ValueError:
+		continue
+		counter = plib_counter
+		has_registry_entry = true
+		break
 
-	if not has_registry_entry:
-	continue
+		if not has_registry_entry:
+		continue
 
-	remaining = []
-	for f in plib_dict[cpv] {
-		if f not in paths{
-			remaining = append(remaining, f)
+		remaining = []
+		for f
+		in
+		plib_dict[cpv]
+		{
+			if f not
+			in
+			paths{
+				remaining = append(remaining, f)
+			}
 		}
-	}
-	plib_registry.register(cpv, slot, counter, remaining)
+		plib_registry.register(cpv, slot, counter, remaining)
 
-	plib_registry.store()
+		plib_registry.store()
 	finally:
-	plib_registry.unlock()
-	d.vartree.dbapi._fs_unlock()
+		plib_registry.unlock()
+		d.vartree.dbapi._fs_unlock()
+	}
 
 	d.vartree.dbapi._add(d)
 	contents = d.getcontents()
@@ -5153,14 +5202,15 @@ plib_registry._data.items():
 filepath.Join(d.dbpkgdir, "environment.bz2")
 	d.settings.BackupChanges("PORTAGE_UPDATE_ENV")
 	try:
-	phase = EbuildPhase(background=false, phase="postinst",
-	scheduler=d._scheduler, settings=d.settings)
+	phase = NewEbuildPhase(nil, false, "postinst",
+	d._scheduler,d.settings , nil)
 	phase.start()
 	a = phase.wait()
-	if a == os.EX_OK:
-	showMessage(_(">>> %s merged.\n") % d.mycpv)
+	if a == 0 {
+		showMessage(_(">>> %s merged.\n") % d.mycpv)
+	}
 	finally:
-	d.settings.pop("PORTAGE_UPDATE_ENV", nil)
+	delete(d.settings.ValueDict,"PORTAGE_UPDATE_ENV")
 
 	if a != 0 {
 		d._postinst_failure = true
@@ -5174,7 +5224,7 @@ filepath.Join(d.dbpkgdir, "environment.bz2")
 	contents=contents, env=d.settings,
 	WriteMsg_level=d._display_merge, vardbapi=d.vartree.dbapi)
 
-			d._prune_plib_registry()
+	d._prune_plib_registry(false, nil, nil)
 	d._post_merge_sync()
 
 	return 0
@@ -5776,17 +5826,6 @@ func (d *dblink) getelements(ename string) []string {
 	return myreturn
 }
 
-func (d *dblink) setelements(mylist,ename) {
-
-	with io.open(_unicode_encode(
-		filepath.Join(d.dbdir, ename),
-		encoding=_encodings['fs'], errors='strict'),
-	mode='w', encoding=_encodings['repo.content'],
-		errors='backslashreplace') as f:
-	for x in mylist:
-	f.write("%s\n" % x)
-}
-
 func (d *dblink) isregular() bool {
 	return pathExists(filepath.Join(d.dbdir, "CATEGORY"))
 
@@ -5875,7 +5914,7 @@ func (d *dblink) _quickpkg_dblink(backup_dblink *dblink, background bool, logfil
 
 // "", nil, "", nil, nil, nil, 0
 func NewDblink(cat, pkg, myroot string, settings *Config, treetype string,
-	vartree *varTree, blockers, scheduler interface{}, pipe int) *dblink {
+	vartree *varTree, blockers interface{}, scheduler *SchedulerInterface, pipe int) *dblink {
 	d := &dblink{}
 
 	d._normalize_needed = regexp.MustCompile("//|^[^/]|./$|(^|/)\\.\\.?(/|$)")
@@ -5991,7 +6030,7 @@ func unmerge(cat, pkg string, settings *Config,
 		}
 	}()
 	if mylink.exists() {
-		retval := mylink.unmerge(ldpath_mtimes = ldpath_mtimes)
+		retval := mylink.unmerge(nil, true,ldpath_mtimes, nil, nil, nil)
 		if retval == 0 {
 			mylink.lockdb()
 		//try:
@@ -6983,7 +7022,7 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex {
 			mypf := pkg_metadata["PF"]
 			slot := pkg_metadata["SLOT"]
 			mypkg := myfile[:len(myfile)-5]
-			if !mycat || mypf == "" || slot == "" {
+			if mycat =="" || mypf == "" || slot == "" {
 				WriteMsg(fmt.Sprintf("\n!!! Invalid binary package: '%s'\n", full_path), -1, nil)
 				missing_keys := []string{}
 				if !mycat {
@@ -7389,7 +7428,7 @@ func (b *BinaryTree) inject(cpv, filename string) {
 	}
 	full_path := filename
 	if filename == "" {
-		full_path = b.getname(cpv)
+		full_path = b.getname(cpv, false)
 	}
 	s, err := os.Stat(full_path)
 	if err != nil {
@@ -7401,7 +7440,7 @@ func (b *BinaryTree) inject(cpv, filename string) {
 		WriteMsg(fmt.Sprintf("!!! Binary package does not exist: '%s'\n",full_path), -1, nil)
 		return
 	}
-	metadata := b._read_metadata(full_path, s)
+	metadata := b._read_metadata(full_path, s, nil)
 	invalid_depend := false
 try:
 	b._eval_use_flags(metadata)
@@ -7476,49 +7515,46 @@ try:
 }
 
 // nil
-func (b *BinaryTree) _read_metadata(filename string, st os.FileInfo, keys=nil) {
-
+func (b *BinaryTree) _read_metadata(filename string, st os.FileInfo, keys []string) map[string]string {
+	metadata :=map[string]string{}
 	if keys == nil {
 		keys = b.dbapi._aux_cache_keys
 		metadata = b.dbapi._aux_cache_slot_dict()
-	}else {
-		metadata ={}
 	}
 	binary_metadata := NewTbz2(filename).get_data()
-	for k in keys{
-		if k == "_mtime_"{
-		metadata[k] = st.ModTime()
-	} else if k == "SIZE"{
-		metadata[k] = st.Size()
-	} else{
-		v = binary_metadata.get(_unicode_encode(k))
-		if v == nil{
-		if k == "EAPI"{
-		metadata[k] = "0"
-	} else{
-		metadata[k] = ""
-	}
-	} else{
-		v = _unicode_decode(v)
-		metadata[k] = " ".join(v.split())
-	}
-	}
+	for _, k := range keys {
+		if k == "_mtime_" {
+			metadata[k] = fmt.Sprint(st.ModTime().Nanosecond())
+		} else if k == "SIZE" {
+			metadata[k] = fmt.Sprint(st.Size())
+		} else {
+			v := binary_metadata[k]
+			if v == "" {
+				if k == "EAPI" {
+					metadata[k] = "0"
+				} else {
+					metadata[k] = ""
+				}
+			} else {
+				metadata[k] = strings.Join(strings.Fields(v), " ")
+			}
+		}
 	}
 	return metadata
 }
 
-func (b *BinaryTree) _inject_file(pkgindex, cpv *PkgStr, filename) {
+func (b *BinaryTree) _inject_file(pkgindex, cpv *PkgStr, filename string) {
 
-	instance_key := b.dbapi._instance_key(cpv)
+	instance_key := b.dbapi._instance_key(cpv.string)
 	if b._remotepkgs != nil {
-		delete(b._remotepkgs,instance_key)
+		delete(b._remotepkgs,instance_key.string)
 	}
 
 	b.dbapi.cpv_inject(cpv)
 	b._pkg_paths[instance_key.string] = filename[len(b.pkgdir)+1:]
-	d = b._pkgindex_entry(cpv)
+	d := b._pkgindex_entry(cpv)
 
-			path = d.get("PATH", "")
+	path := d["PATH"]
 	for i in range(len(pkgindex.packages) - 1, -1, -1):
 	d2 = pkgindex.packages[i]
 	if path && path == d2.get("PATH"):
@@ -7625,15 +7661,16 @@ func (b *BinaryTree) _merge_pkgindex_header(src, dest map[string]string) {
 	}
 }
 
-func (b *BinaryTree) _propagate_config(config) {
+func (b *BinaryTree) _propagate_config(config *Config) bool {
 
-	if b._pkgindex_header == nil:
-	return false
+	if b._pkgindex_header == nil {
+		return false
+	}
 
 	b._merge_pkgindex_header(b._pkgindex_header,
 		config.configDict["defaults"])
-	config.regenerate()
-	config._init_iuse()
+	config.regenerate(0)
+	config.initIuse()
 	return true
 }
 
@@ -9015,6 +9052,7 @@ nil:
 
 }
 
+// 1
 func (p *portdbapi) match(mydep, use_cache=1) {
 	return p.xmatch("match-visible", mydep)
 }

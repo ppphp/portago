@@ -1118,7 +1118,8 @@ func (c *Config) _getMissingLicenses(cpv *PkgStr, metadata map[string]string) []
 	return c.licenseManager.getMissingLicenses(cpv, metadata["USE"], metadata["LICENSE"], metadata["SLOT"], metadata["repository"])
 }
 
-func (c *Config) regenerate(useonly int) { // 0
+// 0
+func (c *Config) regenerate(useonly int) {
 	c.modifying()
 	myincrementals := map[string]bool{}
 	if useonly != 0 {

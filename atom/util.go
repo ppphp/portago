@@ -2,8 +2,10 @@ package atom
 
 import (
 	"bytes"
+	"debug/elf"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -1298,13 +1300,13 @@ func write_atomic(filePath string, content string, mode int, followLinks bool) {
 	//if f:
 	//f.abort()
 	//func_call = "write_atomic('%s')" % file_path
-	//if e.errno == errno.EPERM:
+	//if e.errno == syscall.EPERM:
 	//raise OperationNotPermitted(func_call)
-	//else if e.errno == errno.EACCES:
+	//else if e.errno == syscall.EACCES:
 	//raise PermissionDenied(func_call)
-	//else if e.errno == errno.EROFS:
+	//else if e.errno == syscall.EROFS:
 	//raise ReadOnlyFileSystem(func_call)
-	//else if e.errno == errno.ENOENT:
+	//else if e.errno == syscall.ENOENT:
 	//raise FileNotFound(file_path)
 	//else:
 	//raise
@@ -1489,7 +1491,7 @@ func (p *preservedLibsRegistry) load() {
 		//except EnvironmentError as e:
 		//if not hasattr(e, 'errno'):
 		//raise
-		//elif e.errno == errno.ENOENT:
+		//elif e.errno == syscall.ENOENT:
 		//pass
 		//elif e.errno == PermissionDenied.errno:
 		//raise PermissionDenied(self._filename)
@@ -1548,7 +1550,7 @@ func (p *preservedLibsRegistry) store() {
 	f.Close()
 	//except EnvironmentError as e:
 	//if e.errno != PermissionDenied.errno:
-	//writemsg_level("!!! %s %s\n" % (e, self._filename),
+	//WriteMsgLevel("!!! %s %s\n" % (e, self._filename),
 	//	level=logging.ERROR, noiselevel=-1)
 	//else:
 	p._data_orig = map[string]*struct {
@@ -1664,7 +1666,9 @@ type linkageMapELF struct {
 	}
 	_dbapi                                                            *vardbapi
 	_root                                                             string
-	_libs, _obj_properties, _obj_key_cache, _defpath, _path_key_cache map[string]string
+	_libs, _obj_properties map[string]string
+	_defpath map[string]bool
+	_obj_key_cache, _path_key_cache map[string]*_ObjectKey
 }
 
 type _obj_properties_class struct{
@@ -1686,23 +1690,23 @@ func New_obj_properties_class(arch, needed, runpaths, soname, alt_paths, owner)*
 func (o*linkageMapELF) _clear_cache() {
 	o._libs= map[string]string{}
 	o._obj_properties= map[string]string{}
-	o._obj_key_cache= map[string]string{}
-	o._defpath= map[string]string{}
-	o._path_key_cache= map[string]string{}
+	o._obj_key_cache= map[string]*_ObjectKey{}
+	o._defpath= map[string]bool{}
+	o._path_key_cache= map[string]*_ObjectKey{}
 }
 
 func (o*linkageMapELF) _path_key( path string)  *_ObjectKey{
 	key := o._path_key_cache[path]
-	if key == "" {
+	if key == nil {
 		key = New_ObjectKey(path, o._root)
 	}
 	o._path_key_cache[path] = key
 	return key
 }
 
-func (o*linkageMapELF) _obj_key(path) *_ObjectKey {
+func (o*linkageMapELF) _obj_key(path string) *_ObjectKey {
 	key := o._obj_key_cache[path]
-	if key == "" {
+	if key == nil {
 		key = New_ObjectKey(path, o._root)
 	}
 	o._obj_key_cache[path] = key
@@ -1711,7 +1715,7 @@ func (o*linkageMapELF) _obj_key(path) *_ObjectKey {
 
 
 type _ObjectKey struct{
-	_key
+	_key interface{}
 }
 
 func(o*_ObjectKey) __hash__() {
@@ -1722,22 +1726,24 @@ func(o*_ObjectKey) __eq__( other *_ObjectKey) bool {
 	return o._key == other._key
 }
 
-func(o*_ObjectKey) _generate_object_key(obj, root) {
+func(o*_ObjectKey) _generate_object_key(obj, root string) interface{} {
 
-	abs_path = os.path.join(root, obj.lstrip(os.sep))
-try:
-	object_stat = os.stat(abs_path)
-	except
-OSError:
-	return os.path.realpath(abs_path)
-	return (object_stat.st_dev, object_stat.st_ino)
+	abs_path := filepath.Join(root, strings.TrimLeft(obj, string(os.PathSeparator)))
+	object_stat, err := os.Stat(abs_path)
+	if err != nil {
+		//except OSError:
+		rp, _ := filepath.EvalSymlinks(abs_path)
+		return rp
+	}
+	return [2]uint64{object_stat.Sys().(*syscall.Stat_t).Dev, object_stat.Sys().(*syscall.Stat_t).Ino}
 }
 
-func(o*_ObjectKey) file_exists() {
-	return isinstance(o._key, tuple)
+func(o*_ObjectKey) file_exists() bool{
+	_, ok := o._key.([2]uint64)
+	return ok
 }
 
-func New_ObjectKey(obj, root)*_ObjectKey {
+func New_ObjectKey(obj, root string)*_ObjectKey {
 	o := &_ObjectKey{}
 	o._key = o._generate_object_key(obj, root)
 	return o
@@ -1760,361 +1766,460 @@ func New_LibGraphNode( key ) *_LibGraphNode{
 	return l
 }
 
-func (o*linkageMapELF) rebuild(exclude_pkgs=None, include_file=None,
+// nil, "", nil
+func (o*linkageMapELF) rebuild(exclude_pkgs []*PkgStr, include_file string,
 preserve_paths=None) {
 
-	os = _os_merge
 	root := o._root
 	root_len := len(root) - 1
 	o._clear_cache()
-	o._defpath.update(getlibpaths(o._dbapi.settings['EROOT'],
-		env = o._dbapi.settings))
+	for _, k := range getLibPaths(o._dbapi.settings.ValueDict["EROOT"],
+		o._dbapi.settings.ValueDict) {
+		o._defpath[k] = true
+	}
 	libs := o._libs
 	obj_properties := o._obj_properties
 
-	lines := []
+	lines := []*struct {
+		p      *PkgStr;
+		s1, s2 string
+	}{}
 
-	if include_file is
-	not
-None:
-	for line
-	in
-	grabfile(include_file):
-	lines.append((None, include_file, line))
+	if include_file != "" {
+		for _, line := range grabFile(include_file, 0, false, false) {
+			lines = append(lines, &struct {
+				p      *PkgStr;
+				s1, s2 string
+			}{nil, include_file, line})
+		}
+	}
 
-	aux_keys = [o._needed_aux_key]
-	can_lock = os.access(os.path.dirname(o._dbapi._dbroot), os.W_OK)
-	if can_lock:
-	o._dbapi.lock()
-try:
-	for cpv
-	in
-	o._dbapi.cpv_all():
-	if exclude_pkgs is
-	not
-	None
-	and
-	cpv
-	in
-exclude_pkgs:
-	continue
-	needed_file = o._dbapi.getpath(cpv,
-		filename = o._needed_aux_key)
-	for line
-	in
-	o._dbapi.aux_get(cpv, aux_keys)[0].splitlines():
-	lines.append((cpv, needed_file, line))
-finally:
-	if can_lock:
-	o._dbapi.unlock()
+	aux_keys := map[string]bool{o._needed_aux_key: true}
+	can_lock := osAccess(filepath.Dir(o._dbapi._dbroot), unix.W_OK)
+	if can_lock {
+		o._dbapi.lock()
+	}
+	//try:
+	for _, cpv := range o._dbapi.cpv_all(1) {
+		in := false
+		for _, k := range exclude_pkgs {
+			if k.string == cpv.string {
+				in = true
+				break
+			}
+		}
+		if exclude_pkgs != nil && in {
+			continue
+		}
+		needed_file := o._dbapi.getpath(cpv.string, o._needed_aux_key)
+		for _, line := range strings.Split(o._dbapi.aux_get(cpv.string, aux_keys, "")[0], "\n") {
+			lines = append(lines, &struct {
+				p      *PkgStr;
+				s1, s2 string
+			}{cpv, needed_file, line})
+		}
+	}
+	//finally:
+	if can_lock {
+		o._dbapi.unlock()
+	}
 
-	plibs =
+	plibs :=
 	{
 	}
 	if preserve_paths is
 	not
-None:
-	plibs.update((x, None)
-	for x
+	None{
+		plibs.update((x, None)
+		for x
+		in
+		preserve_paths)
+	}
+	if o._dbapi._plib_registry!= nil && o._dbapi._plib_registry.hasEntries() {
+		for cpv, items := range o._dbapi._plib_registry.getPreservedLibs() {
+			in := false
+			for _, k := range exclude_pkgs {
+				if k.string == cpv {
+					in = true
+					break
+				}
+			}
+			if exclude_pkgs != nil && in {
+				continue
+			}
+
+			for _, x := range items {
+				plibs.update((x, cpv))
+			}
+		}
+	}
+	if len(plibs) > 0 {
+		ep := EPREFIX
+		if ep == "" {
+			ep = "/"
+		}
+		args = []string{filepath.Join(ep, "usr/bin/scanelf"), "-qF", "%a;%F;%S;%r;%n"}
+		args.extend(filepath.Join(root, x.lstrip("."+os.sep)) \
+		for x
+			in
+		plibs)
+	try:
+		proc = subprocess.Popen(args, stdout = subprocess.PIPE)
+		except
+		EnvironmentError
+		as
+	e:
+		if e.errno != syscall.ENOENT:
+		raise
+		raise
+		CommandNotFound(args[0]) else:
+		for l
+			in
+		proc.stdout:
+	try:
+		l = _unicode_decode(l,
+			encoding = _encodings['content'], errors = 'strict')
+		except
+	UnicodeDecodeError:
+		l = _unicode_decode(l,
+			encoding = _encodings['content'], errors = 'replace')
+		WriteMsgLevel(_("\nError decoding characters " \
+		"returned from scanelf: %s\n\n") % (l, ),
+		level = logging.ERROR, noiselevel = -1)
+		l = l[3:].rstrip("\n")
+		if not l:
+		continue
+	try:
+		entry = NeededEntry.parse("scanelf", l)
+		except
+		InvalidData
+		as
+	e:
+		WriteMsgLevel("\n%s\n\n"%(e, ),
+			level = logging.ERROR, noiselevel = -1)
+		continue
+	try:
+		with
+		open(_unicode_encode(entry.filename,
+			encoding = _encodings['fs'],
+			errors = 'strict'), 'rb') as
+	f:
+		elf_header = ELFHeader.read(f)
+		except
+		EnvironmentError
+		as
+	e:
+		if e.errno != syscall.ENOENT:
+		raise
+		continue
+
+		if not entry.soname:
+	try:
+		proc = subprocess.Popen([]string{"file",
+			_unicode_encode(entry.filename,
+				encoding = _encodings['fs'], errors = 'strict')},
+			stdout = subprocess.PIPE)
+		out, err = proc.communicate()
+		proc.wait()
+		except
+	EnvironmentError:
+		pass else:
+		if b'SB shared object'
+		in
+	out:
+		entry.soname = os.path.basename(entry.filename)
+
+		entry.multilib_category = compute_multilib_category(elf_header)
+		entry.filename = entry.filename[root_len:]
+		owner = plibs.pop(entry.filename, None)
+		lines.append((owner, "scanelf", _unicode(entry)))
+		proc.wait()
+		proc.stdout.close()
+	}
+
+	if len(plibs) > 0 {
+		for x, cpv
+			in
+		plibs.items() {
+			lines.append((cpv, "plibs", strings.Join([]string{"", x, "", "", ""},";")))
+		}
+	}
+
+	frozensets =
+	{
+	}
+	owner_entries = collections.defaultdict(list)
+
+	for {
+	try:
+		owner, location, l = lines.pop()
+		except
+	IndexError:
+		break
+		l = l.rstrip("\n")
+		if not l:
+		continue
+		if strings.Contains(l, string([]byte{0})) {
+			WriteMsgLevel(fmt.Sprintf("\nLine contains null byte(s) "+
+				"in %s: %s\n\n", location, l), 40, -1)
+			continue
+		}
+		entry ,err := NewNeededEntry().parse(location, l)
+		if err != nil {
+			//except InvalidData as e:
+			WriteMsgLevel(fmt.Sprintf("\n%s\n\n", err), 40, -1)
+			continue
+		}
+
+		if entry.multilib_category == "" {
+			entry.multilib_category = _approx_multilib_categories.get(
+				entry.arch, entry.arch)
+		}
+
+		entry.filename = NormalizePath(entry.filename)
+		expand := map[string]string{
+			"ORIGIN": filepath.Dir(entry.filename)
+		}
+		entry.runpaths = frozenset(NormalizePath(
+			varexpand(x, expand, error_leader = lambda:
+		"%s: " % location))
+		for x
+			in
+		entry.runpaths)
+		entry.runpaths = frozensets.setdefault(entry.runpaths, entry.runpaths)
+		owner_entries[owner].append(entry)
+	}
+
+	for owner, entries
 	in
-	preserve_paths)
-	if o._dbapi._plib_registry and \
-	o._dbapi._plib_registry.hasEntries():
-	for cpv, items
-	in \
-	o._dbapi._plib_registry.getPreservedLibs().items():
-	if exclude_pkgs is
-	not
-	None
-	and
-	cpv
+	owner_entries.items()
+	{
+		if owner is
+	None:
+		continue
+
+		providers =
+		{
+		}
+		for entry
+			in
+		entries:
+		if entry.soname:
+		providers[SonameAtom(entry.multilib_category, entry.soname)] = entry
+
+		for entry
+			in
+		entries:
+		implicit_runpaths = []
+		for soname
+			in
+		entry.needed:
+		soname_atom = SonameAtom(entry.multilib_category, soname)
+		provider = providers.get(soname_atom)
+		if provider is
+	None:
+		continue
+		provider_dir = filepath.Dir(provider.filename)
+		if provider_dir not
+		in
+		entry.runpaths:
+		implicit_runpaths.append(provider_dir)
+
+		if implicit_runpaths:
+		entry.runpaths = frozenset(
+			itertools.chain(entry.runpaths, implicit_runpaths))
+		entry.runpaths = frozensets.setdefault(
+			entry.runpaths, entry.runpaths)
+
+		for owner, entry
+			in((owner, entry)
+		for (owner, entries) in
+		owner_entries.items()
+		for entry
+			in
+		entries):
+		arch = entry.multilib_category
+		obj = entry.filename
+		soname = entry.soname
+		path = entry.runpaths
+		needed = frozenset(entry.needed)
+
+		needed = frozensets.setdefault(needed, needed)
+
+		obj_key = o._obj_key(obj)
+		indexed = True
+		myprops = obj_properties.get(obj_key)
+		if myprops is
+	None:
+		indexed = False
+		myprops = o._obj_properties_class(
+			arch, needed, path, soname, [], owner)
+		obj_properties[obj_key] = myprops
+		myprops.alt_paths.append(obj)
+
+		if indexed:
+		continue
+
+		arch_map = libs.get(arch)
+		if arch_map is
+	None:
+		arch_map =
+		{
+		}
+		libs[arch] = arch_map
+		if soname:
+		soname_map = arch_map.get(soname)
+		if soname_map is
+	None:
+		soname_map = o._soname_map_class(
+			providers = [], consumers = [])
+		arch_map[soname] = soname_map
+		soname_map.providers.append(obj_key)
+		for needed_soname
+			in
+		needed:
+		soname_map = arch_map.get(needed_soname)
+		if soname_map is
+	None:
+		soname_map = o._soname_map_class(
+			providers = [], consumers = [])
+		arch_map[needed_soname] = soname_map
+		soname_map.consumers.append(obj_key)
+	}
+
+	for arch, sonames
 	in
-exclude_pkgs:
-	continue
-	plibs.update((x, cpv)
-	for x
-	in
-	items)
-	if plibs:
-	args = [os.path.join(EPREFIX or
-	"/", "usr/bin/scanelf"), "-qF", "%a;%F;%S;%r;%n"]
-args.extend(os.path.join(root, x.lstrip("." + os.sep)) \
-for x in plibs)
-try:
-proc = subprocess.Popen(args, stdout = subprocess.PIPE)
-except EnvironmentError as e:
-if e.errno != errno.ENOENT:
-raise
-raise CommandNotFound(args[0]) else:
-for l in proc.stdout:
-try:
-l = _unicode_decode(l,
-encoding = _encodings['content'], errors = 'strict')
-except UnicodeDecodeError:
-l = _unicode_decode(l,
-encoding = _encodings['content'], errors ='replace')
-writemsg_level(_("\nError decoding characters " \
-"returned from scanelf: %s\n\n") % (l, ),
-level = logging.ERROR, noiselevel = -1)
-l = l[3:].rstrip("\n")
-if not l:
-continue
-try:
-entry = NeededEntry.parse("scanelf", l)
-except InvalidData as e:
-writemsg_level("\n%s\n\n" % (e, ),
-level = logging.ERROR, noiselevel = -1)
-continue
-try:
-with open(_unicode_encode(entry.filename,
-encoding = _encodings['fs'],
-errors = 'strict'), 'rb') as f:
-elf_header = ELFHeader.read(f)
-except EnvironmentError as e:
-if e.errno != errno.ENOENT:
-raise
-continue
-
-if not entry.soname:
-try:
-proc = subprocess.Popen([b'file',
-_unicode_encode(entry.filename,
-encoding =_encodings['fs'], errors = 'strict')],
-stdout = subprocess.PIPE)
-out, err = proc.communicate()
-proc.wait()
-except EnvironmentError:
-pass else:
-if b'SB shared object' in out:
-entry.soname = os.path.basename(entry.filename)
-
-entry.multilib_category = compute_multilib_category(elf_header)
-entry.filename = entry.filename[root_len:]
-owner = plibs.pop(entry.filename, None)
-lines.append((owner, "scanelf", _unicode(entry)))
-proc.wait()
-proc.stdout.close()
-
-if plibs:
-for x, cpv in plibs.items():
-lines.append((cpv, "plibs", ";".join(['', x, '', '', ''])))
-
-frozensets = {}
-owner_entries = collections.defaultdict(list)
-
-while True:
-try:
-owner, location, l = lines.pop()
-except IndexError:
-break
-l = l.rstrip("\n")
-if not l:
-continue
-if '\0' in l:
-writemsg_level(_("\nLine contains null byte(s) " \
-"in %s: %s\n\n") % (location, l),
-level = logging.ERROR, noiselevel = -1)
-continue
-try:
-entry = NeededEntry.parse(location, l)
-except InvalidData as e:
-writemsg_level("\n%s\n\n" % (e, ),
-level =logging.ERROR, noiselevel = -1)
-continue
-
-if entry.multilib_category is None:
-entry.multilib_category = _approx_multilib_categories.get(
-entry.arch, entry.arch)
-
-entry.filename = normalize_path(entry.filename)
-expand = {"ORIGIN": os.path.dirname(entry.filename)}
-entry.runpaths = frozenset(normalize_path(
-varexpand(x, expand, error_leader = lambda: "%s: " % location))
-for x in entry.runpaths)
-entry.runpaths = frozensets.setdefault(entry.runpaths, entry.runpaths)
-owner_entries[owner].append(entry)
-
-for owner, entries in owner_entries.items():
-if owner is None:
-continue
-
-providers = {}
-for entry in entries:
-if entry.soname:
-providers[SonameAtom(entry.multilib_category, entry.soname)] = entry
-
-for entry in entries:
-implicit_runpaths = []
-for soname in entry.needed:
-soname_atom = SonameAtom(entry.multilib_category, soname)
-provider = providers.get(soname_atom)
-if provider is None:
-continue
-provider_dir = os.path.dirname(provider.filename)
-if provider_dir not in entry.runpaths:
-implicit_runpaths.append(provider_dir)
-
-if implicit_runpaths:
-entry.runpaths = frozenset(
-itertools.chain(entry.runpaths, implicit_runpaths))
-entry.runpaths = frozensets.setdefault(
-entry.runpaths, entry.runpaths)
-
-for owner, entry in ((owner, entry)
-for (owner, entries) in owner_entries.items()
-for entry in entries):
-arch = entry.multilib_category
-obj = entry.filename
-soname = entry.soname
-path = entry.runpaths
-needed = frozenset(entry.needed)
-
-needed = frozensets.setdefault(needed, needed)
-
-obj_key = o._obj_key(obj)
-indexed = True
-myprops = obj_properties.get(obj_key)
-if myprops is None:
-indexed = False
-myprops = o._obj_properties_class(
-arch, needed, path, soname, [], owner)
-obj_properties[obj_key] = myprops
-myprops.alt_paths.append(obj)
-
-if indexed:
-continue
-
-arch_map = libs.get(arch)
-if arch_map is None:
-arch_map = {}
-libs[arch] = arch_map
-if soname:
-soname_map = arch_map.get(soname)
-if soname_map is None:
-soname_map = o._soname_map_class(
-providers = [], consumers = [])
-arch_map[soname] = soname_map
-soname_map.providers.append(obj_key)
-for needed_soname in needed:
-soname_map = arch_map.get(needed_soname)
-if soname_map is None:
-soname_map = o._soname_map_class(
-providers = [], consumers =[])
-arch_map[needed_soname] = soname_map
-soname_map.consumers.append(obj_key)
-
-for arch, sonames in libs.items():
-for soname_node in sonames.values():
-soname_node.providers = tuple(set(soname_node.providers))
-soname_node.consumers = tuple(set(soname_node.consumers))
+	libs.items()
+	{
+		for soname_node
+			in
+		sonames.values() {
+			soname_node.providers = tuple(set(soname_node.providers))
+			soname_node.consumers = tuple(set(soname_node.consumers))
+		}
+	}
 }
 
-func (o*linkageMapELF) listBrokenBinaries( debug=False) {
+type _LibraryCache struct {
+}
 
-	os = _os_merge
-
-	class
-	_LibraryCache(object):
-
-	def
-	__init__(cache_o):
+func NewLibraryCache() *_LibraryCache{
+	l := &_LibraryCache{}
 	cache_o.cache =
 	{
 	}
+	return l
+}
 
-	def
-	get(cache_o, obj):
+func (libraryCache *_LibraryCache)get(obj)  {
 
 	if obj in
-	cache_o.cache:
-	return cache_o.cache[obj]
-	else:
-	obj_key = o._obj_key(obj)
-	if obj_key.file_exists():
-	obj_props = o._obj_properties.get(obj_key)
-	if obj_props is
-None:
-	arch = None
-	soname = None
-	else:
-	arch = obj_props.arch
-	soname = obj_props.soname
-	return cache_o.cache.setdefault(obj, \
-	(arch, soname, obj_key, True)) else:
-	return cache_o.cache.setdefault(obj, \
-	(None, None, obj_key, False))
+	cache_o.cache{
+		return cache_o.cache[obj]
+	}else {
+		obj_key = o._obj_key(obj)
+		if obj_key.file_exists() {
+			obj_props = o._obj_properties.get(obj_key)
+			if obj_props is
+		None{
+			arch = None
+			soname = None
+		}else {
+				arch = obj_props.arch
+				soname = obj_props.soname
+				return cache_o.cache.setdefault(obj, \
+				(arch, soname, obj_key, True))
+			}
+		}else {
+			return cache_o.cache.setdefault(obj, \
+			(None, None, obj_key, False))
+		}
+	}
+}
+
+// false
+func (o*linkageMapELF) listBrokenBinaries( debug bool) {
 
 	rValue =
 	{
 	}
-	cache = _LibraryCache()
-	providers = o.listProviders()
+	cache := NewLibraryCache()
+	providers := o.listProviders()
 
 	for obj_key, sonames
 	in
-	providers.items():
-	obj_props = o._obj_properties[obj_key]
-	arch = obj_props.arch
-	path = obj_props.runpaths
-	objs = obj_props.alt_paths
-	path = path.union(o._defpath)
-	for soname, libraries
-	in
-	sonames.items():
-	validLibraries = set()
-	for directory
-	in
-path:
-	cachedArch, cachedSoname, cachedKey, cachedExists = \
-	cache.get(os.path.join(directory, soname))
-	if cachedSoname == soname and
-	cachedArch == arch:
-	validLibraries.add(cachedKey)
-	if debug and
-	cachedKey
-	not
-	in \
-	set(map(o._obj_key_cache.get,
-	libraries)):
-	writemsg_level(
-		_("Found provider outside of findProviders:") + \
-	(" %s -> %s %s\n" % (os.path.join(directory, soname),
-		o._obj_properties[cachedKey].alt_paths, libraries)),
-	level = logging.DEBUG,
-		noiselevel=-1)
-	break
-	if debug and
-	cachedArch == arch
-	and \
-	cachedKey
-	in
-	o._obj_properties:
-	writemsg_level((_("Broken symlink or missing/bad soname: " + \
-	"%(dir_soname)s -> %(cachedKey)s " + \
-	"with soname %(cachedSoname)s but expecting %(soname)s") % \
-	{"dir_soname":os.path.join(directory, soname),
-	"cachedKey": o._obj_properties[cachedKey],
-	"cachedSoname": cachedSoname, "soname":soname}) + "\n",
-		level = logging.DEBUG,
-		noiselevel=-1)
-	if not validLibraries:
-	for obj
-	in
-objs:
-	rValue.setdefault(obj, set()).add(soname)
-	for lib
-	in
-libraries:
-	rValue.setdefault(lib, set()).add(soname)
-	if debug:
-	if not os.path.isfile(lib):
-	writemsg_level(_("Missing library:")+" %s\n"%(lib, ),
-		level = logging.DEBUG,
-		noiselevel = -1) else:
-	writemsg_level(_("Possibly missing symlink:") + \
-	"%s\n"%(os.path.join(os.path.dirname(lib), soname)),
-		level = logging.DEBUG,
-		noiselevel=-1)
+	providers.items() {
+		obj_props = o._obj_properties[obj_key]
+		arch = obj_props.arch
+		path = obj_props.runpaths
+		objs = obj_props.alt_paths
+		path = path.union(o._defpath)
+		for soname, libraries
+			in
+		sonames.items() {
+			validLibraries = set()
+			for directory
+				in
+			path:
+			cachedArch, cachedSoname, cachedKey, cachedExists = \
+			cache.get(filepath.Join(directory, soname))
+			if cachedSoname == soname && cachedArch == arch{
+				validLibraries.add(cachedKey)
+				if debug and
+				cachedKey
+				not
+				in \
+				set(map(o._obj_key_cache.get,
+				libraries)){
+				WriteMsgLevel(
+				_("Found provider outside of findProviders:") + \
+				(" %s -> %s %s\n" % (filepath.Join(directory, soname),
+				o._obj_properties[cachedKey].alt_paths, libraries)),
+				level = logging.DEBUG,
+				noiselevel = -1)
+				}
+				break
+			}
+			if debug and
+			cachedArch == arch
+			and \
+			cachedKey
+			in
+			o._obj_properties{
+				WriteMsgLevel((_("Broken symlink or missing/bad soname: " + \
+				"%(dir_soname)s -> %(cachedKey)s " + \
+				"with soname %(cachedSoname)s but expecting %(soname)s") % \
+			{"dir_soname":filepath.Join(directory, soname),
+				"cachedKey": o._obj_properties[cachedKey],
+				"cachedSoname": cachedSoname, "soname":soname}) + "\n",
+				level = logging.DEBUG,
+				noiselevel = -1)
+			}
+			if not validLibraries:
+			for obj
+				in
+			objs {
+				rValue.setdefault(obj, set()).add(soname)
+			}
+			for lib
+				in
+			libraries {
+				rValue.setdefault(lib, set()).add(soname)
+				if debug {
+					if not os.path.isfile(lib) {
+						WriteMsgLevel(_("Missing library:")+" %s\n"%(lib, ),
+							level = logging.DEBUG,
+							noiselevel = -1)
+					}else {
+						WriteMsgLevel(_("Possibly missing symlink:") + \
+						"%s\n"%(filepath.Join(filepath.Dir(lib), soname)),
+							level = logging.DEBUG,
+							noiselevel=-1)
+					}
+				}
+			}
+		}
+	}
 	return rValue
 }
 
@@ -2217,12 +2322,6 @@ func (o*linkageMapELF) findProviders( obj) {
 	if not o._libs:
 	o.rebuild()
 
-	# Determine
-	the
-	obj_key
-	from
-	the
-	arguments.
 	if isinstance(obj, o._ObjectKey):
 	obj_key = obj
 	if obj_key not
@@ -2266,7 +2365,7 @@ needed:
 	for provider
 	in
 providers:
-	if o._path_key(os.path.dirname(provider)) in
+	if o._path_key(filepath.Dir(provider)) in
 path_keys:
 	rValue[soname].add(provider)
 	return rValue
@@ -2298,9 +2397,9 @@ func (o*linkageMapELF) findConsumers( obj, exclude_providers=None, greedy=True) 
 
 	if not isinstance(obj, o._ObjectKey):
 	soname = o._obj_properties[obj_key].soname
-	soname_link = os.path.join(o._root,
-		os.path.dirname(obj).lstrip(os.path.sep), soname)
-	obj_path = os.path.join(o._root, obj.lstrip(os.sep))
+	soname_link = filepath.Join(o._root,
+		filepath.Dir(obj).lstrip(os.path.sep), soname)
+	obj_path = filepath.Join(o._root, obj.lstrip(os.sep))
 try:
 	soname_st = os.stat(soname_link)
 	obj_st = os.stat(obj_path)
@@ -2361,7 +2460,7 @@ exclude_providers:
 	break
 	if not provider_excluded:
 	relevant_dir_keys.add(
-		o._path_key(os.path.dirname(p)))
+		o._path_key(filepath.Dir(p)))
 
 	if relevant_dir_keys:
 	for consumer_key
@@ -2380,7 +2479,7 @@ exclude_providers:
 	if soname_node is
 	not
 None:
-	objs_dir_keys = set(o._path_key(os.path.dirname(x))
+	objs_dir_keys = set(o._path_key(filepath.Dir(x))
 	for x
 	in
 	objs)
@@ -2408,9 +2507,9 @@ func NewLinkageMapELF(vardbapi *vardbapi) *linkageMapELF {
 	l._root = l._dbapi.settings.ValueDict["ROOT"]
 	l._libs = map[string]string{}
 	l._obj_properties = map[string]string{}
-	l._obj_key_cache = map[string]string{}
+	l._obj_key_cache = map[string]*_ObjectKey{}
 	l._defpath = map[string]string{}
-	l._path_key_cache = map[string]string{}
+	l._path_key_cache = map[string]*_ObjectKey{}
 	return l
 }
 
@@ -2855,7 +2954,7 @@ func cacheddir(myOriginalPath string, ignoreCvs bool, ignoreList []string, Empty
 	}
 	if err != nil {
 		//except EnvironmentError as e:
-		//if e.errno != errno.EACCES:
+		//if e.errno != syscall.EACCES:
 		//raise
 		//del e
 		//raise PermissionDenied(myPath)
@@ -3146,6 +3245,8 @@ func NewNeededEntry() *NeededEntry {
 	return n
 }
 
+type _defaultdict_tree map[string]_defaultdict_tree
+
 type InstallMask struct {
 	_unanchored []*_pattern
 	_anchored map[string][]*_pattern
@@ -3162,7 +3263,7 @@ func NewInstallMask( install_mask string)*InstallMask {
 	i := &InstallMask{}
 	i._unanchored = []*_pattern{}
 
-	i._anchored = _defaultdict_tree()
+	i._anchored = map[string][]*_pattern{}
 	for orig_index, pattern := range strings.Fields(install_mask) {
 		is_inclusive := !strings.HasPrefix(pattern, "-")
 		if !is_inclusive {
@@ -3193,18 +3294,17 @@ func NewInstallMask( install_mask string)*InstallMask {
 	return i
 }
 
-func(i*InstallMask) _iter_relevant_patterns( path string) {
+func(i*InstallMask) _iter_relevant_patterns( path string) []*_pattern{
 	current_dir := i._anchored
 	components := []string{}
 	for _, v := range strings.Split(path, "/"){
 		components = append(components,v)
 	}
-	patterns := []string{}
+	patterns := []*_pattern{}
 	patterns= append(patterns, current_dir["."]...)
 	for _, component:= range components {
 		next_dir := current_dir[component]
-		if next_dir is
-		None{
+		if next_dir == nil{
 			break
 		}
 		current_dir = next_dir
@@ -3212,11 +3312,15 @@ func(i*InstallMask) _iter_relevant_patterns( path string) {
 	}
 
 	if len(patterns) > 0 {
-		patterns.extend(i._unanchored)
-		if any(not pattern.is_inclusive
-		for pattern
-			in
-		patterns){
+		patterns= append(patterns, i._unanchored...)
+		in := false
+		for _, pattern := range patterns{
+			if !pattern.is_inclusive{
+				in = true
+				break
+			}
+		}
+		if in{
 			patterns.sort(key = operator.attrgetter('orig_index'))
 		}
 		return iter(patterns)
@@ -3228,16 +3332,13 @@ func(i*InstallMask) _iter_relevant_patterns( path string) {
 func(i*InstallMask) match( path string) bool {
 	ret := false
 
-	for pattern_obj
-		in
-	i._iter_relevant_patterns(path) {
+	for _, pattern_obj := range i._iter_relevant_patterns(path) {
 		is_inclusive, pattern := pattern_obj.is_inclusive, pattern_obj.pattern
 		if pattern_obj.leading_slash {
-			if path.endswith('/') {
-				pattern = pattern.rstrip('/') + '/'
+			if strings.HasSuffix(path,"/") {
+				pattern = strings.TrimRight(pattern,"/") + "/"
 			}
-			if (fnmatch.fnmatch(path, pattern[1:])
-				or
+			if (fnmatch.fnmatch(path, pattern[1:]) ||
 			fnmatch.fnmatch(path, pattern[1:].rstrip('/')+'/*')){
 				ret = is_inclusive
 			}
@@ -3250,26 +3351,27 @@ func(i*InstallMask) match( path string) bool {
 	return ret
 }
 
-_exc_map = {
-	errno.EISDIR: IsADirectory,
-	errno.ENOENT: FileNotFound,
-	errno.EPERM: OperationNotPermitted,
-	errno.EACCES: PermissionDenied,
-	errno.EROFS: ReadOnlyFileSystem,
+var _exc_map = map[error]error{
+	syscall.EISDIR: IsADirectory,
+	syscall.ENOENT: FileNotFound,
+	syscall.EPERM: OperationNotPermitted,
+	syscall.EACCES: PermissionDenied,
+	syscall.EROFS: ReadOnlyFileSystem,
 }
 
 
-func(i*InstallMask) _raise_exc(e error){
-	wrapper_cls = _exc_map.get(e.errno)
-	if wrapper_cls is None:
-		raise
-	wrapper = wrapper_cls(_unicode(e))
-	wrapper.__cause__ = e
-	raise wrapper
+func _raise_exc(e error){
+	wrapper_cls := _exc_map[e]
+	if wrapper_cls == nil {
+		//raise
+	}
+	//wrapper = wrapper_cls(_unicode(e))
+	//wrapper.__cause__ = e
+	//raise wrapper
 }
 
 // nil
-func install_mask_dir(base_dir string, install_mask *InstallMask, onerror=None) {
+func install_mask_dir(base_dir string, install_mask *InstallMask, onerror func(error)) {
 	if onerror == nil {
 		onerror = _raise_exc
 	}
@@ -3285,7 +3387,7 @@ func install_mask_dir(base_dir string, install_mask *InstallMask, onerror=None) 
 			if install_mask.match(relative_path) {
 				if err := syscall.Unlink(abs_path); err != nil {
 					//except OSError as e:
-					onerror(e)
+					onerror(err)
 				}
 			}
 		}
