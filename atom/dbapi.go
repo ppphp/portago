@@ -754,23 +754,29 @@ func (v *vdbMetadataDelta) load() {
 	//except Exception:
 	//	pass
 	}else {
-	try:
-		version = cache_obj["version"]
-		except KeyError:
-		pass
-		else:
-		if version == v._format_version:
-	try:
-		deltas = cache_obj["deltas"]
-		except KeyError:
-		cache_obj["deltas"] = deltas = []
+		//try:
+		version, ok := cache_obj["version"]
+		//except KeyError:
+		//pass
+		//else:
+		if ok {
+			if version == v._format_version {
+				//try:
+				deltas, ok := cache_obj["deltas"]
+				//except
+				//KeyError:
+				if !ok {
+					deltas = []
+					cache_obj["deltas"] = deltas
+				}
 
-		if isinstance(deltas, list):
-		return cache_obj
+				if _, ok := deltas.([]interface{}) {
+					return cache_obj
+				}
+			}
+		}
 	}
-
 	return nil
-
 }
 
 func (v *vdbMetadataDelta) loadRace() {
@@ -3148,8 +3154,8 @@ func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot 
 	}
 
 	cfgfiledict := grabDict(d.vartree.dbapi._conf_mem_file,false, false, false, true, false)
-	stale_confmem = []
-	protected_symlinks = {}
+	stale_confmem := []string{}
+	protected_symlinks := map[[2]uint64][]string{}
 
 	unmerge_orphans :=  d.settings.Features.Features["unmerge-orphans"]
 	calc_prelink := d.settings.Features.Features["prelink-checksums"]
@@ -3168,209 +3174,245 @@ func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot 
 		uninstall_ignore, _ := shlex.Split(strings.NewReader(
 			d.settings.ValueDict["UNINSTALL_IGNORE"]),false, true)
 
-		def unlink(file_name, lstatobj):
-		if bsd_chflags:
-		if lstatobj.st_flags != 0:
-		bsd_chflags.lchflags(file_name, 0)
-		parent_name = filepath.Dir(file_name)
-		pflags = os.Stat(parent_name).st_flags
-		if pflags != 0:
-		bsd_chflags.chflags(parent_name, 0)
-	try:
-		if not syscall.S_IFLNK&lstatobj.st_mode):
-		os.Chmod(file_name, 0)
-		syscall.Unlink(file_name)
-		except OSError as ose:
-		d._eerror("postrm", []string{fmt.Sprintf("Could not chmod or unlink '%s': %s", file_name, ose)}
-		else:
-		d._merged_path(file_name, lstatobj, false)
+		unlink:= func(file_name string, lstatobj os.FileInfo) {
+			if bsd_chflags {
+				if lstatobj.st_flags != 0 {
+					bsd_chflags.lchflags(file_name, 0)
+				}
+				parent_name = filepath.Dir(file_name)
+				pflags = os.Stat(parent_name).st_flags
+				if pflags != 0 {
+					bsd_chflags.chflags(parent_name, 0)
+				}
+			}
+			var err error
+			if syscall.S_IFLNK&lstatobj.Mode() == 0 {
+				err = os.Chmod(file_name, 0)
+			}
+			if err == nil {
+				err = syscall.Unlink(file_name)
+			}
+			if err != nil {
+				//except OSError as ose:
+				//d._eerror("postrm", []string{fmt.Sprintf("Could not chmod or unlink '%s': %s", file_name, ose)}
+			} else {
+				d._merged_path(file_name, lstatobj, false)
+			}
 
-	finally:
-		if bsd_chflags && pflags != 0:
-		bsd_chflags.chflags(parent_name, pflags)
+			//finally:
+			if bsd_chflags && pflags != 0 {
+				bsd_chflags.chflags(parent_name, pflags)
+			}
+		}
 
-		unmerge_desc = {}
-		unmerge_desc["cfgpro"] = _("cfgpro")
-		unmerge_desc["replaced"] = _("replaced")
-		unmerge_desc["!dir"] = _("!dir")
-		unmerge_desc["!empty"] = _("!empty")
-		unmerge_desc["!fif"] = _("!fif")
-		unmerge_desc["!found"] = _("!found")
-		unmerge_desc["!md5"] = _("!md5")
-		unmerge_desc["!mtime"] = _("!mtime")
-		unmerge_desc["!obj"] = _("!obj")
-		unmerge_desc["!sym"] = _("!sym")
-		unmerge_desc["!prefix"] = _("!prefix")
+		unmerge_desc := map[string]string{}
+		unmerge_desc["cfgpro"] = ("cfgpro")
+		unmerge_desc["replaced"] = ("replaced")
+		unmerge_desc["!dir"] = ("!dir")
+		unmerge_desc["!empty"] = ("!empty")
+		unmerge_desc["!fif"] = ("!fif")
+		unmerge_desc["!found"] = ("!found")
+		unmerge_desc["!md5"] = ("!md5")
+		unmerge_desc["!mtime"] = ("!mtime")
+		unmerge_desc["!obj"] = ("!obj")
+		unmerge_desc["!sym"] = ("!sym")
+		unmerge_desc["!prefix"] = ("!prefix")
 
-		real_root = d.settings.ValueDict["ROOT"]
-		real_root_len = len(real_root) - 1
-		eroot = d.settings.ValueDict["EROOT"]
+		real_root := d.settings.ValueDict["ROOT"]
+		real_root_len := len(real_root) - 1
+		eroot := d.settings.ValueDict["EROOT"]
 
-		infodirs = frozenset(infodir for infodir in chain(
-			d.settings.ValueDict["INFOPATH", "").split(":"),
-			d.settings.ValueDict["INFODIR", "").split(":")) if infodir)
-		infodirs_inodes = map[string]bool{}
-		for infodir in infodirs:
-		infodir = filepath.Join(real_root, infodir.lstrip(string(os.PathSeparator)))
-	try:
-		statobj = os.Stat(infodir)
-		except OSError:
-		pass
-		else:
-		infodirs_inodes.add((statobj.st_dev, statobj.st_ino))
+		infodirs := map[string]bool{}
+		for _, infodir := range strings.Split(d.settings.ValueDict["INFOPATH"], ":"){
+			if infodir != "" {
+				infodirs[infodir]=true
+			}
+		}
+		for _, infodir := range strings.Split(d.settings.ValueDict["INFODIR"], ":"){
+			if infodir != "" {
+				infodirs[infodir]=true
+			}
+		}
+		infodirs_inodes := map[[2]uint64]bool{}
+		for infodir := range infodirs {
+			infodir = filepath.Join(real_root, strings.TrimLeft(infodir, string(os.PathSeparator)))
+			statobj, err := os.Stat(infodir)
+			if err != nil {
+				//except OSError:
+				//pass
+			}else {
+				infodirs_inodes[[2]uint64{statobj.Sys().(*syscall.Stat_t).Dev, statobj.Sys().(*syscall.Stat_t).Ino}]=true
+			}
+		}
 
-		for i, objkey in enumerate(mykeys):
+		for _, objkey := range mykeys{
 
-		obj = NormalizePath(objkey)
-		if os is _os_merge:
-	try:
-		_unicode_encode(obj,
-			encoding=_encodings['merge'], errors='strict')
-		except UnicodeEncodeError:
-	try:
-		_unicode_encode(obj,
-			encoding=_encodings['fs'], errors='strict')
-		except UnicodeEncodeError:
-		pass
-		else:
-		os = portage.os
-		perf_md5 = portage.checksum.perform_md5
+		obj := NormalizePath(objkey)
 
-		file_data = pkgfiles[objkey]
-		file_type = file_data[0]
+		file_data := pkgfiles[objkey]
+		file_type := file_data[0]
 
-		if len(obj) <= len(eroot) || not obj.startswith(eroot):
-		show_unmerge("---", unmerge_desc["!prefix"], file_type, obj)
-		continue
+		if len(obj) <= len(eroot) || !strings.HasPrefix( obj, eroot) {
+			show_unmerge("---", unmerge_desc["!prefix"], file_type, obj)
+			continue
+		}
+		
+		statobj, err:= os.Stat(obj)
+		if err != nil {
+			//except OSError:
+			//pass
+		}
+		lstatobj, err:= os.Lstat(obj)
+		if err != nil {
+			//except (OSError, AttributeError):
+			//pass
+		}
+		islink := lstatobj != nil && syscall.S_IFLNK&lstatobj.Mode()!=0
+		if lstatobj == nil {
+			show_unmerge("---", unmerge_desc["!found"], file_type, obj)
+			continue
+		}
 
-		statobj = nil
-	try:
-		statobj = os.Stat(obj)
-		except OSError:
-		pass
-		lstatobj = nil
-	try:
-		lstatobj = os.Lstat(obj)
-		except (OSError, AttributeError):
-		pass
-		islink = lstatobj != nil && syscall.S_IFLNK&lstatobj.st_mode)
-		if lstatobj == nil:
-		show_unmerge("---", unmerge_desc["!found"], file_type, obj)
-		continue
+		f_match:= obj[len(eroot)-1:]
+		ignore := false
+		for _, pattern := range uninstall_ignore {
+			if fnmatch.fnmatch(f_match, pattern) {
+				ignore = true
+				break
+			}
+		}
 
-		f_match = obj[len(eroot)-1:]
-		ignore = false
-		for pattern in uninstall_ignore:
-		if fnmatch.fnmatch(f_match, pattern):
-		ignore = true
-		break
+		if ! ignore {
+			if islink && f_match in
+			("/lib", "/usr/lib", "/usr/local/lib"){
+				ignore = true
+			}
+		}
 
-		if not ignore:
-		if islink && f_match in
-		("/lib", "/usr/lib", "/usr/local/lib"):
-		ignore = true
+		if ignore {
+			show_unmerge("---", unmerge_desc["cfgpro"], file_type, obj)
+			continue
+		}
 
-		if ignore:
-		show_unmerge("---", unmerge_desc["cfgpro"], file_type, obj)
-		continue
+		if strings.HasPrefix(obj, real_root) {
+			relative_path := obj[real_root_len:]
+			is_owned := false
+			for _, dblnk := range others_in_slot {
+				if dblnk.isowner(relative_path) {
+					is_owned = true
+					break
+				}
+			}
 
-		if obj.startswith(real_root):
-		relative_path = obj[real_root_len:]
-		is_owned = false
-		for dblnk in others_in_slot:
-		if dblnk.isowner(relative_path):
-		is_owned = true
-		break
+			if is_owned && islink &&
+				(file_type == "sym" || file_type == "dir") &&
+				statobj!= nil && syscall.S_IFDIR&statobj.Mode() != 0{
+				symlink_orphan := false
+				for _, dblnk := range others_in_slot {
+					parent_contents_key :=
+						dblnk._match_contents(relative_path)
+					if parent_contents_key == "" {
+						continue
+					}
+					if !strings.HasPrefix(parent_contents_key, real_root) {
+						continue
+					}
+					if dblnk.getcontents()[
+						parent_contents_key][0] == "dir" {
+						symlink_orphan = true
+						break
+					}
+				}
 
-		if is_owned && islink &&
-			file_type in ("sym", "dir") &&
-			statobj && syscall.S_IFDIR&statobj.st_mode):
-		symlink_orphan = false
-		for dblnk in others_in_slot:
-		parent_contents_key =
-			dblnk._match_contents(relative_path)
-		if not parent_contents_key:
-		continue
-		if not parent_contents_key.startswith(
-			real_root):
-		continue
-		if dblnk.getcontents()[
-			parent_contents_key][0] == "dir":
-		symlink_orphan = true
-		break
+				if symlink_orphan {
+					if _, ok := protected_symlinks[[2]uint64{statobj.Sys().(*syscall.Stat_t).Dev, statobj.Sys().(*syscall.Stat_t).Ino}]; !ok {
+						protected_symlinks[[2]uint64{statobj.Sys().(*syscall.Stat_t).Dev, statobj.Sys().(*syscall.Stat_t).Ino}] = []string{}
+					}
+					protected_symlinks[[2]uint64{statobj.Sys().(*syscall.Stat_t).Dev, statobj.Sys().(*syscall.Stat_t).Ino}] = append(protected_symlinks[[2]uint64{statobj.Sys().(*syscall.Stat_t).Dev, statobj.Sys().(*syscall.Stat_t).Ino}], relative_path)
+				}
+			}
 
-		if symlink_orphan:
-		protected_symlinks.setdefault(
-			(statobj.st_dev, statobj.st_ino),
-			[])=append(,relative_path)
-
-		if is_owned:
-		show_unmerge("---", unmerge_desc["replaced"], file_type, obj)
-		continue
-		else if relative_path in cfgfiledict:
-		stale_confmem=append(,relative_path)
+			if is_owned {
+				show_unmerge("---", unmerge_desc["replaced"], file_type, obj)
+				continue
+			} else if Inmsss(cfgfiledict,relative_path ){
+				stale_confmem = append(stale_confmem, relative_path)
+			}
+		}
 
 		if unmerge_orphans &&
-			lstatobj && not syscall.S_IFDIR&lstatobj.st_mode) &&
-		not (islink && statobj && syscall.S_IFDIR&statobj.st_mode)) &&
-		not d.isprotected(obj):
-	try:
-		unlink(obj, lstatobj)
-		except EnvironmentError as e:
-		if err not in ignored_unlink_errnos:
-		raise
-		del e
-		show_unmerge("<<<", "", file_type, obj)
-		continue
+			lstatobj!= nil &&  syscall.S_IFDIR&lstatobj.Mode()== 0 &&
+		! (islink && statobj!= nil && syscall.S_IFDIR&statobj.Mode()!=0) &&
+		! d.isprotected(obj) {
+			//try:
+			unlink(obj, lstatobj)
+			//except EnvironmentError as e:
+			//if err not in ignored_unlink_errnos:
+			//raise
+			//del e
+			show_unmerge("<<<", "", file_type, obj)
+			continue
+		}
 
-		lmtime = str(lstatobj[stat.ST_MTIME])
-		if (pkgfiles[objkey][0] not in ("dir", "fif", "dev")) && (lmtime != pkgfiles[objkey][1]):
-		show_unmerge("---", unmerge_desc["!mtime"], file_type, obj)
-		continue
+		lmtime := fmt.Sprint(lstatobj.ModTime().Nanosecond())
+		if ! Ins([]string{"dir", "fif", "dev"}, pkgfiles[objkey][0]) && lmtime != pkgfiles[objkey][1] {
+			show_unmerge("---", unmerge_desc["!mtime"], file_type, obj)
+			continue
+		}
 
-		if file_type == "dir" && not islink:
-		if lstatobj == nil || not syscall.S_IFDIR&lstatobj.st_mode):
-		show_unmerge("---", unmerge_desc["!dir"], file_type, obj)
-		continue
-		mydirs.add((obj, (lstatobj.st_dev, lstatobj.st_ino)))
-		else if file_type == "sym" || (file_type == "dir" && islink):
-		if not islink:
-		show_unmerge("---", unmerge_desc["!sym"], file_type, obj)
-		continue
+		if file_type == "dir" && ! islink {
+			if lstatobj == nil || syscall.S_IFDIR&lstatobj.Mode() == 0 {
+				show_unmerge("---", unmerge_desc["!dir"], file_type, obj)
+				continue
+			}
+			mydirs.add((obj, (lstatobj.st_dev, lstatobj.st_ino)))
+		}else if file_type == "sym" || (file_type == "dir" && islink) {
+			if ! islink {
+				show_unmerge("---", unmerge_desc["!sym"], file_type, obj)
+				continue
+			}
+		}
 
-		if islink && statobj && syscall.S_IFDIR&statobj.st_mode)
-		&& obj.startswith(real_root):
+		if islink && statobj!= nil && syscall.S_IFDIR&statobj.Mode() != 0 && strings.HasPrefix(obj,real_root) {
 
-		relative_path = obj[real_root_len:]
-	try:
-		target_dir_contents = os.listdir(obj)
-		except OSError:
-		pass
-		else:
-		if target_dir_contents:
-		all_owned = true
-		for child in target_dir_contents:
-		child = filepath.Join(relative_path, child)
-		if not d.isowner(child):
-		all_owned = false
-		break
-	try:
-		child_lstat = os.Lstat(filepath.Join(
-			real_root, child.lstrip(string(os.PathSeparator))))
-		except OSError:
-		continue
+			relative_path := obj[real_root_len:]
+			target_dir_contents, err := listDir(obj)
+			if err != nil {
+				//except OSError:
+				//pass
+			}else {
+				if len(target_dir_contents) > 0 {
+					all_owned := true
+					for _, child:= range target_dir_contents {
+						child := filepath.Join(relative_path, child)
+						if !d.isowner(child) {
+							all_owned = false
+							break
+						}
+						child_lstat, err := os.Lstat(filepath.Join(
+							real_root, strings.TrimLeft(child, string(os.PathSeparator))))
+						if err != nil {
+							//except OSError:
+							continue
+						}
 
-		if syscall.S_IFREG&child_lstat.st_mode==0:
-		all_owned = false
-		break
+						if syscall.S_IFREG&child_lstat.Mode() == 0 {
+							all_owned = false
+							break
+						}
+					}
 
-		if not all_owned:
-		protected_symlinks.setdefault(
-			(statobj.st_dev, statobj.st_ino),
-			[])=append(,relative_path)
-		show_unmerge("---", unmerge_desc["!empty"],
-			file_type, obj)
-		continue
+					if ! all_owned {
+						protected_symlinks.setdefault(
+							(statobj.st_dev, statobj.st_ino),
+							[]) = append(, relative_path)
+						show_unmerge("---", unmerge_desc["!empty"],
+							file_type, obj)
+						continue
+					}
+				}
+			}
+		}
 
 	try:
 		unlink(obj, lstatobj)
@@ -3381,7 +3423,7 @@ func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot 
 		del e
 		show_unmerge("!!!", "", file_type, obj)
 		else if pkgfiles[objkey][0] == "obj":
-		if statobj == nil || not syscall.S_IFREG&statobj.st_mode):
+		if statobj == nil || not syscall.S_IFREG&statobj.Mode()):
 		show_unmerge("---", unmerge_desc["!obj"], file_type, obj)
 		continue
 		mymd5 = nil
@@ -3408,11 +3450,12 @@ func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot 
 		show_unmerge("---", "", file_type, obj)
 		else if pkgfiles[objkey][0] == "dev":
 		show_unmerge("---", "", file_type, obj)
+		}
 
 		d._unmerge_dirs(mydirs, infodirs_inodes,
 			protected_symlinks, unmerge_desc, unlink, os)
 		mydirs.clear()
-	}
+		}
 
 	if protected_symlinks:
 	d._unmerge_protected_symlinks(others_in_slot, infodirs_inodes,
@@ -3449,11 +3492,11 @@ func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot 
 func (d *dblink) _unmerge_protected_symlinks(others_in_slot, infodirs_inodes,
 	protected_symlinks, unmerge_desc, unlink, os) {
 
-	real_root = d.settings.ValueDict["ROOT"]
-	show_unmerge = d._show_unmerge
-	ignored_unlink_errnos = d._ignored_unlink_errnos
+	real_root := d.settings.ValueDict["ROOT"]
+	show_unmerge := d._show_unmerge
+	ignored_unlink_errnos := d._ignored_unlink_errnos
 
-	flat_list = map[string]bool{}
+	flat_list := map[string]bool{}
 	flat_list.update(*protected_symlinks.values())
 	flat_list = sorted(flat_list)
 
@@ -3562,7 +3605,7 @@ func (d *dblink) _unmerge_dirs(dirs, infodirs_inodes,
 		child = filepath.Join(obj, child)
 	try:
 		lstatobj = os.Lstat(child)
-		if syscall.S_IFREG&lstatobj.st_mode):
+		if syscall.S_IFREG&lstatobj.Mode()):
 		unlink(child, lstatobj)
 		show_unmerge("<<<", "", "obj", child)
 		except EnvironmentError as e:
@@ -3830,7 +3873,7 @@ d.vartree.dbapi._plib_registry == nil ||
 	for f in preserve_node.alt_paths:
 	f_abs = filepath.Join(root, f.lstrip(string(os.PathSeparator)))
 try:
-	if syscall.S_IFREG&os.Lstat(f_abs).st_mode):
+	if syscall.S_IFREG&os.Lstat(f_abs).Mode()):
 	hardlinks.add(f)
 	if not unmerge && d.isowner(f):
 	have_replacement_hardlink = true
@@ -4550,7 +4593,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 			return true
 		}
 	}
-	if !in && d.vartree.dbapi.cpv_exists(d.mycpv, "") {
+	if !in && d.vartree.dbapi.cpv_exists(d.mycpv.string, "") {
 		slot_matches = append(slot_matches, d.mycpv)
 	}
 
@@ -5627,7 +5670,7 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile, secondhand, stufftom
 }
 
 func (d *dblink) _protect(cfgfiledict map[string][]string, protect_if_modified bool, src_md5,
-	src_link, dest, dest_real string, dest_mode os.FileMode, dest_md5, dest_link string) (string, bool,bool) {
+	src_link, dest, dest_real string, deMode() os.FileMode, dest_md5, dest_link string) (string, bool,bool) {
 
 	move_me := true
 	protected := true
@@ -5637,7 +5680,7 @@ func (d *dblink) _protect(cfgfiledict map[string][]string, protect_if_modified b
 		k = d._installed_instance._match_contents(dest_real)
 	}
 	if k != "" {
-		if dest_mode == 0 {
+		if deMode() == 0 {
 			force = true
 		} else if protect_if_modified {
 			data := d._installed_instance.getcontents()[k]
@@ -5649,7 +5692,7 @@ func (d *dblink) _protect(cfgfiledict map[string][]string, protect_if_modified b
 		}
 	}
 
-	if protected && dest_mode != 0 {
+	if protected && deMode() != 0 {
 		if src_md5 == dest_md5 {
 			protected = false
 		} else if src_md5 == cfgfiledict[dest_real][0] {
@@ -6117,7 +6160,7 @@ try:
 	raise ValueError("invalid root argument: '%s'" % root)
 	live_path = path
 	if "dir" == contents_type &&
-not syscall.S_IFDIR&lst.st_mode) &&
+not syscall.S_IFDIR&lst.Mode()) &&
 pathIsDir(live_path):
 					live_path = filepath.EvalSymlinks(live_path)
 	lst = os.Lstat(live_path)
@@ -6125,13 +6168,13 @@ pathIsDir(live_path):
 								
 		tarinfo = tar.tarinfo()
 	tarinfo.name = arcname
-	tarinfo.mode = lst.st_mode
+	tarinfo.mode = lst.Mode()
 	tarinfo.uid = lst.st_uid
 	tarinfo.gid = lst.st_gid
 	tarinfo.size = 0
 	tarinfo.mtime = lst.st_mtime
 	tarinfo.linkname = ""
-	if syscall.S_IFREG&lst.st_mode):
+	if syscall.S_IFREG&lst.Mode()):
 	inode = (lst.st_ino, lst.st_dev)
 	if (lst.st_nlink > 1 &&
 	inode in tar.inodes &&
@@ -6142,9 +6185,9 @@ pathIsDir(live_path):
 	tar.inodes[inode] = arcname
 	tarinfo.type = tarfile.REGTYPE
 	tarinfo.size = lst.st_size
-	else if syscall.S_IFDIR&lst.st_mode):
+	else if syscall.S_IFDIR&lst.Mode()):
 	tarinfo.type = tarfile.DIRTYPE
-	else if syscall.S_IFLNK&lst.st_mode):
+	else if syscall.S_IFLNK&lst.Mode()):
 	tarinfo.type = tarfile.SYMTYPE
 	tarinfo.linkname = os.readlink(live_path)
 	else:
@@ -6158,7 +6201,7 @@ try:
 	except KeyError:
 	pass
 
-	if syscall.S_IFREG&lst.st_mode):
+	if syscall.S_IFREG&lst.Mode()):
 	if protect && protect(path):
 				f = tempfile.TemporaryFile()
 	f.write(_unicode_encode(
@@ -7409,14 +7452,18 @@ func (b *BinaryTree) _populate_remote(getbinpkg_refresh bool) {
 
 func (b *BinaryTree) _populate_additional(repos []string) *PkgStr {
 
-	for repo in repos:
-	aux_keys = list(set(chain(repo._aux_cache_keys, repo._pkg_str_aux_keys)))
-	for cpv in repo.cpv_all():
-	metadata = dict(zip(aux_keys, repo.aux_get(cpv, aux_keys)))
-	pkg = _pkg_str(cpv, metadata=metadata, settings=repo.settings, db=repo)
-	instance_key = b.dbapi._instance_key(pkg)
-	b._additional_pkgs[instance_key] = pkg
-	b.dbapi.cpv_inject(pkg)
+	for _, repo := range repos {
+		aux_keys = list(set(chain(repo._aux_cache_keys, repo._pkg_str_aux_keys)))
+		for cpv
+		in
+		repo.cpv_all() {
+			metadata = dict(zip(aux_keys, repo.aux_get(cpv, aux_keys)))
+			pkg = _pkg_str(cpv, metadata = metadata, settings = repo.settings, db=repo)
+			instance_key = b.dbapi._instance_key(pkg)
+			b._additional_pkgs[instance_key] = pkg
+			b.dbapi.cpv_inject(pkg)
+		}
+	}
 }
 
 // ""

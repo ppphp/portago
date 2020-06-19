@@ -1288,7 +1288,7 @@ func (b *Binpkg) _verifier_exit(verifier) {
 		pkg_path = b._bintree.getname(
 			b._bintree.inject(pkg.cpv,
 				filename = b._fetched_pkg),
-		allocate_new = False)
+		allocate_new = false)
 	}else {
 		pkg_path = b.pkg.root_config.trees["bintree"].getname(
 			b.pkg.cpv)
@@ -1752,9 +1752,9 @@ type BinpkgFetcher struct {
 }
 
 func (b *BinpkgFetcher) _start() {
-	fetcher := NewBinpkgFetcherProcess(background = b.background,
-		logfile = b.logfile, pkg=b.pkg, pkg_path = b.pkg_path,
-		pretend=b.pretend, scheduler = b.scheduler)
+	fetcher := NewBinpkgFetcherProcess(b.background,
+		b.logfile, b.pkg, b.pkg_path,
+		b.pretend, b.scheduler)
 
 	if not b.pretend {
 		portage.util.ensure_dirs(filepath.Dir(b.pkg_path))
@@ -1887,7 +1887,7 @@ func (b *_BinpkgFetcherProcess) _start() {
 		fcmd = settings.get(fcmd_prefix)
 	}
 
-	fcmd_vars = map[string]string{
+	fcmd_vars := map[string]string{
 		"DISTDIR" : filepath.Dir(pkg_path),
 		"URI"     : uri,
 		"FILE"    : filepath.Base(pkg_path),
@@ -2002,13 +2002,12 @@ type AlreadyLocked struct {
 }
 
 func (b *_BinpkgFetcherProcess) async_unlock() {
-	if b._lock_obj is
-	None{
-		raise AssertionError('already unlocked')
+	if b._lock_obj == nil{
+		//raise AssertionError('already unlocked')
 	}
-	result = b._lock_obj.async_unlock()
-	b._lock_obj = None
-	b.locked = False
+	result := b._lock_obj.async_unlock()
+	b._lock_obj = nil
+	b.locked = false
 	return result
 }
 
@@ -2016,7 +2015,7 @@ func NewBinpkgFetcherProcess(background bool,
 	logfile string, pkg *PkgStr, pkg_path string,
 	pretend interface{}, scheduler *SchedulerInterface)*_BinpkgFetcherProcess {
 	b := &_BinpkgFetcherProcess{}
-	b.SpawnProcess = NewSpawnProcess(nil, background,nil, scheduler,
+	b.SpawnProcess = NewSpawnProcess(nil, background,nil, nil, scheduler,
 		logfile)
 
 	b.background=background
@@ -2887,7 +2886,7 @@ func(e *EbuildBuild) _start_with_metadata( aux_get_task) {
 	root_config := pkg.root_config
 	tree := "porttree"
 	e._tree = tree
-	portdb = root_config.trees[tree].dbapi
+	portdb := root_config.trees[tree].dbapi
 	settings.SetCpv(pkg)
 	settings.configDict["pkg"]["SRC_URI"], = aux_get_task.future.result()
 	settings.configDict["pkg"]["EMERGE_FROM"] = "ebuild"
@@ -2996,7 +2995,7 @@ func(e *EbuildBuild) _prefetch_exit( prefetcher) {
 				ebuild_path = e._ebuild_path,
 				fetchall=e.opts.fetch_all_uri,
 				fetchonly = e.opts.fetchonly,
-				background=False,
+				background=false,
 				logfile = None,
 				pkg=e.pkg,
 				scheduler = e.scheduler)
@@ -4236,10 +4235,11 @@ type EbuildPhase struct {
 	*CompositeTask
 
 	// slot
-	actionmap           Actionmap
-	phase, _ebuild_lock string
-	settings            *Config
-	fd_pipes            map[int]int
+	actionmap    Actionmap
+	phase        string
+	_ebuild_lock *AsynchronousLock
+	settings     *Config
+	fd_pipes     map[int]int
 
 	_features_display []string
 	_locked_phases    []string
@@ -4367,9 +4367,8 @@ func (e *EbuildPhase) _start_lock() {
 	e.settings.Features.Features["ebuild-locks"]{
 		eroot := e.settings.ValueDict["EROOT"]
 		lock_path := filepath.Join(eroot, VdbPath+"-ebuild")
-		if os.access(filepath.Dir(lock_path), os.W_OK) {
-			e._ebuild_lock = AsynchronousLock(path = lock_path,
-				scheduler = e.scheduler)
+		if osAccess(filepath.Dir(lock_path), unix.W_OK) {
+			e._ebuild_lock = NewAsynchronousLock(lock_path, e.scheduler)
 			e._start_task(e._ebuild_lock, e._lock_exit)
 			return
 		}
@@ -4419,7 +4418,7 @@ func (e *EbuildPhase) _start_ebuild() {
 		}
 	}
 
-	ebuild_process = NewEbuildProcess(e.actionmap,
+	ebuild_process := NewEbuildProcess(e.actionmap,
 		e.background, fd_pipes,
 		e._get_log_path(), e.phase,
 		e.scheduler, e.settings)
@@ -4474,7 +4473,7 @@ func (e *EbuildPhase) _ebuild_exit_unlocked( ebuild_process, unlock_task=nil) {
 		out := &bytes.Buffer{}
 		_check_build_log(e.settings, out)
 		msg := out.String()
-		e.scheduler.output(msg, log_path = logfile)
+		e.scheduler.output(msg, logfile, false, 0, -1)
 	}
 
 	if fail {
@@ -5780,20 +5779,24 @@ func (s *Scheduler) _find_blockers( new_pkg) {
 }
 
 func (s *Scheduler) _find_blockers_impl(new_pkg) {
-	if s._opts_ignore_blockers.intersection(s.myopts):
-	return nil
+	if s._opts_ignore_blockers.intersection(s.myopts) {
+		return nil
+	}
 
-	blocker_db = s._blocker_db[new_pkg.root]
+	blocker_db := s._blocker_db[new_pkg.root]
 
 	blocked_pkgs = []
 	for blocking_pkg
 	in
-	blocker_db.findInstalledBlockers(new_pkg):
-	if new_pkg.slot_atom == blocking_pkg.slot_atom:
-	continue
-	if new_pkg.cpv == blocking_pkg.cpv:
-	continue
-	blocked_pkgs.append(blocking_pkg)
+	blocker_db.findInstalledBlockers(new_pkg) {
+		if new_pkg.slot_atom == blocking_pkg.slot_atom {
+			continue
+		}
+		if new_pkg.cpv == blocking_pkg.cpv {
+			continue
+		}
+		blocked_pkgs.append(blocking_pkg)
+	}
 
 	return blocked_pkgs
 }
@@ -6898,46 +6901,50 @@ func (s *Scheduler) _sigcont_handler( signum, frame) {
 
 func (s *Scheduler) _job_delay() {
 
-	if s._jobs &&
-	s._max_load
-	!= nil:
+	if s._jobs && s._max_load!= nil {
 
-	current_time = time.Now()
+		current_time := time.Now()
 
-	if s._sigcont_time != nil:
+		if s._sigcont_time != nil {
 
-	elapsed_seconds = current_time - s._sigcont_time
-	if elapsed_seconds > 0 && 
-	elapsed_seconds < s._sigcont_delay:
+			elapsed_seconds := current_time - s._sigcont_time
+			if elapsed_seconds > 0 &&
+				elapsed_seconds < s._sigcont_delay {
 
-	if s._job_delay_timeout_id != nil:
-	s._job_delay_timeout_id.cancel()
+				if s._job_delay_timeout_id != nil {
+					s._job_delay_timeout_id.cancel()
+				}
 
-	s._job_delay_timeout_id = s._event_loop.call_later(
-		s._sigcont_delay-elapsed_seconds,
-		s._schedule)
-	return true
+				s._job_delay_timeout_id = s._event_loop.call_later(
+					s._sigcont_delay-elapsed_seconds,
+					s._schedule)
+				return true
+			}
 
-	s._sigcont_time = nil
+			s._sigcont_time = nil
+		}
 
-try:
-	avg1, avg5, avg15 = getloadavg()
-	except
-OSError:
-	return false
+	try:
+		avg1, avg5, avg15 = getloadavg()
+		except
+	OSError:
+		return false
 
-	delay = s._job_delay_max * avg1 / s._max_load
-	if delay > s._job_delay_max:
-	delay = s._job_delay_max
-	elapsed_seconds = current_time - s._previous_job_start_time
-	if elapsed_seconds > 0 &&
-	elapsed_seconds < delay{
-		if s._job_delay_timeout_id != nil:
-		s._job_delay_timeout_id.cancel()
+		delay := s._job_delay_max * avg1 / s._max_load
+		if delay > s._job_delay_max {
+			delay = s._job_delay_max
+			elapsed_seconds = current_time - s._previous_job_start_time
+		}
+		if elapsed_seconds > 0 &&
+			elapsed_seconds < delay {
+			if s._job_delay_timeout_id != nil {
+				s._job_delay_timeout_id.cancel()
 
-		s._job_delay_timeout_id = s._event_loop.call_later(
-			delay-elapsed_seconds, s._schedule)
-		return true
+				s._job_delay_timeout_id = s._event_loop.call_later(
+					delay-elapsed_seconds, s._schedule)
+				return true
+			}
+		}
 	}
 
 	return false
@@ -7147,12 +7154,14 @@ exc:
 	return false
 
 	if success &&
-	s._show_list():
-	mydepgraph.display(mydepgraph.altlist(), favorites = s._favorites)
+	s._show_list() {
+		mydepgraph.display(mydepgraph.altlist(), favorites = s._favorites)
+	}
 
-	if not success:
-	s._post_mod_echo_msgs.append(mydepgraph.display_problems)
-	return false
+	if ! success {
+		s._post_mod_echo_msgs.append(mydepgraph.display_problems)
+		return false
+	}
 	mydepgraph.display_problems()
 	s._init_graph(mydepgraph.schedulerGraph())
 
@@ -7202,22 +7211,25 @@ func (s *Scheduler) _world_atom( pkg) {
 		return
 	}
 
-	if pkg.root != s.target_root:
-	return
+	if pkg.root != s.target_root {
+		return
+	}
 
-	args_set = s._args_set
-	if not args_set.findAtomForPackage(pkg):
-	return
+	args_set := s._args_set
+	if not args_set.findAtomForPackage(pkg) {
+		return
+	}
 
-	logger = s._logger
-	pkg_count = s._pkg_count
-	root_config = pkg.root_config
-	world_set = root_config.sets["selected"]
-	world_locked = false
+	logger := s._logger
+	pkg_count := s._pkg_count
+	root_config := pkg.root_config
+	world_set := root_config.sets["selected"]
+	world_locked := false
 	atom = nil
 
-	if pkg.operation != "uninstall":
-	atom = s._world_atoms.get(pkg)
+	if pkg.operation != "uninstall" {
+		atom = s._world_atoms.get(pkg)
+	}
 
 try:
 
@@ -7298,8 +7310,8 @@ type  SchedulerInterface struct {
 	time,
 	_asyncio_child_watcher,
 	_asyncio_wrapper,
-	_event_loop,
-	_is_background string
+	_event_loop string
+	_is_background func()bool
 }
 
 var _event_loop_attrs = []string{
@@ -7347,7 +7359,7 @@ func (s *SchedulerInterface) _return_false() bool{
 	return false
 }
 
-// "", nil, 0, -1
+// "", false, 0, -1
 func (s *SchedulerInterface) output( msg , log_path string, background bool, level, noiselevel int) {
 
 	global_background := s._is_background()

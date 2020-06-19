@@ -1815,8 +1815,7 @@ fd_pipes=None, returnpid bool) int {
 			retval = merge(mysettings.ValueDict["CATEGORY"], mysettings.ValueDict["PF"],
 				mysettings.ValueDict["D"], filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"],
 					"build-info"), myroot, mysettings, mysettings.ValueDict["EBUILD"],
-					tree, mydbapi, vartree, prev_mtimes=prev_mtimes,
-				fd_pipes = fd_pipes)
+					tree, mydbapi, vartree, prev_mtimes, nil, nil, fd_pipes)
 		}
 	} else {
 		WriteMsgStdout(fmt.Sprintf("!!! Unknown mydo: %s\n", mydo), -1)
@@ -1839,7 +1838,7 @@ func _check_temp_dir(settings *Config)  int{
 
 	checkdir := firstExisting(filepath.Join(settings.ValueDict["PORTAGE_TMPDIR"], "portage"))
 
-	if !os.access(checkdir, os.W_OK) {
+	if !osAccess(checkdir, unix.W_OK) {
 		WriteMsg(fmt.Sprintf("%s is not writable.\n"+
 			"Likely cause is that you've mounted it as readonly.\n", checkdir),
 			-1, nil)
@@ -2726,7 +2725,7 @@ fpath_relative.startswith(xdg_dirs) &&
 
 if fixlafiles && strings.HasSuffix(fname, ".la") && os.path.isfile(fpath){
 	contents, _ := ioutil.ReadFile(fpath)
-	has_lafile_header = Ins(strings.Split(string(contents), "\n"), ".la - a libtool library file")
+	has_lafile_header := Ins(strings.Split(string(contents), "\n"), ".la - a libtool library file")
 try{
 	needs_update, new_contents = rewrite_lafile(contents)
 }except portage.exception.InvalidData as e{
