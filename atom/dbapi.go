@@ -3890,47 +3890,59 @@ d.vartree.dbapi._plib_registry == nil ||
 		}
 	}
 
-	preserve_nodes = map[string]bool{}
-	for consumer_node in lib_graph.root_nodes():
-	if consumer_node in provider_nodes:
-	continue
-			node_stack = lib_graph.child_nodes(consumer_node)
-	while node_stack:
-	provider_node = node_stack.pop()
-	if provider_node in preserve_nodes:
-	continue
-	preserve_nodes.add(provider_node)
-	node_stack=append(,lib_graph.child_nodes(provider_node))
+	preserve_nodes := map[string]bool{}
+	for consumer_node in lib_graph.root_nodes()
+	{
+		if consumer_node := range provider_nodes{
+			continue
+		}
+		node_stack = lib_graph.child_nodes(consumer_node)
+		for len(node_stack) > 0 {
+			provider_node = node_stack.pop()
+			if provider_node in preserve_nodes{
+				continue
+			}
+			preserve_nodes.add(provider_node)
+			node_stack = append(, lib_graph.child_nodes(provider_node))
+		}
+	}
 
-	preserve_paths = map[string]bool{}
-	for preserve_node in preserve_nodes:
-					hardlinks = map[string]bool{}
-	soname_symlinks = map[string]bool{}
-	soname = linkmap.getSoname(next(iter(preserve_node.alt_paths)))
-	have_replacement_soname_link = false
-	have_replacement_hardlink = false
-	for f in preserve_node.alt_paths:
-	f_abs = filepath.Join(root, f.lstrip(string(os.PathSeparator)))
-try:
-	if syscall.S_IFREG&os.Lstat(f_abs).Mode()):
-	hardlinks.add(f)
-	if not unmerge && d.isowner(f):
-	have_replacement_hardlink = true
-	if filepath.Base(f) == soname:
-	have_replacement_soname_link = true
-	else if filepath.Base(f) == soname:
-	soname_symlinks.add(f)
-	if not unmerge && d.isowner(f):
-	have_replacement_soname_link = true
-	except OSError:
-	pass
+	preserve_paths := map[string]bool{}
+	for preserve_node := range preserve_nodes {
+		hardlinks := map[string]bool{}
+		soname_symlinks := map[string]bool{}
+		soname := linkmap.getSoname(next(iter(preserve_node.alt_paths)))
+		have_replacement_soname_link := false
+		have_replacement_hardlink := false
+		for f in preserve_node.alt_paths{
+			f_abs := filepath.Join(root, f.lstrip(string(os.PathSeparator)))
+			try:
+			if syscall.S_IFREG&os.Lstat(f_abs).Mode()!= 0{
+			hardlinks.add(f)
+			if not unmerge && d.isowner(f){
+			have_replacement_hardlink = true
+			if filepath.Base(f) == soname{
+			have_replacement_soname_link = true
+		}
+		}
+		} else if filepath.Base(f) == soname{
+			soname_symlinks.add(f)
+			if not unmerge && d.isowner(f):
+			have_replacement_soname_link = true
+		}
+			except OSError:
+			pass
+		}
 
-	if have_replacement_hardlink && have_replacement_soname_link:
-	continue
+		if have_replacement_hardlink && have_replacement_soname_link {
+			continue
+		}
 
-	if hardlinks:
-	preserve_paths.update(hardlinks)
-	preserve_paths.update(soname_symlinks)
+		if hardlinks {
+			preserve_paths.update(hardlinks)
+			preserve_paths.update(soname_symlinks)
+		}
+	}
 
 	return preserve_paths
 
@@ -3943,36 +3955,40 @@ func (d *dblink) _add_preserve_libs_to_contents(preserve_paths) {
 	}
 
 	os = _os_merge
-	showMessage = d._display_merge
-	root = d.settings.ValueDict["ROOT"]
+	showMessage := d._display_merge
+	root := d.settings.ValueDict["ROOT"]
 
-			new_contents = d.getcontents().copy()
-	old_contents = d._installed_instance.getcontents()
-	for f in sorted(preserve_paths):
-	f = _unicode_decode(f,
-		encoding=_encodings['content'], errors='strict')
-	f_abs = filepath.Join(root, f.lstrip(string(os.PathSeparator)))
-	contents_entry = old_contents.get(f_abs)
-	if contents_entry == nil:
-						showMessage(_("!!! File '%s' will not be preserved "+
-	"due to missing contents entry\n") % (f_abs,),
-	level=logging.ERROR, noiselevel=-1)
-	preserve_paths.remove(f)
-	continue
-	new_contents[f_abs] = contents_entry
-	obj_type = contents_entry[0]
-	showMessage(_(">>> needed    %s %s\n") % (obj_type, f_abs),
-		noiselevel=-1)
-			parent_dir = filepath.Dir(f_abs)
-		while len(parent_dir) > len(root):
-	new_contents[parent_dir] = ["dir"]
-	prev = parent_dir
-	parent_dir = filepath.Dir(parent_dir)
-	if prev == parent_dir:
-	break
-	outfile = atomic_ofstream(filepath.Join(d.dbtmpdir, "CONTENTS"))
+	new_contents := CopyMapSSS(d.getcontents())
+	old_contents := d._installed_instance.getcontents()
+	for f
+	in
+	sorted(preserve_paths)
+	{
+		f_abs := filepath.Join(root, strings.TrimLeft(f, string(os.PathSeparator)))
+		contents_entry := old_contents[f_abs]
+		if contents_entry == nil {
+			showMessage(fmt.Sprintf("!!! File '%s' will not be preserved "+
+				"due to missing contents entry\n", f_abs, ), 40, -1)
+			preserve_paths.remove(f)
+			continue
+		}
+		new_contents[f_abs] = contents_entry
+		obj_type := contents_entry[0]
+		showMessage(fmt.Sprintf(">>> needed    %s %s\n", obj_type, f_abs),
+			-1, 0)
+		parent_dir := filepath.Dir(f_abs)
+		for len(parent_dir) > len(root) {
+			new_contents[parent_dir] = []string{"dir"}
+			prev := parent_dir
+			parent_dir := filepath.Dir(parent_dir)
+			if prev == parent_dir {
+				break
+			}
+		}
+	}
+	outfile := NewAtomic_ofstream(filepath.Join(d.dbtmpdir, "CONTENTS"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	write_contents(new_contents, root, outfile)
-	outfile.close()
+	outfile.Close()
 	d._clear_contents_cache()
 
 }
@@ -4115,7 +4131,7 @@ func (d *dblink) _remove_preserved_libs(cpv_lib_map) {
 	}
 	ftr := []string{}
 	for f := range files_to_remove{
-		ftr := append(ftr,f)
+		ftr = append(ftr,f)
 	}
 	sort.Strings(ftr)
 	showMessage := d._display_merge
@@ -4165,7 +4181,7 @@ func (d *dblink) _remove_preserved_libs(cpv_lib_map) {
 
 }
 
-func (d *dblink) _collision_protect(srcroot string, mypkglist []*dblink, file_list, symlink_list []string) {
+func (d *dblink) _collision_protect(srcroot string, mypkglist []*dblink, file_list, symlink_list []string) ([]string, map[string]map[[2]string], map[string]bool, []string, map[[2]uint64]) {
 	real_relative_paths := map[string][]string{}
 
 	collision_ignore := []string{}
@@ -5054,13 +5070,13 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	}
 
 	showMessage(fmt.Sprintf(">>> Merging %s to %s\n", d.mycpv, destroot),0,0)
-	phase := NewEbuildPhase(nil, false, "preinst",
+	phase2 := NewEbuildPhase(nil, false, "preinst",
 	d._scheduler, d.settings, nil)
-	phase.start()
-	a = phase.wait()
+	phase2.start()
+	a := phase2.wait()
 
 	if a != 0 {
-		showMessage(fmt.Sprintf("!!! FAILED preinst: ")+str(a)+"\n",
+		showMessage(fmt.Sprintf("!!! FAILED preinst: ")+fmt.Sprintf(a)+"\n",
 			40, -1)
 		return a
 	}
@@ -5078,8 +5094,8 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	d.updateprotect()
 
 	d.vartree.dbapi._fs_lock()
-	try:
-		plib_registry := d.vartree.dbapi._plib_registry
+	//try:
+	plib_registry := d.vartree.dbapi._plib_registry
 	if plib_registry!= nil {
 		plib_registry.lock()
 	}
@@ -5109,7 +5125,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	d._clear_contents_cache()
 
 	linkmap := d.vartree.dbapi._linkmap
-	plib_registry := d.vartree.dbapi._plib_registry
+	plib_registry = d.vartree.dbapi._plib_registry
 					
 	preserve_paths := map[string]bool{}
 	needed := ""
@@ -5132,13 +5148,13 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	}
 
 	reinstall_self := false
-	if d.myroot == "/" && matchFromList(PORTAGE_PACKAGE_ATOM, [d.mycpv]) {
+	if d.myroot == "/" && len(matchFromList(PortagePackageAtom, []*PkgStr{d.mycpv})) > 0 {
 		reinstall_self = true
 	}
 
 	emerge_log := d._emerge_log
 
-	autoclean := d.settings.ValueDict["AUTOCLEAN"] == "yes" || d.settings.ValueDict["AUTOCLEAN"] == "" ||preserve_paths
+	autoclean := d.settings.ValueDict["AUTOCLEAN"] == "yes" || d.settings.ValueDict["AUTOCLEAN"] == "" ||len(preserve_paths) > 0
 
 	if autoclean {
 		emerge_log(fmt.Sprintf(" >>> AUTOCLEAN: %s", slot_atom, ))
@@ -5149,7 +5165,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 		if dblnk == d {
 			continue
 		}
-		if !(autoclean || dblnk.mycpv == d.mycpv || reinstall_self) {
+		if !(autoclean || dblnk.mycpv.string == d.mycpv.string || reinstall_self) {
 			continue
 		}
 		showMessage((">>> Safely unmerging already-installed instance...\n"), 0,0)
@@ -5179,7 +5195,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 		dblnk.delete()
 	//finally:
 		d.unlockdb()
-		showMessage(">>> Original instance of package unmerged safely.\n")
+		showMessage(">>> Original instance of package unmerged safely.\n", 0, 0)
 	}
 
 	if len(others_in_slot) > 1 {
@@ -5205,82 +5221,88 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	d.lockdb()
 	//try:
 	for _, blocker := range blockers{
-		d.vartree.dbapi.removeFromContents(blocker, iter(contents),
-			false)
+		cs := []string{}
+		for _, c := range contents{
+			cs =append(cs, c)
+		}
+		d.vartree.dbapi.removeFromContents(blocker, cs, false)
 	}
 	//finally:
 	d.unlockdb()
 
 	plib_registry = d.vartree.dbapi._plib_registry
-	if plib_registry! =nil {
+	if plib_registry!=nil {
 		d.vartree.dbapi._fs_lock()
 		plib_registry.lock()
-	try:
+		defer func() {
+			plib_registry.unlock()
+			d.vartree.dbapi._fs_unlock()
+		}()
 		plib_registry.load()
 
-		if preserve_paths:
-		plib_registry.register(d.mycpv, slot, counter,
-			sorted(preserve_paths))
-
-		plib_dict = plib_registry.getPreservedLibs()
-		for cpv, paths
-		in
-		plib_collisions.items():
-		if cpv not
-		in
-	plib_dict:
-		continue
-		has_vdb_entry = false
-		if cpv != d.mycpv:
-		d.vartree.dbapi.lock()
-	try:
-	try:
-		slot = d.vartree.dbapi._pkg_str(cpv, nil).slot
-		counter = d.vartree.dbapi.cpv_counter(cpv)
-		except(KeyError, InvalidData):
-		pass
-		else:
-		has_vdb_entry = true
-		d.vartree.dbapi.removeFromContents(
-			cpv, paths)
-	finally:
-		d.vartree.dbapi.unlock()
-
-		if not has_vdb_entry:
-		has_registry_entry = false
-		for plib_cps, (plib_cpv, plib_counter, plib_paths) in
-		plib_registry._data.items():
-		if plib_cpv != cpv:
-		continue
-	try:
-		cp, slot = plib_cps.split(":", 1)
-		except
-	ValueError:
-		continue
-		counter = plib_counter
-		has_registry_entry = true
-		break
-
-		if not has_registry_entry:
-		continue
-
-		remaining = []
-		for f
-		in
-		plib_dict[cpv]
-		{
-			if f not
-			in
-			paths{
-				remaining = append(remaining, f)
-			}
+		if preserve_paths {
+			plib_registry.register(d.mycpv, slot, counter,
+				sorted(preserve_paths))
 		}
-		plib_registry.register(cpv, slot, counter, remaining)
+
+		plib_dict := plib_registry.getPreservedLibs()
+		for cpv, paths := range plib_collisions {
+			if cpv not
+			in
+		plib_dict{
+			continue
+		}
+			has_vdb_entry := false
+			if cpv != d.mycpv {
+				d.vartree.dbapi.lock()
+			//try:
+			//try:
+				slot := d.vartree.dbapi._pkg_str(cpv, "").slot
+				counter := d.vartree.dbapi.cpv_counter(cpv)
+				//except(KeyError, InvalidData):
+				//pass
+				//else:
+				has_vdb_entry = true
+				d.vartree.dbapi.removeFromContents(cpv, paths, true)
+			//finally:
+				d.vartree.dbapi.unlock()
+			}
+
+			if ! has_vdb_entry {
+				has_registry_entry := false
+				for plib_cps, (plib_cpv, plib_counter, plib_paths) := range plib_registry._data{
+					if plib_cpv != cpv{
+					continue
+				}
+					//try:
+					cs := strings.Split(plib_cps, ":", 2)
+					if len(cs) == 1{
+					//except ValueError:
+					continue
+				}
+				cp,slot:= cs[0],cs[1]
+					counter = plib_counter
+					has_registry_entry = true
+					break
+				}
+
+				if ! has_registry_entry {
+					continue
+				}
+			}
+
+			remaining := []string{}
+			for _, f:= range plib_dict[cpv]{
+				if f not
+				in
+				paths{
+					remaining = append(remaining, f)
+				}
+			}
+			plib_registry.register(cpv, slot, counter, remaining)
+		}
 
 		plib_registry.store()
-	finally:
-		plib_registry.unlock()
-		d.vartree.dbapi._fs_unlock()
 	}
 
 	d.vartree.dbapi._add(d)
@@ -5289,15 +5311,15 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 		d.settings.ValueDict["PORTAGE_UPDATE_ENV"] = 
 filepath.Join(d.dbpkgdir, "environment.bz2")
 	d.settings.BackupChanges("PORTAGE_UPDATE_ENV")
-	try:
+	//try:
 	phase = NewEbuildPhase(nil, false, "postinst",
 	d._scheduler,d.settings , nil)
 	phase.start()
 	a = phase.wait()
 	if a == 0 {
-		showMessage(_(">>> %s merged.\n") % d.mycpv)
+		showMessage(fmt.Sprintf(">>> %s merged.\n", d.mycpv), 0, 0)
 	}
-	finally:
+	//finally:
 	delete(d.settings.ValueDict,"PORTAGE_UPDATE_ENV")
 
 	if a != 0 {
@@ -5307,12 +5329,9 @@ filepath.Join(d.dbpkgdir, "environment.bz2")
 		})
 	}
 
-		env_update(1,
-	d.settings.ValueDict["ROOT"], prev_mtimes=prev_mtimes,
-	contents, env=d.settings,
-	WriteMsg_level=d._display_merge, vardbapi=d.vartree.dbapi)
+	env_update(1, d.settings.ValueDict["ROOT"], prev_mtimes, contents, d.settings, d._display_merge, d.vartree.dbapi)
 
-	d._prune_plib_registry(false, nil, nil)
+	d._prune_plib_registry(false, "", nil)
 	d._post_merge_sync()
 
 	return 0
@@ -5333,7 +5352,7 @@ func (d *dblink) _new_backup_path(p string) string {
 	return backup_p
 }
 
-func (d *dblink) _merge_contents(srcroot, destroot string, cfgfiledict) {
+func (d *dblink) _merge_contents(srcroot, destroot string, cfgfiledict) int {
 
 	cfgfiledict_orig = cfgfiledict.copy()
 
@@ -5345,45 +5364,49 @@ func (d *dblink) _merge_contents(srcroot, destroot string, cfgfiledict) {
 	secondhand := []
 
 	if d.mergeme(srcroot, destroot, outfile, secondhand,
-		d.settings.ValueDict["EPREFIX"].lstrip(string(os.PathSeparator)), cfgfiledict, mymtime) {
+		strings.TrimLeft(d.settings.ValueDict["EPREFIX"], string(os.PathSeparator)), cfgfiledict, mymtime) != 0 {
 		return 1
 	}
 
 	lastlen := 0
-	while len(secondhand) && len(secondhand)!=lastlen:
-		
-	thirdhand = []
-	if d.mergeme(srcroot, destroot, outfile, thirdhand,
-		secondhand, cfgfiledict, mymtime):
-	return 1
+	for len(secondhand) > 0 && len(secondhand)!=lastlen {
+
+		thirdhand = []
+		if d.mergeme(srcroot, destroot, outfile, thirdhand,
+			secondhand, cfgfiledict, mymtime) != 0 {
+			return 1
+		}
 
 		lastlen = len(secondhand)
 
-				secondhand = thirdhand
+		secondhand = thirdhand
+	}
 
-	if len(secondhand):
+	if len(secondhand)>0 {
 		if d.mergeme(srcroot, destroot, outfile, nil,
-		secondhand, cfgfiledict, mymtime):
-	return 1
+			secondhand, cfgfiledict, mymtime) != 0 {
+			return 1
+		}
+	}
 
-		os.umask(prevmask)
+	syscall.Umask(prevmask)
 
-		outfile.flush()
-	outfile.close()
+	outfile.Close()
 
-		if cfgfiledict != cfgfiledict_orig:
-	cfgfiledict.pop("IGNORE", nil)
-try:
-	writedict(cfgfiledict, d.vartree.dbapi._conf_mem_file)
-	except InvalidLocation:
-	d.settings._init_dirs()
-	writedict(cfgfiledict, d.vartree.dbapi._conf_mem_file)
+	if cfgfiledict != cfgfiledict_orig {
+		cfgfiledict.pop("IGNORE", nil)
+	try:
+		writedict(cfgfiledict, d.vartree.dbapi._conf_mem_file)
+		except
+	InvalidLocation:
+		d.settings._init_dirs()
+		writedict(cfgfiledict, d.vartree.dbapi._conf_mem_file)
+	}
 
 	return 0
-
 }
 
-func (d *dblink) mergeme(srcroot, destroot string, outfile, secondhand, stufftomerge, cfgfiledict , thismtime) {
+func (d *dblink) mergeme(srcroot, destroot string, outfile io.ReadCloser, secondhand, stufftomerge, cfgfiledict , thismtime) int {
 
 	showMessage := d._display_merge
 	WriteMsg := d._display_merge
@@ -5397,8 +5420,8 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile, secondhand, stufftom
 
 	protect_if_modified := d.settings.Features.Features["config-protect-if-modified"] && d._installed_instance != nil
 
+	mergelist := []string{}
 	if isinstance(stufftomerge, basestring) {
-		mergelist = []string{}
 		for child
 			in
 		os.listdir(join(srcroot, stufftomerge))
@@ -5570,9 +5593,8 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile, secondhand, stufftom
 					msg = append(msg, fmt.Sprintf("  '%s'", backup_dest))
 					msg = append(msg, "")
 					d._eerror("preinst", msg)
-					if _movefile(mydest, backup_dest, 0, nil
-						d.settings, nil) == 0
-					{
+					if _movefile(mydest, backup_dest, 0, nil,
+						d.settings, nil) == 0 {
 						return 1
 					}
 					showMessage(fmt.Sprintf("bak %s %s.backup\n", mydest, mydest), 40, -1)
@@ -5617,17 +5639,20 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile, secondhand, stufftom
 				os.Chown(mydest, mystat[4], mystat[5])
 				showMessage(fmt.Sprintf(">>> %s/\n", mydest), 0, 0)
 			}
-			//try:
-			d._merged_path(mydest, os.Lstat(mydest))
-			//except
-			//OSError:
-			//pass
+			ols, err := os.Lstat(mydest)
+			if err == nil {
+				d._merged_path(mydest, ols, true)
+			}else {
+				//except OSError:
+				//pass
+			}
 
 			outfile.write("dir " + myrealdest + "\n")
-			mergelist = append(mergelist, join(relative_path, child)
-			for child
-				in
-			os.listdir(join(srcroot, relative_path)))
+
+			lds, _ := listDir(join(srcroot, relative_path))
+			for _, child:= range lds {
+				mergelist = append(mergelist, join(relative_path, child))
+			}
 
 		}else if syscall.S_IFREG&mymode!= 0 {
 				if !protected && mydmode != 0 && syscall.S_IFDIR&mydmode != 0 {
@@ -6681,7 +6706,7 @@ func (b *bindbapi) unpack_metadata(pkg, dest_dir){
 
 }
 
-func (b *bindbapi) cp_list(pkg, dest_dir){
+func (b *bindbapi) unpack_contents(pkg, dest_dir){
 
 	loop = asyncio._wrap_loop()
 	if isinstance(pkg, _pkg_str):
@@ -6725,11 +6750,13 @@ func (b *bindbapi) cp_list(mycp string, use_cache int) []*PkgStr {
 	return b.fakedbapi.cp_list(mycp, use_cache)
 }
 
-func (b *bindbapi) cp_all(sort=false) {
+// false
+func (b *bindbapi) cp_all(sort bool) []string {
 
-	if not b.bintree.populated:
-	b.bintree.populate()
-	return fakedbapi.cp_all(b, sort=sort)
+	if ! b.bintree.populated {
+		b.bintree.Populate()
+	}
+	return b.fakedbapi.cp_all(sort)
 }
 
 func (b *bindbapi) cpv_all() {
@@ -7348,11 +7375,11 @@ func (b *BinaryTree) _populate_remote(getbinpkg_refresh bool) {
 				ssh_args = append(ssh_args, path)
 
 				f_dec = &bytes.Buffer{}
-				proc := exec.Command(ssh_args[0], ssh_args[1:])
+				proc := exec.Command(ssh_args[0], ssh_args[1:]...)
 				proc.Stdout = f_dec
 				proc.Run()
 			} else {
-				setting := "FETCHCOMMAND_" + strings.ToUpper(parsed_url.Scheme.upper())
+				setting := "FETCHCOMMAND_" + strings.ToUpper(parsed_url.Scheme)
 				fcmd := b.settings.ValueDict[setting]
 				if fcmd == "" {
 					fcmd = b.settings.ValueDict["FETCHCOMMAND"]
@@ -8005,9 +8032,9 @@ func (b *BinaryTree) isremote(pkgname *PkgStr) bool {
 func (b *BinaryTree) get_pkgindex_uri(cpv *PkgStr) string {
 	uri := ""
 	if b._remotepkgs != nil {
-		metadata := b._remotepkgs[b.dbapi._instance_key(cpv, false)]
+		metadata := b._remotepkgs[b.dbapi._instance_key(cpv, false).string]
 		if metadata != nil {
-			uri := metadata["PKGINDEX_URI"]
+			uri = metadata["PKGINDEX_URI"]
 		}
 	}
 	return uri
@@ -8033,9 +8060,9 @@ try:
 	except AttributeError:
 	cpv = pkg
 
-	_instance_key = b.dbapi._instance_key
-	instance_key = _instance_key(cpv)
-	digests = {}
+	_instance_key := b.dbapi._instance_key
+	instance_key := _instance_key(cpv, false)
+	digests := {}
 	metadata = (nil if b._remotepkgs == nil else
 	b._remotepkgs.get(instance_key))
 	if metadata == nil:
@@ -8066,43 +8093,13 @@ try:
 
 }
 
-func (b *BinaryTree) digestCheck(pkg) {
+func (b *BinaryTree) getslot(mycatpkg *PkgStr) string {
 
-	digests := b._get_digests(pkg)
-
-	if not digests:
-	return false
-
-try:
-	cpv = pkg.cpv
-	except AttributeError:
-	cpv = pkg
-
-	pkg_path = b.getname(cpv)
-	hash_filter = _hash_filter(
-		b.settings.ValueDict["PORTAGE_CHECKSUM_FILTER", ""))
-	if not hash_filter.transparent:
-	digests = _apply_hash_filter(digests, hash_filter)
-	eout = EOutput()
-	eout.quiet = b.settings.ValueDict["PORTAGE_QUIET") == "1"
-	ok, st = _check_distfile(pkg_path, digests, eout, show_errors=0)
-	if not ok:
-	ok, reason = verify_all(pkg_path, digests)
-	if not ok:
-	raise portage.exception.DigestException(
-		(pkg_path,) + tuple(reason))
-
-	return true
-
-}
-
-func (b *BinaryTree) getslot(mycatpkg) {
-
-	myslot = ""
-try:
-	myslot = b.dbapi._pkg_str(mycatpkg, nil).slot
-	except KeyError:
-	pass
+	myslot := ""
+//try:
+	myslot = b.dbapi._pkg_str(mycatpkg, "").slot
+	//except KeyError:
+	//pass
 	return myslot
 }
 
@@ -8420,7 +8417,7 @@ func (p *portdbapi) findname2(mycpv, mytree, myrepo string) (string,int) {
 		if mytree == "" {
 			return "", 0
 		}
-	}else if mytree != "" {
+	} else if mytree != "" {
 		myrepo = p.repositories.locationMap[mytree]
 	}
 
@@ -8430,20 +8427,20 @@ func (p *portdbapi) findname2(mycpv, mytree, myrepo string) (string,int) {
 		//raise InvalidPackageName(mycpv)
 	}
 
-//try:
-//	cp = mycpv.cp
-//	except AttributeError:
+	//try:
+	//	cp = mycpv.cp
+	//	except AttributeError:
 	cp := mysplit[0] + "/" + psplit[0]
 
 	var mytrees []string
 	if p._better_cache == nil {
 		if mytree != "" {
 			mytrees = []string{mytree}
-		}else {
+		} else {
 			mytrees = reversed(p.porttrees)
 		}
-	}else{
-	//try:
+	} else {
+		//try:
 		repos := p._better_cache.__getitem__(cp)
 		//except KeyError:
 		//return "", 0
@@ -8456,19 +8453,19 @@ func (p *portdbapi) findname2(mycpv, mytree, myrepo string) (string,int) {
 		}
 	}
 
-	relative_path := mysplit[0] + string(os.PathSeparator) + psplit[0] + string(os.PathSeparator) +
-mysplit[1] + ".ebuild"
+	relative_path := mysplit[0] + string(os.PathSeparator) + psplit[0] + string(os.PathSeparator) + mysplit[1] + ".ebuild"
 
-	if (myrepo != nil && myrepo == getattr(mycpv, "repo", nil)
-	&& p is getattr(mycpv, "_db", nil)):
-	return (mytree + string(os.PathSeparator) + relative_path, mytree)
+	if (myrepo != nil && myrepo == getattr(mycpv, "repo", nil) && p is getattr(mycpv, "_db", nil)){
+		return (mytree + string(os.PathSeparator) + relative_path, mytree)
+	}
 
-	for x in mytrees:
-	filename = x + string(os.PathSeparator) + relative_path
-	if _os.access(_unicode_encode(filename,
-		encoding=encoding, errors=errors), _os.R_OK):
-	return (filename, x)
-	return (nil, 0)
+	for _, x := range mytrees {
+		filename := x + string(os.PathSeparator) + relative_path
+		if osAccess(filename, unix.R_OK) {
+			return filename, x
+		}
+	}
+	return "", 0
 }
 
 func (p *portdbapi) _write_cache(cpv, repo_path, metadata, ebuild_hash) {
@@ -8541,95 +8538,91 @@ func (p *portdbapi) aux_get(mycpv, mylist, mytree=nil, myrepo=nil) {
 		myrepo=myrepo, loop=loop))
 }
 
-func (p *portdbapi) async_aux_get(mycpv, mylist, mytree=nil, myrepo=nil, loop=nil) {
+// "", "", nil
+func (p *portdbapi) async_aux_get(mycpv, mylist, mytree, myrepo string, loop=nil) {
 
 	loop = asyncio._wrap_loop(loop)
 	future = loop.create_future()
-	cache_me = false
-	if myrepo is
-	not
-nil:
-	mytree = p.treemap.get(myrepo)
-	if mytree is
-nil:
-	future.set_exception(PortageKeyError(myrepo))
+	cache_me := false
+	if myrepo != "" {
+		mytree := p.treemap[myrepo]
+		if mytree == "" {
+			future.set_exception(PortageKeyError(myrepo))
+			return future
+		}
+	}
+
+	if mytree != "" &&
+		len(p.porttrees) == 1 &&
+		mytree == p.porttrees[0] {
+		mytree = ""
+	}
+
+	if mytree == "" {
+		cache_me = true
+	}
+	if mytree == "" && not p._known_keys.intersection(
+		mylist).difference(p._aux_cache_keys) {
+		aux_cache := p._aux_cache.get(mycpv)
+		if aux_cache != nil {
+			res := []string{}
+			for _, x := range mylist {
+				res = append(res, x)
+			}
+			future.set_result(res)
+			return future
+		}
+		cache_me = true
+	}
+	cp = strings.SplitN(mycpv, "/", 2)
+	if len(cp) == 1 {
+		//except ValueError:
+		future.set_exception(PortageKeyError(mycpv))
+		return future
+	}
+	cat, pkg := cp[0], cp[1]
+
+	myebuild, mylocation := p.findname2(mycpv, mytree, "")
+
+	if not myebuild {
+		WriteMsg(fmt.Sprintf("!!! aux_get(): %s\n",
+			fmt.Sprintf("ebuild not found for '%s'", mycpv)), 1, nil)
+		future.set_exception(PortageKeyError(mycpv))
+		return future
+	}
+
+	mydata, ebuild_hash := p._pull_valid_cache(mycpv, myebuild, mylocation)
+
+	if mydata != nil {
+		p._aux_get_return(
+			future, mycpv, mylist, myebuild, ebuild_hash,
+			mydata, mylocation, cache_me, nil)
+		return future
+	}
+
+	if myebuild in
+	p._broken_ebuilds{
+		future.set_exception(PortageKeyError(mycpv))
+		return future
+	}
+
+	proc := EbuildMetadataPhase(cpv = mycpv,
+		ebuild_hash = ebuild_hash, portdb = p,
+		repo_path = mylocation, scheduler = loop,
+		settings = p.doebuild_settings)
+
+	proc.addExitListener(functools.partial(p._aux_get_return,
+		future, mycpv, mylist, myebuild, ebuild_hash, mydata, mylocation,
+		cache_me))
+	future.add_done_callback(functools.partial(p._aux_get_cancel, proc))
+	proc.start()
 	return future
-
-	if mytree is
-	not
-	nil
-	&&
-	len(p.porttrees) == 1 
-&&
-	mytree == p.porttrees[0]:
-	mytree = nil
-	myrepo = nil
-
-	if mytree is
-nil:
-	cache_me = true
-	if mytree is
-	nil
-	&&
-	not
-	p._known_keys.intersection(
-		mylist).difference(p._aux_cache_keys):
-	aux_cache = p._aux_cache.get(mycpv)
-	if aux_cache is
-	not
-nil:
-	future.set_result([aux_cache.get(x, "")
-	for x
-	in
-	mylist])
-return future
-cache_me = true
-
-try:
-cat, pkg = mycpv.split("/", 1)
-except ValueError:
-future.set_exception(PortageKeyError(mycpv))
-return future
-
-myebuild, mylocation = p.findname2(mycpv, mytree)
-
-if not myebuild:
-WriteMsg("!!! aux_get(): %s\n" % 
-_("ebuild not found for '%s'") % mycpv, noiselevel= 1)
-future.set_exception(PortageKeyError(mycpv))
-return future
-
-mydata, ebuild_hash = p._pull_valid_cache(mycpv, myebuild, mylocation)
-
-if mydata != nil:
-p._aux_get_return(
-future, mycpv, mylist, myebuild, ebuild_hash,
-mydata, mylocation, cache_me, nil)
-return future
-
-if myebuild in p._broken_ebuilds:
-future.set_exception(PortageKeyError(mycpv))
-return future
-
-proc = EbuildMetadataPhase(cpv =mycpv,
-ebuild_hash = ebuild_hash, portdb = p,
-repo_path = mylocation, scheduler = loop,
-settings =p.doebuild_settings)
-
-proc.addExitListener(functools.partial(p._aux_get_return,
-future, mycpv, mylist, myebuild, ebuild_hash, mydata, mylocation,
-cache_me))
-future.add_done_callback(functools.partial(p._aux_get_cancel, proc))
-proc.start()
-return future
 }
 
 func (p *portdbapi) _aux_get_cancel(proc, future) {
-	if future.cancelled() &&
-	proc.returncode
-	is
-nil:
-	proc.cancel()
+	if future.cancelled() && proc.returncode==nil {
+		proc.cancel()
+	}
 }
 
 func (p *portdbapi) _aux_get_return(future, mycpv, mylist, myebuild, ebuild_hash,
@@ -8682,16 +8675,18 @@ func (p *portdbapi) async_fetch_map(mypkg, useflags=nil, mytree=nil, loop=nil) {
 	result = loop.create_future()
 
 	aux_get_done:=func(aux_get_future) {
-		if result.cancelled():
-		return
-		if aux_get_future.exception() is
-		not
-	nil:
-		if isinstance(aux_get_future.exception(), PortageKeyError):
-		result.set_exception(portage.exception.InvalidDependString(
-			"getFetchMap(): aux_get() error reading " + mypkg + "; aborting.")) else:
-		result.set_exception(future.exception())
-		return
+		if result.cancelled() {
+			return
+		}
+		if aux_get_future.exception() is not nil{
+			if isinstance(aux_get_future.exception(), PortageKeyError){
+			result.set_exception(portage.exception.InvalidDependString(
+			"getFetchMap(): aux_get() error reading " + mypkg + "; aborting."))
+		} else{
+			result.set_exception(future.exception())
+		}
+			return
+		}
 
 		eapi, myuris = aux_get_future.result()
 
@@ -8703,10 +8698,7 @@ func (p *portdbapi) async_fetch_map(mypkg, useflags=nil, mytree=nil, loop=nil) {
 		}
 
 	try:
-		result.set_result(_parse_uri_map(mypkg,
-		{
-			"EAPI":eapi, "SRC_URI":myuris
-		}, use = useflags))
+		result.set_result(_parse_uri_map(mypkg,map[string]string{"EAPI":eapi, "SRC_URI":myuris,}, useflags))
 		except
 		Exception
 		as
@@ -8714,7 +8706,7 @@ func (p *portdbapi) async_fetch_map(mypkg, useflags=nil, mytree=nil, loop=nil) {
 		result.set_exception(e)
 	}
 
-	aux_get_future = p.async_aux_get(
+	aux_get_future := p.async_aux_get(
 		mypkg, ["EAPI", "SRC_URI"], mytree = mytree, loop = loop)
 result.add_done_callback(lambda result:
 aux_get_future.cancel() if result.cancelled() else nil)
@@ -9021,7 +9013,7 @@ func (p *portdbapi) xmatch(level string, origdep) {
 		p.async_xmatch(level, origdep, loop=loop))
 }
 
-func (p *portdbapi) async_xmatch(level, origdep, loop=nil) {
+func (p *portdbapi) async_xmatch(level string, origdep, loop=nil) {
 	mydep := dep_expand(origdep, mydb = p, settings = p.settings)
 	mykey := mydep.cp
 
@@ -9040,173 +9032,126 @@ func (p *portdbapi) async_xmatch(level, origdep, loop=nil) {
 	mytree = nil
 	if mydep.repo is
 	not
-nil:
-	mytree = p.treemap.get(mydep.repo)
-	if mytree is
-nil:
-	if level.startswith("match-"):
-	myval = []
-	else:
-	myval = ""
+	nil{
+		mytree = p.treemap.get(mydep.repo)
+		if mytree is nil{
+		if strings.HasPrefix(level, "match-"){
+		myval = []
+	} else{
+		myval = ""
+	}
+	}
+	}
 
 	if myval is
 	not
-nil:
-	pass
-	else if
-	level == "match-all-cpv-only":
-	if mydep == mykey:
-	level = "match-all"
-	myval = p.cp_list(mykey, mytree = mytree) else:
-	myval = match_from_list(mydep,
-		p.cp_list(mykey, mytree = mytree))
-
-	else if
-	level
-	in("bestmatch-visible", "match-all",
+	nil{
+		pass
+	} else if level == "match-all-cpv-only" {
+		if mydep == mykey {
+			level = "match-all"
+			myval = p.cp_list(mykey, mytree = mytree)
+		} else {
+			myval = matchFromList(mydep,
+				p.cp_list(mykey, 1, mytree))
+		}
+	} else if Ins([]string{"bestmatch-visible", "match-all",
 		"match-visible", "minimum-all", "minimum-all-ignore-profile",
-		"minimum-visible"):
-	if mydep == mykey:
-	mylist = p.cp_list(mykey, mytree = mytree) else:
-	mylist = match_from_list(mydep,
-		p.cp_list(mykey, mytree = mytree))
+		"minimum-visible"}, level) {
+		if mydep == mykey {
+			mylist = p.cp_list(mykey, mytree = mytree)
+		} else {
+			mylist = match_from_list(mydep,
+				p.cp_list(mykey, mytree = mytree))
+		}
 
-	ignore_profile = level
-	in("minimum-all-ignore-profile", )
-	visibility_filter = level
-	not
-	in("match-all",
-		"minimum-all", "minimum-all-ignore-profile")
-	single_match = level
-	not
-	in("match-all", "match-visible")
-	myval = []
-	aux_keys = list(p._aux_cache_keys)
-	if level == "bestmatch-visible":
-	iterfunc = reversed
-	else:
-	iterfunc = iter
+		ignore_profile = level
+		in("minimum-all-ignore-profile", )
+		visibility_filter = level
+		not
+		in("match-all",
+			"minimum-all", "minimum-all-ignore-profile")
+		single_match = level
+		not
+		in("match-all", "match-visible")
+		myval = []
+		aux_keys = list(p._aux_cache_keys)
+		if level == "bestmatch-visible":
+		iterfunc = reversed else:
+		iterfunc = iter
 
-	for cpv
-	in
-	iterfunc(mylist):
-try:
-	metadata = dict(zip(aux_keys, (yield
-	p.async_aux_get(cpv,
-		aux_keys, myrepo = cpv.repo, loop = loop))))
-	except
-KeyError:
-	continue
+		for cpv
+			in
+		iterfunc(mylist):
+	try:
+		metadata = dict(zip(aux_keys, (yield
+		p.async_aux_get(cpv,
+			aux_keys, myrepo = cpv.repo, loop = loop))))
+		except
+	KeyError:
+		continue
 
-try:
-	pkg_str = _pkg_str(cpv, metadata = metadata,
-		settings = p.settings, db=p)
-	except
-InvalidData:
-	continue
+	try:
+		pkg_str = _pkg_str(cpv, metadata = metadata,
+			settings = p.settings, db = p)
+		except
+	InvalidData:
+		continue
 
-	if visibility_filter &&
-	not
-	p._visible(pkg_str, metadata):
-	continue
+		if visibility_filter &&
+			not
+			p._visible(pkg_str, metadata):
+		continue
 
-	if mydep.slot is
-	not
-	nil
-	&& 
-not
-	_match_slot(mydep, pkg_str):
-	continue
+		if mydep.slot is
+		not
+		nil
+		&&
+		not
+		_match_slot(mydep, pkg_str):
+		continue
 
-	if mydep.unevaluated_atom.use is
-	not
-	nil
-	&& 
-not
-	p._match_use(mydep, pkg_str, metadata,
-		ignore_profile = ignore_profile):
-	continue
+		if mydep.unevaluated_atom.use is
+		not
+		nil
+		&&
+		not
+		p._match_use(mydep, pkg_str, metadata,
+			ignore_profile = ignore_profile):
+		continue
 
-	myval=append(,pkg_str)
-	if single_match:
-	break
+		myval = append(, pkg_str)
+		if single_match:
+		break
 
-	if single_match:
-	if myval:
-	myval = myval[0]
-	else:
-	myval = ""
+		if single_match:
+		if myval:
+		myval = myval[0] else:
+		myval = ""
+	} else {
+		//raise
+		//AssertionError(
+		//"Invalid level argument: '%s'" % level)
+	}
 
-	else:
-	raise
-	AssertionError(
-		"Invalid level argument: '%s'" % level)
-
-	if p.frozen:
-	xcache_this_level = p.xcache.get(level)
-	if xcache_this_level is
-	not
-nil:
-	xcache_this_level[cache_key] = myval
-	if not isinstance(myval, _pkg_str):
-	myval = myval[:]
+	if p.frozen {
+		xcache_this_level = p.xcache.get(level)
+		if xcache_this_level is
+		not
+		nil{
+			xcache_this_level[cache_key] = myval
+			if not isinstance(myval, _pkg_str){
+			myval = myval[:]
+		}
+		}
+	}
 
 	coroutine_return(myval)
-
 }
 
 // 1
 func (p *portdbapi) match(mydep, use_cache=1) {
 	return p.xmatch("match-visible", mydep)
-}
-
-//
-func (p *portdbapi) _iter_visible(cpv_iter, myrepo=nil) {
-
-	aux_keys = list(p._aux_cache_keys)
-	metadata =
-	{
-	}
-
-	repos := []string{}
-	if myrepo != "" {
-		repos = []string{myrepo}
-	}else {
-		for _, tree := range reversed(p.porttrees) {
-			repos = append(repos, p.repositories.getNameForLocation(tree))
-		}
-	}
-
-	for mycpv
-	in
-cpv_iter:
-	for repo
-	in
-repos:
-	metadata.clear()
-try:
-	metadata.update(zip(aux_keys,
-		p.aux_get(mycpv, aux_keys, myrepo = repo)))
-	except
-KeyError:
-	continue
-	except
-	PortageException
-	as
-e:
-	WriteMsg("!!! Error: aux_get('%s', %s)\n"%
-		(mycpv, aux_keys), noiselevel = -1)
-	WriteMsg("!!! %s\n" % (e, ), noiselevel = -1)
-	del
-	e
-	continue
-
-	if not p._visible(mycpv, metadata):
-	continue
-
-	yield
-	mycpv
-	break
 }
 
 func (p *portdbapi) _visible(cpv *PkgStr, metadata map[string]string) bool {
@@ -9431,29 +9376,32 @@ type FetchlistDict struct {
 	portdb             *portdbapi
 }
 
-func (f *FetchlistDict) __getitem__(pkg_key) {
-	return list(f.portdb.getFetchMap(pkg_key, mytree=f.mytree))
+func (f *FetchlistDict) __getitem__(pkg_key string) {
+	return list(f.portdb.getFetchMap(pkg_key, nil, f.mytree))
 
 }
 
-func (f *FetchlistDict) __contains__(cpv) {
-	return cpv in f.__iter__()
+func (f *FetchlistDict) __contains__(cpv *PkgStr) bool {
+	for _, i := range f.__iter__() {
+		if cpv.string == i.string {
+			return true
+		}
+	}
+	return false
+}
+
+func (f *FetchlistDict) __iter__() []*PkgStr {
+	return f.portdb.cp_list(f.cp, 1, f.mytree)
 
 }
 
-func (f *FetchlistDict) __iter__() {
-	return iter(f.portdb.cp_list(f.cp, mytree=f.mytree))
+func (f *FetchlistDict) __len__() int {
+	return len(f.portdb.cp_list(f.cp, 1, f.mytree))
 
 }
 
-func (f *FetchlistDict) __len__() {
-	return len(f.portdb.cp_list(f.cp, mytree=f.mytree))
-
-}
-
-func (f *FetchlistDict) keys() {
-	return f.portdb.cp_list(f.cp, mytree=f.mytree)
-
+func (f *FetchlistDict) keys() []*PkgStr {
+	return f.portdb.cp_list(f.cp, 1, f.mytree)
 }
 
 func NewFetchlistDict(pkgdir string, settings *Config, mydbapi *portdbapi) *FetchlistDict {

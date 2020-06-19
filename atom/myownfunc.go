@@ -29,6 +29,14 @@ func CopyMapSS(m map[string]string) map[string]string {
 	return r
 }
 
+func CopyMapSSS(m map[string][]string) map[string][]string {
+	r := map[string][]string{}
+	for k, v := range m {
+		r[k] = v
+	}
+	return r
+}
+
 func CopyMapSB(m map[string]bool) map[string]bool {
 	r := map[string]bool{}
 	for k, v := range m {

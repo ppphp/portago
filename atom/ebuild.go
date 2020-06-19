@@ -383,8 +383,8 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *portdbapi) 
 		all_restrict := map[string]bool{}
 		for _, cpv := range distfiles_map[myfile]{
 			uris.update(myportdb.getFetchMap(
-				cpv, mytree = mytree)[myfile])
-			restrict = myportdb.aux_get(cpv, ['RESTRICT'], mytree = mytree)[0]
+				cpv, nil, mytree)[myfile])
+			restrict := myportdb.aux_get(cpv, ['RESTRICT'], mytree = mytree)[0]
 			for _, k := range useReduce(restrict, map[string]bool{},
 				[]string{}, false, []string{}, false, "",
 				false, true, nil, nil, true) {

@@ -47,17 +47,17 @@ func (s *SyncRepos) all_repos() {
 }
 
 func (s *SyncRepos) repo(options map[string]interface{}) (bool, []string) {
-	repo_names :=""
+	repo_names := ""
 	return_messages := false
 	if len(options) > 0 {
 		repo_names = options["repo"]
-		return_messages,_ = options["return-messages"].(bool)
+		return_messages, _ = options["return-messages"].(bool)
 	} else {
-		return_messages := false
+		return_messages = false
 	}
 	repo_namesS := strings.Fields(repo_names)
 	success, repos, msgs := s._get_repos(false, repo_namesS)
-	if ! success {
+	if !success {
 		if return_messages {
 			return false, msgs
 		}
