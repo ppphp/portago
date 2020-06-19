@@ -22,6 +22,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	"github.com/noaway/dateparse"
 	"github.com/pkg/xattr"
@@ -704,7 +705,7 @@ func new_protect_filename(myDest, newMd5 string, force bool) string {
 					return oldPfile
 				}
 			} else {
-				lastPfileMd5 := performMd5Merge(oldPfile, 0)
+				lastPfileMd5 := performMd5Merge(oldPfile, false)
 				//except FileNotFound:
 				//pass
 				//else{
@@ -800,6 +801,7 @@ func NewGetConfigShlex(instream io.Reader, infile string, posix bool, punctuatio
 
 var invalidVarNameRe = regexp.MustCompile("^\\d|\\W")
 
+// false, false, true, false, nil
 func getConfig(myCfg string, tolerant, allowSourcing, expand, recursive bool, expandMap map[string]string) map[string]string {
 	if len(expandMap) > 0 {
 		expand = true
@@ -1300,13 +1302,13 @@ func write_atomic(filePath string, content string, mode int, followLinks bool) {
 	//if f:
 	//f.abort()
 	//func_call = "write_atomic('%s')" % file_path
-	//if e.errno == syscall.EPERM:
+	//if err == syscall.EPERM:
 	//raise OperationNotPermitted(func_call)
-	//else if e.errno == syscall.EACCES:
+	//else if err == syscall.EACCES:
 	//raise PermissionDenied(func_call)
-	//else if e.errno == syscall.EROFS:
+	//else if err == syscall.EROFS:
 	//raise ReadOnlyFileSystem(func_call)
-	//else if e.errno == syscall.ENOENT:
+	//else if err == syscall.ENOENT:
 	//raise FileNotFound(file_path)
 	//else:
 	//raise
@@ -1491,9 +1493,9 @@ func (p *preservedLibsRegistry) load() {
 		//except EnvironmentError as e:
 		//if not hasattr(e, 'errno'):
 		//raise
-		//elif e.errno == syscall.ENOENT:
+		//elif err == syscall.ENOENT:
 		//pass
-		//elif e.errno == PermissionDenied.errno:
+		//elif err == PermissionDenied.errno:
 		//raise PermissionDenied(self._filename)
 		//else:
 		//raise
@@ -1549,7 +1551,7 @@ func (p *preservedLibsRegistry) store() {
 	//pickle.dump(self._data, f, protocol=2)
 	f.Close()
 	//except EnvironmentError as e:
-	//if e.errno != PermissionDenied.errno:
+	//if err != PermissionDenied.errno:
 	//WriteMsgLevel("!!! %s %s\n" % (e, self._filename),
 	//	level=logging.ERROR, noiselevel=-1)
 	//else:
@@ -1790,7 +1792,7 @@ preserve_paths=None) {
 			lines = append(lines, &struct {
 				p      *PkgStr;
 				s1, s2 string
-			}{nil, include_file, line})
+			}{nil, include_file, line[0]})
 		}
 	}
 
@@ -1859,7 +1861,7 @@ preserve_paths=None) {
 			ep = "/"
 		}
 		args = []string{filepath.Join(ep, "usr/bin/scanelf"), "-qF", "%a;%F;%S;%r;%n"}
-		args.extend(filepath.Join(root, x.lstrip("."+os.sep)) \
+		args.extend(filepath.Join(root, x.lstrip("."+string(os.PathSeparator))) \
 		for x
 			in
 		plibs)
@@ -1869,7 +1871,7 @@ preserve_paths=None) {
 		EnvironmentError
 		as
 	e:
-		if e.errno != syscall.ENOENT:
+		if err != syscall.ENOENT:
 		raise
 		raise
 		CommandNotFound(args[0]) else:
@@ -1909,7 +1911,7 @@ preserve_paths=None) {
 		EnvironmentError
 		as
 	e:
-		if e.errno != syscall.ENOENT:
+		if err != syscall.ENOENT:
 		raise
 		continue
 
@@ -2399,7 +2401,7 @@ func (o*linkageMapELF) findConsumers( obj, exclude_providers=None, greedy=True) 
 	soname = o._obj_properties[obj_key].soname
 	soname_link = filepath.Join(o._root,
 		filepath.Dir(obj).lstrip(os.path.sep), soname)
-	obj_path = filepath.Join(o._root, obj.lstrip(os.sep))
+	obj_path = filepath.Join(o._root, obj.lstrip(string(os.PathSeparator)))
 try:
 	soname_st = os.stat(soname_link)
 	obj_st = os.stat(obj_path)
@@ -2894,7 +2896,7 @@ func (x *_xattr_excluder) __call__(attr string) bool {
 func _copyxattr(src, dest, excludeS string) error {
 	attrs, err := xattr.List(src)
 	if err != nil {
-		//if e.errno != OperationNotSupported.errno:
+		//if err != OperationNotSupported.errno:
 		//raise
 		attrs = []string{}
 	}
@@ -2937,7 +2939,7 @@ func cacheddir(myOriginalPath string, ignoreCvs bool, ignoreList []string, Empty
 	pathStat, err := os.Stat(myPath)
 	if err != nil {
 		//except EnvironmentError as e:
-		//if e.errno == PermissionDenied.errno:
+		//if err == PermissionDenied.errno:
 		//raise PermissionDenied(myPath)
 		//del e
 		//return [], []
@@ -2954,7 +2956,7 @@ func cacheddir(myOriginalPath string, ignoreCvs bool, ignoreList []string, Empty
 	}
 	if err != nil {
 		//except EnvironmentError as e:
-		//if e.errno != syscall.EACCES:
+		//if err != syscall.EACCES:
 		//raise
 		//del e
 		//raise PermissionDenied(myPath)
@@ -3245,7 +3247,10 @@ func NewNeededEntry() *NeededEntry {
 	return n
 }
 
-type _defaultdict_tree map[string]_defaultdict_tree
+type _defaultdict_tree struct{
+	dd map[string]_defaultdict_tree
+	pt []*_pattern
+}
 
 type InstallMask struct {
 	_unanchored []*_pattern
@@ -3263,7 +3268,7 @@ func NewInstallMask( install_mask string)*InstallMask {
 	i := &InstallMask{}
 	i._unanchored = []*_pattern{}
 
-	i._anchored = map[string][]*_pattern{}
+	i._anchored = _defaultdict_tree{}
 	for orig_index, pattern := range strings.Fields(install_mask) {
 		is_inclusive := !strings.HasPrefix(pattern, "-")
 		if !is_inclusive {
@@ -3405,4 +3410,320 @@ func install_mask_dir(base_dir string, install_mask *InstallMask, onerror func(e
 			}
 		}
 	}
+}
+
+// 1, "", nil, nil, nil, nil, nil
+func env_update(makelinks int, target_root string, prev_mtimes=None, contents map[string][]string,
+env *Config, writemsg_level func(string, int, int), vardbapi *vardbapi) {
+	if vardbapi == nil {
+		vardbapi = NewVarTree(nil, env).dbapi
+	}
+
+	vardbapi._fs_lock()
+	defer vardbapi._fs_unlock()
+	return _env_update(makelinks, target_root, prev_mtimes, contents,
+		env, writemsg_level)
+}
+
+func _env_update(makelinks int, target_root string, prev_mtimes, contents map[string][]string, envC *Config,
+writemsg_level func(string, int, int)) {
+	if writemsg_level == nil {
+		writemsg_level = WriteMsgLevel
+	}
+	if target_root == "" {
+		target_root = Settings().ValueDict["ROOT"]
+	}
+	if prev_mtimes is
+	None{
+		prev_mtimes = portage.mtimedb["ldpath"]
+	}
+	var settings *Config
+	if envC == nil {
+		settings = Settings()
+	} else {
+		settings = envC
+	}
+
+	eprefix := settings.ValueDict["EPREFIX"]
+	eprefix_lstrip := strings.TrimLeft(eprefix, string(os.PathSeparator))
+	eroot := strings.TrimRight(NormalizePath(filepath.Join(target_root, eprefix_lstrip)), string(os.PathSeparator)) + string(os.PathSeparator)
+	envd_dir := filepath.Join(eroot, "etc", "env.d")
+	ensureDirs(envd_dir, -1, -1, 0755, -1, nil, true)
+	fns := listdir(envd_dir, false, false, false, []string{}, true, true, false)
+	sort.Strings(fns)
+	templist := []string{}
+	for _, x := range fns {
+		if len(x) < 3 {
+			continue
+		}
+		if !unicode.IsDigit(rune(x[0])) || !unicode.IsDigit(rune(x[1])) {
+			continue
+		}
+		if strings.HasPrefix(x, ".") || strings.HasSuffix(x, "~") || strings.HasSuffix(x, ".bak") {
+			continue
+		}
+		templist = append(templist, x)
+	}
+	fns = templist
+
+	templist = nil
+
+	space_separated := map[string]bool{"CONFIG_PROTECT": true, "CONFIG_PROTECT_MASK": true}
+	colon_separated := map[string]bool{"ADA_INCLUDE_PATH": true, "ADA_OBJECTS_PATH": true,
+		"CLASSPATH": true, "INFODIR": true, "INFOPATH": true, "KDEDIRS": true, "LDPATH": true, "MANPATH": true,
+		"PATH": true, "PKG_CONFIG_PATH": true, "PRELINK_PATH": true, "PRELINK_PATH_MASK": true,
+		"PYTHONPATH": true, "ROOTPATH": true}
+
+	config_list := []map[string]string{}
+
+	for _, x := range fns {
+		file_path := filepath.Join(envd_dir, x)
+		//try:
+		myconfig := getConfig(file_path, false, false, false, false, nil)
+		//except ParseError as e:
+		//writemsg("!!! '%s'\n"%str(e), noiselevel = -1)
+		//del e
+		//continue
+		if myconfig == nil {
+			WriteMsg(fmt.Sprintf("!!! File Not Found: '%s'\n", file_path), -1, nil)
+			continue
+		}
+
+		config_list = append(config_list, myconfig)
+		if Inmss(myconfig, "SPACE_SEPARATED") {
+			for _, v := range strings.Fields(myconfig["SPACE_SEPARATED"]) {
+				space_separated[v] = true
+			}
+			delete(myconfig, "SPACE_SEPARATED")
+		}
+		if Inmss(myconfig, "COLON_SEPARATED") {
+			for _, v := range strings.Fields(myconfig["COLON_SEPARATED"]) {
+				colon_separated[v] = true
+			}
+			delete(myconfig, "COLON_SEPARATED")
+		}
+	}
+
+	env := map[string]string{}
+	specials := map[string][]string{}
+	for v := range space_separated {
+		mylist := []string{}
+		for _, myconfig := range config_list {
+			if Inmss(myconfig, v) {
+				for _, item := range strings.Fields(myconfig[v]) {
+					if item != "" && !Ins(mylist, item) {
+						mylist = append(mylist, item)
+					}
+				}
+				delete(myconfig, v)
+			}
+		}
+		if len(mylist) > 0 {
+			env[v] = strings.Join(mylist, " ")
+			specials[v] = mylist
+		}
+	}
+
+	env := map[string]string{}
+	specials := map[string][]string{}
+	for v := range colon_separated {
+		mylist := []string{}
+		for _, myconfig := range config_list {
+			if Inmss(myconfig, v) {
+				for _, item := range strings.Fields(myconfig[v]) {
+					if item != "" && !Ins(mylist, item) {
+						mylist = append(mylist, item)
+					}
+				}
+				delete(myconfig, v)
+			}
+		}
+		if len(mylist) > 0 {
+			env[v] = strings.Join(mylist, " ")
+			specials[v] = mylist
+		}
+	}
+
+	for _, myconfig := range config_list {
+		for k, v := range myconfig {
+			env[k] = v
+		}
+	}
+
+	ldsoconf_path := filepath.Join(eroot, "etc", "ld.so.conf")
+try:
+myld = io.open(_unicode_encode(ldsoconf_path,
+encoding = _encodings['fs'], errors = 'strict'),
+mode = 'r', encoding = _encodings['content'], errors = 'replace')
+myldlines = myld.readlines()
+myld.close()
+oldld = []
+for x in myldlines:
+if x[:1] == "#":
+continue
+oldld.append(x[:-1])
+except (IOError, OSError) as e:
+if err != syscall.ENOENT:
+raise
+oldld = None
+
+newld = specials["LDPATH"]
+if (oldld != newld):
+myfd = atomic_ofstream(ldsoconf_path)
+myfd.write("# ld.so.conf autogenerated by env-update; make all changes to\n")
+myfd.write("# contents of /etc/env.d directory\n")
+for x in specials["LDPATH"]:
+myfd.write(x + "\n")
+myfd.close()
+
+potential_lib_dirs = set()
+for lib_dir_glob in ('usr/lib*', 'lib*'):
+x = filepath.Join(eroot, lib_dir_glob)
+for y in glob.glob(_unicode_encode(x,
+encoding = _encodings['fs'], errors = 'strict')):
+try:
+y = _unicode_decode(y,
+encoding = _encodings['fs'], errors = 'strict')
+except UnicodeDecodeError:
+continue
+if os.path.basename(y) != 'libexec':
+potential_lib_dirs.add(y[len(eroot):])
+
+if prelink_capable:
+prelink_d = filepath.Join(eroot, 'etc', 'prelink.conf.d')
+ensure_dirs(prelink_d)
+newprelink = atomic_ofstream(filepath.Join(prelink_d, 'portage.conf'))
+newprelink.write("# prelink.conf autogenerated by env-update; make all changes to\n")
+newprelink.write("# contents of /etc/env.d directory\n")
+
+for x in sorted(potential_lib_dirs) + ['bin', 'sbin']:
+newprelink.write('-l /%s\n' % (x, ));
+prelink_paths = set()
+prelink_paths |= set(specials.get('LDPATH', []))
+prelink_paths |= set(specials.get('PATH', []))
+prelink_paths |= set(specials.get('PRELINK_PATH', []))
+prelink_path_mask = specials.get('PRELINK_PATH_MASK', [])
+for x in prelink_paths:
+if not x:
+continue
+if x[-1:] != '/':
+x += "/"
+plmasked = 0
+for y in prelink_path_mask:
+if not y:
+continue
+if y[-1] != '/':
+y += "/"
+if y == x[0:len(y)]:
+plmasked = 1
+break
+if not plmasked:
+newprelink.write("-h %s\n" % (x, ))
+for x in prelink_path_mask:
+newprelink.write("-b %s\n" % (x, ))
+newprelink.close()
+
+prelink_conf = filepath.Join(eroot, 'etc', 'prelink.conf')
+try:
+with open(_unicode_encode(prelink_conf,
+encoding = _encodings['fs'], errors = 'strict'), 'rb') as f:
+if f.readline() == b'# prelink.conf autogenerated by env-update; make all changes to\n':
+f = atomic_ofstream(prelink_conf)
+f.write('-c /etc/prelink.conf.d/*.conf\n')
+f.close()
+except IOError as e:
+if err != syscall.ENOENT:
+raise
+
+current_time = long(time.time())
+mtime_changed = False
+
+lib_dirs = set()
+for lib_dir in set(specials['LDPATH']) | potential_lib_dirs:
+x = filepath.Join(eroot, lib_dir.lstrip(string(os.PathSeparator)))
+try:
+newldpathtime = os.stat(x)[stat.ST_MTIME]
+lib_dirs.add(normalize_path(x))
+except OSError as oe:
+if oerr == syscall.ENOENT:
+try:
+del prev_mtimes[x]
+except KeyError:
+pass
+continue
+raise
+if newldpathtime == current_time:
+newldpathtime -= 1
+os.utime(x, (newldpathtime, newldpathtime))
+prev_mtimes[x] = newldpathtime
+mtime_changed = True
+elif x in prev_mtimes:
+if prev_mtimes[x] == newldpathtime:
+pass else:
+prev_mtimes[x] = newldpathtime
+mtime_changed = True else:
+prev_mtimes[x] = newldpathtime
+mtime_changed = True
+
+if makelinks and \
+not mtime_changed and \
+contents is not None:
+libdir_contents_changed = False
+for mypath, mydata in contents.items():
+if mydata[0] not in ("obj", "sym"):
+continue
+head, tail = os.path.split(mypath)
+if head in lib_dirs:
+libdir_contents_changed = True
+break
+if not libdir_contents_changed:
+makelinks = False
+
+if "CHOST" in settings and "CBUILD" in settings and \
+settings["CHOST"] != settings["CBUILD"]:
+ldconfig = find_binary("%s-ldconfig" % settings["CHOST"]) else:
+ldconfig = filepath.Join(eroot, "sbin", "ldconfig")
+
+if ldconfig is None:
+pass
+elif not (os.access(ldconfig, os.X_OK) and os.path.isfile(ldconfig)):
+ldconfig = None
+
+if makelinks and ldconfig:
+if ostype == "Linux" or ostype.lower().endswith("gnu"):
+writemsg_level(_(">>> Regenerating %setc/ld.so.cache...\n") % \
+(target_root, ))
+os.system("cd / ; %s -X -r '%s'" % (ldconfig, target_root))
+elif ostype in ("FreeBSD", "DragonFly"):
+writemsg_level(_(">>> Regenerating %svar/run/ld-elf.so.hints...\n") % \
+target_root)
+os.system(("cd / ; %s -elf -i " + \
+"-f '%svar/run/ld-elf.so.hints' '%setc/ld.so.conf'") % \
+(ldconfig, target_root, target_root))
+
+del specials["LDPATH"]
+
+penvnotice = "# THIS FILE IS AUTOMATICALLY GENERATED BY env-update.\n"
+penvnotice += "# DO NOT EDIT THIS FILE. CHANGES TO STARTUP PROFILES\n"
+cenvnotice = penvnotice[:]
+penvnotice += "# GO INTO /etc/profile NOT /etc/profile.env\n\n"
+cenvnotice += "# GO INTO /etc/csh.cshrc NOT /etc/csh.env\n\n"
+
+outfile = atomic_ofstream(filepath.Join(eroot, "etc", "profile.env"))
+outfile.write(penvnotice)
+
+env_keys = [x for x in env if x != "LDPATH"]
+env_keys.sort()
+for k in env_keys:
+v = env[k]
+if v.startswith('$') and not v.startswith('${'):
+outfile.write("export %s=$'%s'\n" % (k, v[1:])) else:
+outfile.write("export %s='%s'\n" % (k, v))
+outfile.close()
+
+outfile = atomic_ofstream(filepath.Join(eroot, "etc", "csh.env"))
+outfile.write(cenvnotice)
+for x in env_keys:
+outfile.write("setenv %s '%s'\n" % (x, env[x]))
+outfile.close()
 }

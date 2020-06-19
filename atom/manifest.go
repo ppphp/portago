@@ -627,7 +627,7 @@ assumeDistHashesAlways bool, requiredDistfiles map[string]bool) {
 			for h := range m.hashes {
 				hs = append(hs, h)
 			}
-			for k, v := range performMultipleChecksums(fname, hs, 0) {
+			for k, v := range performMultipleChecksums(fname, hs, false) {
 				m.fhashdict["DIST"][f][k] = string(v)
 			}
 			//}except FileNotFound{
@@ -712,7 +712,7 @@ func (m*Manifest) _update_thick_pkgdir( cat, pn, pkgdir string) []string{
 		for k := range m.hashes {
 			mh = append(mh, k)
 		}
-		for k,v := range performMultipleChecksums(m.pkgdir+f, mh, 0){
+		for k,v := range performMultipleChecksums(m.pkgdir+f, mh, false){
 			m.fhashdict[mytype][f][k]=string(v)
 		}
 	}
@@ -737,7 +737,7 @@ func (m*Manifest) _update_thick_pkgdir( cat, pn, pkgdir string) []string{
 			mh = append(mh, k)
 		}
 		for k,v := range performMultipleChecksums(
-			filepath.Join(m.pkgdir, "files", strings.TrimLeft(f, string(os.PathSeparator))), mh, 0){
+			filepath.Join(m.pkgdir, "files", strings.TrimLeft(f, string(os.PathSeparator))), mh, false){
 			m.fhashdict["AUX"][f][k]=string(v)
 		}
 	}
@@ -854,7 +854,7 @@ func (m*Manifest) updateFileHashes( ftype, fname string, checkExisting, ignoreMi
 			}
 		}
 	}
-	myhashes := performMultipleChecksums(m._getAbsname(ftype, fname), myhashkeys, 0)
+	myhashes := performMultipleChecksums(m._getAbsname(ftype, fname), myhashkeys, false)
 	for k, v := range myhashes {
 		m.fhashdict[ftype][fname][k] = string(v)
 	}

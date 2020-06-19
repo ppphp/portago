@@ -129,17 +129,17 @@ func isPrelinkElf(fname string) bool {
 	return len(magic) == 17 && bytes.HasPrefix(magic, []byte{'\x7f', 'E', 'L', 'F'}) && (magic[16] == '\x02' || magic[16] == '\x03')
 }
 
-// 0
-func performMd5(x string, calcPrelink int) []byte {
+// false
+func performMd5(x string, calcPrelink bool) []byte {
 	b, _ := performChecksum(x, "MD5", calcPrelink)
 	return b
 }
 
-func performMd5Merge(x string, calcPrelink int) []byte {
+func performMd5Merge(x string, calcPrelink bool) []byte {
 	return performMd5(x, calcPrelink)
 }
 
-func performAll(x string, calcPrelink int) map[string][]byte {
+func performAll(x string, calcPrelink bool) map[string][]byte {
 	myDict := make(map[string][]byte)
 	for k := range hashFuncKeys {
 		b, _ := performChecksum(x, k, calcPrelink)
@@ -228,8 +228,8 @@ func applyHashFilter(digests map[string]string, hashFilter *hashFilter) map[stri
 	}
 }
 
-// 0, 0
-func verifyAll(fname string, mydict map[string]string, calcPrelink int, strict int) (bool, string, string, string) {
+// false, 0
+func verifyAll(fname string, mydict map[string]string, calcPrelink bool, strict int) (bool, string, string, string) {
 	fileIsOk := true
 	//reason := "Reason unknown"
 	s, _ := os.Stat(fname)
@@ -293,10 +293,10 @@ func verifyAll(fname string, mydict map[string]string, calcPrelink int, strict i
 	return fileIsOk, "", "", ""
 }
 
-func performChecksum(fname, hashname string, calcPrelink int) ([]byte, int) {
+func performChecksum(fname, hashname string, calcPrelink bool) ([]byte, int) {
 	prelinkTmpFile := ""
 	myFileName := fname
-	if calcPrelink != 0 && prelinkCapable && isPrelinkElf(fname) {
+	if calcPrelink && prelinkCapable && isPrelinkElf(fname) {
 		tmpFileFd, err := ioutil.TempFile("", "*")
 		if err != nil {
 			defer tmpFileFd.Close()
@@ -312,15 +312,15 @@ func performChecksum(fname, hashname string, calcPrelink int) ([]byte, int) {
 	return hashFuncMap[hashname].checksumFile(myFileName)
 }
 
-// []string{"MD5"}, 0
-func performMultipleChecksums(fname string, hashes []string, calcPrelink int) map[string][]byte {
+// []string{"MD5"}, false
+func performMultipleChecksums(fname string, hashes []string, calcPrelink bool) map[string][]byte {
 	rVal := map[string][]byte{}
 
 	for _, x := range hashes {
 		if !hashFuncKeys[x] {
 			return rVal
 		}
-		y, _ := performChecksum(fname, x, calcPrelink)
+		y, _ := performChecksum(fname, x, false)
 		rVal[x] = y
 	}
 

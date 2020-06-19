@@ -1110,12 +1110,13 @@ type Binpkg struct {
 	find_blockers,
 	ldpath_mtimes, logger, opts,
 	 pkg_count, prefetcher, world_atom,
-	_bintree,  _build_prefix,
+	 _build_prefix,
 	_ebuild_path, _fetched_pkg,
 	_image_dir, _infloc, _pkg_path, _tree, _verify string
 	settings *Config
 	pkg *PkgStr
 	_build_dir*EbuildBuildDir
+	_bintree *BinaryTree
 }
 
 // 0, 0
@@ -1276,7 +1277,7 @@ func (b *Binpkg) _fetcher_exit( fetcher) {
 func (b *Binpkg) _verifier_exit(verifier) {
 	if verifier != nil&&
 	b._default_exit(verifier) != 0{
-		b._async_unlock_builddir(returncode = b.returncode)
+		b._async_unlock_builddir( b.returncode)
 		return
 	}
 
@@ -1284,34 +1285,34 @@ func (b *Binpkg) _verifier_exit(verifier) {
 	pkg := b.pkg
 	pkg_count := b.pkg_count
 
+	pkg_path := ""
 	if b._fetched_pkg {
 		pkg_path = b._bintree.getname(
 			b._bintree.inject(pkg.cpv,
 				filename = b._fetched_pkg),
-		allocate_new = false)
+		false)
 	}else {
 		pkg_path = b.pkg.root_config.trees["bintree"].getname(
 			b.pkg.cpv)
 	}
 
-	if pkg_path != nil {
+	if pkg_path != "" {
 		b.settings.ValueDict["PORTAGE_BINPKG_FILE"] = pkg_path
 	}
 	b._pkg_path = pkg_path
 
-	logfile = b.settings.ValueDict["PORTAGE_LOG_FILE")
-	if logfile != nil&&
-	os.path.isfile(logfile) {
-	try:
-		syscall.Unlink(logfile)
-		except
-	OSError:
-		pass
+	logfile := b.settings.ValueDict["PORTAGE_LOG_FILE"]
+	if logfile != ""&& os.path.isfile(logfile) {
+		if err := syscall.Unlink(logfile); err != nil {
+			//except OSError:
+			//pass
+		}
 	}
 
 	if b.opts.fetchonly {
 		b._current_task = nil
-		b.returncode = 0
+		i:=0
+		b.returncode = &i
 		b.wait()
 		return
 	}
@@ -1333,7 +1334,7 @@ func (b *Binpkg) _verifier_exit(verifier) {
 
 func (b *Binpkg) _clean_exit( clean_phase) {
 	if b._default_exit(clean_phase) != 0 {
-		b._async_unlock_builddir(returncode = b.returncode)
+		b._async_unlock_builddir(b.returncode)
 		return
 	}
 
@@ -1345,19 +1346,19 @@ func (b *Binpkg) _clean_exit( clean_phase) {
 @coroutine
 func (b *Binpkg) _unpack_metadata() {
 
-	dir_path = b.settings.ValueDict["PORTAGE_BUILDDIR"]
+	dir_path := b.settings.ValueDict["PORTAGE_BUILDDIR"]
 
-	infloc = b._infloc
-	pkg = b.pkg
-	pkg_path = b._pkg_path
+	infloc := b._infloc
+	pkg := b.pkg
+	pkg_path := b._pkg_path
 
-	dir_mode = 0o755
+	dir_mode := os.FileMode(0755)
 	for _, mydir:=range []string{dir_path, b._image_dir, infloc}{
-		ensureDirs(mydir, *portage_uid, *portage_gid, dir_mode, -1, nil,nil)
+		ensureDirs(mydir, uint32(*portage_uid), *portage_gid, dir_mode, -1, nil,true)
 	}
 
 	portage.prepare_build_dirs(b.settings.ValueDict["ROOT"], b.settings, 1)
-	b._writemsg_level(">>> Extracting info\n")
+	b._writemsg_level(">>> Extracting info\n",0,0)
 
 	yield b._bintree.dbapi.unpack_metadata(b.settings, infloc)
 	check_missing_metadata := []string{"CATEGORY", "PF"}
@@ -1388,7 +1389,7 @@ func (b *Binpkg) _unpack_metadata() {
 	if pkg_path != nil {
 		md5sum, = b._bintree.dbapi.aux_get(b.pkg.cpv, ["MD5"])
 		if not md5sum {
-			md5sum = performMd5(pkg_path, 0)
+			md5sum = performMd5(pkg_path, false)
 		}
 		with
 		io.open(_unicode_encode(filepath.Join(infloc, "BINPKGMD5"),
