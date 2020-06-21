@@ -4007,7 +4007,7 @@ func (d *dblink) _find_unused_preserved_libs(unmerge_no_replacement bool) map[st
 	 path_to_node:= func(path string) {
 		 node := path_node_map[path]
 		 if node == nil {
-			 node = LinkageMap._LibGraphNode(linkmap._obj_key(path))
+			 node = New_LibGraphNode(linkmap._obj_key(path))
 			 alt_path_node := lib_graph.get(node)
 			 if alt_path_node != nil {
 				 node = alt_path_node

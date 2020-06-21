@@ -1761,7 +1761,7 @@ func( l*_LibGraphNode) __str__() string {
 	return str(sorted(l.alt_paths))
 }
 
-func New_LibGraphNode( key ) *_LibGraphNode{
+func New_LibGraphNode( key *_ObjectKey) *_LibGraphNode{
 	l := &_LibGraphNode{}
 	l._key = key._key
 	l.alt_paths = map[string]bool{}
