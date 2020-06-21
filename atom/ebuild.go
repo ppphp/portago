@@ -458,13 +458,13 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *portdbapi) 
 		if len(auto_assumed) > 0{
 			sp := strings.Split(mysettings.ValueDict["O"],string(os.PathSeparator))
 			cp := strings.Join(sp[len(sp)-2:], string(os.PathSeparator))
-			pkgs := myportdb.cp_list(cp, mytree = mytree)
+			pkgs := myportdb.cp_list(cp, 1,  []string{mytree})
 			pkgs.sort()
 			WriteMsgStdout("  digest.assumed" + colorize("WARN",
 				fmt.Sprintf("%18d", len(auto_assumed))) + "\n", 0)
 			for _, pkg_key := range pkgs{
 				fetchlist := myportdb.getFetchMap(pkg_key, mytree = mytree)
-				pv := strings.Split(pkg_key, "/")[1]
+				pv := strings.Split(pkg_key.string, "/")[1]
 				for _, filename := range auto_assumed {
 					if filename in
 					fetchlist{

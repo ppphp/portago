@@ -746,7 +746,7 @@ func (v *vdbMetadataDelta) load() {
 	}
 	if err != nil {
 	//except EnvironmentError as e:
-	if err != syscall.ENOENT && err != syscall.ESTALE){
+	if err != syscall.ENOENT && err != syscall.ESTALE{
 			//raise
 		}
 	//except (SystemExit, KeyboardInterrupt):
@@ -2332,12 +2332,7 @@ func NewVarDbApi(settings *Config, vartree *varTree) *vardbapi { // nil, nil
 	v._fs_lock_obj = nil
 	v._fs_lock_count = 0
 	v._slot_locks = map[*Atom]*struct {
-		s *struct {
-			string
-			int
-			bool
-			method func(int, int) error
-		}
+		s *LockFileS
 		int
 	}{}
 
@@ -2477,6 +2472,7 @@ type dblink struct {
 	_device_path_map    map[uint64]string
 	_pipe               int
 	_blockers           []*dblink
+	_hardlink_merge_map map[[2]uint64][]string
 }
 
 func (d *dblink) __hash__() string{
@@ -4501,22 +4497,33 @@ func (d *dblink) _eerror(phase string, lines []string) {
 }
 
 func (d *dblink) _elog(funcname string, phase string, lines []string) {
-	func = getattr(portage.elog.messages, funcname)
-	if d._scheduler == nil:
-	for l in lines:
-	func(l, phase=phase, key=d.mycpv)
-	else:
-	background = d.settings.ValueDict["PORTAGE_BACKGROUND") == "1"
-	log_path = nil
-	if d.settings.ValueDict["PORTAGE_BACKGROUND") != "subprocess":
-	log_path = d.settings.ValueDict["PORTAGE_LOG_FILE")
-	out = io.StringIO()
-	for line in lines:
-	func(line, phase=phase, key=d.mycpv, out=out)
-	msg = out.getvalue()
-	d._scheduler.output(msg,
-		background=background, log_path=log_path)
+	var fun func(msg string, phase string, key string, out io.Writer)
+	switch funcname {
+	case "elog":
+		fun = elog
+	case "error":
+		fun = eerror
+	case "eqawarn":
+		fun = eqawarn
+	}
 
+	if d._scheduler == nil {
+		for _, l := range lines {
+			fun(l, phase, d.mycpv.string, nil)
+		}
+	} else {
+		background := d.settings.ValueDict["PORTAGE_BACKGROUND"] == "1"
+		log_path := ""
+		if d.settings.ValueDict["PORTAGE_BACKGROUND"] != "subprocess" {
+			log_path = d.settings.ValueDict["PORTAGE_LOG_FILE"]
+		}
+		out := &bytes.Buffer{}
+		for _, line := range lines {
+			fun(line, phase, d.mycpv.string, out)
+		}
+		msg := out.String()
+		d._scheduler.output(msg, log_path, background, 0, -1)
+	}
 }
 
 // nil
@@ -5406,7 +5413,7 @@ func (d *dblink) _merge_contents(srcroot, destroot string, cfgfiledict) int {
 	return 0
 }
 
-func (d *dblink) mergeme(srcroot, destroot string, outfile io.ReadCloser, secondhand, stufftomerge, cfgfiledict , thismtime) int {
+func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secondhand, stufftomerge, cfgfiledict , thismtime) int {
 
 	showMessage := d._display_merge
 	WriteMsg := d._display_merge
@@ -5551,7 +5558,7 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.ReadCloser, second
 					d._eqawarn("preinst", []string{fmt.Sprintf("QA Notice: Symbolic link /%s points to /%s which does not exist.", relative_path, myabsto)})
 				}
 				showMessage(fmt.Sprintf("%s %s -> %s\n",zing, mydest, myto), 0, 0)
-				outfile.write("sym " + myrealdest + " -> " + myto + " " + fmt.Sprint(mymtime/1000000000) + "\n")
+				outfile.Write([]byte("sym " + myrealdest + " -> " + myto + " " + fmt.Sprint(mymtime/1000000000) + "\n"))
 			} else {
 				showMessage("!!! Failed to move file.\n",
 					40, -1)
@@ -5569,7 +5576,7 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.ReadCloser, second
 				}
 
 				if syscall.S_IFLNK&mydmode == 0 && !osAccess(mydest, unix.W_OK) {
-					pkgstuff := pkgSplit(d.pkg)
+					pkgstuff := pkgSplit(d.pkg, "")
 					WriteMsg(fmt.Sprintf("\n!!! Cannot write to '%s'.\n", mydest), 0, -1)
 					WriteMsg(("!!! Please check permissions and directories for broken symlinks.\n"), 0, 0)
 					WriteMsg(("!!! You may start the merge process again by using ebuild:\n"), 0, 0)
@@ -5625,7 +5632,7 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.ReadCloser, second
 				if d.settings.selinux_enabled() {
 					_selinux_merge.mkdir(mydest, mysrc)
 				} else {
-					os.MkdirAll(mydest)
+					os.MkdirAll(mydest, 0755)
 				}
 				//except OSError as e:
 				//if err in(errno.EEXIST, ):
@@ -5655,52 +5662,51 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.ReadCloser, second
 			}
 
 		}else if syscall.S_IFREG&mymode!= 0 {
-				if !protected && mydmode != 0 && syscall.S_IFDIR&mydmode != 0 {
-					newdest := d._new_backup_path(mydest)
-					msg := []string{}
-					msg = append(msg, "")
-					msg = append(msg, ("Installation of a regular file is blocked by a directory:"))
-					msg = append(msg, fmt.Sprintf("  '%s'", mydest))
-					msg = append(msg, ("This file will be merged with a different name:"))
-					msg = append(msg, fmt.Sprintf("  '%s'", newdest))
-					msg = append(msg, "")
-					d._eerror("preinst", msg)
-					mydest = newdest
+			if !protected && mydmode != 0 && syscall.S_IFDIR&mydmode != 0 {
+				newdest := d._new_backup_path(mydest)
+				msg := []string{}
+				msg = append(msg, "")
+				msg = append(msg, ("Installation of a regular file is blocked by a directory:"))
+				msg = append(msg, fmt.Sprintf("  '%s'", mydest))
+				msg = append(msg, ("This file will be merged with a different name:"))
+				msg = append(msg, fmt.Sprintf("  '%s'", newdest))
+				msg = append(msg, "")
+				d._eerror("preinst", msg)
+				mydest = newdest
+			}
+
+			if moveme {
+				hardlink_key := [2]uint64{mystat.Sys().(*syscall.Stat_t).Dev, mystat.Sys().(*syscall.Stat_t).Dev}
+
+				hardlink_candidates := d._hardlink_merge_map[hardlink_key]
+				if hardlink_candidates == nil {
+					hardlink_candidates = []string{}
+					d._hardlink_merge_map[hardlink_key] = hardlink_candidates
 				}
 
-				if moveme {
-					hardlink_key = (mystat.st_dev, mystat.st_ino)
-
-					hardlink_candidates = d._hardlink_merge_map.get(hardlink_key)
-					if hardlink_candidates == nil {
-						hardlink_candidates = []
-						d._hardlink_merge_map[hardlink_key] = hardlink_candidates
-					}
-
-					mymtime = movefile(mysrc, mydest, newmtime = thismtime,
-						sstat = mystat, mysettings=d.settings,
-						hardlink_candidates = hardlink_candidates,
-						encoding=_encodings['merge'])
-					if mymtime == nil {
-						return 1
-					}
-					hardlink_candidates = append(hardlink_candidates, mydest)
-					zing = ">>>"
-
-				try:
-					d._merged_path(mydest, os.Lstat(mydest))
-					except
-				OSError:
-					pass
+				mymtime = movefile(mysrc, mydest, newmtime = thismtime,
+					sstat = mystat, mysettings=d.settings,
+					hardlink_candidates = hardlink_candidates,
+					encoding=_encodings['merge'])
+				if mymtime == nil {
+					return 1
 				}
+				hardlink_candidates = append(hardlink_candidates, mydest)
+				zing = ">>>"
 
-		if mymtime != nil{
-		if sys.hexversion >= 0x3030000:
-		outfile.write("obj "+myrealdest+" "+mymd5+" "+str(mymtime // 1000000000)+"\n")
-		else:
-		outfile.write("obj "+myrealdest+" "+mymd5+" "+str(mymtime)+"\n")
-		}
-		showMessage("%s %s\n" % (zing,mydest))
+				st, err := os.Lstat(mydest)
+				if err != nil {
+					//except OSError:
+					//pass
+				} else {
+					d._merged_path(mydest, st, true)
+				}
+			}
+
+			if mymtime != 0 {
+				outfile.Write([]byte("obj " + myrealdest + " " + mymd5 + " " + fmt.Sprint(mymtime/1000000000) + "\n"))
+			}
+			showMessage(fmt.Sprintf("%s %s\n", zing, mydest))
 		}else {
 			zing = "!!!"
 			if mydmode == 0{
@@ -5719,9 +5725,9 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.ReadCloser, second
 				}
 			}
 			if syscall.S_IFIFO&mymode!= 0 {
-				outfile.write(fmt.Sprintf("fif %s\n" , myrealdest),0,0)
+				outfile.Write([]byte(fmt.Sprintf("fif %s\n" , myrealdest)))
 			}else {
-				outfile.write(fmt.Sprintf("dev %s\n", myrealdest),0,0)
+				outfile.Write([]byte(fmt.Sprintf("dev %s\n", myrealdest)))
 			}
 			showMessage(zing + " " + mydest + "\n",0,0)
 		}
@@ -6072,7 +6078,7 @@ func NewDblink(cat, pkg, myroot string, settings *Config, treetype string,
 	d._contents_basenames = nil
 	d._linkmap_broken = false
 	d._device_path_map = map[uint64]string{}
-	d._hardlink_merge_map = map[string]string{}
+	d._hardlink_merge_map = map[[2]uint64][]string{}
 	d._hash_key = []string{d._eroot, d.mycpv.string}
 	d._protect_obj = nil
 	d._pipe = pipe
@@ -6534,7 +6540,7 @@ func NewFakeDbApi(settings *Config, exclusive_slots, multi_instance bool) *faked
 type bindbapi struct {
 	*fakedbapi
 	bintree  *BinaryTree
-	move_ent func()
+	move_ent func([]string, func(string) bool) int
 
 	_aux_chache  map[string]string
 	auxCacheKeys map[string]bool
@@ -6759,17 +6765,19 @@ func (b *bindbapi) cp_all(sort bool) []string {
 	return b.fakedbapi.cp_all(sort)
 }
 
-func (b *bindbapi) cpv_all() {
+func (b *bindbapi) cpv_all() []string {
 
-	if not b.bintree.populated:
-	b.bintree.populate()
-	return fakedbapi.cpv_all(b)
+	if ! b.bintree.populated {
+		b.bintree.Populate(false, true, []string{})
+	}
+	return b.fakedbapi.cpv_all()
 }
 
 func (b *bindbapi) getfetchsizes(pkg) {
 
-	if not b.bintree.populated:
-	b.bintree.populate()
+	if ! b.bintree.populated {
+		b.bintree.Populate(false, true, []string{})
+	}
 
 	pkg = getattr(pkg, "cpv", pkg)
 
@@ -8288,7 +8296,7 @@ type portdbapi struct {
 	_have_root_eclass_dir   bool
 	xcache                  map[string]map[[2]string][]*PkgStr
 	frozen                  bool
-	auxdb                   map[string]string
+	auxdb                   map[string]*VolatileDatabase
 	_pregen_auxdb           map[string]string
 	_ro_auxdb               map[string]string
 	_ordered_repo_name_list []string
@@ -8346,14 +8354,14 @@ func (p *portdbapi) close_caches() {
 		return
 	}
 	for x := range p.auxdb{
-		p.auxdb[x].sync()
+		p.auxdb[x].sync(0)
 	}
-	p.auxdb = map[string]string{}
+	p.auxdb = map[string]*VolatileDatabase{}
 }
 
 func (p *portdbapi) flush_cache() {
 	for _, x := range p.auxdb {
-		x.sync()
+		x.sync(0)
 	}
 }
 
@@ -8470,9 +8478,9 @@ func (p *portdbapi) findname2(mycpv, mytree, myrepo string) (string,int) {
 
 func (p *portdbapi) _write_cache(cpv, repo_path, metadata, ebuild_hash) {
 try:
-	cache = p.auxdb[repo_path]
-	chf = cache.validation_chf
-	metadata["_%s_" % chf] = getattr(ebuild_hash, chf)
+	cache := p.auxdb[repo_path]
+	chf := cache.validation_chf
+	metadata[fmt.Sprintf("_%s_", chf)] = getattr(ebuild_hash, chf)
 	except CacheError:
 		traceback.print_exc()
 	cache = nil
@@ -8870,9 +8878,9 @@ func (p *portdbapi) cpv_exists(mykey, myrepo string) int {
 }
 
 // nil, nil, false, true
-func (p *portdbapi) cp_all(categories map[string]bool, trees []string, reverse, sort bool) {
+func (p *portdbapi) cp_all(categories map[string]bool, trees []string, reverse, sort bool) []string {
 
-	d := map{}
+	d := map[string]bool{}
 	if categories == nil {
 		categories = p.settings.categories
 	}
@@ -8881,22 +8889,25 @@ func (p *portdbapi) cp_all(categories map[string]bool, trees []string, reverse, 
 	}
 	for x:= range categories{
 		for _, oroot:= range trees{
-			for y
-				in
-			listdir(oroot+"/"+x, EmptyOnError = 1, ignorecvs = 1, dirsonly = 1):
-		try:
-			atom = Atom("%s/%s"%(x, y))
-			except
-		InvalidAtom:
-			continue
-			if atom != atom.cp:
-			continue
-			d[atom.cp] = nil
+			for _, y := range listdir(oroot+"/"+x, false, false, true, []string{}, true, true, true) {
+				atom1, err  := NewAtom(fmt.Sprintf("%s/%s",x, y), nil, false, nil, nil, "", nil, nil)
+				if err != nil {
+					//except InvalidAtom:
+					continue
+				}
+				if atom1.value != atom1.cp {
+					continue
+				}
+				d[atom1.cp] = true
+			}
 		}
 	}
-	l = list(d)
+	l := []string{}
+	for k := range d{
+		l = append(l, k)
+	}
 	if sort {
-		l.sort(reverse = reverse)
+		l = reversed(sorted(l))
 	}
 	return l
 }
@@ -9241,7 +9252,7 @@ func NewPortDbApi(mysettings *Config) *portdbapi {
 	p._ordered_repo_name_list = rs
 
 	p.auxdbmodule = p.settings.load_best_module("portdbapi.auxdbmodule")
-	p.auxdb = map[string]string{}
+	p.auxdb = map[string]*VolatileDatabase{}
 	p._pregen_auxdb = map[string]string{}
 
 	p._ro_auxdb = map[string]string{}
@@ -9274,9 +9285,8 @@ func NewPortDbApi(mysettings *Config) *portdbapi {
 
 	if (*secpass < 1 && !depcachedir_unshared) || !depcachedir_w_ok {
 		for _, x := range p.porttrees {
-			p.auxdb[x] = volatile.database(
-				p.depcachedir, x, p._known_keys,
-				**cache_kwargs)
+			p.auxdb[x] = NewVolatileDatabase(
+				p.depcachedir, x, p._known_keys, false)
 			p._ro_auxdb[x], err = p.auxdbmodule(p.depcachedir, x,
 				p._known_keys, readonly = true, **cache_kwargs)
 			if err != nil {
@@ -9299,10 +9309,10 @@ func NewPortDbApi(mysettings *Config) *portdbapi {
 			if _, ok := p._pregen_auxdb[x]; ok {
 				continue
 			}
-		}
-		cache := p._create_pregen_cache(x)
-		if cache != nil {
-			p._pregen_auxdb[x] = cache
+			cache := p._create_pregen_cache(x)
+			if cache != nil {
+				p._pregen_auxdb[x] = cache
+			}
 		}
 	}
 
@@ -9340,12 +9350,12 @@ func (p *PortageTree) dep_match(mydep) {
 	return mymatch
 }
 
-func (p *PortageTree) exists_specific(cpv) {
+func (p *PortageTree) exists_specific(cpv) int {
 
 	return p.dbapi.cpv_exists(cpv)
 }
 
-func (p *PortageTree) getallnodes() {
+func (p *PortageTree) getallnodes() []string {
 	return p.dbapi.cp_all()
 
 }

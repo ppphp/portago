@@ -6017,10 +6017,9 @@ try:
 	raise
 	AssertionError(
 		"ebuild not found for '%s'" % x.cpv)
-	portage.package.
-	ebuild.doebuild.doebuild_environment(
-		ebuild_path, "clean", settings = settings,
-		db = s.trees[settings.ValueDict['EROOT']][tree].dbapi)
+	doebuild_environment(
+		ebuild_path, "clean", nil, settings, false, nil,
+		s.trees[settings.ValueDict['EROOT']][tree].dbapi)
 	clean_phase = NewEbuildPhase(nil, false, "clean", sched_iface, settings, nil)
 	current_task = clean_phase
 	clean_phase.start()
