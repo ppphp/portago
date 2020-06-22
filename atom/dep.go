@@ -3083,28 +3083,24 @@ func _iter_flatten(dep_struct) {
 // 1
 func dep_wordreduce(mydeplist []string,mysettings *Config,mydbapi,mode,use_cache int) {
 	deplist := mydeplist[:]
-	for mypos, token
-	in
-	enumerate(deplist)
-	{
+	for mypos, token:= range deplist{
 		if isinstance(deplist[mypos], list) {
 			deplist[mypos] = dep_wordreduce(deplist[mypos], mysettings, mydbapi, mode, use_cache = use_cache)
 		} else if deplist[mypos] == "||" {
-			pass
+			//pass
 		} else if token[:1] == "!" {
 			deplist[mypos] = false
 		} else {
-			mykey = deplist[mypos].cp
-			if mysettings && mykey in
-			mysettings.pprovideddict &&
-				match_from_list(deplist[mypos], mysettings.pprovideddict[mykey])
-			{
+			mykey := deplist[mypos].cp
+			if mysettings!= nil &&  Inmsss(
+			mysettings.pprovideddict,mykey) &&
+				matchFromList(deplist[mypos], mysettings.pprovideddict[mykey]) {
 				deplist[mypos] = true
 			}else if mydbapi == nil {
 				deplist[mypos] = false
 			} else {
 				if mode {
-					x = mydbapi.xmatch(mode, deplist[mypos])
+					x := mydbapi.xmatch(mode, deplist[mypos])
 					if strings.HasPrefix(mode,"minimum-") {
 						mydep := []string{}
 						if x {

@@ -8554,7 +8554,8 @@ try:
 	return (metadata, ebuild_hash)
 }
 
-func (p *portdbapi) aux_get(mycpv, mylist, mytree=nil, myrepo=nil) {
+// "", ""
+func (p *portdbapi) aux_get(mycpv, mylist []string, mytree string, myrepo string) {
 	loop = p._event_loop
 	return loop.run_until_complete(
 		p.async_aux_get(mycpv, mylist, mytree=mytree,
@@ -8562,7 +8563,7 @@ func (p *portdbapi) aux_get(mycpv, mylist, mytree=nil, myrepo=nil) {
 }
 
 // "", "", nil
-func (p *portdbapi) async_aux_get(mycpv, mylist, mytree, myrepo string, loop=nil) {
+func (p *portdbapi) async_aux_get(mycpv string, mylist []string, mytree, myrepo string, loop=nil) {
 
 	loop = asyncio._wrap_loop(loop)
 	future = loop.create_future()
@@ -8584,9 +8585,18 @@ func (p *portdbapi) async_aux_get(mycpv, mylist, mytree, myrepo string, loop=nil
 	if mytree == "" {
 		cache_me = true
 	}
-	if mytree == "" && not p._known_keys.intersection(
-		mylist).difference(p._aux_cache_keys) {
-		aux_cache := p._aux_cache.get(mycpv)
+
+	pkimdpack := map[string]bool {	}
+	for _, k := range mylist{
+		if p._known_keys[k]{
+			pkimdpack[k]=true
+		}
+	}
+	for k := range p._aux_cache_keys{
+		delete(pkimdpack,k)
+	}
+	if mytree == "" && len(pkimdpack) == 0{
+		aux_cache := p._aux_cache[mycpv]
 		if aux_cache != nil {
 			res := []string{}
 			for _, x := range mylist {
@@ -8597,7 +8607,7 @@ func (p *portdbapi) async_aux_get(mycpv, mylist, mytree, myrepo string, loop=nil
 		}
 		cache_me = true
 	}
-	cp = strings.SplitN(mycpv, "/", 2)
+	cp := strings.SplitN(mycpv, "/", 2)
 	if len(cp) == 1 {
 		//except ValueError:
 		future.set_exception(PortageKeyError(mycpv))
@@ -8607,7 +8617,7 @@ func (p *portdbapi) async_aux_get(mycpv, mylist, mytree, myrepo string, loop=nil
 
 	myebuild, mylocation := p.findname2(mycpv, mytree, "")
 
-	if not myebuild {
+	if myebuild == "" {
 		WriteMsg(fmt.Sprintf("!!! aux_get(): %s\n",
 			fmt.Sprintf("ebuild not found for '%s'", mycpv)), 1, nil)
 		future.set_exception(PortageKeyError(mycpv))
@@ -8650,8 +8660,9 @@ func (p *portdbapi) _aux_get_cancel(proc, future) {
 
 func (p *portdbapi) _aux_get_return(future, mycpv, mylist, myebuild, ebuild_hash,
 	mydata, mylocation, cache_me, proc) {
-	if future.cancelled():
-	return
+	if future.cancelled() {
+		return
+	}
 	if proc is
 	not
 nil:
@@ -8697,11 +8708,13 @@ func (p *portdbapi) async_fetch_map(mypkg, useflags=nil, mytree=nil, loop=nil) {
 	loop = asyncio._wrap_loop(loop)
 	result = loop.create_future()
 
-	aux_get_done:=func(aux_get_future) {
+	aux_get_done := func(aux_get_future) {
 		if result.cancelled() {
 			return
 		}
-		if aux_get_future.exception() is not nil{
+		if aux_get_future.exception() is
+		not
+		nil{
 			if isinstance(aux_get_future.exception(), PortageKeyError){
 			result.set_exception(portage.exception.InvalidDependString(
 			"getFetchMap(): aux_get() error reading " + mypkg + "; aborting."))
@@ -8721,7 +8734,7 @@ func (p *portdbapi) async_fetch_map(mypkg, useflags=nil, mytree=nil, loop=nil) {
 		}
 
 	try:
-		result.set_result(_parse_uri_map(mypkg,map[string]string{"EAPI":eapi, "SRC_URI":myuris,}, useflags))
+		result.set_result(_parse_uri_map(mypkg, map[string]string{"EAPI": eapi, "SRC_URI": myuris,}, useflags))
 		except
 		Exception
 		as
@@ -8730,11 +8743,16 @@ func (p *portdbapi) async_fetch_map(mypkg, useflags=nil, mytree=nil, loop=nil) {
 	}
 
 	aux_get_future := p.async_aux_get(
-		mypkg, ["EAPI", "SRC_URI"], mytree = mytree, loop = loop)
-result.add_done_callback(lambda result:
-aux_get_future.cancel() if result.cancelled() else nil)
-aux_get_future.add_done_callback(aux_get_done)
-return result
+		mypkg, []string{"EAPI", "SRC_URI"}, mytree, "", loop = loop)
+	result.add_done_callback(func(result){
+		if result.cancelled(){
+			return aux_get_future.cancel()
+		} else {
+			return nil
+		}
+	})
+	aux_get_future.add_done_callback(aux_get_done)
+	return result
 }
 
 // nil, 0, ""
@@ -8763,19 +8781,14 @@ try:
 	fetch_size = int(checksums[myfile]["size"])
 	except(KeyError, ValueError):
 	if debug:
-	WriteMsg(_("[bad digest]: missing %(file)s for %(pkg)s\n") %
-	{
-		"file":myfile, "pkg":mypkg
-	})
+	WriteMsg(fmt.Sprintf("[bad digest]: missing %s for %s\n", myfile,mypkg), 0,nil)
 	continue
-	file_path = filepath.Join(p.settings.ValueDict["DISTDIR"], myfile)
-	mystat = nil
-try:
-	mystat = os.Stat(file_path)
-	except
-OSError:
-	pass
-	else:
+	file_path := filepath.Join(p.settings.ValueDict["DISTDIR"], myfile)
+	mystat, err := os.Stat(file_path)
+	if err != nil {
+		//except OSError:
+		//pass
+	}else:
 	if mystat.st_size != fetch_size:
 	mystat = nil
 

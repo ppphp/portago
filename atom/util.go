@@ -1676,11 +1676,12 @@ type linkageMapELF struct {
 
 type _obj_properties_class struct{
 	//slot
-	arch,needed,runpaths,soname string
-	alt_paths,owner
+	arch,soname,owner string
+	needed,runpaths []string
+	alt_paths map[string]bool
 }
 
-func New_obj_properties_class(arch, needed, runpaths, soname string, alt_paths, owner)*_obj_properties_class{
+func New_obj_properties_class(arch string, needed, runpaths []string, soname string, alt_paths map[string]bool, owner string)*_obj_properties_class{
 	o := &_obj_properties_class{}
 	o.arch = arch
 	o.needed = needed
@@ -1760,7 +1761,7 @@ type _LibGraphNode struct{
 }
 
 func( l*_LibGraphNode) __str__() string {
-	return str(sorted(l.alt_paths))
+	return str(sortedmsb(l.alt_paths))
 }
 
 func New_LibGraphNode( key *_ObjectKey) *_LibGraphNode{
@@ -1994,7 +1995,7 @@ preserve_paths=None) {
 		}
 		for _, entry := range entries {
 			if entry.soname != "" {
-				providers[SonameAtom(entry.multilib_category, entry.soname)] = entry
+				providers[NewSonameAtom(entry.multilib_category, entry.soname)] = entry
 			}
 		}
 
@@ -2003,7 +2004,7 @@ preserve_paths=None) {
 			for soname
 				in
 			entry.needed:
-			soname_atom = SonameAtom(entry.multilib_category, soname)
+			soname_atom := NewSonameAtom(entry.multilib_category, soname)
 			provider = providers.get(soname_atom)
 			if provider is
 		None:
@@ -2173,14 +2174,10 @@ func (o*linkageMapELF) listBrokenBinaries( debug bool) {
 			cachedKey
 			in
 			o._obj_properties{
-				WriteMsgLevel((_("Broken symlink or missing/bad soname: " + \
-				"%(dir_soname)s -> %(cachedKey)s " + \
-				"with soname %(cachedSoname)s but expecting %(soname)s") % \
-			{"dir_soname":filepath.Join(directory, soname),
-				"cachedKey": o._obj_properties[cachedKey],
-				"cachedSoname": cachedSoname, "soname":soname}) + "\n",
-				level = logging.DEBUG,
-				noiselevel = -1)
+				WriteMsgLevel(fmt.Sprintf("Broken symlink or missing/bad soname: "+
+					"%s -> %s with soname %s but expecting %s",
+					filepath.Join(directory, soname), o._obj_properties[cachedKey],
+					cachedSoname, soname)+"\n", 20, -1)
 			}
 			if not validLibraries:
 			for obj
@@ -3817,10 +3814,10 @@ func(i*InstallMask) _iter_relevant_patterns( path string) []*_pattern{
 		if in{
 			patterns.sort(key = operator.attrgetter('orig_index'))
 		}
-		return iter(patterns)
+		return patterns
 	}
 
-	return iter(i._unanchored)
+	return i._unanchored
 }
 
 func(i*InstallMask) match( path string) bool {
@@ -4272,4 +4269,80 @@ writemsg_level func(string, int, int)) {
 		outfile.Write([]byte(fmt.Sprintf("setenv %s '%s'\n", x, env[x])))
 	}
 	outfile.Close()
+}
+
+func ExtractKernelVersion(base_dir string) (string,error) {
+	pathname := filepath.Join(base_dir, "Makefile")
+	f, err := ioutil.ReadFile(pathname)
+	if err != nil {
+		//except OSError as details:
+		//return (None, str(details))
+		//except IOError as details:
+		return "", err
+	}
+
+	lines := strings.Split(string(f), "\n")[:4]
+	for i := range lines {
+		lines[i] = strings.TrimSpace(lines[i])
+	}
+
+	version := ""
+
+	for _, line := range lines {
+		items := strings.Split(line, "=")
+
+		for i := range items {
+			items[i] = strings.TrimSpace(items[i])
+		}
+		if items[0] == "VERSION" ||
+			items[0] == "PATCHLEVEL" {
+			version += items[1]
+			version += "."
+		} else if items[0] == "SUBLEVEL" {
+			version += items[1]
+		} else if items[0] == "EXTRAVERSION" &&
+			items[len(items)-1] != items[0] {
+			version += items[1]
+		}
+	}
+
+	localversions, _ := listDir(base_dir)
+	for x := len(localversions) - 1; x >= 0; x-- {
+		if localversions[x][:12] != "localversion" {
+			lvs := []string{}
+			for i, k := range localversions {
+				if i != x {
+					lvs = append(lvs, k)
+				}
+			}
+			localversions = lvs
+		}
+	}
+	sort.Strings(localversions)
+
+	for _, lv := range localversions {
+		gf := grabFile(base_dir+"/"+lv, 0, false, false)
+		fs := []string{}
+		for _, k := range gf {
+			fs = append(fs, k[0])
+		}
+		version += strings.Join(strings.Fields(strings.Join(fs, " ")), "")
+	}
+
+	loader := NewKeyValuePairFileLoader(filepath.Join(base_dir, ".config"), nil, nil)
+	kernelconfig, loader_errors := loader.load()
+	if len(loader_errors) > 0 {
+		for file_path, file_errors := range loader_errors {
+			for _, error_str := range file_errors {
+				WriteMsgLevel(fmt.Sprintf("%s: %s\n", file_path, error_str), 40, -1)
+			}
+		}
+	}
+
+	if len(kernelconfig) > 0 && Inmsss(kernelconfig, "CONFIG_LOCALVERSION") {
+		ss, _ := shlex.Split(strings.NewReader(kernelconfig["CONFIG_LOCALVERSION"][0]), false, true)
+		version += strings.Join(ss, "")
+	}
+
+	return version, nil
 }

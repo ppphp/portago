@@ -384,7 +384,7 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *portdbapi) 
 		for _, cpv := range distfiles_map[myfile]{
 			uris.update(myportdb.getFetchMap(
 				cpv, nil, mytree)[myfile])
-			restrict := myportdb.aux_get(cpv, ['RESTRICT'], mytree = mytree)[0]
+			restrict := myportdb.aux_get(cpv, []string{"RESTRICT"}, mytree, "")[0]
 			for _, k := range useReduce(restrict, map[string]bool{},
 				[]string{}, false, []string{}, false, "",
 				false, true, nil, nil, true) {
@@ -1211,13 +1211,6 @@ fd_pipes=None, returnpid bool) int {
 		}
 		WriteMsg("\n", -1, nil)
 		return 1
-	}
-
-	if returnpid && mydo != "depend" {
-		warnings.warn("portage.doebuild() called "
-		"with returnpid parameter enabled. This usage will "
-		"not be supported in the future.",
-			DeprecationWarning, stacklevel = 2)
 	}
 
 	if mydo == "fetchall" {

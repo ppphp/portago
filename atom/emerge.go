@@ -2447,7 +2447,7 @@ func NewBlockerDB( fake_vartree)*BlockerDB {
 func (b *BlockerDB)findInstalledBlockers( new_pkg) {
 	blocker_cache := NewBlockerCache("",
 		b._vartree.dbapi)
-	dep_keys := NewPackage()._runtime_keys
+	dep_keys := NewPackage().runtimeKeys
 	settings := b._vartree.settings
 	stale_cache := set(blocker_cache)
 	fake_vartree := b._fake_vartree
@@ -2479,7 +2479,7 @@ func (b *BlockerDB)findInstalledBlockers( new_pkg) {
 
 			blocker_atoms := [][]*Atom{{}}
 			for _, atom := range atoms {
-				if atom.startswith("!") {
+				if strings.HasPrefix(atom, "!") {
 					blocker_atoms[0] = append(blocker_atoms[0], atom)
 				}
 			}
@@ -2493,8 +2493,8 @@ func (b *BlockerDB)findInstalledBlockers( new_pkg) {
 	}
 	blocker_cache.flush()
 
-	blocker_parents = NewDigraph()
-	blocker_atoms = []*Atom{}
+	blocker_parents := NewDigraph()
+	blocker_atoms := []*Atom{}
 	for _, pkg := range installed_pkgs {
 		for blocker_atom
 			in
