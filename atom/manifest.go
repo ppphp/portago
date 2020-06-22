@@ -570,7 +570,7 @@ assumeDistHashesAlways bool, requiredDistfiles map[string]bool) {
 	cat := m._pkgdir_category()
 
 	pkgdir := m.pkgdir
-	cpvlist := []{}
+	cpvlist := []string{}
 	if m.thin {
 		cpvlist = m._update_thin_pkgdir(cat, pn, pkgdir)
 	} else {
@@ -814,7 +814,7 @@ func (m*Manifest) checkCpvHashes( cpv string, checkDistfiles, onlyDistfiles, che
 }
 
 func (m*Manifest) _getCpvDistfiles( cpv string) {
-	return m.fetchlist_dict[cpv]
+	return m.fetchlist_dict.__getitem__(cpv)
 }
 
 func (m*Manifest) getDistfilesSize( fetchlist []string) int {

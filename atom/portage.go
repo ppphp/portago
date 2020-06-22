@@ -934,7 +934,7 @@ func _do_global_updates(trees *TreesDict, prev_mtimes map[string]string, quiet, 
 				matches = vardb.match(atomb, 1)
 			}
 			if len(matches) > 0 && repo_match(vardb.aux_get(Best(matches), map[string]bool{"repository": true}, "")[0]) {
-				if portdb.match(atoma, "") {
+				if len(portdb.match(atoma, 1)) != 0 {
 					world_warnings[[2]*Atom{atoma, atomb}] = true
 				}
 				return true

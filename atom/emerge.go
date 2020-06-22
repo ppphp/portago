@@ -758,9 +758,10 @@ func(l *_LockThread) async_unlock() {
 func(l *_LockThread) _unregister() {
 	l._registered = false
 
-	if l._thread != nil:
-	l._thread.join()
-	l._thread = nil
+	if l._thread != nil {
+		l._thread.join()
+		l._thread = nil
+	}
 }
 
 func NewLockThread()*_LockThread{
@@ -770,7 +771,7 @@ func NewLockThread()*_LockThread{
 }
 
 type _LockProcess struct {
-	AbstractPollTask
+	*AbstractPollTask
 	//slot
 	_proc *SpawnProcess
 	path,_kill_test,_unlock_future string
@@ -807,11 +808,11 @@ AttributeError:
 
 	l.scheduler.add_reader(in_pr, l._output_handler)
 	l._registered = true
+	ev := ExpandEnv()
+	ev["PORTAGE_PYM_PATH"]=portage._pym_path
 	l._proc = NewSpawnProcess([]string{portage._python_interpreter,
-		filepath.Join(portage._bin_path, 'lock-helper.py'), l.path},false, 
-		dict(os.environ, PORTAGE_PYM_PATH= portage._pym_path),
- map[int]int{0:out_pr, 1:in_pw, 2:sys.__stderr__.fileno()},
- l.scheduler, "")
+		filepath.Join(portage._bin_path, "lock-helper.py"), l.path},false,
+		ev, map[int]int{0:out_pr, 1:in_pw, 2:syscall.Stderr}, l.scheduler, "")
 l._proc.addExitListener(l._proc_exit)
 l._proc.start()
 syscall.Close(out_pr)
@@ -820,44 +821,45 @@ syscall.Close(in_pw)
 
 func(l *_LockProcess) _proc_exit(proc) {
 
-	if l._files != nil:
-try:
-	pipe_out = l._files["pipe_out"]
-	delete(l._files, "pipe_out")
-	except
-KeyError:
-	pass
-	else:
-	syscall.Close(pipe_out)
+	if l._files != nil {
+		pipe_out, ok := l._files["pipe_out"]
+		delete(l._files, "pipe_out")
+		if !ok {
+			//except KeyError:
+			//pass
+		} else {
+			syscall.Close(pipe_out)
+		}
+	}
 
-	if proc.returncode != 0:
+	if proc.returncode != 0 {
+		if !l._acquire {
+			if !(l.cancelled || l._kill_test) {
+				WriteMsgLevel(fmt.Sprintf("_LockProcess: %s\n",
+					fmt.Sprintf("failed to acquire lock on '%s'", l.path, )),
+					40, -1)
+			}
+			l._unregister()
+			l.returncode = proc.returncode
+			l._async_wait()
+			return
+		}
 
-	if !l._acquired:
-	if not(l.cancelled or
-	l._kill_test):
-	WriteMsgLevel("_LockProcess: %s\n" %
-	_("failed to acquire lock on '%s'") % (l.path,),
-	level = 40, noiselevel=-1)
-	l._unregister()
-	l.returncode = proc.returncode
-	l._async_wait()
-	return
+		if !l.cancelled && l._unlock_future == nil {
+			//raise AssertionError("lock process failed with returncode %s"
+			//% (proc.returncode,))
+		}
+	}
 
-	if not l.cancelled
-	and 
-	l._unlock_future
-	== nil:
-	raise
-	AssertionError("lock process failed with returncode %s" 
-	% (proc.returncode,))
-
-	if l._unlock_future != nil:
-	l._unlock_future.set_result(nil)
+	if l._unlock_future != nil {
+		l._unlock_future.set_result(nil)
+	}
 }
 
 func(l *_LockProcess) _cancel() {
-	if l._proc != nil:
-	l._proc.cancel()
+	if l._proc != nil {
+		l._proc.cancel()
+	}
 }
 
 func(l *_LockProcess) _poll() {
@@ -882,15 +884,17 @@ func(l *_LockProcess) _output_handler() bool{
 func(l *_LockProcess) _unregister() {
 	l._registered = false
 
-	if l._files != nil:
-try:
-	pipe_in = l._files.pop('pipe_in')
-	except
-KeyError:
-	pass
-	else:
-	l.scheduler.remove_reader(pipe_in)
-	syscall.Close(pipe_in)
+	if l._files != nil {
+		pipe_in, ok := l._files["pipe_in"]
+		if !ok {
+			//except KeyError:
+			//pass
+		} else {
+			delete(l._files, "pipe_in")
+			l.scheduler.remove_reader(pipe_in)
+			syscall.Close(pipe_in)
+		}
+	}
 }
 
 func(l *_LockProcess) _unlock() {
@@ -926,7 +930,8 @@ func NewLockProcess() *_LockProcess{
 type AsynchronousTask struct {
 	background                                                bool
 	scheduler                                                 *SchedulerInterface
-	_exit_listener_handles, _exit_listeners, _start_listeners string
+	_exit_listener_handles []func(*AsynchronousTask)
+	_exit_listeners, _start_listeners string
 	_cancelled_returncode                                     int
 	returncode                                                *int
 	cancelled                                                 bool
@@ -1022,13 +1027,13 @@ func (a *AsynchronousTask)  addStartListener( f){
 	}
 }
 
-func (a *AsynchronousTask)  removeStartListener( f) {
+func (a *AsynchronousTask)  removeStartListener( f func(*AsynchronousTask))  {
 	if a._start_listeners == nil {
 		return
 	}
 	sls := a._start_listeners
-	a._exit_listener_handles = []{}
-	for _,sl:=range sla {
+	a._exit_listener_handles = []func(*AsynchronousTask){}
+	for _, sl := range sla {
 		if sl != f {
 			a._exit_listener_handles = append(a._exit_listener_handles, f)
 		}
@@ -1093,7 +1098,7 @@ func (a *AsynchronousTask)  _wait_hook() {
 	}
 }
 
-func (a *AsynchronousTask)  _exit_listener_cb( listener) {
+func (a *AsynchronousTask)  _exit_listener_cb( listener func(*AsynchronousTask)) {
 	delete(a._exit_listener_handles,listener)
 	listener(a)
 }
@@ -1243,14 +1248,15 @@ func (b *Binpkg) _fetcher_exit( fetcher) {
 	if fetcher != nil {
 		b._fetched_pkg = fetcher.pkg_path
 		if b._default_exit(fetcher) != 0 {
-			b._async_unlock_builddir(returncode = b.returncode)
+			b._async_unlock_builddir(b.returncode)
 			return
 		}
 	}
 
 	if b.opts.pretend {
 		b._current_task = nil
-		b.returncode = 0
+		i:=0
+		b.returncode = &i
 		b.wait()
 		return
 	}
@@ -1275,8 +1281,7 @@ func (b *Binpkg) _fetcher_exit( fetcher) {
 }
 
 func (b *Binpkg) _verifier_exit(verifier) {
-	if verifier != nil&&
-	b._default_exit(verifier) != 0{
+	if verifier != nil&& b._default_exit(verifier) != 0{
 		b._async_unlock_builddir( b.returncode)
 		return
 	}
@@ -1287,10 +1292,7 @@ func (b *Binpkg) _verifier_exit(verifier) {
 
 	pkg_path := ""
 	if b._fetched_pkg {
-		pkg_path = b._bintree.getname(
-			b._bintree.inject(pkg.cpv,
-				filename = b._fetched_pkg),
-		false)
+		pkg_path = b._bintree.getname(b._bintree.inject(pkg.cpv, b._fetched_pkg), false)
 	}else {
 		pkg_path = b.pkg.root_config.trees["bintree"].getname(
 			b.pkg.cpv)
@@ -1600,7 +1602,7 @@ func(b *BinpkgEnvExtractor) _start() {
 	shell_cmd := fmt.Sprintf("${PORTAGE_BUNZIP2_COMMAND:-${PORTAGE_BZIP2_COMMAND} -d} -c -- %s > %s" ,
 		ShellQuote(saved_env_path),
 		ShellQuote(dest_env_path))
-	extractor_proc := NewSpawnProcess([]string{BashBinary, "-c", shell_cmd}, b.background, b.settings.environ(), b.scheduler, b.settings.ValueDict["PORTAGE_LOG_FILE"])
+	extractor_proc := NewSpawnProcess([]string{BashBinary, "-c", shell_cmd}, b.background, b.settings.environ(), nil, b.scheduler, b.settings.ValueDict["PORTAGE_LOG_FILE"])
 
 	b._start_task(extractor_proc, b._extractor_exit)
 }
@@ -2491,7 +2493,7 @@ func (b *BlockerDB)findInstalledBlockers( new_pkg) {
 	}
 	blocker_cache.flush()
 
-	blocker_parents = digraph()
+	blocker_parents = NewDigraph()
 	blocker_atoms = []*Atom{}
 	for _, pkg := range installed_pkgs {
 		for blocker_atom
@@ -3182,18 +3184,21 @@ func(e *EbuildBuild) _fetch_failed() {
 
 func(e *EbuildBuild) _nofetch_exit( nofetch_phase) {
 	e._final_exit(nofetch_phase)
-	e._async_unlock_builddir(returncode = 1)
+	i := 1
+	e._async_unlock_builddir(&i)
 }
 
 // nil
 func(e *EbuildBuild) _async_unlock_builddir( returncode *int) {
-	if returncode!= nil {
+	if returncode != nil {
 		e.returncode = nil
 	}
 	elog_process(e.pkg.cpv, e.settings, nil)
 	e._start_task(
 		AsyncTaskFuture(future = e._build_dir.async_unlock()),
-	functools.partial(e._unlock_builddir_exit, returncode = returncode))
+	func(unlock_task) {
+		e._unlock_builddir_exit(unlock_task, returncode)
+	})
 }
 
 func(e *EbuildBuild) _unlock_builddir_exit( unlock_task, returncode=None) {
@@ -4739,74 +4744,70 @@ type EbuildIpcDaemon struct {
 }
 
 func (e *EbuildIpcDaemon) _input_handler() {
-	data = e._read_buf(e._files.pipe_in)
-	if data == nil:
-	pass
-	elif
-data:
-try:
-	obj = pickle.loads(data)
-	except
-SystemExit:
-	raise
-	except
-Exception:
-	pass
-	else:
+	data := e._read_buf(e._files.pipe_in)
+	if data == nil {
+		//pass
+	}else if len(data) > 0 {
+	try:
+		obj = pickle.loads(data)
+		except
+	SystemExit:
+		raise
+		except
+	Exception:
+		pass
+		else:
 
-	e._reopen_input()
+		e._reopen_input()
 
-	cmd_key = obj[0]
-	cmd_handler = e.commands[cmd_key]
-	reply = cmd_handler(obj)
-try:
-	e._send_reply(reply)
-	except
-	OSError
-	as
-e:
-	if err == errno.ENXIO:
-	pass
-	else:
-	raise
+		cmd_key = obj[0]
+		cmd_handler = e.commands[cmd_key]
+		reply = cmd_handler(obj)
+	try:
+		e._send_reply(reply)
+		except
+		OSError
+		as
+	e:
+		if err == errno.ENXIO:
+		pass
+		else:
+		raise
 
-	reply_hook = getattr(cmd_handler,
-		'reply_hook', nil)
-	if reply_hook != nil:
-	reply_hook()
+		reply_hook = getattr(cmd_handler,
+			'reply_hook', nil)
+		if reply_hook != nil:
+		reply_hook()
 
-	else:
-	lock_filename = filepath.Join(
-		filepath.Dir(e.input_fifo), '.ipc_lock')
-try:
-	lock_obj = lockfile(lock_filename, unlinkfile = true,
-		flags = os.O_NONBLOCK)
-	except
-TryAgain:
-	pass
-	else:
-try:
-	e._reopen_input()
-finally:
-	unlockfile(lock_obj)
+	}else {
+		lock_filename := filepath.Join(
+			filepath.Dir(e.input_fifo), ".ipc_lock")
+		lock_obj, err := Lockfile(lock_filename, false, true, "", os.O_NONBLOCK)
+		if err != nil {
+			//except TryAgain:
+			//pass
+		}else {
+		//try:
+			e._reopen_input()
+		//finally:
+			Unlockfile(lock_obj)
+		}
+	}
 }
 
 func (e *EbuildIpcDaemon) _send_reply( reply) {
-try:
-	output_fd = os.open(e.output_fifo,
-		os.O_WRONLY|os.O_NONBLOCK)
-try:
-	syscall.Write(output_fd, pickle.dumps(reply))
-finally:
-	syscall.Close(output_fd)
-	except
-	OSError
-	as
-e:
-	WriteMsgLevel(
-		"!!! EbuildIpcDaemon %s: %s\n" % 
-	(_('failed to send reply'), e),
-	level = 40, noiselevel=-1)
+	output_fd, err := os.OpenFile(e.output_fifo,
+		os.O_WRONLY|os.O_NONBLOCK, 0644)
+	if err != nil {
+		//except OSError as e:
+		WriteMsgLevel(fmt.Sprintf("!!! EbuildIpcDaemon %s: %s\n" ,
+				, "failed to send reply", e), 40,-1)
+	}else {
+		//try:
+		output_fd.Write(pickle.dumps(reply))
+		//finally:
+		output_fd.Close()
+	}
 }
 
 type MiscFunctionsProcess struct {
@@ -5178,6 +5179,7 @@ type  Scheduler struct {
 	_pkg_count               *_pkg_count_class
 	_config_pool             map[string][]*Config
 	_failed_pkgs             []*_failed_pkg
+	_blocker_db              map[string]*BlockerDB
 }
 
 type  _iface_class struct {
@@ -5614,7 +5616,7 @@ func (s *Scheduler) _get_interactive_tasks() {
 	return interactive_tasks
 }
 
-func _set_graph_config( graph_config) {
+func(s *Scheduler) _set_graph_config( graph_config) {
 
 	if graph_config == nil {
 		s._graph_config = nil
@@ -7145,10 +7147,9 @@ exc:
 			"to skip the first package in the list and " +
 			"any other packages that may be " +
 			"masked or have missing dependencies."
-		for line
-			in
-		SplitSubN(msg, 72):
-		out.eerror(line)
+		for _, line:= range SplitSubN(msg, 72) {
+			out.eerror(line)
+		}
 	}
 	s._post_mod_echo_msgs.append(unsatisfied_resume_dep_msg)
 	return false
@@ -7363,12 +7364,12 @@ func (s *SchedulerInterface) _return_false() bool{
 func (s *SchedulerInterface) output( msg , log_path string, background bool, level, noiselevel int) {
 
 	global_background := s._is_background()
-	if !background  || global_background {
+	if !background || global_background {
 		background = global_background
 	}
 
 	msg_shown := false
-	if ! background {
+	if !background {
 		WriteMsgLevel(msg, level, noiselevel)
 		msg_shown = true
 	}
@@ -7377,14 +7378,14 @@ func (s *SchedulerInterface) output( msg , log_path string, background bool, lev
 		f, err := os.OpenFile(log_path, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0644)
 		if err != nil {
 			//except IOError as e:
-			if err!= syscall.ENOENT&& err!= syscall.ESTALE {
+			if err != syscall.ENOENT && err != syscall.ESTALE {
 				//raise
 			}
 			if !msg_shown {
 				WriteMsgLevel(msg, level, noiselevel)
 			}
-		} else{
-			if strings.HasSuffix(log_path,".gz") {
+		} else {
+			if strings.HasSuffix(log_path, ".gz") {
 				g := gzip.NewWriter(f)
 				g.Write([]byte(msg))
 			} else {

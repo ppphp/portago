@@ -293,10 +293,10 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *portdbapi) 
 	defer func() {doebuildManifestExemptDepend -= 1}()
 	distfiles_map := map[string][]string{}
 	fetchlist_dict := NewFetchlistDict(mysettings.ValueDict["O"], mysettings, myportdb)
-	for cpv:= range fetchlist_dict{
+	for _, cpv:= range fetchlist_dict.__iter__(){
 			//try:
-		for myfile := range fetchlist_dict[cpv] {
-			distfiles_map[myfile] = append(distfiles_map[myfile], cpv)
+		for myfile := range fetchlist_dict.__getitem__(cpv.string) {
+			distfiles_map[myfile] = append(distfiles_map[myfile], cpv.string)
 		}
 			//except InvalidDependString as e:
 			//	WriteMsg("!!! %s\n" % str(e), noiselevel=-1)
@@ -1006,19 +1006,23 @@ debug bool, use_cache=None, db DBAPI) {
 			//except InvalidDependString{
 			//mysettings.configDict["pkg"]["A"] = ""
 			//}else{
-			mysettings.configDict["pkg"]["A"] = strings.Join(uri_map, " ")
+			um := []string{}
+			for u := range uri_map {
+				um = append(um, u)
+			}
+			mysettings.configDict["pkg"]["A"] = strings.Join(um, " ")
+			//try{
+			uri_map = _parse_uri_map(nil, metadata, nil)
+			//except InvalidDependString{
+			//mysettings.configDict["pkg"]["AA"] = ""
+			//}else{
+			um = []string{}
+			for u := range uri_map {
+				um = append(um, u)
+			}
+			mysettings.configDict["pkg"]["AA"] = strings.Join(um, " ")
 		}
 
-		//try{
-		uri_map := _parse_uri_map(nil, metadata, nil)
-		//except InvalidDependString{
-		//mysettings.configDict["pkg"]["AA"] = ""
-		//}else{
-		um := []string{}
-		for u := range uri_map {
-			um = append(um, u)
-		}
-		mysettings.configDict["pkg"]["AA"] = strings.Join(um, " ")
 
 		ccache := mysettings.Features.Features["ccache"]
 		distcc := mysettings.Features.Features["distcc"]
@@ -1102,9 +1106,9 @@ debug bool, use_cache=None, db DBAPI) {
 		//}else{
 
 		mysettings.ValueDict["PORTAGE_COMPRESSION_COMMAND"] = "cat"
-		//}else{
+		//}else{nil
 		//try{
-		compression_binarys, _ := shlex.Split(strings.NewReader(varExpand(compression["compress"], settings.ValueDict, "")), false, true)
+		compression_binarys, _ := shlex.Split(strings.NewReader(varExpand(compression["compress"], settings.ValueDict, nil)), false, true)
 		compression_binary := compression_binarys[0]
 		//except IndexError as e{
 		//WriteMsg(fmt.Sprintf("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
@@ -1116,7 +1120,7 @@ debug bool, use_cache=None, db DBAPI) {
 			ss, _ := shlex.Split(strings.NewReader(compression["compress"]), false, true)
 			cmds := []string{}
 			for _, x := range ss {
-				cmds = append(cmds, varExpand(x, settings.ValueDict, ""))
+				cmds = append(cmds, varExpand(x, settings.ValueDict, nil))
 			}
 			cmd := []string{}
 			for _, c := range cmds {
@@ -2657,7 +2661,7 @@ destdir := mysettings.ValueDict["D"]
 ed_len := len(mysettings.ValueDict["ED"])
 unicode_errors := []string{}
 desktop_file_validate := FindBinary("desktop-file-validate") != ""
-xdg_dirs := strings.Fields(mysettings.ValueDict["XDG_DATA_DIRS"]),":")
+xdg_dirs := strings.Split(mysettings.ValueDict["XDG_DATA_DIRS"]),":")
 if len(xdg_dirs) == 0 {
 	xdg_dirs = []string{"/usr/share"}
 }
@@ -2854,13 +2858,14 @@ func _post_src_install_soname_symlinks(mysettings *Config, out io.Writer) {
 
 	qa_prebuilt := strings.TrimSpace(metadata["QA_PREBUILT"])
 
+	var qpre *regexp.Regexp
 	if qa_prebuilt != "" {
 		ss, _ := shlex.Split(strings.NewReader(qa_prebuilt), false, true)
 		ms := []string{}
 		for _, x := range ss {
 			ms = append(ms, fnmatch.translate(strings.TrimLeft(x, string(os.PathSeparator))))
 		}
-		qa_prebuilt = regexp.MustCompile(strings.Join(ms, "|"))
+		qpre = regexp.MustCompile(strings.Join(ms, "|"))
 	}
 
 	qa_soname_no_symlink := strings.Fields(metadata["QA_SONAME_NO_SYMLINK"])
@@ -2978,9 +2983,9 @@ func _post_src_install_soname_symlinks(mysettings *Config, out io.Writer) {
 		needed_file.Write([]byte(entry.__str__()))
 
 		if entry.multilib_category == "" {
-			if !qa_prebuilt || qa_prebuilt.match(
+			if qpre == nil || !qpre.MatchString(
 				entry.filename[len(strings.TrimLeft(mysettings.ValueDict["EPREFIX"])):],
-				string(os.PathSeparator)) == nil {
+				string(os.PathSeparator)) {
 				unrecognized_elf_files = append(unrecognized_elf_files, entry)
 			}
 		} else {
@@ -3106,8 +3111,8 @@ func _prepare_self_update(settings *Config) {
 
 	build_prefix := filepath.Join(settings.ValueDict["PORTAGE_TMPDIR"], "portage")
 	ensureDirs(build_prefix,-1,-1,-1,-1,nil,true)
-	base_path_tmp := tempfile.mkdtemp(
-		"", "._portage_reinstall_.", build_prefix)
+	base_path_tmp := ioutil.TempDir(
+		filepath.Join("", "._portage_reinstall_."), build_prefix)
 	atexit_register(func() {
 		os.RemoveAll(base_path_tmp)
 	})
@@ -3119,9 +3124,7 @@ func _prepare_self_update(settings *Config) {
 	orig_pym_path = portage._pym_path
 	portage._pym_path = filepath.Join(base_path_tmp, "lib")
 	os.mkdir(portage._pym_path)
-	for pmod
-	in
-	PORTAGE_PYM_PACKAGES{
+	for pmod := range PORTAGE_PYM_PACKAGES{
 		shutil.copytree(filepath.Join(orig_pym_path, pmod),
 			filepath.Join(portage._pym_path, pmod),
 			symlinks = true)

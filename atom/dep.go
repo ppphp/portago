@@ -2964,13 +2964,11 @@ use_cache , use_binaries int, myroot string, trees *TreesDict) (int, []string) {
 	if mysettings.localConfig {
 		orig_split := mysplit
 		mysplit = _overlap_dnf(mysplit)
-		dnf = mysplit
-		is
-		!orig_split
+		dnf = &mysplit!=&orig_split
 	}
 
 	mysplit2 := dep_wordreduce(mysplit,
-		mysettings, mydbapi, mode, use_cache = use_cache)
+		mysettings, mydbapi, mode, use_cache)
 	if mysplit2 == nil {
 		return 0, []string{"Invalid token"}
 	}
@@ -2991,9 +2989,9 @@ func _overlap_dnf(dep_struct) {
 		return dep_struct
 	}
 
-	cp_map = collections.defaultdict(list)
-	overlap_graph = digraph()
-	order_map = map[string]string{}
+	cp_map := map[string][]string{}
+	overlap_graph := NewDigraph()
+	order_map := map[string]string{}
 	order_key = lambda
 x:
 	order_map[id(x)]

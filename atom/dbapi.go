@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/pkg/xattr"
 	"github.com/ppphp/shlex"
+	"github.com/spf13/pflag"
 	"golang.org/x/sys/unix"
 	"hash"
 	"io"
@@ -1771,29 +1772,40 @@ func (v *vardbapi) unpack_contents(pkg, dest_dir,
 	settings = pkg
 	cpv = settings.mycpv
 
-	scheduler = SchedulerInterface(loop)
-	parser = argparse.ArgumentParser()
-	parser.add_argument('--include-config',
-		choices = ('y', 'n'),
-	default= 'n')
-	parser.add_argument('--include-unmodified-config',
-	choices = ('y', 'n'),
-	default ='n')
+	scheduler := NewSchedulerInterface(loop, nil)
+	pf := pflag.NewFlagSet("", pflag.ContinueOnError)
 
-		opts_list = portage.util.shlex_split(settings.ValueDict['QUICKPKG_DEFAULT_OPTS', ''))
-	if include_config != nil:
-	opts_list=append(,'--include-config={}'.format(
-	'y' if include_config else 'n'))
-	if include_unmodified_config != nil:
-	opts_list=append(,'--include-unmodified-config={}'.format(
-	'y' if include_unmodified_config else 'n'))
+	pf.StringVar(, "--include-config", "n", "")
 
-	opts, args = parser.parse_known_args(opts_list)
+	pf.StringVar(, "--include-unmodified-config", "n", "")
 
-	tar_cmd = ('tar', '-x', '--xattrs', '--xattrs-include=*', '-C', dest_dir)
-	pr, pw = os.pipe()
+
+	opts_list, _ := shlex.Split(strings.NewReader(settings.ValueDict["QUICKPKG_DEFAULT_OPTS"], false, true)
+	if include_config != nil {
+		if len(include_config) > 0 {
+			opts_list = append(opts_list, fmt.Sprintf("--include-config=%s", "y"))
+		} else {
+			opts_list = append(opts_list, fmt.Sprintf("--include-config=%s", "n"))
+		}
+	}
+	if include_unmodified_config != nil {
+		if len(include_unmodified_config) > 0 {
+			opts_list = append(opts_list, fmt.Sprintf("--include-unmodified-config=%s", "y"))
+		} else {
+			opts_list = append(opts_list, fmt.Sprintf("--include-unmodified-config=%s", "n"))
+		}
+	}
+
+	opts, args =
+		pf.Parse(opts_list)
+
+	tar_cmd := []string{"tar", "-x", "--xattrs", "--xattrs-include=*", "-C", dest_dir}
+	p2 := make([]int, 2)
+	syscall.Pipe(p2)
+	pr, pw := p2[0], p2[1]
 	proc = (yield asyncio.create_subprocess_exec(*tar_cmd, stdin = pr))
-	os.close(pr)
+	syscall.Close(pr)
+
 	with os.fdopen(pw, 'wb', 0) as pw_file:
 	excluded_config_files = (yield loop.run_in_executor(ForkExecutor(loop = loop),
 	functools.partial(v._dblink(cpv).quickpkg,
@@ -3075,7 +3087,7 @@ func (d *dblink) unmerge(pkgfiles map[string][]string, cleanup bool,
 
 	env_update(1, d.settings.ValueDict["ROOT"],
 		prev_mtimes = ldpath_mtimes,
-		contents, env=d.settings,
+		contents, d.settings,
 		d._display_merge, d.vartree.dbapi)
 
 	unmerge_with_replacement := preserve_paths != nil
@@ -3839,8 +3851,8 @@ d.vartree.dbapi._plib_registry == nil ||
 	old_contents := installed_instance.getcontents()
 	root := d.settings.ValueDict["ROOT"]
 	root_len := len(root) - 1
-	lib_graph := digraph()
-	path_node_map := map[string]{}
+	lib_graph := NewDigraph()
+	path_node_map := map[string]*_obj_properties_class{}
 
 	path_to_node:= func(path string) {
 		node := path_node_map[path]
@@ -3862,8 +3874,7 @@ d.vartree.dbapi._plib_registry == nil ||
 
 		f := f_abs[root_len:]
 		try:
-		consumers = linkmap.findConsumers(f,
-		exclude_providers=(installed_instance.isowner,))
+		consumers := linkmap.findConsumers(f, []func(string)bool{installed_instance.isowner},true)
 		except KeyError:
 		continue
 		if not consumers {
@@ -3997,7 +4008,7 @@ func (d *dblink) _find_unused_preserved_libs(unmerge_no_replacement bool) map[st
 
 	plib_dict := d.vartree.dbapi._plib_registry.getPreservedLibs()
 	linkmap := d.vartree.dbapi._linkmap
-	lib_graph := digraph()
+	lib_graph := NewDigraph()
 	preserved_nodes := map[string]bool{}
 	preserved_paths := map[string]bool{}
 	path_cpv_map := {}
@@ -4696,9 +4707,9 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 		d._installed_instance = max_dblnk
 	}
 
-	phase := NewMiscFunctionsProcess(false, []string{"preinst_mask"}, "preinst", "", nil, d._scheduler, d.settings)
-	phase.start()
-	phase.wait()
+	phase2 := NewMiscFunctionsProcess(false, []string{"preinst_mask"}, "preinst", "", nil, d._scheduler, d.settings)
+	phase2.start()
+	phase2.wait()
 	f, err := ioutil.ReadFile(filepath.Join(inforoot, "INSTALL_MASK"))
 	if err != nil {
 		//except EnvironmentError:
@@ -4837,7 +4848,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	}
 
 	collisions, internal_collisions, dirs_ro, symlink_collisions, plib_collisions :=
-		d._collision_protect(srcroot, append(append([]*dblink{}, others_in_slot...), blockers), filelist, linklist)
+		d._collision_protect(srcroot, append(append([]*dblink{}, others_in_slot...), blockers...), filelist, linklist)
 
 	ro_checker := get_ro_checker()
 	rofilesystems := ro_checker(dirs_ro)
@@ -4984,11 +4995,11 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 			d.vartree.dbapi.flush_cache()
 
 			for pkg := range owners {
-				pkg := d.vartree.dbapi._pkg_str(pkg.mycpv, nil)
+				pkg := d.vartree.dbapi._pkg_str(pkg.mycpv, "")
 				pkg_info_str := fmt.Sprintf("%s%s%s" ,pkg,
-					_slot_separator, pkg.slot)
-				if pkg.repo != _unknown_repo {
-					pkg_info_str += fmt.Sprintf("%s%s" ,_repo_separator,
+					slotSeparator, pkg.slot)
+				if pkg.repo != unknownRepo {
+					pkg_info_str += fmt.Sprintf("%s%s" ,repoSeparator,
 						pkg.repo)
 				}
 				pkg_info_strs[pkg.string] = pkg_info_str
@@ -5024,7 +5035,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 					"which is explicitly forbidden by PMS section 13.4 " +
 					"(see bug  #326685)."
 		abort := false
-		if symlink_collisions {
+		if len(symlink_collisions) > 0 {
 			abort = true
 			msg = fmt.Sprintf(symlink_abort_msg, d.settings.mycpv,)
 		}else if collision_protect {
@@ -5077,10 +5088,10 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	}
 
 	showMessage(fmt.Sprintf(">>> Merging %s to %s\n", d.mycpv, destroot),0,0)
-	phase2 := NewEbuildPhase(nil, false, "preinst",
+	phase3 := NewEbuildPhase(nil, false, "preinst",
 	d._scheduler, d.settings, nil)
-	phase2.start()
-	a := phase2.wait()
+	phase3.start()
+	a := phase3.wait()
 
 	if a != 0 {
 		showMessage(fmt.Sprintf("!!! FAILED preinst: ")+fmt.Sprintf(a)+"\n",
@@ -5155,7 +5166,8 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	}
 
 	reinstall_self := false
-	if d.myroot == "/" && len(matchFromList(PortagePackageAtom, []*PkgStr{d.mycpv})) > 0 {
+	ppa, _ := NewAtom(PortagePackageAtom,  nil, false, nil, nil, "", nil, nil)
+	if d.myroot == "/" && len(matchFromList(ppa, []*PkgStr{d.mycpv})) > 0 {
 		reinstall_self = true
 	}
 
@@ -5359,9 +5371,9 @@ func (d *dblink) _new_backup_path(p string) string {
 	return backup_p
 }
 
-func (d *dblink) _merge_contents(srcroot, destroot string, cfgfiledict) int {
+func (d *dblink) _merge_contents(srcroot, destroot string, cfgfiledict  map[string][]string) int {
 
-	cfgfiledict_orig = cfgfiledict.copy()
+	cfgfiledict_orig := cfgfiledict.copy()
 
 	outfile := NewAtomic_ofstream(filepath.Join(d.dbtmpdir, "CONTENTS"), os.O_CREATE|os.O_TRUNC|os.O_RDWR, true)
 
@@ -5413,7 +5425,7 @@ func (d *dblink) _merge_contents(srcroot, destroot string, cfgfiledict) int {
 	return 0
 }
 
-func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secondhand, stufftomerge, cfgfiledict , thismtime) int {
+func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secondhand, stufftomerge, cfgfiledict map[string][]string, thismtime) int {
 
 	showMessage := d._display_merge
 	WriteMsg := d._display_merge
@@ -5548,10 +5560,13 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 					encoding = _encodings["merge"])
 			}
 
-			//try:
-			d._merged_path(mydest, os.Lstat(mydest), true)
-			//except OSError:
-			//pass
+			st, err := os.Lstat(mydest)
+			if err != nil{
+				//except OSError:
+				//pass
+			}else {
+				d._merged_path(mydest,st, true)
+			}
 
 			if mymtime != nil {
 				if not(os.path.lexists(myrealto) || os.path.lexists(join(srcroot, myabsto))) {
@@ -5654,7 +5669,7 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 				//pass
 			}
 
-			outfile.write("dir " + myrealdest + "\n")
+			outfile.Write([]byte("dir " + myrealdest + "\n"))
 
 			lds, _ := listDir(join(srcroot, relative_path))
 			for _, child:= range lds {
@@ -5706,7 +5721,7 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 			if mymtime != 0 {
 				outfile.Write([]byte("obj " + myrealdest + " " + mymd5 + " " + fmt.Sprint(mymtime/1000000000) + "\n"))
 			}
-			showMessage(fmt.Sprintf("%s %s\n", zing, mydest))
+			showMessage(fmt.Sprintf("%s %s\n", zing, mydest), 0, 0)
 		}else {
 			zing = "!!!"
 			if mydmode == 0{
@@ -9017,128 +9032,117 @@ func (p *portdbapi) melt() {
 	p.frozen = false
 }
 
-func (p *portdbapi) xmatch(level string, origdep) {
+func (p *portdbapi) xmatch(level string, origdep *Atom) []*PkgStr {
 
 	loop = p._event_loop
 	return loop.run_until_complete(
 		p.async_xmatch(level, origdep, loop=loop))
 }
 
-func (p *portdbapi) async_xmatch(level string, origdep, loop=nil) {
-	mydep := dep_expand(origdep, mydb = p, settings = p.settings)
+// @coroutine
+func (p *portdbapi) async_xmatch(level string, origdep *Atom, loop=nil) []*PkgStr {
+	mydep := dep_expand(origdep, p, 1, p.settings)
 	mykey := mydep.cp
 
-	cache_key = nil
+	cache_key := [2]string{}
 	if p.frozen {
-		cache_key = (mydep, mydep.unevaluated_atom)
-	try:
-		coroutine_return(p.xcache[level][cache_key][:])
-		except
-	KeyError:
-		pass
+		cache_key = [2]string{mydep.value, mydep.unevaluatedAtom.value}
+		c, ok := p.xcache[level]
+		if ok {
+			l, ok := c[cache_key]
+			if ok {
+				coroutine_return(l)
+			}
+		}
+		//except KeyError:
+		//pass
 	}
 
 	loop = asyncio._wrap_loop(loop)
-	myval = nil
-	mytree = nil
-	if mydep.repo is
-	not
-	nil{
-		mytree = p.treemap.get(mydep.repo)
-		if mytree is nil{
-		if strings.HasPrefix(level, "match-"){
-		myval = []
-	} else{
-		myval = ""
-	}
-	}
+	var myval, mylist []*PkgStr
+	mytree := ""
+	if mydep.repo != "" {
+		mytree = p.treemap[mydep.repo]
+		if mytree == "" {
+			if strings.HasPrefix(level, "match-") {
+				myval = []*PkgStr{}
+			} else {
+				myval = []*PkgStr{""}
+			}
+		}
 	}
 
-	if myval is
-	not
-	nil{
-		pass
+	if myval != nil {
+		//pass
 	} else if level == "match-all-cpv-only" {
-		if mydep == mykey {
+		if mydep.value == mykey {
 			level = "match-all"
-			myval = p.cp_list(mykey, mytree = mytree)
+			myval = p.cp_list(mykey, 1, []string{mytree})
 		} else {
 			myval = matchFromList(mydep,
-				p.cp_list(mykey, 1, mytree))
+				p.cp_list(mykey, 1, []string{mytree}))
 		}
 	} else if Ins([]string{"bestmatch-visible", "match-all",
 		"match-visible", "minimum-all", "minimum-all-ignore-profile",
 		"minimum-visible"}, level) {
-		if mydep == mykey {
-			mylist = p.cp_list(mykey, mytree = mytree)
+		if mydep.value == mykey {
+			mylist = p.cp_list(mykey, 1, []string{mytree})
 		} else {
-			mylist = match_from_list(mydep,
-				p.cp_list(mykey, mytree = mytree))
+			mylist = matchFromList(mydep,
+				p.cp_list(mykey, 1, []string{mytree}))
 		}
 
-		ignore_profile = level
-		in("minimum-all-ignore-profile", )
-		visibility_filter = level
-		not
-		in("match-all",
-			"minimum-all", "minimum-all-ignore-profile")
-		single_match = level
-		not
-		in("match-all", "match-visible")
+		ignore_profile := level == "minimum-all-ignore-profile"
+		visibility_filter := !Ins([]string{"match-all", "minimum-all", "minimum-all-ignore-profile"}, level)
+		single_match := !Ins([]string{"match-all", "match-visible"}, level)
 		myval = []
 		aux_keys = list(p._aux_cache_keys)
-		if level == "bestmatch-visible":
-		iterfunc = reversed else:
-		iterfunc = iter
+		if level == "bestmatch-visible" {
+			iterfunc = reversed
+		} else {
+			iterfunc = iter
+		}
 
-		for cpv
-			in
-		iterfunc(mylist):
-	try:
-		metadata = dict(zip(aux_keys, (yield
-		p.async_aux_get(cpv,
-			aux_keys, myrepo = cpv.repo, loop = loop))))
-		except
-	KeyError:
-		continue
+		for _, cpv := range iterfunc(mylist) {
+		try:
+			metadata = dict(zip(aux_keys, (yield
+			p.async_aux_get(cpv,
+				aux_keys, myrepo = cpv.repo, loop = loop))))
+			except
+		KeyError:
+			continue
 
-	try:
-		pkg_str = _pkg_str(cpv, metadata = metadata,
-			settings = p.settings, db = p)
-		except
-	InvalidData:
-		continue
+			//try:
+			pkg_str := NewPkgStr(cpv.string, metadata,
+				p.settings, "", "", "", 0, 0, "", 0, p)
+			//except InvalidData:
+			//continue
 
-		if visibility_filter &&
-			not
-			p._visible(pkg_str, metadata):
-		continue
+			if visibility_filter && !p._visible(pkg_str, metadata) {
+				continue
+			}
 
-		if mydep.slot is
-		not
-		nil
-		&&
-		not
-		_match_slot(mydep, pkg_str):
-		continue
+			if mydep.slot != "" && !matchSlot(mydep, pkg_str) {
+				continue
+			}
 
-		if mydep.unevaluated_atom.use is
-		not
-		nil
-		&&
-		not
-		p._match_use(mydep, pkg_str, metadata,
-			ignore_profile = ignore_profile):
-		continue
+			if mydep.unevaluated_atom.use != nil && !p._match_use(mydep, pkg_str, metadata, ignore_profile) {
+				continue
+			}
 
-		myval = append(, pkg_str)
-		if single_match:
-		break
+			myval = append(myval, pkg_str)
+			if single_match {
+				break
+			}
+		}
 
-		if single_match:
-		if myval:
-		myval = myval[0] else:
-		myval = ""
+		if single_match {
+			if myval {
+				myval = myval[0]
+			} else {
+				myval = ""
+			}
+		}
 	} else {
 		//raise
 		//AssertionError(
@@ -9146,14 +9150,12 @@ func (p *portdbapi) async_xmatch(level string, origdep, loop=nil) {
 	}
 
 	if p.frozen {
-		xcache_this_level = p.xcache.get(level)
-		if xcache_this_level is
-		not
-		nil{
+		xcache_this_level := p.xcache[level]
+		if xcache_this_level != nil {
 			xcache_this_level[cache_key] = myval
-			if not isinstance(myval, _pkg_str){
-			myval = myval[:]
-		}
+			if not isinstance(myval, _pkg_str) {
+				myval = myval[:]
+			}
 		}
 	}
 
@@ -9161,7 +9163,7 @@ func (p *portdbapi) async_xmatch(level string, origdep, loop=nil) {
 }
 
 // 1
-func (p *portdbapi) match(mydep, use_cache=1) {
+func (p *portdbapi) match(mydep  *Atom, use_cache int)[]*PkgStr {
 	return p.xmatch("match-visible", mydep)
 }
 
@@ -9334,7 +9336,7 @@ type PortageTree struct {
 	dbapi    *portdbapi
 }
 
-func (p *PortageTree) dep_bestmatch(mydep) string {
+func (p *PortageTree) dep_bestmatch(mydep  *Atom) string {
 	mymatch := p.dbapi.xmatch("bestmatch-visible", mydep)
 	if mymatch == nil {
 		return ""
@@ -9342,7 +9344,7 @@ func (p *PortageTree) dep_bestmatch(mydep) string {
 	return mymatch
 }
 
-func (p *PortageTree) dep_match(mydep) {
+func (p *PortageTree) dep_match(mydep  *Atom) {
 	mymatch := p.dbapi.xmatch("match-visible", mydep)
 	if mymatch == nil {
 		return []
