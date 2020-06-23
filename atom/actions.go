@@ -55,7 +55,7 @@ func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, action 
 }
 
 func actionSync(emerge_config *EmergeConfig) int {
-	syncer := emerge.NewSyncRepos(emerge_config, false)
+	syncer := NewSyncRepos(emerge_config, false)
 	return_messages := !Inmss(emerge_config.opts, "--quiet")
 	options := map[string]interface{}{"return-messages": return_messages}
 	var success bool

@@ -37,8 +37,8 @@ func (b *BinhostHandler) name()string{
 	return "binhost"
 }
 
-func(b *BinhostHandler) _need_update(cpv string, data map[string]string)bool{
-	if _, ok := data["MD5"] ; ok{
+func(b *BinhostHandler) _need_update(cpv string, data map[string]string)bool {
+	if _, ok := data["MD5"]; ok {
 		return true
 	}
 	size := data["SIZE"]
@@ -47,28 +47,26 @@ func(b *BinhostHandler) _need_update(cpv string, data map[string]string)bool{
 	}
 
 	mtime := data["_mtime_"]
-	if mtime =="" {
+	if mtime == "" {
 		return true
 	}
 
-	pkg_path := b._bintree.getname(cpv, "")
-try:
-	s, err  := os.Lstat(pkg_path)
+	pkg_path := b._bintree.getname(cpv, false)
+	s, err := os.Lstat(pkg_path)
 	if err != nil {
 		//except OSError as e:
-		if err != syscall.ENOENT && err != syscall.ESTALE{
-		//raise
+		if err != syscall.ENOENT && err != syscall.ESTALE {
+			//raise
 		}
 		return false
 	}
 
-try:
-	if long(mtime) != stat s[stat.ST_MTIME]:
-	return True
-	if long(size) != long(s.st_size):
-	return True
-	except ValueError:
-	return True
+	if mtime != fmt.Sprint(s.ModTime().Nanosecond()) {
+		return true
+	}
+	if size != fmt.Sprint(s.Size()) {
+		return true
+	}
 
 	return false
 }
@@ -88,7 +86,7 @@ func(b *BinhostHandler) check( onProgress func(int, int)) (bool, []string){
 	}
 	pkgindex := b._pkgindex
 	missing := []string{}
-	stale := []string{}
+	stale := []*PkgStr{}
 	metadata := map[string]string{}
 	for _, d := range pkgindex.packages{
 		cpv := NewPkgStr(d["CPV"], d, bintree.settings, "", "", "", 0, "", "", 0, nil)
@@ -109,10 +107,10 @@ func(b *BinhostHandler) check( onProgress func(int, int)) (bool, []string){
 	}
 	errors := []string{}
 	for _, cpv := range missing{
-		errors = append(errors, fmt.Sprintf("'%s' is not in Packages" ,cpv.string))
+		errors = append(errors, fmt.Sprintf("'%s' is not in Packages" ,cpv))
 	}
 	for _, cpv := range stale{
-		errors =append(stale, fmt.Sprintf("'%s' is not in the repository" , cpv.string))
+		errors =append(errors, fmt.Sprintf("'%s' is not in the repository" , cpv.string))
 	}
 	if len(errors) > 0 {
 		return false, errors
@@ -138,7 +136,7 @@ func(b *BinhostHandler) fix( onProgress func(int, int)) (bool, []string){
 	metadata := map[string]map[string]string{}
 	for _, d := range pkgindex.packages{
 		cpv := NewPkgStr(d["CPV"], d, bintree.settings, "", "", "", 0, "", "", 0, nil)
-		d["CPV"] = cpv
+		d["CPV"] = cpv.string
 		metadata[_instance_key(cpv, false).string] = d
 		if ! bintree.dbapi.cpv_exists(cpv) {
 			stale=append(stale, cpv)
@@ -161,23 +159,23 @@ func(b *BinhostHandler) fix( onProgress func(int, int)) (bool, []string){
 		}
 		b._pkgindex = pkgindex
 		cpv_all = b._bintree.dbapi.cpv_all()
-		cpv_all.sort()
+		sort.Strings(cpv_all)
 
-		missing = []*pkgStr{}
-		stale = []*pkgStr{}
+		missing = []*PkgStr{}
+		stale = []*PkgStr{}
 		metadata = map[string]map[string]string{}
 		for _ ,d := range  pkgindex.packages{
 			cpv := NewPkgStr(d["CPV"], d, bintree.settings,  "", "", "", 0, "", "", 0, nil)
 			d["CPV"] = cpv.string
-			metadata[_instance_key(cpv.string).string] = d
+			metadata[_instance_key(cpv, false).string] = d
 			if ! bintree.dbapi.cpv_exists(cpv){
 				stale=append(stale, cpv)
 			}
 		}
 
 		for _, cpv:= range cpv_all{
-			d := metadata[_instance_key(cpv.string).string]
-			if  len(d)==0 || b._need_update(cpv.string, d){
+			d := metadata[_instance_key(cpv, false).string]
+			if  len(d)==0 || b._need_update(cpv, d){
 				missing =append(missing, cpv)
 			}
 		}
@@ -185,7 +183,7 @@ func(b *BinhostHandler) fix( onProgress func(int, int)) (bool, []string){
 		maxval = len(missing)
 		for i, cpv := range missing{
 			d := bintree._pkgindex_entry(cpv)
-			if err := bintree._eval_use_flags(cpv, d); err != nil {
+			if err := bintree._eval_use_flags(d); err != nil {
 				//except portage.exception.InvalidDependString:
 				WriteMsg(fmt.Sprintf("!!! Invalid binary package: \"%s\"\n" , bintree.getname(cpv)), -1, nil)
 			}else {

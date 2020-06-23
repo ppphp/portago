@@ -76,8 +76,8 @@ func lockdir(mydir string, flags int) (*LockFileS, error) { // 0
 	return Lockfile(mydir, true, false, "", flags)
 }
 
-func unlockdir(mylock string) bool {
-	return Unlockfile(mylock, 0, false, nil)
+func unlockdir(mylock *LockFileS) bool {
+	return Unlockfile(mylock)
 }
 
 type LockFileS struct {
