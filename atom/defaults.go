@@ -1,4 +1,4 @@
-package emaint
+package atom
 
 var (
 	CHECK = map[string]string{"short": "-c", "long": "--check",

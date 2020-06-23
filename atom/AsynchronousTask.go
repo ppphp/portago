@@ -1,4 +1,4 @@
-package emerge
+package atom
 
 type AsynchronousTask struct {
 	returncode *int

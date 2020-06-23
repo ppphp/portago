@@ -804,7 +804,7 @@ func dep_transform(mydep, oldkey, newkey string)  string {
 }
 
 // false, true
-func _global_updates(trees *TreesDict, prev_mtimes map[string]string, quiet, if_mtime_changed bool) bool {
+func Global_updates(trees *TreesDict, prev_mtimes map[string]string, quiet, if_mtime_changed bool) bool {
 	if _, ok := os.LookupEnv("SANDBOX_ACTIVE"); *secpass < 2 ||  ok ||len(trees.Values()) != 1{
 		return false
 	}

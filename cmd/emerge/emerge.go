@@ -6,7 +6,6 @@ import (
 	"syscall"
 
 	"github.com/ppphp/portago/atom"
-	"github.com/ppphp/portago/pkg/emerge"
 )
 
 func init() {
@@ -32,6 +31,6 @@ func init() {
 
 func main() {
 	atom.SanitizeFds()
-	retval := emerge.EmergeMain(nil)
+	retval := atom.EmergeMain(nil)
 	os.Exit(retval)
 }

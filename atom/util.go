@@ -400,7 +400,7 @@ func readCorrespondingEapiFile(filename, defaults string) string { // "0"
 func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, allowWildcard, allowRepo, allowBuildId, allowUse, verifyEapi bool, eapi, eapiDefault string) map[*Atom][]string { //000ffftf none 0
 	fileList := []string{}
 	if recursive {
-		fileList = recursiveFileList(myfilename)
+		fileList = RecursiveFileList(myfilename)
 	} else {
 		fileList = []string{myfilename}
 	}
@@ -492,7 +492,7 @@ func recursiveBasenameFilter(f string) bool {
 	return (!strings.HasPrefix(f, ".")) && (!strings.HasSuffix(f, "~"))
 }
 
-func recursiveFileList(p string) []string {
+func RecursiveFileList(p string) []string {
 	d, f := path.Split(p)
 	stack := [][2]string{{d, f}}
 	ret := make([]string, 0)
@@ -528,7 +528,7 @@ func recursiveFileList(p string) []string {
 func grabLines(fname string, recursive, rememberSourceFile bool) [][2]string { // 0f
 	myLines := make([][2]string, 0)
 	if recursive {
-		for _, f := range recursiveFileList(fname) {
+		for _, f := range RecursiveFileList(fname) {
 			myLines = append(myLines, grabLines(f, false, rememberSourceFile)...)
 		}
 	} else {
@@ -815,7 +815,7 @@ func getConfig(myCfg string, tolerant, allowSourcing, expand, recursive bool, ex
 			expandMap = map[string]string{}
 		}
 		fname := ""
-		for _, fname = range recursiveFileList(myCfg) {
+		for _, fname = range RecursiveFileList(myCfg) {
 			newKeys := getConfig(fname, tolerant, allowSourcing, true, false, expandMap)
 			for k, v := range newKeys {
 				myKeys[k] = v
@@ -3635,7 +3635,7 @@ func (m *MtimeDB) _load(filename string) {
 	d = CopyMap(m._clean_data)
 }
 
-func (m *MtimeDB) commit() {
+func (m *MtimeDB) Commit() {
 	if m.filename == "" {
 		return
 	}

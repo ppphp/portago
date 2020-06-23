@@ -1,20 +1,19 @@
-package emerge
+package atom
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/emerge"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/ppphp/portago/atom"
 )
 
 type EmergeConfig struct {
 	action                      string
 	args                        []string
 	opts                        map[string]string
-	runningConfig, targetConfig *atom.RootConfig
-	Trees                       *atom.TreesDict
+	runningConfig, targetConfig *RootConfig
+	Trees                       *TreesDict
 }
 
 func NewEmergeConfig(action string, args []string, opts map[string]string) *EmergeConfig {
@@ -28,15 +27,15 @@ func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, action 
 		emergeConfig = NewEmergeConfig(action, args, opts)
 	}
 	if env == nil {
-		env = atom.ExpandEnv()
+		env = ExpandEnv()
 	}
-	emergeConfig.Trees = atom.CreateTrees(env["PORTAGE_CONFIGROOT"], env["ROOT"], emergeConfig.Trees, atom.ExpandEnv(), env["SYSROOT"], env["EPREFIX"])
+	emergeConfig.Trees = CreateTrees(env["PORTAGE_CONFIGROOT"], env["ROOT"], emergeConfig.Trees, ExpandEnv(), env["SYSROOT"], env["EPREFIX"])
 
 	for _, root_trees := range emergeConfig.Trees.Values() {
 		settings := root_trees.VarTree().settings
 		settings.InitDirs()
-		setconfig := atom.LoadDefaultConfig(settings, root_trees)
-		root_config := atom.NewRootConfig(settings, root_trees, setconfig)
+		setconfig := LoadDefaultConfig(settings, root_trees)
+		root_config := NewRootConfig(settings, root_trees, setconfig)
 		if root_trees.RootConfig != nil{
 			root_trees.RootConfig.Update(root_config)
 		}else{
@@ -46,18 +45,18 @@ func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, action 
 
 	target_eroot := emergeConfig.Trees._target_eroot
 	emergeConfig.targetConfig = emergeConfig.Trees.Values()[target_eroot].RootConfig
-	emergeConfig.targetConfig.Mtimedb = atom.NewMtimeDB(
-		filepath.Join(target_eroot, atom.CachePath, "mtimedb"))
+	emergeConfig.targetConfig.Mtimedb = NewMtimeDB(
+		filepath.Join(target_eroot, CachePath, "mtimedb"))
 	emergeConfig.runningConfig = emergeConfig.Trees.Values()[
 		emergeConfig.Trees._running_eroot].RootConfig
-	atom.QueryCommand_db = emergeConfig.Trees
+	QueryCommand_db = emergeConfig.Trees
 
 	return emergeConfig
 }
 
 func actionSync(emerge_config *EmergeConfig) int {
-	syncer := NewSyncRepos(emerge_config, false)
-	return_messages := !atom.Inmss(emerge_config.opts, "--quiet")
+	syncer := emerge.NewSyncRepos(emerge_config, false)
+	return_messages := !Inmss(emerge_config.opts, "--quiet")
 	options := map[string]interface{}{"return-messages": return_messages}
 	var success bool
 	var msgs []string
@@ -70,7 +69,7 @@ func actionSync(emerge_config *EmergeConfig) int {
 	if return_messages {
 		print_results(msgs)
 	} else if len(msgs) > 0 && !success {
-		atom.WriteMsgLevel(strings.Join(msgs, "\n")+"\n", 40, -1)
+		WriteMsgLevel(strings.Join(msgs, "\n")+"\n", 40, -1)
 	}
 
 	if success {
@@ -90,23 +89,23 @@ func print_results(results []string) {
 
 func runAction(emergeConfig *EmergeConfig) int {
 	if map[string]bool{"help": true, "info": true, "sync": true, "version": true}[emergeConfig.action] && emergeConfig.opts["--package-moves"] != "n" &&
-		atom._global_updates(emergeConfig.Trees,
+		Global_updates(emergeConfig.Trees,
 		emergeConfig.targetConfig.Mtimedb.dict["updates"],
-		 atom.Inmss( emergeConfig.opts,"--quiet"), false){
-		emergeConfig.targetConfig.Mtimedb.commit()
+		 Inmss( emergeConfig.opts,"--quiet"), false){
+		emergeConfig.targetConfig.Mtimedb.Commit()
 			LoadEmergeConfig(emergeConfig, nil, "", nil, nil)
 	}
 
 	_, xterm_titles := emergeConfig.targetConfig.Settings.Features.Features["notitles"]
 	if xterm_titles {
-		atom.XtermTitle("emerge", false)
+		XtermTitle("emerge", false)
 	}
 	
-	if atom.Inmss(emergeConfig.opts, "--digest") {
+	if Inmss(emergeConfig.opts, "--digest") {
 		os.Setenv("FEATURES", os.Getenv("FEATURES")+ " digest")
 		LoadEmergeConfig(emergeConfig, nil, "", nil, nil)
 	}
-	if  atom.Inmss( emergeConfig.opts,"--buildpkgonly") {
+	if  Inmss( emergeConfig.opts,"--buildpkgonly") {
 		emergeConfig.opts["--buildpkg"] = true
 	}
 
@@ -114,19 +113,19 @@ func runAction(emergeConfig *EmergeConfig) int {
 		emergeConfig.opts["--getbinpkg"] = true
 	}
 
-	if  atom.Inmss (emergeConfig.opts,"--getbinpkgonly") {
+	if  Inmss(emergeConfig.opts,"--getbinpkgonly") {
 		emergeConfig.opts["--getbinpkg"] = true
 	}
 
-	if  atom.Inmss( emergeConfig.opts,"--getbinpkgonly") {
+	if  Inmss( emergeConfig.opts,"--getbinpkgonly") {
 		emergeConfig.opts["--usepkgonly"] = true
 	}
 
-	if  atom.Inmss( emergeConfig.opts,"--getbinpkg"){
+	if  Inmss( emergeConfig.opts,"--getbinpkg"){
 		emergeConfig.opts["--usepkg"] = true
 	}
 
-	if  atom.Inmss( emergeConfig.opts,"--usepkgonly"){
+	if  Inmss( emergeConfig.opts,"--usepkgonly"){
 		emergeConfig.opts["--usepkg"] = true
 	}
 
@@ -138,7 +137,7 @@ func runAction(emergeConfig *EmergeConfig) int {
 
 	switch emergeConfig.action {
 	case "config", "metadata", "regen", "sync":
-		if atom.Inmss(emergeConfig.opts, "--pretend"){
+		if Inmss(emergeConfig.opts, "--pretend"){
 			os.Stderr.Write([]byte(fmt.Sprintf("emerge: The '%s' action does "+
 				"not support '--pretend'.\n", emergeConfig.action)))
 			return 1

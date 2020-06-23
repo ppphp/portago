@@ -1,8 +1,7 @@
-package binhost
+package atom
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/atom"
 	"os"
 	"sort"
 	"syscall"
@@ -29,9 +28,9 @@ var module_spec = map[string]interface{}{
 
 type BinhostHandler struct {
 	short_desc string
-	_bintree *atom.BinaryTree
+	_bintree *BinaryTree
 	_pkgindex_file  interface{}
-	_pkgindex *atom.PackageIndex
+	_pkgindex *PackageIndex
 }
 
 func (b *BinhostHandler) name()string{
@@ -92,7 +91,7 @@ func(b *BinhostHandler) check( onProgress func(int, int)) (bool, []string){
 	stale := []string{}
 	metadata := map[string]string{}
 	for _, d := range pkgindex.packages{
-		cpv := atom.NewPkgStr(d["CPV"], d, bintree.settings, "", "", "", 0, "", "", 0, nil)
+		cpv := NewPkgStr(d["CPV"], d, bintree.settings, "", "", "", 0, "", "", 0, nil)
 		d["CPV"] = cpv.string
 		metadata[_instance_key(cpv, false).string] = d
 		if !bintree.dbapi.cpv_exists(cpv){
@@ -134,12 +133,12 @@ func(b *BinhostHandler) fix( onProgress func(int, int)) (bool, []string){
 		onProgress(maxval, 0)
 	}
 	pkgindex := b._pkgindex
-	missing := []*atom.pkgStr{}
-	stale := []*atom.pkgStr{}
+	missing := []*PkgStr{}
+	stale := []*PkgStr{}
 	metadata := map[string]map[string]string{}
 	for _, d := range pkgindex.packages{
-		cpv := atom.NewPkgStr(d["CPV"], d, bintree.settings, "", "", "", 0, "", "", 0, nil)
-		d["CPV"] = cpv.string
+		cpv := NewPkgStr(d["CPV"], d, bintree.settings, "", "", "", 0, "", "", 0, nil)
+		d["CPV"] = cpv
 		metadata[_instance_key(cpv, false).string] = d
 		if ! bintree.dbapi.cpv_exists(cpv) {
 			stale=append(stale, cpv)
@@ -154,7 +153,7 @@ func(b *BinhostHandler) fix( onProgress func(int, int)) (bool, []string){
 	}
 
 	if len(missing)!= 0 || len(stale)!= 0 {
-		l, _ := atom.Lockfile(b._pkgindex_file, true, false, "", 0)
+		l, _ := Lockfile(b._pkgindex_file, true, false, "", 0)
 
 		pkgindex := bintree._populate_local(true)
 		if pkgindex == nil {
@@ -164,11 +163,11 @@ func(b *BinhostHandler) fix( onProgress func(int, int)) (bool, []string){
 		cpv_all = b._bintree.dbapi.cpv_all()
 		cpv_all.sort()
 
-		missing = []*atom.pkgStr{}
-		stale = []*atom.pkgStr{}
+		missing = []*pkgStr{}
+		stale = []*pkgStr{}
 		metadata = map[string]map[string]string{}
 		for _ ,d := range  pkgindex.packages{
-			cpv := atom.NewPkgStr(d["CPV"], d, bintree.settings,  "", "", "", 0, "", "", 0, nil)
+			cpv := NewPkgStr(d["CPV"], d, bintree.settings,  "", "", "", 0, "", "", 0, nil)
 			d["CPV"] = cpv.string
 			metadata[_instance_key(cpv.string).string] = d
 			if ! bintree.dbapi.cpv_exists(cpv){
@@ -188,7 +187,7 @@ func(b *BinhostHandler) fix( onProgress func(int, int)) (bool, []string){
 			d := bintree._pkgindex_entry(cpv)
 			if err := bintree._eval_use_flags(cpv, d); err != nil {
 				//except portage.exception.InvalidDependString:
-				atom.WriteMsg(fmt.Sprintf("!!! Invalid binary package: \"%s\"\n" , bintree.getname(cpv)), -1, nil)
+				WriteMsg(fmt.Sprintf("!!! Invalid binary package: \"%s\"\n" , bintree.getname(cpv)), -1, nil)
 			}else {
 				metadata[_instance_key(cpv, false).string] = d
 			}
@@ -211,7 +210,7 @@ func(b *BinhostHandler) fix( onProgress func(int, int)) (bool, []string){
 		bintree._update_pkgindex_header(b._pkgindex.header)
 		bintree._pkgindex_write(b._pkgindex)
 
-		atom.Unlockfile(l)
+		Unlockfile(l)
 	}
 
 	if onProgress!= nil {
@@ -226,8 +225,8 @@ func(b *BinhostHandler) fix( onProgress func(int, int)) (bool, []string){
 func NewBinhostHandler() *BinhostHandler {
 	b:= &BinhostHandler{}
 	b.short_desc= "Generate a metadata index for binary packages"
-	eroot := atom.Settings().ValueDict["EROOT"]
-	b._bintree = atom.Db().Values()[eroot].BinTree()
+	eroot := Settings().ValueDict["EROOT"]
+	b._bintree = Db().Values()[eroot].BinTree()
 	b._bintree.Populate(false, true, []string{})
 	b._pkgindex_file = b._bintree.PkgIndexFile
 	b._pkgindex = b._bintree.LoadPkgIndex()

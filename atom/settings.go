@@ -1855,7 +1855,7 @@ func NewConfig(clone *Config, mycpv *PkgStr, configProfilePath string, configInc
 			c.Repositories = repositories
 		}
 		for _, v := range c.Repositories.Prepos {
-			knownRepos = append(knownRepos, v.location)
+			knownRepos = append(knownRepos, v.Location)
 		}
 		kr := map[string]bool{}
 		for _, v := range knownRepos {
@@ -1865,7 +1865,7 @@ func NewConfig(clone *Config, mycpv *PkgStr, configProfilePath string, configInc
 		c.BackupChanges("PORTAGE_REPOSITORIES")
 		mainRepo := c.Repositories.mainRepo()
 		if mainRepo != nil {
-			c.ValueDict["PORTDIR"] = mainRepo.location
+			c.ValueDict["PORTDIR"] = mainRepo.Location
 			c.BackupChanges("PORTDIR")
 			expandMap["PORTDIR"] = c.ValueDict["PORTDIR"]
 		}
@@ -2002,7 +2002,7 @@ func NewConfig(clone *Config, mycpv *PkgStr, configProfilePath string, configInc
 		c.repoMakeDefaults = map[string]map[string]string{}
 
 		for _, repo := range c.Repositories.reposWithProfiles() {
-			d := getConfig(path.Join(repo.location, "profiles", "make.defaults"), tolerant, false, true, repo.portage1Profiles, CopyMapSS(c.configDict["globals"]))
+			d := getConfig(path.Join(repo.Location, "profiles", "make.defaults"), tolerant, false, true, repo.portage1Profiles, CopyMapSS(c.configDict["globals"]))
 			if len(d) > 0 {
 				for k := range c.envBlacklist {
 					delete(d, k)
@@ -2942,7 +2942,7 @@ func (u *useManager) parseUserFilesToExtatomdict(fileName, location string, user
 func (u *useManager) parseRepositoryFilesToDictOfTuples(fileName string, repositories *repoConfigLoader, eapiFilter func(string) bool) map[string][]string { // n
 	ret := map[string][]string{}
 	for _, repo := range repositories.reposWithProfiles() {
-		ret[repo.Name] = u.parseFileToTuple(path.Join(repo.location, "profiles", fileName), true, eapiFilter, "", repo.eapi)
+		ret[repo.Name] = u.parseFileToTuple(path.Join(repo.Location, "profiles", fileName), true, eapiFilter, "", repo.eapi)
 	}
 	return ret
 }
@@ -2950,7 +2950,7 @@ func (u *useManager) parseRepositoryFilesToDictOfTuples(fileName string, reposit
 func (u *useManager) parseRepositoryFilesToDictOfDicts(fileName string, repositories *repoConfigLoader, eapiFilter func(string) bool) map[string]map[string]map[*Atom][]string {
 	ret := map[string]map[string]map[*Atom][]string{}
 	for _, repo := range repositories.reposWithProfiles() {
-		ret[repo.Name] = u.parseFileToDict(path.Join(repo.location, "profiles", fileName), false, true, eapiFilter, false, "0", repo.eapi, Ins(repo.profileFormats, "build-id"))
+		ret[repo.Name] = u.parseFileToDict(path.Join(repo.Location, "profiles", fileName), false, true, eapiFilter, false, "0", repo.eapi, Ins(repo.profileFormats, "build-id"))
 	}
 	return ret
 }
@@ -2974,7 +2974,7 @@ func (u *useManager) parseProfileFilesToTupleOfDicts(fileName string, locations 
 func (u *useManager) parseRepositoryUsealiases(repositorires *repoConfigLoader) map[string]map[string][]string {
 	ret := map[string]map[string][]string{}
 	for _, repo := range repositorires.reposWithProfiles() {
-		fileName := path.Join(repo.location, "profiles", "use.aliases")
+		fileName := path.Join(repo.Location, "profiles", "use.aliases")
 		eapi := readCorrespondingEapiFile(fileName, repo.eapi)
 		useFlagRe := getUseflagRe(eapi)
 		rawFileDict := grabDict(fileName, false, false, true, false, false)
@@ -3019,7 +3019,7 @@ func (u *useManager) parseRepositoryUsealiases(repositorires *repoConfigLoader) 
 func (u *useManager) parseRepositoryPackageusealiases(repositorires *repoConfigLoader) map[string]map[string]map[*Atom]map[string][]string {
 	ret := map[string]map[string]map[*Atom]map[string][]string{}
 	for _, repo := range repositorires.reposWithProfiles() {
-		fileName := path.Join(repo.location, "profiles", "package.use.aliases")
+		fileName := path.Join(repo.Location, "profiles", "package.use.aliases")
 		eapi := readCorrespondingEapiFile(fileName, repo.eapi)
 		useFlagRe := getUseflagRe(eapi)
 		lines := grabFile(fileName, 0, true, false)
@@ -3492,7 +3492,7 @@ func NewMaskManager(repositories *repoConfigLoader, profiles []*profileNode, abs
 	repoPkgMaskLines := []AS{}
 	for _, repo := range repositories.reposWithProfiles() {
 		lines := []map[*Atom]string{}
-		repoLines := grabPMask(repo.location, repo)
+		repoLines := grabPMask(repo.Location, repo)
 		removals := map[string]bool{}
 		for _, line := range repoLines {
 			if line[0][:1] == "-" {
@@ -3501,7 +3501,7 @@ func NewMaskManager(repositories *repoConfigLoader, profiles []*profileNode, abs
 		}
 		matchedRemovals := map[string]bool{}
 		for _, master := range repo.mastersRepo {
-			masterLines := grabPMask(master.location, master)
+			masterLines := grabPMask(master.Location, master)
 			for _, line := range masterLines {
 				if removals[line[0]] {
 					matchedRemovals[line[0]] = true
@@ -3517,7 +3517,7 @@ func NewMaskManager(repositories *repoConfigLoader, profiles []*profileNode, abs
 				}
 			}
 			if len(unmatchedRemovals) > 0 && !user_config {
-				sourceFile := path.Join(repo.location, "profiles", "package.mask")
+				sourceFile := path.Join(repo.Location, "profiles", "package.mask")
 				ur := []string{}
 				for r := range unmatchedRemovals {
 					if len(ur) <= 3 {
@@ -3547,7 +3547,7 @@ func NewMaskManager(repositories *repoConfigLoader, profiles []*profileNode, abs
 		if !repo.portage1Profiles {
 			continue
 		}
-		repoLines := grabFilePackage(path.Join(repo.location, "profiles", "package.unmask"), 0, true, false, false, Ins(repo.profileFormats, "build-id"), true, true, "", repo.eapi)
+		repoLines := grabFilePackage(path.Join(repo.Location, "profiles", "package.unmask"), 0, true, false, false, Ins(repo.profileFormats, "build-id"), true, true, "", repo.eapi)
 		lines := stackLists([][][2]string{repoLines}, 1, true, true, strict_umatched_removal, false)
 		repoPkgUnmaskLines = append(repoPkgUnmaskLines, appendRepo(lines, repo.Name, true)...)
 	}
@@ -4286,7 +4286,7 @@ func loadUnpackDependenciesConfiguration(repositories *repoConfigLoader) map[str
 	for _, repo := range repositories.reposWithProfiles() {
 		for eapi := range supportedEapis {
 			if eapiHasAutomaticUnpackDependencies(eapi) {
-				fileName := path.Join(repo.location, "profiles", "unpack_dependencies", eapi)
+				fileName := path.Join(repo.Location, "profiles", "unpack_dependencies", eapi)
 				lines := grabFile(fileName, 0, true, false)
 				for _, line := range lines {
 					elements := strings.Fields(line[0])

@@ -18,6 +18,12 @@ import (
 	"time"
 )
 
+// my interface
+type Starter interface {
+	start()
+}
+
+
 // SlotObject
 type AbstractDepPriority struct {
 	// slot
@@ -316,10 +322,10 @@ func (a *AbstractEbuildProcess)_start_ipc_daemon() {
 		"repository_path":     query_command,
 	}
 	input_fifo, output_fifo := a._init_ipc_fifos()
-	a._ipc_daemon = EbuildIpcDaemon(commands = commands,
-		input_fifo = input_fifo,
-		output_fifo=output_fifo,
-		scheduler = a.scheduler)
+	a._ipc_daemon = NewEbuildIpcDaemon(commands,
+		input_fifo,
+		output_fifo,
+		a.scheduler)
 	a._ipc_daemon.start()
 }
 
@@ -1401,7 +1407,7 @@ func (b *Binpkg) _unpack_metadata() {
 		f.write(_unicode_decode("{}\n".format(md5sum)))
 	}
 
-	env_extractor := NewBinPkgEnvExtractor( b.background,
+	env_extractor := NewBinpkgEnvExtractor( b.background,
 		 b.scheduler, b.settings)
 	env_extractor.start()
 	yield env_extractor.async_wait()
@@ -1633,7 +1639,7 @@ func(b *BinpkgEnvExtractor) _extractor_exit( extractor_proc *SpawnProcess) {
 	b.wait()
 }
 
-func NewBinPkgEnvExtractor(background bool, scheduler *SchedulerInterface, settings *Config)*BinpkgEnvExtractor{
+func NewBinpkgEnvExtractor(background bool, scheduler *SchedulerInterface, settings *Config)*BinpkgEnvExtractor{
 	b :=&BinpkgEnvExtractor{}
 	b.CompositeTask = NewCompositeTask()
 	b.background = background
@@ -2067,7 +2073,7 @@ func (b *BinpkgPrefetcher) _verifier_exit(verifier ) {
 		return
 	}
 
-	b._bintree.inject(b.pkg.cpv.string, b.pkg_path)
+	b._bintree.inject(b.pkg.cpv, b.pkg_path)
 
 	b._current_task = nil
 	i := 0
@@ -4349,7 +4355,7 @@ func (e *EbuildPhase) _start() {
 	}
 
 	if e.phase  == "pretend" || e.phase ==  "prerm" {
-		env_extractor := NewBinPkgEnvExtractor(e.background,
+		env_extractor := NewBinpkgEnvExtractor(e.background,
 			e.scheduler, e.settings)
 		if env_extractor.saved_env_exists() {
 			e._start_task(env_extractor, e._env_extractor_exit)
@@ -4611,7 +4617,7 @@ func (e *EbuildPhase) _die_hooks_exit( die_hooks) {
 
 func (e *EbuildPhase) _fail_clean() {
 	e.returncode = nil
-	elog_process(e.settings.mycpv, e.settings, nil)
+	elog_process(e.settings.mycpv.string, e.settings, nil)
 	phase := "clean"
 	clean_phase := NewEbuildPhase(nil, e.background, phase,  e.scheduler,
 		e.settings, e.fd_pipes,)
@@ -4738,6 +4744,13 @@ func (f *FifoIpcDaemon) _unregister() {
 	f._files = nil
 }
 
+func NewFifoIpcDaemon()*FifoIpcDaemon{
+	f := &FifoIpcDaemon{}
+	f.AbstractPollTask = NewAbstractPollTask()
+
+	return f
+}
+
 type EbuildIpcDaemon struct {
 	*FifoIpcDaemon
 	commands
@@ -4797,7 +4810,7 @@ func (e *EbuildIpcDaemon) _input_handler() {
 
 func (e *EbuildIpcDaemon) _send_reply( reply) {
 	output_fd, err := os.OpenFile(e.output_fifo,
-		os.O_WRONLY|os.O_NONBLOCK, 0644)
+		os.O_WRONLY|syscall.O_NONBLOCK, 0644)
 	if err != nil {
 		//except OSError as e:
 		WriteMsgLevel(fmt.Sprintf("!!! EbuildIpcDaemon %s: %s\n" ,
@@ -4808,6 +4821,16 @@ func (e *EbuildIpcDaemon) _send_reply( reply) {
 		//finally:
 		output_fd.Close()
 	}
+}
+
+func NewEbuildIpcDaemon(commands map[string]*QueryCommand, input_fifo, output_fifo string, scheduler *SchedulerInterface) *EbuildIpcDaemon{
+	e := &EbuildIpcDaemon{}
+	e.FifoIpcDaemon = NewFifoIpcDaemon()
+	e.commands = commands
+	e.input_fifo = input_fifo
+	e.output_fifo = output_fifo
+	e.scheduler = scheduler
+	return e
 }
 
 type MiscFunctionsProcess struct {
@@ -4918,11 +4941,11 @@ func(p*_PostPhaseCommands) _commands_exit( task) {
 	}
 
 	if p.phase == "install" {
-		out := bytes.Buffer{}
+		out := &bytes.Buffer{}
 		_post_src_install_soname_symlinks(p.settings, out)
 		msg := out.String()
 		if len(msg) > 0 {
-			p.scheduler.output(msg, log_path = p.settings.ValueDict["PORTAGE_LOG_FILE"])
+			p.scheduler.output(msg, p.settings.ValueDict["PORTAGE_LOG_FILE"], false, 0, -1)
 		}
 
 		if p.settings.Features.Features["qa-unresolved-soname-deps"] {
