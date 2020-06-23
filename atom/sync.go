@@ -111,7 +111,7 @@ func moduleSpecificOptions(repo *RepoConfig) map[string]bool {
 }
 
 type SyncRepos struct {
-	emerge_config *atom.EmergeConfig
+	emerge_config *EmergeConfig
 	xterm_titles  bool
 }
 
@@ -163,8 +163,8 @@ func (s *SyncRepos) repo(options map[string]interface{}) (bool, []string) {
 	return s._sync(repos, return_messages, options)
 }
 
-func (s *SyncRepos) _match_repos(repos []string, available map[string]*atom.RepoConfig) map[string]*atom.RepoConfig {
-	selected := map[string]*atom.RepoConfig{}
+func (s *SyncRepos) _match_repos(repos []string, available map[string]*RepoConfig) map[string]*RepoConfig {
+	selected := map[string]*RepoConfig{}
 	for k, repo := range available {
 		in := false
 		for _, r := range repos {
@@ -178,7 +178,7 @@ func (s *SyncRepos) _match_repos(repos []string, available map[string]*atom.Repo
 		} else if repo.Aliases != nil {
 			in := false
 			for aliases := range repo.Aliases {
-				if atom.Ins(repos, aliases) {
+				if Ins(repos, aliases) {
 					in = true
 					break
 				}
@@ -192,7 +192,7 @@ func (s *SyncRepos) _match_repos(repos []string, available map[string]*atom.Repo
 }
 
 // true, nil
-func (s *SyncRepos) _get_repos(auto_sync_only bool, match_repos []string) (bool, map[string]*atom.RepoConfig, []string) {
+func (s *SyncRepos) _get_repos(auto_sync_only bool, match_repos []string) (bool, map[string]*RepoConfig, []string) {
 	msgs := []string{}
 	repos := s.emerge_config.targetConfig.Settings.Repositories.Prepos
 	if match_repos != nil {
@@ -214,7 +214,7 @@ func (s *SyncRepos) _get_repos(auto_sync_only bool, match_repos []string) (bool,
 				}
 			}
 			if len(missing) > 0 {
-				msgs = append(msgs, fmt.Sprintf(atom.Red(" * ")+"The specified repo(s) were not found: %s",
+				msgs = append(msgs, fmt.Sprintf(Red(" * ")+"The specified repo(s) were not found: %s",
 					strings.Join(missing, " ")+
 						"\n   ...returning"))
 				return false, repos, msgs
@@ -232,7 +232,7 @@ func (s *SyncRepos) _get_repos(auto_sync_only bool, match_repos []string) (bool,
 		}
 	}
 	if len(sync_disabled) > 0 {
-		rs := map[string]*atom.RepoConfig{}
+		rs := map[string]*RepoConfig{}
 		for k, repo := range repos {
 			if repo.SyncType != "" {
 				rs[k] = repo
@@ -240,7 +240,7 @@ func (s *SyncRepos) _get_repos(auto_sync_only bool, match_repos []string) (bool,
 		}
 		repos = rs
 		if match_repos != nil {
-			msgs = append(msgs, atom.Red(" * ")+fmt.Sprintf("The specified repo(s) have sync disabled: %s",
+			msgs = append(msgs, Red(" * ")+fmt.Sprintf("The specified repo(s) have sync disabled: %s",
 				strings.Join(sync_disabled, " ")+
 					"\n   ...returning"))
 			return false, repos, msgs
@@ -254,14 +254,14 @@ func (s *SyncRepos) _get_repos(auto_sync_only bool, match_repos []string) (bool,
 		}
 	}
 	if len(missing_sync_uri) > 0 {
-		rs := map[string]*atom.RepoConfig{}
+		rs := map[string]*RepoConfig{}
 		for k, repo := range repos {
 			if repo.SyncUri != "" {
 				rs[k] = repo
 			}
 		}
 		repos = rs
-		msgs = append(msgs, fmt.Sprintf(atom.Red(" * ")+"The specified repo(s) are missing sync-uri: %s",
+		msgs = append(msgs, fmt.Sprintf(Red(" * ")+"The specified repo(s) are missing sync-uri: %s",
 			strings.Join(missing_sync_uri, " ")+
 				"\n   ...returning"))
 		return false, repos, msgs
@@ -270,8 +270,8 @@ func (s *SyncRepos) _get_repos(auto_sync_only bool, match_repos []string) (bool,
 	return true, repos, msgs
 }
 
-func (s *SyncRepos) _filter_auto(repos map[string]*atom.RepoConfig) map[string]*atom.RepoConfig {
-	selected := map[string]*atom.RepoConfig{}
+func (s *SyncRepos) _filter_auto(repos map[string]*RepoConfig) map[string]*RepoConfig {
+	selected := map[string]*RepoConfig{}
 	for k, repo := range repos {
 		if repo.AutoSync == "yes" || repo.AutoSync == "true" {
 			selected[k] = repo
@@ -280,7 +280,7 @@ func (s *SyncRepos) _filter_auto(repos map[string]*atom.RepoConfig) map[string]*
 	return selected
 }
 
-func (s *SyncRepos) _sync(selected_repos map[string]*atom.RepoConfig, return_messages bool, emaint_opts map[string]interface{}) (bool, []string) { // nil
+func (s *SyncRepos) _sync(selected_repos map[string]*RepoConfig, return_messages bool, emaint_opts map[string]interface{}) (bool, []string) { // nil
 	msgs := []string{}
 	if len(selected_repos) == 0 {
 		if return_messages {
@@ -298,7 +298,7 @@ func (s *SyncRepos) _sync(selected_repos map[string]*atom.RepoConfig, return_mes
 		}
 	}
 	syscall.Umask(022)
-	sync_manager := NewSyncManager(s.emerge_config.targetConfig.Settings, atom.emergelog)
+	sync_manager := NewSyncManager(s.emerge_config.targetConfig.Settings, emergelog)
 
 	var max_jobs string
 
@@ -348,7 +348,7 @@ func (s *SyncRepos) _sync(selected_repos map[string]*atom.RepoConfig, return_mes
 		*/
 	}
 
-	atom.SyncMode = false
+	SyncMode = false
 	s._reload_config()
 	s._do_pkg_moves()
 	msgs = append(msgs, s._check_updates()...)
@@ -362,9 +362,9 @@ func (s *SyncRepos) _sync(selected_repos map[string]*atom.RepoConfig, return_mes
 }
 
 func (s *SyncRepos) _do_pkg_moves() {
-	if s.emerge_config.opts["--package-moves"] != "n" && atom.Global_updates(s.emerge_config.trees,
+	if s.emerge_config.opts["--package-moves"] != "n" && Global_updates(s.emerge_config.trees,
 		s.emerge_config.targetConfig.Mtimedb["updates"],
-		atom.Inmss(s.emerge_config.opts, "--quiet"), true) {
+		Inmss(s.emerge_config.opts, "--quiet"), true) {
 		s.emerge_config.targetConfig.Mtimedb.Commit()
 		s._reload_config()
 	}
@@ -387,33 +387,33 @@ func (s *SyncRepos) rmessage(rvals [][2]string, action string) []string {
 	return messages
 }
 
-func NewSyncRepos(emerge_config *atom.EmergeConfig, emerge_logging bool) *SyncRepos { // nil, false
+func NewSyncRepos(emerge_config *EmergeConfig, emerge_logging bool) *SyncRepos { // nil, false
 	s := &SyncRepos{}
 
 	if emerge_config == nil {
-		_, opts, _files := atom.ParseOpts([]string{}, true)
-		emerge_config = atom.LoadEmergeConfig(nil, nil, "sync", _files, opts)
+		_, opts, _files := ParseOpts([]string{}, true)
+		emerge_config = LoadEmergeConfig(nil, nil, "sync", _files, opts)
 		cmdline, _ := shlex.Split(strings.NewReader(emerge_config.targetConfig.Settings.ValueDict["EMERGE_DEFAULT_OPTS"]), false, true)
-		_, emerge_config.opts, _ = atom.ParseOpts(cmdline, true)
+		_, emerge_config.opts, _ = ParseOpts(cmdline, true)
 
-		//atom.ResetLegacyGlobals()
-		//atom.Settings() = emerge_config.targetConfig.Settings
-		//atom.Db() = emerge_config.Trees
-		//atom.Root() = atom.Db()._target_eroot
+		//ResetLegacyGlobals()
+		//Settings() = emerge_config.targetConfig.Settings
+		//Db() = emerge_config.Trees
+		//Root() = Db()._target_eroot
 	}
 
 	s.emerge_config = emerge_config
 	if emerge_logging {
-		atom.disable = false
+		disable = false
 	}
 	s.xterm_titles = !s.emerge_config.targetConfig.Settings.Features.Features["notitles"]
-	atom.emergelog(s.xterm_titles, " === sync", "")
+	emergelog(s.xterm_titles, " === sync", "")
 	return s
 }
 
 type SyncScheduler struct {
-	*atom.AsyncScheduler
-	_emerge_config               *atom.EmergeConfig
+	*AsyncScheduler
+	_emerge_config               *EmergeConfig
 	selected_repos               interface{}
 	_sync_manager                *SyncManager
 	retvals                      [][2]string
@@ -421,7 +421,7 @@ type SyncScheduler struct {
 	_hooks_repos, _running_repos map[string]bool
 	_leaf_nodes                  []string
 	_sync_graph                  bool
-	_repo_map                    map[string]*atom.RepoConfig
+	_repo_map                    map[string]*RepoConfig
 }
 
 func (s *SyncScheduler) _init_graph() {}
@@ -470,7 +470,7 @@ func (s *SyncScheduler) _can_add_job() {}
 
 func (s *SyncScheduler) _keep_scheduling() {}
 
-func NewSyncScheduler(emerge_config *atom.EmergeConfig, selected_repos interface{}, sync_manager *SyncManager) *SyncScheduler {
+func NewSyncScheduler(emerge_config *EmergeConfig, selected_repos interface{}, sync_manager *SyncManager) *SyncScheduler {
 	s := &SyncScheduler{_emerge_config: emerge_config, selected_repos: selected_repos, _sync_manager: sync_manager}
 
 	//AsyncScheduler.__init__(self, **kwargs)
@@ -481,20 +481,20 @@ func NewSyncScheduler(emerge_config *atom.EmergeConfig, selected_repos interface
 }
 
 type SyncManager struct {
-	emerge_config     *atom.EmergeConfig
-	settings          *atom.Config
+	emerge_config     *EmergeConfig
+	settings          *Config
 	logger            func(bool, string, string)
 	hooks             map[string]map[string]string
 	exitcode          int
 	updatecache_flg   bool
-	repo              *atom.RepoConfig
+	repo              *RepoConfig
 	module_controller map[string]
 	module_names      []string
 }
 
 func (s *SyncManager) get_module_descriptions() {}
 
-func (s *SyncManager) sync_async(emerge_config *atom.EmergeConfig, repo *atom.RepoConfig, master_hooks bool) *SyncRepo { // nil, nil, true
+func (s *SyncManager) sync_async(emerge_config *EmergeConfig, repo *RepoConfig, master_hooks bool) *SyncRepo { // nil, nil, true
 	s.emerge_config = emerge_config
 	//self.settings, self.trees, self.mtimedb = emerge_config
 	//	self.xterm_titles = "notitles" not in self.settings.features
@@ -510,7 +510,7 @@ func (s *SyncManager) sync_async(emerge_config *atom.EmergeConfig, repo *atom.Re
 	return nil
 }
 
-func (s *SyncManager) sync(emerge_config *atom.EmergeConfig, repo *atom.RepoConfig, master_hooks bool)  int {
+func (s *SyncManager) sync(emerge_config *EmergeConfig, repo *RepoConfig, master_hooks bool)  int {
 	s.repo = repo
 	s.exitcode = 1
 	s.updatecache_flg = false
@@ -527,9 +527,9 @@ func (s *SyncManager) do_callback() {}
 
 func (s *SyncManager) perform_post_sync_hook() {}
 
-func (s *SyncManager) pre_sync(repo *atom.RepoConfig)int {
+func (s *SyncManager) pre_sync(repo *RepoConfig)int {
 	msg := fmt.Sprintf(">>> Syncing repository '%s' into '%s'...", repo.Name, repo.Location)
-	atom.WriteMsgLevel(msg+"\n", 0, 0)
+	WriteMsgLevel(msg+"\n", 0, 0)
 	return 0
 }
 
@@ -555,7 +555,7 @@ func (s *SyncManager) _sync_callback(proc interface{}) {
 	*/
 }
 
-func NewSyncManager(settings *atom.Config, logger func(bool, string, string)) *SyncManager {
+func NewSyncManager(settings *Config, logger func(bool, string, string)) *SyncManager {
 	s := &SyncManager{settings: settings, logger: logger}
 	syscall.Umask(022)
 
@@ -565,14 +565,14 @@ func NewSyncManager(settings *atom.Config, logger func(bool, string, string)) *S
 	s.hooks = map[string]map[string]string{}
 	for _, _dir := range  []string{"repo.postsync.d", "postsync.d"} {
 		postsync_dir := filepath.Join(s.settings.ValueDict["PORTAGE_CONFIGROOT"],
-			atom.UserConfigPath, _dir)
+			UserConfigPath, _dir)
 		hooks := map[string]string{}
-		for _, filepath := range atom.RecursiveFileList(postsync_dir) {
+		for _, filepath := range RecursiveFileList(postsync_dir) {
 			name := strings.TrimLeft(strings.Split(filepath, postsync_dir)[1], string(os.PathSeparator))
 			if st ,_ := os.Stat(filepath); st!= nil && st.Mode()&unix.X_OK!= 0{
 				hooks[filepath] = name
 			}else {
-				atom.WriteMsgLevel(fmt.Sprintf(" %s %s hook: '%s' is not executable\n", atom.Warn("*"), _dir, name,), 30, 2)
+				WriteMsgLevel(fmt.Sprintf(" %s %s hook: '%s' is not executable\n", Warn("*"), _dir, name,), 30, 2)
 			}
 		}
 		s.hooks[_dir] = hooks
@@ -588,22 +588,5 @@ type SyncRepo struct {
 
 func NewSyncRepo(sync_task func(), sync_callback func()) *SyncRepo {
 	s := &SyncRepo{sync_task: sync_task, sync_callback: sync_callback}
-	return s
-}
-
-type SyncRepos struct {
-}
-
-func (s *SyncRepos) Name() string {
-	return "sync"
-}
-
-func (s *SyncRepos) CanProgressbar() bool {
-	return false
-}
-
-func NewSyncRepos(emergeConfig *opt) *SyncRepos {
-	s := &SyncRepos{}
-
 	return s
 }
