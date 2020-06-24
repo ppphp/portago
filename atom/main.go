@@ -499,7 +499,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 	if len(myoptions.exclude) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.exclude, false)
 		if len(bad_atoms) > 0 && !silent {
-			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid Atom(s) in --exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
+			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0], fmt.Sprintf("Invalid Atom(s) in --exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
 			os.Exit(2)
 		}
 	}
@@ -507,7 +507,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 	if len(myoptions.reinstall_atoms) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.reinstall_atoms, false)
 		if len(bad_atoms) > 0 && !silent {
-			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid Atom(s) in --reinstall-atoms parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
+			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0], fmt.Sprintf("Invalid Atom(s) in --reinstall-atoms parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
 			os.Exit(2)
 		}
 	}
@@ -515,7 +515,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 	if len(myoptions.rebuild_exclude) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.rebuild_exclude, false)
 		if len(bad_atoms) > 0 && !silent {
-			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid Atom(s) in --rebuild-exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
+			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0], fmt.Sprintf("Invalid Atom(s) in --rebuild-exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
 			os.Exit(2)
 		}
 	}
@@ -523,7 +523,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 	if len(myoptions.rebuild_ignore) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.rebuild_ignore, false)
 		if len(bad_atoms) > 0 && !silent {
-			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid Atom(s) in --rebuild-ignore parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
+			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0], fmt.Sprintf("Invalid Atom(s) in --rebuild-ignore parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
 			os.Exit(2)
 		}
 	}
@@ -531,7 +531,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 	if len(myoptions.usepkg_exclude) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.usepkg_exclude, false)
 		if len(bad_atoms) > 0 && !silent {
-			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid Atom(s) in --usepkg-exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
+			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0], fmt.Sprintf("Invalid Atom(s) in --usepkg-exclude parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
 			os.Exit(2)
 		}
 	}
@@ -539,7 +539,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 	if len(myoptions.useoldpkg_atoms) > 0 {
 		bad_atoms := _find_bad_atoms(myoptions.useoldpkg_atoms, false)
 		if len(bad_atoms) > 0 && !silent {
-			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid Atom(s) in --useoldpkg-atoms parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
+			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0], fmt.Sprintf("Invalid Atom(s) in --useoldpkg-atoms parameter: '%s' (only package names and slot atoms (with wildcards) allowed)\n", strings.Join(bad_atoms, ",")))))
 			os.Exit(2)
 		}
 	}
@@ -654,7 +654,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 		}
 		if backtrack < 0 {
 			if !silent {
-				os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid --backtrack parameter: '%s'\n", myoptions.backtrack))))
+				os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0], fmt.Sprintf("Invalid --backtrack parameter: '%s'\n", myoptions.backtrack))))
 				os.Exit(2)
 			}
 		} else {
@@ -678,7 +678,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 
 		if !db && di < 0 {
 			if !silent {
-				os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid --deep parameter: '%s'\n", myoptions.deep))))
+				os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0], fmt.Sprintf("Invalid --deep parameter: '%s'\n", myoptions.deep))))
 				os.Exit(2)
 			}
 		} else {
@@ -706,7 +706,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 
 		if !jb && ji < 1 {
 			if !silent {
-				os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid --jobs parameter: '%s'\n", myoptions.jobs))))
+				os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0], fmt.Sprintf("Invalid --jobs parameter: '%s'\n", myoptions.jobs))))
 				os.Exit(2)
 			}
 		} else {
@@ -731,7 +731,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 
 		if load_average <= 0.0 {
 			if !silent {
-				os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid --load-average parameter: '%s'\n", myoptions.load_average))))
+				os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0], fmt.Sprintf("Invalid --load-average parameter: '%s'\n", myoptions.load_average))))
 				os.Exit(2)
 			}
 		} else {
@@ -748,7 +748,7 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 		if rebuilt_binaries_timestamp < 0 {
 			rebuilt_binaries_timestamp = 0
 			if !silent {
-				os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid --rebuilt-binaries-timestamp parameter: '%s'\n", myoptions.rebuilt_binaries_timestamp))))
+				os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0], fmt.Sprintf("Invalid --rebuilt-binaries-timestamp parameter: '%s'\n", myoptions.rebuilt_binaries_timestamp))))
 				os.Exit(2)
 			}
 		} else {
@@ -760,12 +760,12 @@ func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []s
 		search_similarity, err := strconv.ParseFloat(myoptions.search_similarity, 64)
 		if err != nil {
 			//except ValueError{
-			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid --search-similarity parameter (not a number): '%v'\n", myoptions.search_similarity))))
+			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0], fmt.Sprintf("Invalid --search-similarity parameter (not a number): '%v'\n", myoptions.search_similarity))))
 			os.Exit(2)
 		}
 
 		if search_similarity < 0 || search_similarity > 100 {
-			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0],fmt.Sprintf("Invalid --search-similarity parameter (not between 0 and 100): '%v'\n", myoptions.search_similarity))))
+			os.Stderr.Write([]byte(fmt.Sprintf("%s: error: %s\n)", os.Args[0], fmt.Sprintf("Invalid --search-similarity parameter (not between 0 and 100): '%v'\n", myoptions.search_similarity))))
 			os.Exit(2)
 		} else {
 			myopt["--search-similarity"] = fmt.Sprint(search_similarity)
@@ -978,14 +978,14 @@ func EmergeMain(args []string) int { // nil
 	dnst, err := os.Stat(os.DevNull)
 	if err != nil {
 		WriteMsgLevel("Failed to validate a sane '/dev'.\n"+
-		"'/dev/null' does not exist.\n",
-			40,-1)
+			"'/dev/null' does not exist.\n",
+			40, -1)
 		return 1
 	}
 	if dnst.Sys().(syscall.Stat_t).Rdev == 0 {
 		WriteMsgLevel("Failed to validate a sane '/dev'.\n"+
-		"'/dev/null' is not a device file.\n",
-			40,-1)
+			"'/dev/null' is not a device file.\n",
+			40, -1)
 		return 1
 	}
 	devNull, err := os.Open(os.DevNull)

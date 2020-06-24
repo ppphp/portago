@@ -2,6 +2,7 @@ package atom
 
 import (
 	"bufio"
+	"bytes"
 	"compress/gzip"
 	"fmt"
 	"github.com/ppphp/shlex"
@@ -267,20 +268,24 @@ func (q *QueryCommand) __call__( argv []string) (string,string,int) {
 }
 
 func (q *QueryCommand) _elog( elog_funcname, lines) string {
-	out = io.StringIO()
+	out := &bytes.Buffer{}()
 	phase := q.phase
 	elog_func = getattr(elog_messages, elog_funcname)
 	global_havecolor := HaveColor
-//try:
-	HaveColor = strings.ToLower(q.settings.ValueDict["NOCOLOR"])== "no " || strings.ToLower(q.settings.ValueDict["NOCOLOR"]) == "false" ||strings.ToLower(q.settings.ValueDict["NOCOLOR"]) =="" 
+	//try:
+	if strings.ToLower(q.settings.ValueDict["NOCOLOR"]) == "no" || strings.ToLower(q.settings.ValueDict["NOCOLOR"]) == "false" || strings.ToLower(q.settings.ValueDict["NOCOLOR"]) == "" {
+		HaveColor = 1
+	} else {
+		HaveColor = 0
+	}
 	for line
-	in
-lines {
+		in
+	lines {
 		elog_func(line, phase = phase, key = q.settings.mycpv, out = out)
 	}
-//finally:
+	//finally:
 	HaveColor = global_havecolor
-	msg := out.getvalue()
+	msg := out.String()
 	return msg
 }
 
@@ -542,32 +547,30 @@ e:
 	as
 e:
 	eout.eend(1, "")
-	WriteMsg(_("\n!!! Digest verification failed:\n"), noiselevel = -1)
-	WriteMsg("!!! %s\n"%e.value[0], noiselevel = -1)
-	WriteMsg(_("!!! Reason: %s\n")%e.value[1], noiselevel = -1)
-	WriteMsg(_("!!! Got: %s\n")%e.value[2], noiselevel = -1)
-	WriteMsg(_("!!! Expected: %s\n")%e.value[3], noiselevel = -1)
+	WriteMsg("\n!!! Digest verification failed:\n",  -1, nil)
+	WriteMsg(fmt.Sprintf("!!! %s\n",e.value[0]),  -1, nil)
+	WriteMsg(fmt.Sprintf("!!! Reason: %s\n",e.value[1]),  -1, nil)
+	WriteMsg(fmt.Sprintf("!!! Got: %s\n",e.value[2]),  -1, nil)
+	WriteMsg(fmt.Sprintf("!!! Expected: %s\n",e.value[3]),  -1, nil)
 	return 0
-	if mf.thin or
-	mf.allow_missing:
-	return 1
-	for f
-	in
-	os.listdir(pkgdir):
-	pf = None
-	if f[-7:] == '.ebuild':
-	pf = f[:-7]
-	if pf is
-	not
-	None
-	and
-	not
-	mf.hasFile("EBUILD", f):
-	WriteMsg(_("!!! A file is not listed in the Manifest: '%s'\n") % 
-filepath.Join(pkgdir, f), noiselevel = -1)
-	if strict:
-	return 0
-	filesdir = filepath.Join(pkgdir, "files")
+	if mf.thin || mf.allow_missing {
+		return 1
+	}
+	lds,_:= listDir(pkgdir)
+	for _, f:= range lds {
+		pf := ""
+		if f[len(f)-7:] == ".ebuild" {
+			pf = f[:len(f)-7]
+		}
+		if pf != "" &!mf.hasFile("EBUILD", f) {
+			WriteMsg(fmt.Sprintf("!!! A file is not listed in the Manifest: '%s'\n",
+				filepath.Join(pkgdir, f), -1, nil)
+			if strict {
+				return 0
+			}
+		}
+	}
+	filesdir := filepath.Join(pkgdir, "files")
 
 	for parent, dirs, files
 	in

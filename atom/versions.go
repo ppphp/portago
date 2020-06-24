@@ -359,15 +359,15 @@ func CatPkgSplit(mydata string, silent int, eapi string) [4]string {
 
 type PkgStr struct {
 	string
-	metadata                                                               map[string]string
-	settings                                                               *Config
-	eapi, repo, slot,  fileSize, cp, version, subSlot, slotInvalid string
+	metadata                                                      map[string]string
+	settings                                                      *Config
+	eapi, repo, slot, fileSize, cp, version, subSlot, slotInvalid string
 
-	db                                                                     *dbapi
-	buildId, buildTime, mtime                                                       int
-	_stable                                                                *bool
-	cpvSplit                                                               [4]string
-	cpv                                                                    *PkgStr
+	db                        *dbapi
+	buildId, buildTime, mtime int
+	_stable                   *bool
+	cpvSplit                  [4]string
+	cpv                       *PkgStr
 }
 
 func (p *PkgStr) stable() bool {
@@ -423,7 +423,7 @@ func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, r
 	p.buildTime = build_time // int
 	p.fileSize = file_size   // int
 	p.buildId = build_id
-	p.mtime = mtime          // int
+	p.mtime = mtime // int
 	p.cpvSplit = CatPkgSplit(cpv, 1, eapi)
 	p.cp = p.cpvSplit[0] + "/" + p.cpvSplit[1]
 	if p.cpvSplit[len(p.cpvSplit)-1] == "r0" && cpv[len(cpv)-3:] != "-r0" {

@@ -53,7 +53,7 @@ func CopyMSMASS(m map[string]map[*Atom][]string) map[string]map[*Atom][]string {
 	return r
 }
 
-func Inmss(a map[string]string, b string) bool{
+func Inmss(a map[string]string, b string) bool {
 	for v := range a {
 		if b == v {
 			return true
@@ -62,7 +62,7 @@ func Inmss(a map[string]string, b string) bool{
 	return false
 }
 
-func Inmsmss(a map[string]map[string]string, b string) bool{
+func Inmsmss(a map[string]map[string]string, b string) bool {
 	for v := range a {
 		if b == v {
 			return true
@@ -71,7 +71,7 @@ func Inmsmss(a map[string]map[string]string, b string) bool{
 	return false
 }
 
-func Inmsss(a map[string][]string, b string) bool{
+func Inmsss(a map[string][]string, b string) bool {
 	for v := range a {
 		if b == v {
 			return true
@@ -80,25 +80,25 @@ func Inmsss(a map[string][]string, b string) bool{
 	return false
 }
 
-func Ins(a []string, b string) bool{
-	for _ ,v := range a {
-		if b== v {
+func Ins(a []string, b string) bool {
+	for _, v := range a {
+		if b == v {
 			return true
 		}
 	}
 	return false
 }
 
-func Ini(a []int, b int) bool{
-	for _ ,v := range a {
-		if b== v {
+func Ini(a []int, b int) bool {
+	for _, v := range a {
+		if b == v {
 			return true
 		}
 	}
 	return false
 }
 
-func Mountpoint(path string) (string,error) {
+func Mountpoint(path string) (string, error) {
 	pi, err := os.Stat(path)
 	if err != nil {
 		return "", err
@@ -143,7 +143,6 @@ func SplitSubN(s string, n int) []string {
 	return subs
 }
 
-
 func CopyMap(m map[string]interface{}) map[string]interface{} {
 	cp := make(map[string]interface{})
 	for k, v := range m {
@@ -176,7 +175,7 @@ func osAccess(filename string, mode os.FileMode) bool {
 	return st.Mode()&mode != 0
 }
 
-func reversed (a []string)[]string {
+func reversed(a []string) []string {
 	b := []string{}
 	for _, v := range a {
 		b = append([]string{v}, b...)
@@ -184,17 +183,17 @@ func reversed (a []string)[]string {
 	return b
 }
 
-func sorted (a []string)[]string {
+func sorted(a []string) []string {
 	b := []string{}
 	copy(b, a)
 	sort.Strings(b)
 	return b
 }
 
-func sortedmsb (a map[string]bool)[]string {
+func sortedmsb(a map[string]bool) []string {
 	b := []string{}
 	for k := range a {
-		b=append(b,k)
+		b = append(b, k)
 	}
 	sort.Strings(b)
 	return b
@@ -215,7 +214,7 @@ func toi(s string) int {
 	return i
 }
 
-func joinMB(s map[string]bool, sep string)string{
+func joinMB(s map[string]bool, sep string) string {
 	r := []string{}
 	for k := range s {
 		r = append(r, k)
@@ -223,14 +222,14 @@ func joinMB(s map[string]bool, sep string)string{
 	return strings.Join(r, sep)
 }
 
-func listDir(path string) ([]string, error){
+func listDir(path string) ([]string, error) {
 	ss, err := ioutil.ReadDir(path)
 	if err != nil {
 		return nil, err
 	}
 	rs := []string{}
 	for _, s := range ss {
-		rs =append(rs, s.Name())
+		rs = append(rs, s.Name())
 	}
 	return rs, nil
 }

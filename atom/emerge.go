@@ -668,7 +668,7 @@ func(a *AsynchronousLock) _cancel() {
 	}
 }
 
-func(a *AsynchronousLock) _poll() {
+func(a *AsynchronousLock) _poll() *int {
 	if b, ok := a._imp.(*AsynchronousTask); ok {
 		b.poll()
 	}
@@ -684,9 +684,9 @@ func(a *AsynchronousLock) async_unlock() {
 		raise
 		AssertionError("already unlocked")
 	}
-	if isinstance(a._imp, (_LockProcess, _LockThread)):
-	unlock_future = a._imp.async_unlock()
-	else:
+	if isinstance(a._imp, (_LockProcess, _LockThread)){
+		unlock_future = a._imp.async_unlock()
+	}else:
 	unlockfile(a._imp)
 	unlock_future = a.scheduler.create_future()
 	a.scheduler.call_soon(unlock_future.set_result, nil)
@@ -722,7 +722,7 @@ func(l *_LockThread) _start() {
 }
 
 func(l *_LockThread) _run_lock() {
-	l._lock_obj = Lockfile(l.path, true, false, "", 0)
+	l._lock_obj, _ = Lockfile(l.path, true, false, "", 0)
 	l.scheduler.call_soon_threadsafe(l._run_lock_cb)
 }
 
@@ -1743,7 +1743,7 @@ portage._shell_quote(b.image_dir),
 SpawnProcess._start(b)
 }
 
-func NewBinpkgExtractorAsync() *BinpkgExtractorAsync{
+func NewBinpkgExtractorAsync(background bool, env map[string]string, features map[string]bool, image_dir string, pkg interface{}, pkg_path, logfile string, scheduler *SchedulerInterface) *BinpkgExtractorAsync{
 	b:= &BinpkgExtractorAsync{}
 	b._shell_binary=BashBinary
 	b.SpawnProcess=NewSpawnProcess()
@@ -2101,44 +2101,49 @@ type BinpkgVerifier struct {
 
 func (b *BinpkgVerifier) _start() {
 
-	bintree = b.pkg.root_config.trees["bintree"]
-	digests = bintree._get_digests(b.pkg)
+	bintree := b.pkg.root_config.trees["bintree"]
+	digests := bintree._get_digests(b.pkg)
 	if "size" not
 	in
-digests:
-	b.returncode = 0
+digests{
+	i :=0
+	b.returncode = &i
 	b._async_wait()
 	return
+}
 
-	digests = _filter_unaccelarated_hashes(digests)
-	hash_filter = _hash_filter(
-		bintree.settings.get("PORTAGE_CHECKSUM_FILTER", ""))
-	if not hash_filter.transparent:
-	digests = _apply_hash_filter(digests, hash_filter)
+	digests = filterUnaccelaratedHashes(digests)
+	hash_filter := NewHashFilter(
+		bintree.settings.ValueDict["PORTAGE_CHECKSUM_FILTER"])
+	if ! hash_filter.trasparent {
+		digests = applyHashFilter(digests, hash_filter)
+	}
 
 	b._digests = digests
 
-try:
-	size = os.stat(b._pkg_path).st_size
-	except
-	OSError
-	as
-e:
-	if e.errno not
-	in(errno.ENOENT, errno.ESTALE):
-	raise
-	b.scheduler.output(("!!! Fetching Binary failed "
-	"for '%s'\n") % b.pkg.cpv, log_path = b.logfile,
-		background=b.background)
-	b.returncode = 1
-	b._async_wait()
-	return
-	else:
-	if size != digests["size"]:
-	b._digest_exception("size", size, digests["size"])
-	b.returncode = 1
-	b._async_wait()
-	return
+	st, err:= os.Stat(b._pkg_path)
+	if err != nil {
+		//except OSError as e:
+		if err!= syscall.ENOENT||err!= syscall.ESTALE {
+			//raise
+		}
+		b.scheduler.output(fmt.Sprintf("!!! Fetching Binary failed "+
+		"for '%s'\n", b.pkg.cpv), log_path = b.logfile,
+			background=b.background)
+		i := 1
+		b.returncode = &i
+		b._async_wait()
+		return
+	}else {
+		size := st.Size()
+		if size != digests["size"] {
+			b._digest_exception("size", size, digests["size"])
+			i := 1
+			b.returncode = &i
+			b._async_wait()
+			return
+		}
+	}
 
 	b._start_task(FileDigester(file_path = b._pkg_path,
 		hash_names = (k
@@ -2153,51 +2158,60 @@ e:
 
 func (b *BinpkgVerifier) _digester_exit(digester) {
 
-	if b._default_exit(digester) != 0:
-	b.wait()
-	return
+	if b._default_exit(digester) != 0 {
+		b.wait()
+		return
+	}
 
 	for hash_name
 	in
-	digester.hash_names:
-	if digester.digests[hash_name] != b._digests[hash_name]:
-	b._digest_exception(hash_name,
-		digester.digests[hash_name], b._digests[hash_name])
-	b.returncode = 1
-	b.wait()
-	return
+	digester.hash_names {
+		if digester.digests[hash_name] != b._digests[hash_name] {
+			b._digest_exception(hash_name,
+				digester.digests[hash_name], b._digests[hash_name])
+			i := 1
+			b.returncode = &i
+			b.wait()
+			return
+		}
+	}
 
-	if b.pkg.root_config.settings.get("PORTAGE_QUIET") != "1":
-	b._display_success()
+	if b.pkg.root_config.settings.ValueDict["PORTAGE_QUIET"] != "1" {
+		b._display_success()
+	}
 
-	b.returncode = 0
+	i := 0
+	b.returncode = &i
 	b.wait()
 }
 
 func (b *BinpkgVerifier) _display_success() {
-	stdout_orig = sys.stdout
-	stderr_orig = sys.stderr
-	global_havecolor = portage.output.havecolor
-	out = io.StringIO()
-try:
-	sys.stdout = out
-	sys.stderr = out
-	if portage.output.havecolor:
-	portage.output.havecolor = not
-	b.background
+	stdout_orig := os.Stdout
+	stderr_orig := os.Stderr
+	global_havecolor := HaveColor
+	out := &bytes.Buffer{}
+	os.Stdout = out
+	os.Stderr = out
+	if HaveColor!= 0 {
+		if b.background{
+			HaveColor = 1
+		} else {
+			HaveColor = 0
+		}
+	}
 
-	path = b._pkg_path
-	if path.endswith(".partial"):
-	path = path[:-len(".partial")]
-	eout = EOutput()
-	eout.ebegin("%s %s ;-)"%(filepath.Base(path),
+	path := b._pkg_path
+	if strings.HasSuffix(path,".partial") {
+		path = path[:-len(".partial")]
+	}
+	eout := NewEOutput(false)
+	eout.ebegin(fmt.Sprintf("%s %s ;-)",filepath.Base(path),
 		" ".join(sorted(b._digests))))
-	eout.eend(0)
+	eout.eend(0, "")
 
-finally:
-	sys.stdout = stdout_orig
-	sys.stderr = stderr_orig
-	portage.output.havecolor = global_havecolor
+	os.Stdout = stdout_orig
+	os.Stderr = stderr_orig
+	HaveColor = global_havecolor
 
 	b.scheduler.output(out.getvalue(), log_path = b.logfile,
 		background = b.background)
@@ -2205,7 +2219,7 @@ finally:
 
 func (b *BinpkgVerifier) _digest_exception( name, value, expected) {
 
-	head, tail = os.path.split(b._pkg_path)
+	head, tail := filepath.Split(b._pkg_path)
 	temp_filename = _checksum_failure_temp_file(b.pkg.root_config.settings, head, tail)
 
 	b.scheduler.output(fmt.Sprintf(
@@ -5306,13 +5320,6 @@ func NewScheduler(settings *Config, trees, mtimedb, myopts, spinner, mergelist, 
 
 	s.PollScheduler = NewPollScheduler(true, nil)
 
-	if mergelist != nil {
-		warnings.warn("The mergelist parameter of the " + 
-		"_emerge.Scheduler constructor is now unused. Use " + 
-		"the graph_config parameter instead.",
-			DeprecationWarning, stacklevel = 2)
-	}
-
 	s.settings = settings
 	s.target_root = settings.ValueDict["EROOT"]
 	s.trees = trees
@@ -5449,15 +5456,19 @@ if  ! features["distlocks"] {
 	s._parallel_fetch = true
 }
 
-if s._parallel_fetch:
-try:
-open(s._fetch_log, 'w').close()
-except EnvironmentError:
-pass
+if s._parallel_fetch {
+	f, err := os.OpenFile(s._fetch_log, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		//except EnvironmentError:
+		//pass
+	} else {
+		f.Close()
+	}
+}
 
 s._running_portage = nil
-portage_match = s._running_root.trees["vartree"].dbapi.match(
-portage.const.PORTAGE_PACKAGE_ATOM)
+portage_match := s._running_root.trees["vartree"].dbapi.match(
+PORTAGE_PACKAGE_ATOM)
 if portage_match:
 cpv = portage_match.pop()
 s._running_portage = s._pkg(cpv, "installed",
@@ -5554,8 +5565,8 @@ func (s *Scheduler) _set_max_jobs( max_jobs int) {
 	}
 }
 
-func (s*Scheduler) _background_mode() {
-	background = (s._max_jobs
+func (s*Scheduler) _background_mode() bool {
+	background := (s._max_jobs
 	is
 	true ||
 	s._max_jobs > 1 ||
@@ -5567,28 +5578,24 @@ func (s*Scheduler) _background_mode() {
 	bool(s._opts_no_background.intersection(s.myopts))
 
 	if background {
-		interactive_tasks = s._get_interactive_tasks()
+		interactive_tasks := s._get_interactive_tasks()
 		if interactive_tasks{
 			background = false
 			WriteMsgLevel(">>> Sending package output to stdio due "+
 				"to interactive package(s):\n",
-				level = logging.INFO, noiselevel = -1)
-			msg = []string{""}
+				10, -1)
+			msg := []string{""}
 			for pkg
 				in
 			interactive_tasks {
-				pkg_str = "  " + colorize("INFORM", str(pkg.cpv))
+				pkg_str := "  " + colorize("INFORM", fmt.Sprint(pkg.cpv))
 				if pkg.root_config.settings.ValueDict["ROOT"] != "/" {
 					pkg_str += " for " + pkg.root
 				}
-				msg.append(pkg_str)
+				msg= append(msg, pkg_str)
 			}
-			msg.append("")
-			WriteMsgLevel("".join("%s\n" % (l, )
-			for l
-				in
-			msg),
-			level = logging.INFO, noiselevel = -1)
+			msg= append(msg, "")
+			WriteMsgLevel(strings.Join(msg, "\n")+"\n", 20, -1)
 			if s._max_jobs is
 			true ||
 				s._max_jobs > 1
@@ -5596,15 +5603,15 @@ func (s*Scheduler) _background_mode() {
 				s._set_max_jobs(1)
 				WriteMsgLevel(">>> Setting --jobs=1 due "+
 					"to the above interactive package(s)\n",
-					level = logging.INFO, noiselevel = -1)
+					20, -1)
 				WriteMsgLevel(">>> In order to temporarily mask "+
 					"interactive updates, you may\n"+
 					">>> specify --accept-properties=-interactive\n",
-					level = logging.INFO, noiselevel = -1)
+					20, -1)
 			}
 		}
 	}
-	s._status_display.quiet = 
+	s._status_display.quiet =
 	not
 	background ||
 	("--quiet"
@@ -5615,11 +5622,7 @@ func (s*Scheduler) _background_mode() {
 	in
 	s.myopts)
 
-	s._logger.xterm_titles = 
-	"notitles"
-	not
-	in
-	s.settings.Features.Features&& 
+	s._logger.xterm_titles = !s.settings.Features.Features["notitles"]&&
 	s._status_display.quiet
 
 	return background
@@ -5985,157 +5988,170 @@ func (s *Scheduler) _create_prefetcher( pkg *Package) {
 	return prefetcher
 }
 
-func (s *Scheduler) _run_pkg_pretend() {
+func (s *Scheduler) _run_pkg_pretend()  int {
 
 	failures := 0
 	sched_iface := s._sched_iface
 
 	for x
 	in
-	s._mergelist:
-	if not isinstance(x, Package):
-	continue
+	s._mergelist {
+		if not isinstance(x, Package):
+		continue
 
-	if x.operation == "uninstall":
-	continue
+		if x.operation == "uninstall" {
+			continue
+		}
 
-	if x.eapi in("0", "1", "2", "3"):
-	continue
+		if Ins([]string{"0", "1", "2", "3"}, x.eapi) {
+			continue
+		}
 
-	if "pretend" not
-	in
-	x.defined_phases:
-	continue
+		if "pretend" not
+		in
+		x.defined_phases{
+			continue
+		}
 
-	out_str = ">>> Running pre-merge checks for " + colorize("INFORM", x.cpv) + "\n"
-	WriteMsg_stdout(out_str, noiselevel = -1)
+		out_str := ">>> Running pre-merge checks for " + colorize("INFORM", x.cpv) + "\n"
+		WriteMsgStdout(out_str, -1)
 
-	root_config = x.root_config
-	settings = s.pkgsettings.ValueDict[root_config.root]
-	settings.setcpv(x)
+		root_config := x.root_config
+		settings := s.pkgsettings.ValueDict[root_config.root]
+		settings.setcpv(x)
 
-	rval = _check_temp_dir(settings)
-	if rval != 0:
-	return rval
+		rval := _check_temp_dir(settings)
+		if rval != 0 {
+			return rval
+		}
 
-	build_dir_path =  filepath.Join(
-		os.path.realpath(settings.ValueDict["PORTAGE_TMPDIR"]),
-		"portage", x.category, x.pf)
-	existing_builddir = pathIsDir(build_dir_path)
-	settings.ValueDict["PORTAGE_BUILDDIR"] = build_dir_path
-	build_dir = NewEbuildBuildDir(sched_iface, settings)
-	sched_iface.run_until_complete(build_dir.async_lock())
-	current_task = nil
+		fpes, _ := filepath.EvalSymlinks(settings.ValueDict["PORTAGE_TMPDIR"])
+		build_dir_path := filepath.Join(fpes, "portage", x.category, x.pf)
+		existing_builddir := pathIsDir(build_dir_path)
+		settings.ValueDict["PORTAGE_BUILDDIR"] = build_dir_path
+		build_dir := NewEbuildBuildDir(sched_iface, settings)
+		sched_iface.run_until_complete(build_dir.async_lock())
+		current_task = nil
 
-try:
+	try:
 
-	if existing_builddir:
-	if x.built:
-	tree = "bintree"
-	infloc =  filepath.Join(build_dir_path, "build-info")
-	ebuild_path =  filepath.Join(infloc, x.pf+".ebuild")
-	else:
-	tree = "porttree"
-	portdb = root_config.trees["porttree"].dbapi
-	ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
-	if ebuild_path == nil:
-	raise
-	AssertionError(
-		"ebuild not found for '%s'" % x.cpv)
-	doebuild_environment(
-		ebuild_path, "clean", nil, settings, false, nil,
-		s.trees[settings.ValueDict['EROOT']][tree].dbapi)
-	clean_phase = NewEbuildPhase(nil, false, "clean", sched_iface, settings, nil)
-	current_task = clean_phase
-	clean_phase.start()
-	clean_phase.wait()
+		if existing_builddir {
+			if x.built {
+				tree = "bintree"
+				infloc = filepath.Join(build_dir_path, "build-info")
+				ebuild_path = filepath.Join(infloc, x.pf+".ebuild")
+			} else {
+				tree = "porttree"
+				portdb = root_config.trees["porttree"].dbapi
+				ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
+				if ebuild_path == nil {
+					raise
+					AssertionError(
+						"ebuild not found for '%s'" % x.cpv)
+				}
+			}
+			doebuild_environment(
+				ebuild_path, "clean", settings, false, nil,
+				s.trees[settings.ValueDict["EROOT"]][tree].dbapi)
+			clean_phase := NewEbuildPhase(nil, false, "clean", sched_iface, settings, nil)
+			current_task = clean_phase
+			clean_phase.start()
+			clean_phase.wait()
+		}
 
-	if x.built:
-	tree = "bintree"
-	bintree = root_config.trees["bintree"].dbapi.bintree
-	fetched = false
+		if x.built {
+			tree = "bintree"
+			bintree = root_config.trees["bintree"].dbapi.bintree
+			fetched = false
 
-	if bintree.isremote(x.cpv):
-	fetcher = NewBinpkgFetcher(false, "", x, nil, sched_iface)
-	fetcher.start()
-	if fetcher.wait() != 0:
-	failures += 1
-	continue
-	fetched = fetcher.pkg_path
+			if bintree.isremote(x.cpv):
+			fetcher = NewBinpkgFetcher(false, "", x, nil, sched_iface)
+			fetcher.start()
+			if fetcher.wait() != 0:
+			failures += 1
+			continue
+			fetched = fetcher.pkg_path
 
-	if fetched is
-false:
-	filename = bintree.getname(x.cpv)
-	else:
-	filename = fetched
-	verifier = NewBinpkgVerifier(false, "", x,
-		sched_iface, filename)
-	current_task = verifier
-	verifier.start()
-	if verifier.wait() != 0:
-	failures += 1
-	continue
+			if fetched is
+		false:
+			filename = bintree.getname(x.cpv)
+			else:
+			filename = fetched
+			verifier = NewBinpkgVerifier(false, "", x,
+				sched_iface, filename)
+			current_task = verifier
+			verifier.start()
+			if verifier.wait() != 0:
+			failures += 1
+			continue
 
-	if fetched:
-	bintree.inject(x.cpv, filename = fetched)
+			if fetched:
+			bintree.inject(x.cpv, filename = fetched)
 
-	infloc =  filepath.Join(build_dir_path, "build-info")
-	ensureDirs(infloc)
-	s._sched_iface.run_until_complete(
-		bintree.dbapi.unpack_metadata(settings, infloc))
-	ebuild_path =  filepath.Join(infloc, x.pf+".ebuild")
-	settings.configDict["pkg"]["EMERGE_FROM"] = "binary"
-	settings.configDict["pkg"]["MERGE_TYPE"] = "binary"
+			infloc = filepath.Join(build_dir_path, "build-info")
+			ensureDirs(infloc)
+			s._sched_iface.run_until_complete(
+				bintree.dbapi.unpack_metadata(settings, infloc))
+			ebuild_path = filepath.Join(infloc, x.pf+".ebuild")
+			settings.configDict["pkg"]["EMERGE_FROM"] = "binary"
+			settings.configDict["pkg"]["MERGE_TYPE"] = "binary"
 
-	else:
-	tree = "porttree"
-	portdb = root_config.trees["porttree"].dbapi
-	ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
-	if ebuild_path == nil:
-	raise
-	AssertionError("ebuild not found for '%s'" % x.cpv)
-	settings.configDict["pkg"]["EMERGE_FROM"] = "ebuild"
-	if s._build_opts.buildpkgonly:
-	settings.configDict["pkg"]["MERGE_TYPE"] = "buildonly"
-	else:
-	settings.configDict["pkg"]["MERGE_TYPE"] = "source"
+		}else {
+			tree = "porttree"
+			portdb = root_config.trees["porttree"].dbapi
+			ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
+			if ebuild_path == nil:
+			raise
+			AssertionError("ebuild not found for '%s'" % x.cpv)
+			settings.configDict["pkg"]["EMERGE_FROM"] = "ebuild"
+			if s._build_opts.buildpkgonly:
+			settings.configDict["pkg"]["MERGE_TYPE"] = "buildonly"
+			else:
+			settings.configDict["pkg"]["MERGE_TYPE"] = "source"
+		}
 
-	doebuild_environment(ebuild_path,
-		"pretend", nil, settings, false, nil,
-		s.trees[settings.ValueDict["EROOT"]][tree].dbapi)
+		doebuild_environment(ebuild_path,
+			"pretend", nil, settings, false, nil,
+			s.trees[settings.ValueDict["EROOT"]][tree].dbapi)
 
-	prepare_build_dirs(root_config.root, settings, cleanup = 0)
+		prepare_build_dirs(root_config.root, settings, cleanup = 0)
 
-	vardb = root_config.trees['vartree'].dbapi
-	settings.ValueDict["REPLACING_VERSIONS"] = " ".join(
-		set(portage.versions.cpv_getversion(match) 
-	for match
-	in
-	vardb.match(x.slot_atom) + 
-	vardb.match('=' + x.cpv)))
-	pretend_phase = NewEbuildPhase(nil, false, "pretend",  sched_iface, settings,nil)
+		vardb = root_config.trees['vartree'].dbapi
+		settings.ValueDict["REPLACING_VERSIONS"] = " ".join(
+			set(portage.versions.cpv_getversion(match)
+		for match
+			in
+		vardb.match(x.slot_atom) +
+			vardb.match('='+x.cpv)))
+		pretend_phase = NewEbuildPhase(nil, false, "pretend", sched_iface, settings, nil)
 
-	current_task = pretend_phase
-	pretend_phase.start()
-	ret = pretend_phase.wait()
-	if ret != 0:
-	failures += 1
-	elog_process(x.cpv, settings, nil)
-finally:
+		current_task = pretend_phase
+		pretend_phase.start()
+		ret = pretend_phase.wait()
+		if ret != 0 {
+			failures += 1
+		}
+		elog_process(x.cpv, settings, nil)
+	finally:
 
-	if current_task != nil:
-	if current_task.isAlive():
-	current_task.cancel()
-	current_task.wait()
-	if current_task.returncode == 0:
-	clean_phase = NewEbuildPhase(nil, false, "clean", sched_iface, settings, nil)
-	clean_phase.start()
-	clean_phase.wait()
+		if current_task != nil {
+			if current_task.isAlive() {
+				current_task.cancel()
+				current_task.wait()
+			}
+			if current_task.returncode == 0 {
+				clean_phase := NewEbuildPhase(nil, false, "clean", sched_iface, settings, nil)
+				clean_phase.start()
+				clean_phase.wait()
+			}
+		}
 
-	sched_iface.run_until_complete(build_dir.async_unlock())
+		sched_iface.run_until_complete(build_dir.async_unlock())
+	}
 
-	if failures:
-	return FAILURE
+	if failures != 0{
+		return FAILURE
+	}
 	return 0
 }
 

@@ -89,7 +89,7 @@ type LockFileS struct {
 
 // false, false, "", 0
 func Lockfile(mypath string, wantnewlockfile, unlinkfile bool, waiting_msg string, flags int) (*LockFileS, error) {
-l := &LockFileS{}
+	l := &LockFileS{}
 	var e error = nil
 	for l.string == "" {
 		l, e = _lockfile_iteration(mypath, wantnewlockfile, unlinkfile, waiting_msg, flags)
@@ -328,9 +328,9 @@ func _fstat_nlink(fd int) (int, error) {
 
 func Unlockfile(s *LockFileS) bool {
 	lockfilename := s.string
-	myfd :=s.int
-	unlinkfile:= s.bool
-	locking_method:= s.f
+	myfd := s.int
+	unlinkfile := s.bool
+	locking_method := s.f
 	if myfd == HARDLINK_FD {
 		unhardlink_lockfile(lockfilename, unlinkfile)
 		return true

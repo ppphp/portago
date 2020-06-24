@@ -42,7 +42,7 @@ func (t *Task) repr() int {
 	return len(t.hashKey)
 }
 
-func NewTask () *Task {
+func NewTask() *Task {
 	t := &Task{}
 
 	return t

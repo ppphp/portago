@@ -12,7 +12,9 @@ import (
 
 type syncBase struct {
 	options                                                                                         map[string]string
-	settings, logger, repo, xtermTitles, spawnKwargs, _repoStorage, downloadDir, binCommand, binPkg string
+	logger,  xtermTitles, spawnKwargs, _repoStorage, downloadDir, binCommand, binPkg string
+	settings *Config
+	repo *RepoConfig
 }
 
 func (s *syncBase) repoStorage() {

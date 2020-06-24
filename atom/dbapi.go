@@ -2785,7 +2785,7 @@ func (d *dblink) quickpkg(output_file, include_config, include_unmodified_config
 	//	tar.FormatPAX
 	//}
 	t := tar.NewWriter(output_file)
-	tar_contents(contents, settings.ValueDict["ROOT"], t, protect, xattrs)
+	tar_contents(contents, settings.ValueDict["ROOT"], t, protect, nil, xattrs)
 
 	return excluded_config_files
 }
@@ -6182,125 +6182,132 @@ func write_contents(contents map[string][]string, root string, f io.WriteCloser)
 }
 
 // nil, nil, false
-func tar_contents(contents, root, tar, protect=nil, onProgress=nil, xattrs bool) {
+func tar_contents(contents map[string][]string, root string, tar io.Writer, protect=nil, onProgress func(int, int), xattrs bool) {
 
 	os = _os_merge
 	encoding = _encodings['merge']
 
-try:
-	for x in contents:
-	_unicode_encode(x,
-		encoding=_encodings['merge'],
-		errors='strict')
-	except UnicodeEncodeError:
-					try:
-	for x in contents:
-	_unicode_encode(x,
-		encoding=_encodings['fs'],
-		errors='strict')
-	except UnicodeEncodeError:
-	pass
-	else:
-	os = portage.os
-	encoding = _encodings['fs']
-
 	tar.encoding = encoding
-	root = NormalizePath(root).rstrip(string(os.PathSeparator)) + string(os.PathSeparator)
-	id_strings = {}
-	maxval = len(contents)
-	curval = 0
-	if onProgress:
-	onProgress(maxval, 0)
-	paths = list(contents)
-	paths.sort()
-	for path in paths:
-	curval += 1
-try:
-	lst = os.Lstat(path)
-	except OSError as e:
-	if err != syscall.ENOENT:
-	raise
-	del e
-	if onProgress:
-	onProgress(maxval, curval)
-	continue
-	contents_type = contents[path][0]
-	if path.startswith(root):
-	arcname = "./" + path[len(root):]
-	else:
-	raise ValueError("invalid root argument: '%s'" % root)
-	live_path = path
-	if "dir" == contents_type &&
-not syscall.S_IFDIR&lst.Mode()) &&
-pathIsDir(live_path):
-					live_path = filepath.EvalSymlinks(live_path)
-	lst = os.Lstat(live_path)
+	root := strings.TrimRight(NormalizePath(root), string(os.PathSeparator)) + string(os.PathSeparator)
+	id_strings :=
+	{
+	}
+	maxval := len(contents)
+	curval := 0
+	if onProgress != nil {
+		onProgress(maxval, 0)
+	}
+	paths := []string{}
+	for x := range contents {
+		paths = append(paths, x)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		curval += 1
+		lst, err := os.Lstat(path)
+		if err != nil {
+			//except OSError as e:
+			if err != syscall.ENOENT {
+				//raise
+			}
+			//del e
+			if onProgress != nil {
+				onProgress(maxval, curval)
+			}
+			continue
+		}
+		contents_type := contents[path][0]
+		if strings.HasPrefix(path, root) {
+			arcname = "./" + path[len(root):]
+		} else {
+			//raise ValueError("invalid root argument: '%s'" % root)
+		}
+		live_path := path
+		if "dir" == contents_type && syscall.S_IFDIR&lst.Mode() == 0 &&
+			pathIsDir(live_path) {
+			live_path, _ = filepath.EvalSymlinks(live_path)
+			lst, _ = os.Lstat(live_path)
+		}
 
-								
-		tarinfo = tar.tarinfo()
-	tarinfo.name = arcname
-	tarinfo.mode = lst.Mode()
-	tarinfo.uid = lst.st_uid
-	tarinfo.gid = lst.st_gid
-	tarinfo.size = 0
-	tarinfo.mtime = lst.st_mtime
-	tarinfo.linkname = ""
-	if syscall.S_IFREG&lst.Mode()):
-	inode = (lst.st_ino, lst.st_dev)
-	if (lst.st_nlink > 1 &&
-	inode in tar.inodes &&
-	arcname != tar.inodes[inode]):
-	tarinfo.type = tarfile.LNKTYPE
-	tarinfo.linkname = tar.inodes[inode]
-	else:
-	tar.inodes[inode] = arcname
-	tarinfo.type = tarfile.REGTYPE
-	tarinfo.size = lst.st_size
-	else if syscall.S_IFDIR&lst.Mode()):
-	tarinfo.type = tarfile.DIRTYPE
-	else if syscall.S_IFLNK&lst.Mode()):
-	tarinfo.type = tarfile.SYMTYPE
-	tarinfo.linkname = os.readlink(live_path)
-	else:
-	continue
-try:
-	tarinfo.uname = pwd.getpwuid(tarinfo.uid)[0]
-	except KeyError:
-	pass
-try:
-	tarinfo.gname = grp.getgrgid(tarinfo.gid)[0]
-	except KeyError:
-	pass
+		tarinfo := tar.tarinfo()
+		tarinfo.name = arcname
+		tarinfo.mode = lst.Mode()
+		tarinfo.uid = lst.st_uid
+		tarinfo.gid = lst.st_gid
+		tarinfo.size = 0
+		tarinfo.mtime = lst.st_mtime
+		tarinfo.linkname = ""
+		if syscall.S_IFREG&lst.Mode() != 0 {
+			inode = (lst.st_ino, lst.st_dev)
+			if (lst.st_nlink > 1 &&
+				inode in
+			tar.inodes &&
+				arcname != tar.inodes[inode]):
+			tarinfo.
+			type = tarfile.LNKTYPE
+			tarinfo.linkname = tar.inodes[inode]
+			else:
+			tar.inodes[inode] = arcname
+			tarinfo.
+			type = tarfile.REGTYPE
+			tarinfo.size = lst.st_size
+		} else if syscall.S_IFDIR&lst.Mode() != 0 {
+			tarinfo.
+			type = tarfile.DIRTYPE
+		} else if syscall.S_IFLNK&lst.Mode() != 0 {
+			tarinfo.
+			type = tarfile.SYMTYPE
+			tarinfo.linkname = os.readlink(live_path)
+		} else {
+			continue
+		}
+	try:
+		tarinfo.uname = pwd.getpwuid(tarinfo.uid)[0]
+		except
+	KeyError:
+		pass
+	try:
+		tarinfo.gname = grp.getgrgid(tarinfo.gid)[0]
+		except
+	KeyError:
+		pass
 
-	if syscall.S_IFREG&lst.Mode()):
-	if protect && protect(path):
+		if syscall.S_IFREG&lst.Mode() != 0 {
+			if protect && protect(path) {
 				f = tempfile.TemporaryFile()
-	f.write(_unicode_encode(
-		"	"when `quickpkg` was used\n"))
-	f.flush()
-	f.seek(0)
-	tarinfo.size = os.fstat(f.fileno()).st_size
-	tar.addfile(tarinfo, f)
-	f.close()
-	else:
-	path_bytes = _unicode_encode(path,
-		encoding=encoding,
-		errors='strict')
+				f.write(_unicode_encode(
+					"	when `quickpkg` was used\n"))
+				f.flush()
+				f.seek(0)
+				tarinfo.size = os.fstat(f.fileno()).st_size
+				tar.addfile(tarinfo, f)
+				f.close()
+			} else:
+			path_bytes = _unicode_encode(path,
+				encoding = encoding,
+				errors = 'strict')
 
-	if xattrs:
-			for k in xattr.list(path_bytes):
-	tarinfo.pax_headers["SCHILY.xattr." +
-		_unicode_decode(k)] = _unicode_decode(
-		xattr.get(path_bytes, _unicode_encode(k)))
+			if xattrs:
+			for k
+			in
+			xattr.list(path_bytes):
+			tarinfo.pax_headers["SCHILY.xattr."+
+				_unicode_decode(k)] = _unicode_decode(
+				xattr.get(path_bytes, _unicode_encode(k)))
 
-	with open(path_bytes, 'rb') as f:
-	tar.addfile(tarinfo, f)
+			with
+			open(path_bytes, 'rb')
+			as
+		f:
+			tar.addfile(tarinfo, f)
 
-	else:
-	tar.addfile(tarinfo)
-	if onProgress:
-	onProgress(maxval, curval)
-
+		} else {
+			tar.addfile(tarinfo)
+		}
+		if onProgress != nil {
+			onProgress(maxval, curval)
+		}
+	}
 }
 
 type fakedbapi struct {
@@ -6703,55 +6710,62 @@ try:
 func (b *bindbapi) unpack_metadata(pkg, dest_dir){
 
 	loop = asyncio._wrap_loop()
-	if isinstance(pkg, _pkg_str):
-	cpv = pkg
-	else:
-	cpv = pkg.mycpv
-	key = b._instance_key(cpv)
-	add_pkg = b.bintree._additional_pkgs.get(key)
-	if add_pkg != nil:
-	yield add_pkg._db.unpack_metadata(pkg, dest_dir)
-	else:
-	tbz2_file = b.bintree.getname(cpv)
-	yield loop.run_in_executor(ForkExecutor(loop=loop),
-	portage.xpak.tbz2(tbz2_file).unpackinfo, dest_dir)
-
+	if isinstance(pkg, _pkg_str) {
+		cpv = pkg
+	}else {
+		cpv = pkg.mycpv
+	}
+	key := b._instance_key(cpv, false)
+	add_pkg := b.bintree._additional_pkgs[key.string]
+	if add_pkg != nil {
+		yield
+		add_pkg._db.unpack_metadata(pkg, dest_dir)
+	}else {
+		tbz2_file := b.bintree.getname(cpv, false)
+		yield
+		loop.run_in_executor(ForkExecutor(loop = loop),
+		NewTbz2(tbz2_file).unpackinfo, dest_dir)
+	}
 }
 
 func (b *bindbapi) unpack_contents(pkg, dest_dir){
 
 	loop = asyncio._wrap_loop()
-	if isinstance(pkg, _pkg_str):
-	settings = b.settings
-	cpv = pkg
-	else:
-	settings = pkg
-	cpv = settings.mycpv
+	if isinstance(pkg, _pkg_str) {
+		settings = b.settings
+		cpv = pkg
+	}else {
+		settings = pkg
+		cpv = settings.mycpv
+	}
 
-	pkg_path = b.bintree.getname(cpv)
-	if pkg_path != nil:
+	pkg_path := b.bintree.getname(cpv, false)
+	if pkg_path != "" {
 
-	extractor = BinpkgExtractorAsync(
-		background=settings.ValueDict["PORTAGE_BACKGROUND") == "1",
-		env=settings.environ(),
-		features=settings.features,
-		image_dir=dest_dir,
-		pkg=cpv, pkg_path=pkg_path,
-		logfile=settings.ValueDict["PORTAGE_LOG_FILE"),
-		scheduler=SchedulerInterface(loop))
+		extractor := NewBinpkgExtractorAsync(
+			settings.ValueDict["PORTAGE_BACKGROUND"] == "1",
+			settings.environ(), settings.features, dest_dir,
+			 cpv,  pkg_path, settings.ValueDict["PORTAGE_LOG_FILE"],
+			NewSchedulerInterface(loop))
 
-	extractor.start()
-	yield extractor.async_wait()
-	if extractor.returncode != 0:
-	raise PortageException("Error Extracting '{}'".format(pkg_path))
+		extractor.start()
+		yield
+		extractor.async_wait()
+		if extractor.returncode == nil || *extractor.returncode != 0 {
+			raise
+			PortageException("Error Extracting '{}'".format(pkg_path))
+		}
 
-	else:
-	instance_key = b._instance_key(cpv)
-	add_pkg = b.bintree._additional_pkgs.get(instance_key)
-	if add_pkg == nil:
-	raise portage.exception.PackageNotFound(cpv)
-	yield add_pkg._db.unpack_contents(pkg, dest_dir)
-
+	}else {
+		instance_key := b._instance_key(cpv, false)
+		add_pkg := b.bintree._additional_pkgs[instance_key.string]
+		if add_pkg == nil {
+			raise
+			portage.exception.PackageNotFound(cpv)
+		}
+		yield
+		add_pkg._db.unpack_contents(pkg, dest_dir)
+	}
 }
 
 // 1
@@ -6766,7 +6780,7 @@ func (b *bindbapi) cp_list(mycp string, use_cache int) []*PkgStr {
 func (b *bindbapi) cp_all(sort bool) []string {
 
 	if ! b.bintree.populated {
-		b.bintree.Populate()
+		b.bintree.Populate(false, true, []string{})
 	}
 	return b.fakedbapi.cp_all(sort)
 }
@@ -6779,7 +6793,7 @@ func (b *bindbapi) cpv_all() []string {
 	return b.fakedbapi.cpv_all()
 }
 
-func (b *bindbapi) getfetchsizes(pkg) {
+func (b *bindbapi) getfetchsizes(pkg) map[string]int {
 
 	if ! b.bintree.populated {
 		b.bintree.Populate(false, true, []string{})
@@ -6787,20 +6801,25 @@ func (b *bindbapi) getfetchsizes(pkg) {
 
 	pkg = getattr(pkg, "cpv", pkg)
 
-	filesdict = {}
-	if not b.bintree.isremote(pkg):
-	pass
-	else:
-	metadata = b.bintree._remotepkgs[b._instance_key(pkg)]
-try:
-	size = int(metadata["SIZE"])
-	except KeyError:
-	raise portage.exception.MissingSignature("SIZE")
-	except ValueError:
-	raise portage.exception.InvalidSignature(
-		"SIZE: %s" % metadata["SIZE"])
-	else:
-	filesdict[filepath.Base(b.bintree.getname(pkg))] = size
+	filesdict := map[string]int{}
+	if ! b.bintree.isremote(pkg) {
+		//pass
+	}else {
+		metadata = b.bintree._remotepkgs[b._instance_key(pkg)]
+		sizeS, ok := metadata["SIZE"]
+		if !ok {
+			//except KeyError:
+			//raise portage.exception.MissingSignature("SIZE")
+		}
+		size ,err := strconv.Atoi(sizeS)
+		if err != nil {
+			//except ValueError:
+			//raise portage.exception.InvalidSignature(
+			//	"SIZE: %s" % metadata["SIZE"])
+		}else {
+			filesdict[filepath.Base(b.bintree.getname(pkg))] = size
+		}
+	}
 
 	return filesdict
 
@@ -8671,18 +8690,23 @@ nil:
 	if eapi_is_supported(eapi):
 	mydata["INHERITED"] = " ".join(mydata.get("_eclasses_", []))
 
-	returnme = [mydata.get(x, "")
+	for x
+		in
+	mylist {
+		returnme = append(returnme, mydata.get(x, ""))
+	}
+
+	if cache_me && p.frozen:
+	aux_cache =
+	{
+	}
 	for x
 	in
-	mylist]
+	p._aux_cache_keys:
+	aux_cache[x] = mydata.get(x, "")
+	p._aux_cache[mycpv] = aux_cache
 
-if cache_me && p.frozen:
-aux_cache = {}
-for x in p._aux_cache_keys:
-aux_cache[x] = mydata.get(x, "")
-p._aux_cache[mycpv] = aux_cache
-
-future.set_result(returnme)
+	future.set_result(returnme)
 
 }
 
