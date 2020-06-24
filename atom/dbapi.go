@@ -2810,8 +2810,7 @@ func (d *dblink) _prune_plib_registry(unmerge bool,
 			exclude_pkgs = []*PkgStr{d.mycpv,}
 		}
 
-		d._linkmap_rebuild(exclude_pkgs,
-			needed, preserve_paths = preserve_paths)
+		d._linkmap_rebuild(exclude_pkgs, needed, preserve_paths)
 
 		if unmerge{
 			unmerge_preserve := []string{}
@@ -8254,7 +8253,7 @@ func (b *_better_cache) __getitem__(catpkg string) []*RepoConfig {
 
 func (b *_better_cache) _scan_cat( cat string) {
 	for _, repo := range b._repo_list {
-		cat_dir := repo.location + "/" + cat
+		cat_dir := repo.Location + "/" + cat
 		pkg_list, err := listDir(cat_dir)
 		if err != nil {
 			//except OSError as e:
@@ -8461,10 +8460,10 @@ func (p *portdbapi) findname2(mycpv, mytree, myrepo string) (string,int) {
 		//return "", 0
 		mytrees = []string{}
 		for _, repo := range repos {
-			if mytree != "" && mytree != repo.location {
+			if mytree != "" && mytree != repo.Location {
 				continue
 			}
-			mytrees = append(mytrees, repo.location)
+			mytrees = append(mytrees, repo.Location)
 		}
 	}
 
@@ -8971,7 +8970,7 @@ func (p *portdbapi) cp_list(mycp string, use_cache int, mytree []string) []*PkgS
 	}
 	mylist := []*PkgStr{}
 	for _, repo := range repos {
-		oroot := repo.location
+		oroot := repo.Location
 		file_list, err := listDir(filepath.Join(oroot, mycp))
 		if err != nil {
 			//except OSError:

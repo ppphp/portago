@@ -328,7 +328,7 @@ func LoadDefaultConfig(settings *Config, trees *Tree) *SetConfig {
 			return nil
 		})
 		dbapi := trees.PortTree().dbapi
-		for _, repo := range dbapi.getRepositories() {
+		for _, repo := range dbapi.getRepositories("") {
 			path := dbapi.getRepositoryPath(repo)
 			ret = append(ret, filepath.Join(path, "sets.conf"))
 		}

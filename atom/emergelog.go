@@ -1,4 +1,4 @@
-package emerge
+package atom
 
 import "os"
 

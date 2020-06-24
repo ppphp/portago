@@ -117,7 +117,7 @@ type fileLoader struct {
 func (f *fileLoader) load() (map[string][]string, map[string][]string) {
 	data, errors := map[string][]string{}, map[string][]string{}
 	fun := f.lineParser
-	for _, fn := range recursiveFileList(f.fname) {
+	for _, fn := range RecursiveFileList(f.fname) {
 		f, _ := os.Open(fn)
 		m, _ := ioutil.ReadAll(f)
 		lines := strings.Split(string(m), "\n")

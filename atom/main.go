@@ -1,4 +1,4 @@
-package emerge
+package atom
 
 import (
 	"fmt"
@@ -8,7 +8,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/ppphp/portago/atom"
 	"github.com/spf13/pflag"
 )
 
@@ -224,7 +223,7 @@ func _find_bad_atoms(atoms []string, less_strict bool) []string {
 			}
 		}
 		bad_atom := false
-		atom, err := atom.NewAtom(at, nil, true, &less_strict, nil, "", nil, nil)
+		atom, err := NewAtom(at, nil, true, &less_strict, nil, "", nil, nil)
 		if err != nil {
 			//except portage.exception.InvalidAtom:
 			bad_atom = true
@@ -941,7 +940,7 @@ func EmergeMain(args []string) int { // nil
 		args = os.Args[1:]
 	}
 	// TODO: set locale
-	atom.HaveColor = 0
+	HaveColor = 0
 
 	myAction, myOpts, myFiles := ParseOpts(args, true)
 	if _, ok := myOpts["--debug"]; ok {
@@ -974,17 +973,17 @@ func EmergeMain(args []string) int { // nil
 		fmt.Printf(COWSAY_MOO, runtime.GOOS)
 		return 0
 	case "sync":
-		atom.SyncMode = true
+		SyncMode = true
 	}
 	dnst, err := os.Stat(os.DevNull)
 	if err != nil {
-		atom.WriteMsgLevel("Failed to validate a sane '/dev'.\n"+
+		WriteMsgLevel("Failed to validate a sane '/dev'.\n"+
 		"'/dev/null' does not exist.\n",
 			40,-1)
 		return 1
 	}
 	if dnst.Sys().(syscall.Stat_t).Rdev == 0 {
-		atom.WriteMsgLevel("Failed to validate a sane '/dev'.\n"+
+		WriteMsgLevel("Failed to validate a sane '/dev'.\n"+
 		"'/dev/null' is not a device file.\n",
 			40,-1)
 		return 1

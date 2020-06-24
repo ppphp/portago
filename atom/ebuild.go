@@ -234,7 +234,7 @@ func (q *QueryCommand) __call__( argv []string) (string,string,int) {
 		if cmd == "master_repositories" {
 			return fmt.Sprintf("%s\n", strings.Join(repo.masters, " ")), warnings_str, 0
 		} else if cmd == "repository_path" {
-			return fmt.Sprintf("%s\n", repo.location), warnings_str, 0
+			return fmt.Sprintf("%s\n", repo.Location), warnings_str, 0
 		} else if cmd == "available_eclasses" {
 			ree := []string{}
 			for k := range repo.eclassDb.eclasses {
@@ -1521,11 +1521,8 @@ fd_pipes=None, returnpid bool) int {
 	have_build_dirs := false
 	if !Ins([]string{"digest", "fetch", "help", "manifest"}, mydo) {
 		if !returnpid && !Inmss(mysettings.ValueDict, "PORTAGE_BUILDDIR_LOCKED") {
-			builddir_lock := NewEbuildBuildDir(
-				 asyncio._safe_loop(),
-				 mysettings)
-			builddir_lock.scheduler.run_until_complete(
-				builddir_lock.async_lock())
+			builddir_lock := NewEbuildBuildDir(asyncio._safe_loop(), mysettings)
+			builddir_lock.scheduler.run_until_complete(builddir_lock.async_lock())
 		}
 		mystatus := prepare_build_dirs(myroot, mysettings, cleanup)
 		if mystatus {
@@ -1564,19 +1561,19 @@ fd_pipes=None, returnpid bool) int {
 		(Ins([]string{"postinst", "preinst", "pretend", "setup"}, mydo) ||
 			(!features["noauto"] && !returnpid &&
 				(Inmsss(actionmap_deps, mydo) || Ins([]string{"merge", "package", "qmerge"}, mydo)))) {
-		if vartree== nil {
+		if vartree == nil {
 			WriteMsg("Warning: vartree not given to doebuild. "+
 				"Cannot set REPLACING_VERSIONS in pkg_{pretend,setup}\n", 0, nil)
 		} else {
 			vardb := vartree.dbapi
 			cpv := mysettings.mycpv
 			cpv_slot := fmt.Sprintf("%s%s%s", cpv.cp, slotSeparator, cpv.slot)
-			mysettings.ValueDict["REPLACING_VERSIONS"] = strings.Join(
-				set(cpvGetVersion(match)
-			for match
-				in
-			vardb.match(cpv_slot) +
-				vardb.match("="+cpv)), " ")
+			matches := map[string]bool{}
+			for _, match := range append(vardb.match(cpv_slot, 1), vardb.match("="+cpv.string, 1)...) {
+				matches[cpvGetVersion(match.string, "")] = true
+			}
+
+			mysettings.ValueDict["REPLACING_VERSIONS"] = joinMB(matches, " ")
 		}
 	}
 
@@ -1590,7 +1587,7 @@ fd_pipes=None, returnpid bool) int {
 			}
 		}
 		defer delete(mysettings.ValueDict, "PORTAGE_UPDATE_ENV")
-		return _spawn_phase(mydo, mysettings, "",returnpid,logfile
+		return _spawn_phase(mydo, mysettings, "",returnpid,logfile,
 			fd_pipes = fd_pipes)
 	}
 
@@ -1606,7 +1603,7 @@ fd_pipes=None, returnpid bool) int {
 				map[string]bool{"SRC_URI": true}, mytree = filepath.Dir(filepath.Dir(
 				filepath.Dir(myebuild))))
 		}
-		metadata = map[string]string{
+		metadata := map[string]string{
 			"EAPI":    mysettings.ValueDict["EAPI"],
 			"SRC_URI": src_uri,
 		}
@@ -1685,11 +1682,11 @@ fd_pipes=None, returnpid bool) int {
 	if mydo == "manifest" {
 		mf = nil
 		_doebuild_manifest_cache = nil
-		return !digestgen(nil, mysettings, mydbapi)
+		return digestgen(nil, mysettings, mydbapi) == 0
 	} else if mydo == "digest" {
 		mf = nil
 		_doebuild_manifest_cache = nil
-		return !digestgen(nil, mysettings, mydbapi)
+		return digestgen(nil, mysettings, mydbapi) == 0
 	} else if mysettings.Features.Features["digest"] {
 		mf = nil
 		_doebuild_manifest_cache = nil
@@ -1704,7 +1701,7 @@ fd_pipes=None, returnpid bool) int {
 		return 0
 	}
 
-	if tree == "porttree" && !digestcheck(checkme, mysettings, features["strict"], mf) {
+	if tree == "porttree" && digestcheck(checkme, mysettings, features["strict"], mf) == 0 {
 		return 1
 	}
 
@@ -1799,19 +1796,18 @@ fd_pipes=None, returnpid bool) int {
 		retval = merge(
 			mysettings.ValueDict["CATEGORY"], mysettings.ValueDict["PF"], mysettings.ValueDict["D"],
 			filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"], "build-info"),
-			myroot, mysettings, myebuild = mysettings.ValueDict["EBUILD"], mytree = tree,
-			mydbapi=mydbapi, vartree = vartree, prev_mtimes=prev_mtimes,
-			fd_pipes = fd_pipes)
+			mysettings, mysettings.ValueDict["EBUILD"], tree,
+			mydbapi, vartree, prev_mtimes, nil, nil, fd_pipes)
 	} else if mydo == "merge" {
 		retval = spawnebuild("install", actionmap, mysettings, debug, 1, logfile, fd_pipes, returnpid)
 		if retval != 0 {
-			elog_process(mysettings.mycpv, mysettings, nil)
+			elog_process(mysettings.mycpv.string, mysettings, nil)
 		}
 		if retval == 0 {
 			_handle_self_update(mysettings)
 			retval = merge(mysettings.ValueDict["CATEGORY"], mysettings.ValueDict["PF"],
 				mysettings.ValueDict["D"], filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"],
-					"build-info"), myroot, mysettings, mysettings.ValueDict["EBUILD"],
+					"build-info"), mysettings, mysettings.ValueDict["EBUILD"],
 					tree, mydbapi, vartree, prev_mtimes, nil, nil, fd_pipes)
 		}
 	} else {
@@ -1842,18 +1838,15 @@ func _check_temp_dir(settings *Config)  int{
 		return 1
 	}
 
-	with
-	tempfile.NamedTemporaryFile(prefix = "exectest-", dir = checkdir) as
-	fd{
-		os.Chmod(fd.name, 0755)
-		if ! os.access(fd.name, os.X_OK){
+	fd, _ := ioutil.TempFile(checkdir,  "exectest-*")
+	os.Chmod(fd.Name(), 0755)
+	if ! osAccess(fd.Name(), unix.X_OK) {
 		WriteMsg(fmt.Sprintf("Can not execute files in %s\n"+
-		"Likely cause is that you've mounted it with one of the\n"+
-		"following mount options: 'noexec', 'user', 'users'\n\n"+
-		"Please make sure that portage can execute files in this directory.\n", checkdir),
-		-1, nil)
+			"Likely cause is that you've mounted it with one of the\n"+
+			"following mount options: 'noexec', 'user', 'users'\n\n"+
+			"Please make sure that portage can execute files in this directory.\n", checkdir),
+			-1, nil)
 		return 1
-	}
 	}
 
 	return 0
@@ -1861,9 +1854,7 @@ func _check_temp_dir(settings *Config)  int{
 
 func _prepare_env_file(settings *Config) int {
 
-	env_extractor = BinpkgEnvExtractor(background = false,
-		scheduler = asyncio._safe_loop(),
-		settings=settings)
+	env_extractor := NewBinpkgEnvExtractor(false, asyncio._safe_loop(), settings)
 
 	if env_extractor.dest_env_exists() {
 
@@ -1877,7 +1868,7 @@ func _prepare_env_file(settings *Config) int {
 
 	env_extractor.start()
 	env_extractor.wait()
-	return env_extractor.returncode
+	return *env_extractor.returncode
 }
 
 type ActionMapArgs struct {
@@ -1939,102 +1930,108 @@ func _spawn_actionmap(settings *Config) Actionmap {
 	return actionmap
 }
 
-func _validate_deps(mysettings *Config, myroot, mydo string, mydbapi)int{
-invalid_dep_exempt_phases := map[string]bool{"clean":true, "cleanrm":true, "help":true, "prerm":true, "postrm":true}
-all_keys := CopyMapSB(NewPackage(false, nil, false, nil, nil, "").metadataKeys)
-all_keys["SRC_URI"]=true
-metadata := mysettings.configDict["pkg"]
-if Inmss(metadata, "PORTAGE_REPO_NAME") || Inmss(metadata, "SRC_URI") {
-	m2 := CopyMapSS(metadata)
-	metadata = map[string]string{}
-	for k := range all_keys {
-		metadata[k]=m2[k]
-	}
+func _validate_deps(mysettings *Config, myroot, mydo string, mydbapi DBAPI)int {
+	invalid_dep_exempt_phases := map[string]bool{"clean": true, "cleanrm": true, "help": true, "prerm": true, "postrm": true}
+	all_keys := CopyMapSB(NewPackage(false, nil, false, nil, nil, "").metadataKeys)
+	all_keys["SRC_URI"] = true
+	metadata := mysettings.configDict["pkg"]
+	if Inmss(metadata, "PORTAGE_REPO_NAME") || Inmss(metadata, "SRC_URI") {
+		m2 := CopyMapSS(metadata)
+		metadata = map[string]string{}
+		for k := range all_keys {
+			metadata[k] = m2[k]
+		}
 
-	md := map[string]string{}
-	for  k := range all_keys {
-		if Inmss(metadata, k) {
-			md[k]= metadata[k]
+		md := map[string]string{}
+		for k := range all_keys {
+			if Inmss(metadata, k) {
+				md[k] = metadata[k]
+			}
+		}
+		md["repository"] = metadata["PORTAGE_REPO_NAME"]
+		metadata = md
+	} else {
+		md := map[string]string{}
+		for k := range all_keys {
+			if Inmss(metadata, k) {
+				md[k] = metadata[k]
+			}
+		}
+		md["repository"] = metadata["PORTAGE_REPO_NAME"]
+		metadata = md
+		for i := range all_keys {
+			metadata[all_keys[i]] = mydbapi.AuxGet(mysettings.mycpv, all_keys, mysettings.ValueDict["PORTAGE_REPO_NAME"])[i]
 		}
 	}
-	md["repository"]=metadata["PORTAGE_REPO_NAME"]
-	metadata = md
-}else{
-	md := map[string]string{}
-	for k := range all_keys {
-		if Inmss(metadata, k) {
-			md[k]= metadata[k]
-		}
-	}
-	md["repository"]=metadata["PORTAGE_REPO_NAME"]
-	metadata = md
-metadata = dict(zip(all_keys,
-mydbapi.aux_get(mysettings.mycpv, all_keys,
-myrepo=mysettings.ValueDict["PORTAGE_REPO_NAME"))))
+
+	type FakeTree struct {
+		DBAPI
 	}
 
-type FakeTree struct {
-	dbapi
-}
- NewFakeTree:= func( mydb)	*FakeTree{
-		f :=&FakeTree{}
-		f.dbapi = mydb
+	NewFakeTree := func(mydb DBAPI) *FakeTree {
+		f := &FakeTree{}
+		f.DBAPI = mydb
 		return f
 	}
 
-root_config := NewRootConfig(mysettings, {"porttree":FakeTree(mydbapi)}, None)
+	root_config := NewRootConfig(mysettings, Tree{_porttree: NewFakeTree(mydbapi)}, nil)
 
-pkg := NewPackage(false, mysettings.mycpv, false, metadata, root_config, "ebuild")
+	pkg := NewPackage(false, mysettings.mycpv, false, metadata, root_config, "ebuild")
 
-msgs := []string{}
-if pkg.invalid{
-for k, v in pkg.invalid.items(){
-for msg in v{
-msgs=append(msgs, fmt.Sprintf("  %s\n" ,msg,))
+	msgs := []string{}
+	if pkg.invalid {
+		for k, v
+		in
+		pkg.invalid.items()
+		{
+			for msg
+			in
+			v{
+				msgs = append(msgs, fmt.Sprintf("  %s\n", msg, ))
+			}
 		}
 	}
-}
 
-if len(msgs)>0 {
-	WriteMsgLevel(fmt.Sprintf("Error(s) in metadata for '%s':\n",
-		mysettings.mycpv, ), 40, -1)
-	for _, x := range msgs {
-		WriteMsgLevel(x,
-			40, -1)
+	if len(msgs) > 0 {
+		WriteMsgLevel(fmt.Sprintf("Error(s) in metadata for '%s':\n",
+			mysettings.mycpv, ), 40, -1)
+		for _, x := range msgs {
+			WriteMsgLevel(x,
+				40, -1)
+		}
+		if !invalid_dep_exempt_phases[mydo] {
+			return 1
+		}
 	}
-	if !invalid_dep_exempt_phases[mydo] {
+
+	if !pkg.built &&
+		!Ins([]string{"digest", "help", "manifest"}, mydo) &&
+		pkg.metadata.valueDict["REQUIRED_USE"] != "" &&
+		eapiHasRequiredUse(pkg.eapi()) {
+		result = check_required_use(pkg._metadata["REQUIRED_USE"],
+			pkg.use.enabled, pkg.iuse.is_valid_flag, eapi = pkg.eapi)
+		if !result {
+			reduced_noise = result.tounicode()
+			WriteMsg(fmt.Sprintf("\n  %s\n"%_("The following REQUIRED_USE flag"+
+				" constraints are unsatisfied:")), -1, nil)
+			WriteMsg(fmt.Sprintf("    %s\n", reduced_noise),
+				-1, nil)
+			normalized_required_use =
+				strings.Join(strings.Fields(pkg._metadata["REQUIRED_USE"]), " ")
+			if reduced_noise != normalized_required_use {
+				WriteMsg(fmt.Sprintf("\n  %s\n", "The above constraints "+
+					"are a subset of the following complete expression:"),
+					-1, nil)
+				WriteMsg(fmt.Sprintf("    %s\n",
+					humanReadableRequiredUse(normalized_required_use)),
+					-1, nil)
+			}
+			WriteMsg("\n", -1, nil)
+		}
 		return 1
 	}
-}
 
-if ! pkg.built &&
- ! Ins ([]string{"digest", "help", "manifest"},mydo) &&
-pkg.metadata.valueDict["REQUIRED_USE"] != ""&&
-eapiHasRequiredUse(pkg.eapi()) {
-	result = check_required_use(pkg._metadata["REQUIRED_USE"],
-		pkg.use.enabled, pkg.iuse.is_valid_flag, eapi = pkg.eapi)
-	if !result {
-		reduced_noise = result.tounicode()
-		WriteMsg(fmt.Sprintf("\n  %s\n"%_("The following REQUIRED_USE flag"+
-			" constraints are unsatisfied:")), -1, nil)
-		WriteMsg(fmt.Sprintf("    %s\n", reduced_noise),
-			-1, nil)
-		normalized_required_use =
-			strings.Join(strings.Fields(pkg._metadata["REQUIRED_USE"]), " ")
-		if reduced_noise != normalized_required_use {
-			WriteMsg(fmt.Sprintf("\n  %s\n","The above constraints "+
-				"are a subset of the following complete expression:"),
-				-1, nil)
-			WriteMsg(fmt.Sprintf("    %s\n",
-				humanReadableRequiredUse(normalized_required_use)),
-				-1, nil)
-		}
-		WriteMsg("\n", -1, nil)
-	}
-	return 1
-}
-
-return 0
+	return 0
 }
 
 // false, false, false, false, false, true, true, false, false

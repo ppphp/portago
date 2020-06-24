@@ -1,9 +1,8 @@
-package emaint
+package atom
 
 import (
 	"bytes"
 	"fmt"
-	"github.com/ppphp/portago/atom"
 	"os"
 	"strings"
 
@@ -132,7 +131,7 @@ type TaskHandler struct {
 	show_progress_bar, verbose, isatty bool
 	callback                           func()
 	module_output                      interface{}
-	progress_bar                       *atom.ProgressBar2
+	progress_bar                       *ProgressBar2
 }
 
 func NewTaskHandler(show_progress_bar, verbose bool, callback func(), module_output interface{}) *TaskHandler { // true, true, nil, nil
@@ -143,7 +142,7 @@ func NewTaskHandler(show_progress_bar, verbose bool, callback func(), module_out
 	t.module_output = module_output
 	_, err := unix.IoctlGetTermios(int(os.Stdout.Fd()), unix.TCGETS)
 	t.isatty = os.Getenv("TERM") != "dumb" && err == nil
-	t.progress_bar = atom.NewProgressBar2(t.isatty, os.Stdout, "Emaint", 0, "", 27)
+	t.progress_bar = NewProgressBar2(t.isatty, os.Stdout, "Emaint", 0, "", 27)
 	return t
 }
 
