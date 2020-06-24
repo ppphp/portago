@@ -2,6 +2,7 @@ package atom
 
 import (
 	"os"
+	"runtime"
 	"syscall"
 )
 
@@ -76,3 +77,5 @@ func data_init(settings *Config) {
 		*secpass = v
 	}
 }
+
+const ostype = runtime.GOOS

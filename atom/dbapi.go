@@ -4127,18 +4127,17 @@ func (d *dblink) _find_unused_preserved_libs(unmerge_no_replacement bool) map[st
 	return cpv_lib_map
 }
 
-func (d *dblink) _remove_preserved_libs(cpv_lib_map) {
+func (d *dblink) _remove_preserved_libs(cpv_lib_map map[string]map[string]bool) {
 
 	files_to_remove := map[string]bool{}
-	for files
-	in
-	cpv_lib_map.values()
-	{
-		files_to_remove.update(files)
+	for _, files := range cpv_lib_map {
+		for k := range files {
+			files_to_remove[k] = true
+		}
 	}
 	ftr := []string{}
-	for f := range files_to_remove{
-		ftr = append(ftr,f)
+	for f := range files_to_remove {
+		ftr = append(ftr, f)
 	}
 	sort.Strings(ftr)
 	showMessage := d._display_merge
@@ -4149,7 +4148,7 @@ func (d *dblink) _remove_preserved_libs(cpv_lib_map) {
 		obj = filepath.Join(root, strings.TrimLeft(obj, string(os.PathSeparator)))
 		parent_dirs[filepath.Dir(obj)] = true
 		obj_type := ""
-		if st, _ := os.Stat(obj); st!= nil && st.Mode()&os.ModeSymlink != 0 {
+		if st, _ := os.Stat(obj); st != nil && st.Mode()&os.ModeSymlink != 0 {
 			obj_type = "sym"
 		} else {
 			obj_type = "obj"
@@ -4185,10 +4184,9 @@ func (d *dblink) _remove_preserved_libs(cpv_lib_map) {
 		}
 	}
 	d.vartree.dbapi._plib_registry.pruneNonExisting()
-
 }
 
-func (d *dblink) _collision_protect(srcroot string, mypkglist []*dblink, file_list, symlink_list []string) ([]string, map[string]map[[2]string], map[string]bool, []string, map[[2]uint64]) {
+func (d *dblink) _collision_protect(srcroot string, mypkglist []*dblink, file_list, symlink_list []string) ([]string, map[string]map[[2]string], map[string]bool, []string, map[string]) {
 	real_relative_paths := map[string][]string{}
 
 	collision_ignore := []string{}
@@ -4219,7 +4217,7 @@ func (d *dblink) _collision_protect(srcroot string, mypkglist []*dblink, file_li
 		plib_inodes = d._lstat_inode_map(plib_paths)
 	}
 
-	plib_collisions := map[[2]uint64]{}
+	plib_collisions := map[string]{}
 
 	showMessage := d._display_merge
 	stopmerge := false
@@ -4229,7 +4227,7 @@ func (d *dblink) _collision_protect(srcroot string, mypkglist []*dblink, file_li
 	symlink_collisions := []string{}
 	destroot := d.settings.ValueDict["ROOT"]
 	totfiles := len(file_list) + len(symlink_list)
-	previous := monotonic()
+	previous := time.Now()
 	progress_shown := false
 	report_interval := 1.7
 	falign := len(fmt.Sprintf("%d", totfiles))
@@ -4243,8 +4241,8 @@ func (d *dblink) _collision_protect(srcroot string, mypkglist []*dblink, file_li
 	}
 	for i, v := range ec {
 		f, f_type := v[0], v[1]
-		current := monotonic()
-		if current-previous > report_interval {
+		current := time.Now()
+		if current.Sub(previous).Seconds() > report_interval {
 			showMessage(fmt.Sprintf("%3d%% done,  %*d files remaining ...\n",
 				i*100/totfiles, falign, totfiles-i), 0, 0)
 			previous = current
@@ -4584,7 +4582,7 @@ func (d *dblink) _elog_process(phasefilter []string) {
 func (d *dblink) _emerge_log(msg string) {emergelog(false, msg)}
 
 // 0, nil, nil, 0
-func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydbapi DBAPI, prev_mtimes=nil, counter int) int {
+func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydbapi DBAPI, prev_mtimes=nil, counter string) int {
 
 	destroot := d.settings.ValueDict["ROOT"]
 
@@ -4853,29 +4851,28 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	ro_checker := get_ro_checker()
 	rofilesystems := ro_checker(dirs_ro)
 
-	if rofilesystems {
-		msg := SplitSubN("One or more files installed to this package are " +
-			"set to be installed to read-only filesystems. " +
-			"Please mount the following filesystems as read-write " +
+	if len(rofilesystems) > 0 {
+		msg := SplitSubN("One or more files installed to this package are "+
+			"set to be installed to read-only filesystems. "+
+			"Please mount the following filesystems as read-write "+
 			"and retry.", 70)
 		msg = append(msg, "")
-		for f
-		in
-	rofilesystems:
-		msg = append(msg, fmt.Sprintf("\t%s",f))
+		for f := range rofilesystems {
+			msg = append(msg, fmt.Sprintf("\t%s", f))
+		}
 		msg = append(msg, "")
 		d._elog("eerror", "preinst", msg)
 
-		msg = fmt.Sprintf("Package '%s' NOT merged due to read-only file systems.",
+		msg2 := fmt.Sprintf("Package '%s' NOT merged due to read-only file systems.",
 			d.settings.mycpv)
-		msg += (" If necessary, refer to your elog " +
+		msg2 += (" If necessary, refer to your elog " +
 			"messages for the whole content of the above message.")
-		msgs := SplitSubN(msg, 70)
+		msgs := SplitSubN(msg2, 70)
 		eerror(msgs)
 		return 1
 	}
 
-	if internal_collisions {
+	if len(internal_collisions) > 0 {
 		msg := fmt.Sprintf("Package '%s' has internal collisions between non-identical files "+
 			"(located in separate directories in the installation image (${D}) "+
 			"corresponding to merged directories in the target "+
@@ -4906,16 +4903,14 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 		return 1
 	}
 
-	if symlink_collisions {
+	if len(symlink_collisions) > 0 {
 		msg := fmt.Sprintf("Package '%s' has one or more collisions "+
 			"between symlinks and directories, which is explicitly "+
 			"forbidden by PMS section 13.4 (see bug #326685):",
 			d.settings.mycpv, )
 		msgs := SplitSubN(msg, 70)
 		msgs = append(msgs, "")
-		for f
-			in
-		symlink_collisions {
+		for _, f := range symlink_collisions {
 			msgs = append(msgs, fmt.Sprintf("\t%s", filepath.Join(destroot,
 				strings.TrimLeft(f, string(os.PathSeparator)))))
 		}
@@ -4923,62 +4918,62 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 		d._elog("eerror", "preinst", msgs)
 	}
 
-	if collisions {
+	if len(collisions) > 0 {
 		collision_protect := d.settings.Features.Features["collision-protect"]
 		protect_owned := d.settings.Features.Features["protect-owned"]
 		msg := "This package will overwrite one or more files that" +
-					" may belong to other packages (see list below)."
+			" may belong to other packages (see list below)."
 		if !(collision_protect || protect_owned) {
 			msg += " Add either \"collision-protect\" or" +
-							" \"protect-owned\" to FEATURES in" +
-							" make.conf if you would like the merge to abort" +
-							" in cases like this. See the make.conf man page for" +
-							" more information about these features."
+				" \"protect-owned\" to FEATURES in" +
+				" make.conf if you would like the merge to abort" +
+				" in cases like this. See the make.conf man page for" +
+				" more information about these features."
 		}
 		if d.settings.ValueDict["PORTAGE_QUIET"] != "1" {
 			msg += " You can use a command such as" +
-							" `portageq owners / <filename>` to identify the" +
-							" installed package that owns a file. If portageq" +
-							" reports that only one package owns a file then do NOT" +
-							" file a bug report. A bug report is only useful if it" +
-							" identifies at least two or more packages that are known" +
-							" to install the same file(s)." +
-							" If a collision occurs and you" +
-							" can not explain where the file came from then you" +
-							" should simply ignore the collision since there is not" +
-							" enough information to determine if a real problem" +
-							" exists. Please do NOT file a bug report at" +
-							" https://bugs.gentoo.org/ unless you report exactly which" +
-							" two packages install the same file(s). See" +
-							" https://wiki.gentoo.org/wiki/Knowledge_Base:Blockers" +
-							" for tips on how to solve the problem. And once again," +
-							" please do NOT file a bug report unless you have" +
-							" completely understood the above message."
+				" `portageq owners / <filename>` to identify the" +
+				" installed package that owns a file. If portageq" +
+				" reports that only one package owns a file then do NOT" +
+				" file a bug report. A bug report is only useful if it" +
+				" identifies at least two or more packages that are known" +
+				" to install the same file(s)." +
+				" If a collision occurs and you" +
+				" can not explain where the file came from then you" +
+				" should simply ignore the collision since there is not" +
+				" enough information to determine if a real problem" +
+				" exists. Please do NOT file a bug report at" +
+				" https://bugs.gentoo.org/ unless you report exactly which" +
+				" two packages install the same file(s). See" +
+				" https://wiki.gentoo.org/wiki/Knowledge_Base:Blockers" +
+				" for tips on how to solve the problem. And once again," +
+				" please do NOT file a bug report unless you have" +
+				" completely understood the above message."
 		}
 
 		d.settings.ValueDict["EBUILD_PHASE"] = "preinst"
 		msgs := SplitSubN(msg, 70)
 		if collision_protect {
 			msgs = append(msgs, "")
-			msgs = append(msgs, fmt.Sprintf("package %s NOT merged",d.settings.mycpv))
+			msgs = append(msgs, fmt.Sprintf("package %s NOT merged", d.settings.mycpv))
 			msgs = append(msgs, "")
 			msgs = append(msgs, "Detected file collision(s):")
 			msgs = append(msgs, "")
 		}
 
-		for f := range collisions {
-			msgs = append(msgs, fmt.Sprintf("\t%s" ,
+		for _, f := range collisions {
+			msgs = append(msgs, fmt.Sprintf("\t%s",
 				filepath.Join(destroot, strings.TrimLeft(f, string(os.PathSeparator)))))
 		}
 
 		eerror(msgs)
 
-		var owners   map[*dblink]map[string]bool
-		if collision_protect || protect_owned || symlink_collisions {
+		var owners map[*dblink]map[string]bool
+		if collision_protect || protect_owned || len(symlink_collisions) > 0 {
 			msg := []string{}
 			msg = append(msg, "")
 			msg = append(msg, "Searching all installed"+
-							" packages for file collisions...")
+				" packages for file collisions...")
 			msg = append(msg, "")
 			msg = append(msg, "Press Ctrl-C to Stop")
 			msg = append(msg, "")
@@ -4990,25 +4985,25 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 
 			pkg_info_strs := map[string]string{}
 			d.lockdb()
-		//try:
+			//try:
 			owners = d.vartree.dbapi._owners.get_owners(collisions)
 			d.vartree.dbapi.flush_cache()
 
 			for pkg := range owners {
 				pkg := d.vartree.dbapi._pkg_str(pkg.mycpv, "")
-				pkg_info_str := fmt.Sprintf("%s%s%s" ,pkg,
+				pkg_info_str := fmt.Sprintf("%s%s%s", pkg,
 					slotSeparator, pkg.slot)
 				if pkg.repo != unknownRepo {
-					pkg_info_str += fmt.Sprintf("%s%s" ,repoSeparator,
+					pkg_info_str += fmt.Sprintf("%s%s", repoSeparator,
 						pkg.repo)
 				}
 				pkg_info_strs[pkg.string] = pkg_info_str
 			}
 
-		//finally:
+			//finally:
 			d.unlockdb()
 
-			for pkg, owned_files:= range owners {
+			for pkg, owned_files := range owners {
 				msg := []string{}
 				msg = append(msg, pkg_info_strs[pkg.mycpv.string])
 				of := []string{}
@@ -5024,34 +5019,34 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 				eerror(msg)
 			}
 
-			if len(owners) ==0 {
+			if len(owners) == 0 {
 				eerror([]string{"nil of the installed" +
 					" packages claim the file(s).", ""})
 			}
 		}
 
 		symlink_abort_msg := "Package '%s' NOT merged since it has " +
-					"one or more collisions between symlinks and directories, " +
-					"which is explicitly forbidden by PMS section 13.4 " +
-					"(see bug  #326685)."
+			"one or more collisions between symlinks and directories, " +
+			"which is explicitly forbidden by PMS section 13.4 " +
+			"(see bug  #326685)."
 		abort := false
 		if len(symlink_collisions) > 0 {
 			abort = true
-			msg = fmt.Sprintf(symlink_abort_msg, d.settings.mycpv,)
-		}else if collision_protect {
+			msg = fmt.Sprintf(symlink_abort_msg, d.settings.mycpv, )
+		} else if collision_protect {
 			abort = true
 			msg = fmt.Sprintf("Package '%s' NOT merged due to file collisions.",
 				d.settings.mycpv)
-		}else if protect_owned && len(owners) > 0 {
+		} else if protect_owned && len(owners) > 0 {
 			abort = true
 			msg = fmt.Sprintf("Package '%s' NOT merged due to file collisions.",
 				d.settings.mycpv)
-		}else {
+		} else {
 			msg = fmt.Sprintf("Package '%s' merged despite file collisions.",
 				d.settings.mycpv)
 		}
 		msg += " If necessary, refer to your elog " +
-					"messages for the whole content of the above message."
+			"messages for the whole content of the above message."
 		eerror(SplitSubN(msg, 70))
 
 		if abort {
@@ -5260,19 +5255,17 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 		plib_registry.load()
 
 		if preserve_paths {
-			plib_registry.register(d.mycpv, slot, counter,
+			plib_registry.register(d.mycpv.string, slot, counter,
 				sorted(preserve_paths))
 		}
 
 		plib_dict := plib_registry.getPreservedLibs()
 		for cpv, paths := range plib_collisions {
-			if cpv not
-			in
-		plib_dict{
-			continue
-		}
+			if !Inmsss(plib_dict, cpv) {
+				continue
+			}
 			has_vdb_entry := false
-			if cpv != d.mycpv {
+			if cpv != d.mycpv.string {
 				d.vartree.dbapi.lock()
 			//try:
 			//try:
@@ -5289,17 +5282,18 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 
 			if ! has_vdb_entry {
 				has_registry_entry := false
-				for plib_cps, (plib_cpv, plib_counter, plib_paths) := range plib_registry._data{
-					if plib_cpv != cpv{
-					continue
-				}
+				for plib_cps, v := range plib_registry._data {
+					plib_cpv, plib_counter, plib_paths := v.cpv, v.counter, v.paths
+					if plib_cpv != cpv {
+						continue
+					}
 					//try:
-					cs := strings.Split(plib_cps, ":", 2)
-					if len(cs) == 1{
-					//except ValueError:
-					continue
-				}
-				cp,slot:= cs[0],cs[1]
+					cs := strings.SplitN(plib_cps, ":", 2)
+					if len(cs) == 1 {
+						//except ValueError:
+						continue
+					}
+					cp, slot := cs[0], cs[1]
 					counter = plib_counter
 					has_registry_entry = true
 					break
@@ -5312,9 +5306,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 
 			remaining := []string{}
 			for _, f:= range plib_dict[cpv]{
-				if f not
-				in
-				paths{
+				if !Ins(paths,f){
 					remaining = append(remaining, f)
 				}
 			}
@@ -5848,7 +5840,7 @@ func (d *dblink) _post_merge_sync() {
 
 // nil, nil, 0,nil, nil, nil
 func (d *dblink) merge(mergeroot, inforoot , myebuild string, cleanup int,
-	mydbapi *vardbapi, prev_mtimes *MergeProcess, counter int) int {
+	mydbapi *vardbapi, prev_mtimes *MergeProcess, counter string) int {
 
 	retval := -1
 	parallel_install := d.settings.Features.Features["parallel-install"]
@@ -8703,6 +8695,7 @@ func (p *portdbapi) getFetchMap(mypkg string, useflags []string, mytree string) 
 		mytree = mytree, loop=loop))
 }
 
+// coroutine
 func (p *portdbapi) async_fetch_map(mypkg, useflags=nil, mytree=nil, loop=nil) {
 
 	loop = asyncio._wrap_loop(loop)

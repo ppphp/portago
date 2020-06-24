@@ -430,7 +430,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *R
 			}
 		}
 		if len(layoutData["allow-missing-manifest"]) > 0 {
-			r.allowMissingManifest = layoutData["allow-missing-manifest"][0]
+			r.allowMissingManifest = layoutData["allow-missing-manifest"][0] == "y"
 		}
 		if len(layoutData["repo-name"]) > 0 && len(layoutData["repo-name"][0]) > 0 {
 			r.Name = layoutData["repo-name"][0]
@@ -444,10 +444,14 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *R
 			r.disableManifest = layoutData["disable-manifest"][0] == "true"
 		}
 		if len(layoutData["manifest-hashes"]) > 0 {
-			r.manifestHashes = layoutData["manifest-hashes"][0]
+			for _, k := range layoutData["manifest-hashes"]{
+				r.manifestHashes[k]=true
+			}
 		}
 		if len(layoutData["manifest-required-hashes"]) > 0 {
-			r.manifestRequiredHashes = layoutData["manifest-required-hashes"][0]
+			for _, k := range layoutData["manifest-required-hashes"]{
+				r.manifestRequiredHashes[k]=true
+			}
 		}
 		if len(layoutData["profile-formats"]) > 0 {
 			r.profileFormats = layoutData["profile-formats"]
