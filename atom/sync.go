@@ -56,46 +56,6 @@ func NewNewBase(binCommand, binPkg string) *newBase {
 	return n
 }
 
-type cvsSync struct {
-}
-
-func NewCvsSync() *cvsSync {
-	return &cvsSync{}
-}
-
-type gitSync struct {
-}
-
-func NewGitSync() *gitSync {
-	return &gitSync{}
-}
-
-type rsyncSync struct {
-	*newBase
-}
-
-func (r *rsyncSync) name() string {
-	return "RsyncSync"
-}
-
-func NewRsyncSync() *rsyncSync {
-	return &rsyncSync{newBase: NewNewBase("rsync", RsyncPackageAtom)}
-}
-
-type svnSync struct {
-}
-
-func NewSvnSync() *svnSync {
-	return &svnSync{}
-}
-
-type webrsyncSync struct {
-}
-
-func NewWebrsyncSync() *webrsyncSync {
-	return &webrsyncSync{}
-}
-
 type modules struct {
 	modules map[string]map[string][]string
 }

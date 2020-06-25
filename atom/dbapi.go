@@ -3181,16 +3181,16 @@ func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot 
 			d.settings.ValueDict["UNINSTALL_IGNORE"]), false, true)
 
 		unlink := func(file_name string, lstatobj os.FileInfo) {
-			if bsd_chflags {
-				if lstatobj.st_flags != 0 {
-					bsd_chflags.lchflags(file_name, 0)
-				}
-				parent_name = filepath.Dir(file_name)
-				pflags = os.Stat(parent_name).st_flags
-				if pflags != 0 {
-					bsd_chflags.chflags(parent_name, 0)
-				}
-			}
+			//if bsd_chflags {
+			//	if lstatobj.st_flags != 0 {
+			//		bsd_chflags.lchflags(file_name, 0)
+			//	}
+			//	parent_name = filepath.Dir(file_name)
+			//	pflags = os.Stat(parent_name).st_flags
+			//	if pflags != 0 {
+			//		bsd_chflags.chflags(parent_name, 0)
+			//	}
+			//}
 			var err error
 			if syscall.S_IFLNK&lstatobj.Mode() == 0 {
 				err = os.Chmod(file_name, 0)
@@ -3206,9 +3206,9 @@ func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot 
 			}
 
 			//finally:
-			if bsd_chflags && pflags != 0 {
-				bsd_chflags.chflags(parent_name, pflags)
-			}
+			//if bsd_chflags && pflags != 0 {
+			//	bsd_chflags.chflags(parent_name, pflags)
+			//}
 		}
 
 		unmerge_desc := map[string]string{}
@@ -3485,19 +3485,20 @@ func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot 
 		lines := SplitSubN(msg, 72)
 		lines = append(lines, "")
 		flat_list := map[string]bool{}
-		flat_list.update(*protected_symlinks.values())
-		flat_list = sorted(flat_list)
-		for f
-			in
-		flat_list {
-			lines = append(lines, "\t%s"%(filepath.Join(real_root,
-				f.lstrip(string(os.PathSeparator)))))
+		for _, v := range protected_symlinks {
+			for _, v2 := range v {
+				flat_list[v2] = true
+			}
+		}
+		for _, f := range sortedmsb(flat_list) {
+			lines = append(lines, fmt.Sprintf("\t%s", filepath.Join(real_root,
+				strings.TrimLeft(f, string(os.PathSeparator)))))
 		}
 		lines = append(lines, "")
 		d._elog("elog", "postrm", lines)
 	}
 
-	if len(stale_confmem) {
+	if len(stale_confmem) > 0 {
 		for _, filename := range stale_confmem {
 			delete(cfgfiledict, filename)
 		}
@@ -3508,11 +3509,11 @@ func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot 
 }
 
 func (d *dblink) _unmerge_protected_symlinks(others_in_slot []*dblink, infodirs_inodes  map[[2]uint64]bool,
-	protected_symlinks map[[2]uint64][]string, unmerge_desc, unlink, os) {
+	protected_symlinks map[[2]uint64][]string, unmerge_desc map[string]string, unlink func(string, os.FileInfo)) {
 
 	real_root := d.settings.ValueDict["ROOT"]
 	show_unmerge := d._show_unmerge
-	ignored_unlink_errnos := d._ignored_unlink_errnos
+	//ignored_unlink_errnos := d._ignored_unlink_errnos
 
 	flm := map[string]bool{}
 	for _, v := range protected_symlinks {
@@ -3581,20 +3582,20 @@ func (d *dblink) _unmerge_protected_symlinks(others_in_slot []*dblink, infodirs_
 				obj := filepath.Join(real_root,
 					strings.TrimLeft(relative_path, string(os.PathSeparator)))
 				parent := filepath.Dir(obj)
-				for len(parent) > len(d._eroot){
+				for len(parent) > len(d._eroot) {
 					lstatobj, err := os.Lstat(parent)
 					if err != nil {
 						//except OSError:
 						break
-					}else {
+					} else {
 						dirs[struct {
 							s string
 							i [2]uint64
-						}{parent, [2]uint64{lstatobj.Sys().(*syscall.Stat_t).Dev,lstatobj.Sys().(*syscall.Stat_t).Ino}}] =true
+						}{parent, [2]uint64{lstatobj.Sys().(*syscall.Stat_t).Dev, lstatobj.Sys().(*syscall.Stat_t).Ino}}] = true
 						parent = filepath.Dir(parent)
 					}
 				}
-			//try:
+				//try:
 				unlink(obj, os.Lstat(obj))
 				show_unmerge("<<<", "", "sym", obj)
 				//except(OSError, IOError) as e:
@@ -3607,7 +3608,7 @@ func (d *dblink) _unmerge_protected_symlinks(others_in_slot []*dblink, infodirs_
 
 		protected_symlinks = map[[2]uint64][]string{}
 		d._unmerge_dirs(dirs, infodirs_inodes,
-			protected_symlinks, unmerge_desc, unlink, os)
+			protected_symlinks, unmerge_desc, unlink)
 		dirs = map[struct {
 			s string
 			i [2]uint64
@@ -3618,7 +3619,7 @@ func (d *dblink) _unmerge_protected_symlinks(others_in_slot []*dblink, infodirs_
 
 func (d *dblink) _unmerge_dirs(dirs map[struct{s string; i [2]uint64}]bool, infodirs_inodes map[[2]uint64]bool,
 	protected_symlinks  map[[2]uint64][]string, unmerge_desc map[string]string,
-	unlink func(string, os.FileInfo), os) {
+	unlink func(string, os.FileInfo)) {
 
 	show_unmerge := d._show_unmerge
 	infodir_cleanup := d._infodir_cleanup
@@ -3626,107 +3627,194 @@ func (d *dblink) _unmerge_dirs(dirs map[struct{s string; i [2]uint64}]bool, info
 	ignored_rmdir_errnos := d._ignored_rmdir_errnos
 	real_root := d.settings.ValueDict["ROOT"]
 
-	dirs := sorted(dirs)
-	revisit := {}
-
-	for{
-	try:
-		obj, inode_key = dirs.pop()
-		except IndexError:
-		break
-		if inode_key in infodirs_inodes ||
-			filepath.Base(obj) == "info":
-	try:
-		remaining = os.listdir(obj)
-		except OSError:
-		pass
-		else:
-		cleanup_info_dir = ()
-		if remaining &&
-			len(remaining) <= len(infodir_cleanup):
-		if not set(remaining).difference(infodir_cleanup):
-		cleanup_info_dir = remaining
-
-		for child in cleanup_info_dir:
-		child = filepath.Join(obj, child)
-	try:
-		lstatobj = os.Lstat(child)
-		if syscall.S_IFREG&lstatobj.Mode()):
-		unlink(child, lstatobj)
-		show_unmerge("<<<", "", "obj", child)
-		except EnvironmentError as e:
-		if err not in ignored_unlink_errnos:
-		raise
-		del e
-		show_unmerge("!!!", "", "obj", child)
-
-	try:
-		parent_name = filepath.Dir(obj)
-		parent_stat = os.Stat(parent_name)
-
-		if bsd_chflags:
-		lstatobj = os.Lstat(obj)
-		if lstatobj.st_flags != 0:
-		bsd_chflags.lchflags(obj, 0)
-
-		pflags = parent_stat.st_flags
-		if pflags != 0:
-		bsd_chflags.chflags(parent_name, 0)
-	try:
-		os.rmdir(obj)
-	finally:
-		if bsd_chflags && pflags != 0:
-		bsd_chflags.chflags(parent_name, pflags)
-
-		d._merged_path(filepath.EvalSymlinks(parent_name), parent_stat)
-
-		show_unmerge("<<<", "", "dir", obj)
-		except EnvironmentError as e:
-		if err not in ignored_rmdir_errnos:
-		raise
-		if err != syscall.ENOENT:
-		show_unmerge("---", unmerge_desc["!empty"], "dir", obj)
-		revisit[obj] = inode_key
-
-	try:
-		dir_stat = os.Stat(obj)
-		except OSError:
-		pass
-		else:
-		if dir_stat.st_dev in d._device_path_map:
-		d._merged_path(filepath.EvalSymlinks(obj), dir_stat)
-
-		else:
-		unmerge_syms = protected_symlinks.pop(inode_key, nil)
-		if unmerge_syms != nil:
-		parents = []
-		for relative_path in unmerge_syms:
-		obj = filepath.Join(real_root,
-			relative_path.lstrip(string(os.PathSeparator)))
-	try:
-		unlink(obj, os.Lstat(obj))
-		show_unmerge("<<<", "", "sym", obj)
-		except (OSError, IOError) as e:
-		if err not in ignored_unlink_errnos:
-		raise
-		del e
-		show_unmerge("!!!", "", "sym", obj)
-		else:
-		parents=append(,filepath.Dir(obj))
-
-		if parents:
-		recursive_parents = []
-		for parent in set(parents):
-		while parent in revisit:
-		recursive_parents=append(,parent)
-		parent = filepath.Dir(parent)
-		if parent == "/":
-		break
-
-		for parent in sorted(set(recursive_parents)):
-		dirs=append(,(parent, revisit.pop(parent)))
+	ds := []struct {
+		s string;
+		i [2]uint64
+	}{}
+	for d := range dirs {
+		ds = append(ds, d)
 	}
+	sort.Slice(ds, func(i, j int) bool {
+		return ds[i].s < ds[j].s
+	})
 
+	revisit := map[string][2]uint64{}
+
+	for len(ds) > 0 {
+		dss := ds[len(ds)-1]
+		ds = ds[:len(ds)-1]
+		obj, inode_key := dss.s, dss.i
+		if infodirs_inodes[inode_key] || filepath.Base(obj) == "info" {
+			remaining, err := listDir(obj)
+			if err != nil {
+				//except OSError:
+				//pass
+			} else {
+				cleanup_info_dir := map[string]bool{}
+				if len(remaining) > 0 && len(remaining) <= len(infodir_cleanup) {
+					in := true
+					for _, k := range remaining {
+						if !infodir_cleanup[k] {
+							in = false
+							break
+						}
+					}
+					if in {
+						cleanup_info_dir = map[string]bool{}
+						for _, k := range remaining {
+							cleanup_info_dir[k] = true
+						}
+					}
+				}
+
+				for child := range cleanup_info_dir {
+					child = filepath.Join(obj, child)
+					lstatobj, err := os.Lstat(child)
+					if syscall.S_IFREG&lstatobj.Mode() != 0 {
+						unlink(child, lstatobj)
+						show_unmerge("<<<", "", "obj", child)
+					}
+					if err != nil {
+						//except EnvironmentError as e:
+						in := false
+						for _, e := range ignored_unlink_errnos {
+							if e == err {
+								in = true
+								break
+							}
+						}
+						if !in {
+							//raise
+						}
+						//del e
+						show_unmerge("!!!", "", "obj", child)
+					}
+				}
+			}
+
+			parent_name := filepath.Dir(obj)
+			parent_stat, err := os.Stat(parent_name)
+
+			//if bsd_chflags {
+			//	lstatobj = os.Lstat(obj)
+			//	if lstatobj.st_flags != 0 {
+			//		bsd_chflags.lchflags(obj, 0)
+			//	}
+			//
+			//	pflags = parent_stat.st_flags
+			//	if pflags != 0 {
+			//		bsd_chflags.chflags(parent_name, 0)
+			//	}
+			//}
+			//try:
+			os.RemoveAll(obj)
+			//finally:
+			//	if bsd_chflags && pflags != 0 {
+			//		bsd_chflags.chflags(parent_name, pflags)
+			//	}
+
+			if err == nil {
+				fes, err := filepath.EvalSymlinks(parent_name)
+				if err == nil {
+					d._merged_path(fes, parent_stat, true)
+				}
+			}
+
+			show_unmerge("<<<", "", "dir", obj)
+			if err != nil {
+				//except EnvironmentError as e:
+				in := false
+				for _, e := range ignored_rmdir_errnos {
+					if e == err {
+						in = true
+						break
+					}
+				}
+				if !in {
+					//raise
+				}
+				if err != syscall.ENOENT {
+					show_unmerge("---", unmerge_desc["!empty"], "dir", obj)
+					revisit[obj] = inode_key
+				}
+				dir_stat, err := os.Stat(obj)
+				if err != nil {
+					//except OSError:
+					//pass
+				} else {
+					if dir_stat.st_dev in
+					d._device_path_map{
+						fes, _ := filepath.EvalSymlinks(obj)
+						d._merged_path(fes, dir_stat, true)
+					}
+				}
+			} else {
+				unmerge_syms := protected_symlinks[inode_key]
+				delete(protected_symlinks, inode_key)
+				if unmerge_syms != nil {
+					parents := []string{}
+					for _, relative_path := range unmerge_syms {
+						obj = filepath.Join(real_root,
+							strings.TrimLeft(relative_path, string(os.PathSeparator)))
+						lst, err := os.Lstat(obj)
+						if err == nil {
+							unlink(obj, lst)
+							show_unmerge("<<<", "", "sym", obj)
+						}
+						if err != nil {
+							//except(OSError, IOError) as e:
+							in := false
+							for _, e := range ignored_unlink_errnos {
+								if e == err {
+									in = true
+									break
+								}
+							}
+							if !in {
+								//raise
+							}
+							//del e
+							show_unmerge("!!!", "", "sym", obj)
+						} else {
+							parents = append(parents, filepath.Dir(obj))
+						}
+					}
+
+					if len(parents) > 0 {
+						recursive_parents := []string{}
+						pnt := map[string]bool{}
+						for _, p := range parents {
+							pnt[p] = true
+						}
+						for parent := range pnt {
+							for {
+								if _, ok := revisit[parent]; !ok {
+									break
+								}
+								recursive_parents = append(recursive_parents, parent)
+								parent = filepath.Dir(parent)
+								if parent == "/" {
+									break
+								}
+							}
+						}
+
+						rpa := map[string]bool{}
+						for _, p := range recursive_parents {
+							rpa[p] = true
+						}
+						for _, parent := range sortedmsb(rpa) {
+							ds = append(ds, struct {
+								s string;
+								i [2]uint64
+							}{parent, revisit[parent]})
+							delete(revisit, parent)
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 func (d *dblink) isowner(filename string) bool {
@@ -4714,9 +4802,9 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	}
 	install_mask := NewInstallMask(string(f))
 
-	if install_mask!= nil {
+	if install_mask != nil {
 		install_mask_dir(d.settings.ValueDict["ED"], install_mask, nil)
-		if d.settings.Features.Features["nodoc"]||d.settings.Features.Features["noman"]||d.settings.Features.Features["noinfo"]{
+		if d.settings.Features.Features["nodoc"] || d.settings.Features.Features["noman"] || d.settings.Features.Features["noinfo"] {
 			if err := os.RemoveAll(filepath.Join(d.settings.ValueDict["ED"], "usr", "share")); err != nil {
 				//except OSError:
 				//pass
@@ -4755,7 +4843,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 				file_mode := info.Mode()
 				if unix.S_IFREG&file_mode != 0 {
 					filelist = append(filelist, relative_path)
-				} else if unix.S_IFLNK & file_mode != 0 {
+				} else if unix.S_IFLNK&file_mode != 0 {
 					linklist = append(linklist, relative_path)
 
 					myto, _ := filepath.EvalSymlinks(path)
@@ -4781,8 +4869,8 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 		msg = append(msg, ("This package installs one or more files containing line ending characters:"))
 		msg = append(msg, "")
 		sort.Strings(paths_with_newlines)
-		for _, f := range paths_with_newlines{
-			msg = append(msg, fmt.Sprintf("\t/%s", strings.ReplaceAll(strings.ReplaceAll(f, "\n", "\\n"),"\r", "\\r")))
+		for _, f := range paths_with_newlines {
+			msg = append(msg, fmt.Sprintf("\t/%s", strings.ReplaceAll(strings.ReplaceAll(f, "\n", "\\n"), "\r", "\\r")))
 		}
 		msg = append(msg, "")
 		msg = append(msg, fmt.Sprintf("package %s NOT merged", d.mycpv))
@@ -4791,11 +4879,11 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 		return 1
 	}
 
-	if d.settings.ValueDict["PORTAGE_PACKAGE_EMPTY_ABORT"] == "1" && len( filelist) == 0 && len( linklist) == 0 && len(others_in_slot) > 0{
+	if d.settings.ValueDict["PORTAGE_PACKAGE_EMPTY_ABORT"] == "1" && len(filelist) == 0 && len(linklist) == 0 && len(others_in_slot) > 0 {
 		var installed_files map[string][]string
 		for _, other_dblink := range others_in_slot {
 			installed_files = other_dblink.getcontents()
-			if len( installed_files)==0 {
+			if len(installed_files) == 0 {
 				continue
 			}
 			msg := []string{}
@@ -4817,10 +4905,10 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 					"really want to remove the above files. Set "+
 					"PORTAGE_PACKAGE_EMPTY_ABORT=\"0\" in "+
 					"/etc/portage/make.conf if you do not want to "+
-					"abort in cases like this.",other_dblink.mycpv), 72)...)
+					"abort in cases like this.", other_dblink.mycpv), 72)...)
 			eerror(msg)
 		}
-		if len( installed_files)>0 {
+		if len(installed_files) > 0 {
 			return 1
 		}
 	}
@@ -4879,16 +4967,16 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 		msgs := SplitSubN(msg, 70)
 		msgs = append(msgs, "")
 		for k, v
-		in
+			in
 		sorted(internal_collisions.items(), key = operator.itemgetter(0)){
 			msgs = append(msgs, "\t%s"%filepath.Join(destroot, k.lstrip(string(os.PathSeparator))))
 			for (file1, file2), differences
 			in
 			sorted(v.items())
 			{
-				msgs = append(msgs, fmt.Sprintf("\t\t%s",filepath.Join(destroot, strings.TrimLeft(file1,string(os.PathSeparator)))))
-				msgs = append(msgs, fmt.Sprintf("\t\t%s",filepath.Join(destroot, strings.TrimLeft(file2,string(os.PathSeparator)))))
-				msgs = append(msgs, fmt.Sprintf("\t\t\tDifferences: %s", strings.Join(differences,", ")))
+				msgs = append(msgs, fmt.Sprintf("\t\t%s", filepath.Join(destroot, strings.TrimLeft(file1, string(os.PathSeparator)))))
+				msgs = append(msgs, fmt.Sprintf("\t\t%s", filepath.Join(destroot, strings.TrimLeft(file2, string(os.PathSeparator)))))
+				msgs = append(msgs, fmt.Sprintf("\t\t\tDifferences: %s", strings.Join(differences, ", ")))
 				msgs = append(msgs, "")
 			}
 		}
@@ -5054,7 +5142,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	}
 
 	if err := syscall.Unlink(filepath.Join(
-	filepath.Dir(NormalizePath(srcroot)), ".installed")); err != nil {
+		filepath.Dir(NormalizePath(srcroot)), ".installed")); err != nil {
 		//except OSError as e:
 		if err != syscall.ENOENT {
 			//raise
@@ -5063,27 +5151,27 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	}
 	d.dbdir = d.dbtmpdir
 	d.delete()
-	ensureDirs(d.dbtmpdir,-1,-1,-1,-1,nil,true)
+	ensureDirs(d.dbtmpdir, -1, -1, -1, -1, nil, true)
 
 	downgrade := false
 	v, _ := verCmp(d.mycpv.version,
 		d._installed_instance.mycpv.version)
-	if d._installed_instance != nil && v< 0 {
+	if d._installed_instance != nil && v < 0 {
 		downgrade = true
 	}
 
 	if d._installed_instance != nil {
 		rval := d._pre_merge_backup(d._installed_instance, downgrade)
 		if rval != 0 {
-			showMessage(fmt.Sprintf("!!! FAILED preinst: " +
+			showMessage(fmt.Sprintf("!!! FAILED preinst: "+
 				"quickpkg: %s\n", rval), 40, -1)
 			return rval
 		}
 	}
 
-	showMessage(fmt.Sprintf(">>> Merging %s to %s\n", d.mycpv, destroot),0,0)
+	showMessage(fmt.Sprintf(">>> Merging %s to %s\n", d.mycpv, destroot), 0, 0)
 	phase3 := NewEbuildPhase(nil, false, "preinst",
-	d._scheduler, d.settings, nil)
+		d._scheduler, d.settings, nil)
 	phase3.start()
 	a := phase3.wait()
 
@@ -5093,22 +5181,22 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 		return a
 	}
 
-	xs, _:= listDir(inforoot)
-	for _, x := range xs{
+	xs, _ := listDir(inforoot)
+	for _, x := range xs {
 		d.copyfile(inforoot + "/" + x)
 	}
 
 	if counter == nil {
 		counter = d.vartree.dbapi.counter_tick()
 	}
-	ioutil.WriteFile(filepath.Join(d.dbtmpdir, "COUNTER"), []byte(fmt.Sprintf("%s" , counter)), 0644)
+	ioutil.WriteFile(filepath.Join(d.dbtmpdir, "COUNTER"), []byte(fmt.Sprintf("%s", counter)), 0644)
 
 	d.updateprotect()
 
 	d.vartree.dbapi._fs_lock()
 	//try:
 	plib_registry := d.vartree.dbapi._plib_registry
-	if plib_registry!= nil {
+	if plib_registry != nil {
 		plib_registry.lock()
 	}
 	//try:
@@ -5117,10 +5205,10 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	//finally:
 	plib_registry.unlock()
 
-	cfgfiledict := grabDict(d.vartree.dbapi._conf_mem_file,false, false, false, true, false)
-	if  Inmss(d.settings.ValueDict,"NOCONFMEM") || downgrade{
+	cfgfiledict := grabDict(d.vartree.dbapi._conf_mem_file, false, false, false, true, false)
+	if Inmss(d.settings.ValueDict, "NOCONFMEM") || downgrade {
 		cfgfiledict["IGNORE"] = 1
-	}else {
+	} else {
 		cfgfiledict["IGNORE"] = 0
 	}
 
@@ -5131,26 +5219,26 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	//finally:
 	d.vartree.dbapi._fs_unlock()
 
-	for _, dblnk := range others_in_slot{
+	for _, dblnk := range others_in_slot {
 		dblnk._clear_contents_cache()
 	}
 	d._clear_contents_cache()
 
 	linkmap := d.vartree.dbapi._linkmap
 	plib_registry = d.vartree.dbapi._plib_registry
-					
+
 	preserve_paths := map[string]bool{}
 	needed := ""
-	if ! (d._linkmap_broken || linkmap == nil||	plib_registry == nil) {
+	if !(d._linkmap_broken || linkmap == nil || plib_registry == nil) {
 		d.vartree.dbapi._fs_lock()
 		plib_registry.lock()
-	//try:
+		//try:
 		plib_registry.load()
 		needed = filepath.Join(inforoot, linkmap._needed_aux_key)
-		d._linkmap_rebuild(nil,needed, nil)
+		d._linkmap_rebuild(nil, needed, nil)
 
 		preserve_paths := d._find_libs_to_preserve(false)
-	//finally:
+		//finally:
 		plib_registry.unlock()
 		d.vartree.dbapi._fs_unlock()
 
@@ -5160,32 +5248,32 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	}
 
 	reinstall_self := false
-	ppa, _ := NewAtom(PortagePackageAtom,  nil, false, nil, nil, "", nil, nil)
+	ppa, _ := NewAtom(PortagePackageAtom, nil, false, nil, nil, "", nil, nil)
 	if d.myroot == "/" && len(matchFromList(ppa, []*PkgStr{d.mycpv})) > 0 {
 		reinstall_self = true
 	}
 
 	emerge_log := d._emerge_log
 
-	autoclean := d.settings.ValueDict["AUTOCLEAN"] == "yes" || d.settings.ValueDict["AUTOCLEAN"] == "" ||len(preserve_paths) > 0
+	autoclean := d.settings.ValueDict["AUTOCLEAN"] == "yes" || d.settings.ValueDict["AUTOCLEAN"] == "" || len(preserve_paths) > 0
 
 	if autoclean {
 		emerge_log(fmt.Sprintf(" >>> AUTOCLEAN: %s", slot_atom, ))
 	}
 
-	others_in_slot=append(others_in_slot,d)
-	for _, dblnk := range others_in_slot{
+	others_in_slot = append(others_in_slot, d)
+	for _, dblnk := range others_in_slot {
 		if dblnk == d {
 			continue
 		}
 		if !(autoclean || dblnk.mycpv.string == d.mycpv.string || reinstall_self) {
 			continue
 		}
-		showMessage((">>> Safely unmerging already-installed instance...\n"), 0,0)
-		emerge_log(fmt.Sprintf(" === Unmerging... (%s)",dblnk.mycpv, ))
+		showMessage((">>> Safely unmerging already-installed instance...\n"), 0, 0)
+		emerge_log(fmt.Sprintf(" === Unmerging... (%s)", dblnk.mycpv, ))
 		ois := []*dblink{}
 		for _, o := range others_in_slot {
-			if o!=dblnk{
+			if o != dblnk {
 				ois = append(ois, o)
 			}
 		}
@@ -5194,19 +5282,19 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 		dblnk.settings.ValueDict["REPLACED_BY_VERSION"] = cpvGetVersion(d.mycpv.string, "")
 		dblnk.settings.BackupChanges("REPLACED_BY_VERSION")
 		unmerge_rval := dblnk.unmerge(nil, true, prev_mtimes,
-		others_in_slot, needed, preserve_paths)
-		delete(dblnk.settings.ValueDict,"REPLACED_BY_VERSION")
+			others_in_slot, needed, preserve_paths)
+		delete(dblnk.settings.ValueDict, "REPLACED_BY_VERSION")
 
 		if unmerge_rval == 0 {
 			emerge_log(fmt.Sprintf(" >>> unmerge success: %s", dblnk.mycpv, ))
-		}else {
+		} else {
 			emerge_log(fmt.Sprintf(" !!! unmerge FAILURE: %s", dblnk.mycpv, ))
 		}
 
 		d.lockdb()
-	//try:
+		//try:
 		dblnk.delete()
-	//finally:
+		//finally:
 		d.unlockdb()
 		showMessage(">>> Original instance of package unmerged safely.\n", 0, 0)
 	}
@@ -5222,7 +5310,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	//try:
 	d.delete()
 	_movefile(d.dbtmpdir, d.dbpkgdir, 0, nil, d.settings, nil)
-	ol, _:= os.Lstat(d.dbpkgdir)
+	ol, _ := os.Lstat(d.dbpkgdir)
 	d._merged_path(d.dbpkgdir, ol, true)
 	d.vartree.dbapi._cache_delta.recordEvent("add", d.mycpv, slot, counter)
 	//finally:
@@ -5233,10 +5321,10 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	destroot_len := len(destroot) - 1
 	d.lockdb()
 	//try:
-	for _, blocker := range blockers{
+	for _, blocker := range blockers {
 		cs := []string{}
-		for _, c := range contents{
-			cs =append(cs, c)
+		for _, c := range contents {
+			cs = append(cs, c)
 		}
 		d.vartree.dbapi.removeFromContents(blocker, cs, false)
 	}
@@ -5244,7 +5332,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	d.unlockdb()
 
 	plib_registry = d.vartree.dbapi._plib_registry
-	if plib_registry!=nil {
+	if plib_registry != nil {
 		d.vartree.dbapi._fs_lock()
 		plib_registry.lock()
 		defer func() {
@@ -5266,8 +5354,8 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 			has_vdb_entry := false
 			if cpv != d.mycpv.string {
 				d.vartree.dbapi.lock()
-			//try:
-			//try:
+				//try:
+				//try:
 				slot := d.vartree.dbapi._pkg_str(cpv, "").slot
 				counter := d.vartree.dbapi.cpv_counter(cpv)
 				//except(KeyError, InvalidData):
@@ -5275,11 +5363,11 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 				//else:
 				has_vdb_entry = true
 				d.vartree.dbapi.removeFromContents(cpv, paths, true)
-			//finally:
+				//finally:
 				d.vartree.dbapi.unlock()
 			}
 
-			if ! has_vdb_entry {
+			if !has_vdb_entry {
 				has_registry_entry := false
 				for plib_cps, v := range plib_registry._data {
 					plib_cpv, plib_counter, plib_paths := v.cpv, v.counter, v.paths
@@ -5292,20 +5380,20 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 						//except ValueError:
 						continue
 					}
-					cp, slot := cs[0], cs[1]
+					cp, slot = cs[0], cs[1]
 					counter = plib_counter
 					has_registry_entry = true
 					break
 				}
 
-				if ! has_registry_entry {
+				if !has_registry_entry {
 					continue
 				}
 			}
 
 			remaining := []string{}
-			for _, f:= range plib_dict[cpv]{
-				if !Ins(paths,f){
+			for _, f := range plib_dict[cpv] {
+				if !Ins(paths, f) {
 					remaining = append(remaining, f)
 				}
 			}
@@ -5318,19 +5406,18 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 	d.vartree.dbapi._add(d)
 	contents = d.getcontents()
 
-		d.settings.ValueDict["PORTAGE_UPDATE_ENV"] = 
-filepath.Join(d.dbpkgdir, "environment.bz2")
+	d.settings.ValueDict["PORTAGE_UPDATE_ENV"] = filepath.Join(d.dbpkgdir, "environment.bz2")
 	d.settings.BackupChanges("PORTAGE_UPDATE_ENV")
 	//try:
 	phase = NewEbuildPhase(nil, false, "postinst",
-	d._scheduler,d.settings , nil)
+		d._scheduler, d.settings, nil)
 	phase.start()
 	a = phase.wait()
 	if a == 0 {
 		showMessage(fmt.Sprintf(">>> %s merged.\n", d.mycpv), 0, 0)
 	}
 	//finally:
-	delete(d.settings.ValueDict,"PORTAGE_UPDATE_ENV")
+	delete(d.settings.ValueDict, "PORTAGE_UPDATE_ENV")
 
 	if a != 0 {
 		d._postinst_failure = true
@@ -5426,7 +5513,7 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 	join := filepath.Join
 	srcroot = strings.TrimRight(NormalizePath(srcroot), sep) + sep
 	destroot = strings.TrimRight(NormalizePath(destroot), sep) + sep
-	calc_prelink :=  d.settings.Features.Features["prelink-checksums"]
+	calc_prelink := d.settings.Features.Features["prelink-checksums"]
 
 	protect_if_modified := d.settings.Features.Features["config-protect-if-modified"] && d._installed_instance != nil
 
@@ -5438,7 +5525,7 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 		{
 			mergelist = append(mergelist, join(stufftomerge, child))
 		}
-	}else {
+	} else {
 		mergelist = stufftomerge[:]
 	}
 
@@ -5455,19 +5542,19 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 
 		mymtime := mystat.ModTime().Nanosecond()
 
-		if mymode&syscall.S_IFREG!=0 {
+		if mymode&syscall.S_IFREG != 0 {
 			mymd5 = string(performMd5(mysrc, calc_prelink))
-		}else if mymode&syscall.S_IFLNK!= 0 {
+		} else if mymode&syscall.S_IFLNK != 0 {
 			myto, _ = filepath.EvalSymlinks(mysrc)
 			syscall.Unlink(mysrc)
 			os.Symlink(myto, mysrc)
-			h:=md5.New()
+			h := md5.New()
 			h.Write([]byte(myto))
 			mymd5 = hex.EncodeToString(h.Sum(nil))
 		}
 
 		protected := false
-		if mymode&syscall.S_IFLNK!= 0 || mymode&syscall.S_IFREG!=0 {
+		if mymode&syscall.S_IFLNK != 0 || mymode&syscall.S_IFREG != 0 {
 			protected = d.isprotected(mydest)
 
 			if mymode&syscall.S_IFREG != 0 &&
@@ -5479,17 +5566,17 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 
 		destmd5 := ""
 		mydest_link := ""
-	//try:
+		//try:
 		mydstat, _ := os.Lstat(mydest)
 		mydmode := mydstat.Mode()
-		if protected{
-			if mymode&syscall.S_IFLNK!= 0{
-				mydest_link ,  _ = filepath.EvalSymlinks(mydest)
-				h:=md5.New()
+		if protected {
+			if mymode&syscall.S_IFLNK != 0 {
+				mydest_link, _ = filepath.EvalSymlinks(mydest)
+				h := md5.New()
 				h.Write([]byte(mydest_link))
 				destmd5 = hex.EncodeToString(h.Sum(nil))
 			} else if syscall.S_IFREG&mydmode != 0 {
-				destmd5 = string(performMd5(mydest,calc_prelink))
+				destmd5 = string(performMd5(mydest, calc_prelink))
 			}
 		}
 		//except (FileNotFound, OSError) as e:
@@ -5508,11 +5595,11 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 		}
 
 		zing := "!!!"
-		if ! moveme {
+		if !moveme {
 			zing = "---"
 		}
 
-		if syscall.S_IFLNK&mymode!=0 {
+		if syscall.S_IFLNK&mymode != 0 {
 			myabsto := abssymlink(mysrc, target = myto)
 
 			if strings.HasPrefix(myabsto, srcroot) {
@@ -5552,18 +5639,18 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 			}
 
 			st, err := os.Lstat(mydest)
-			if err != nil{
+			if err != nil {
 				//except OSError:
 				//pass
-			}else {
-				d._merged_path(mydest,st, true)
+			} else {
+				d._merged_path(mydest, st, true)
 			}
 
 			if mymtime != nil {
 				if not(os.path.lexists(myrealto) || os.path.lexists(join(srcroot, myabsto))) {
 					d._eqawarn("preinst", []string{fmt.Sprintf("QA Notice: Symbolic link /%s points to /%s which does not exist.", relative_path, myabsto)})
 				}
-				showMessage(fmt.Sprintf("%s %s -> %s\n",zing, mydest, myto), 0, 0)
+				showMessage(fmt.Sprintf("%s %s -> %s\n", zing, mydest, myto), 0, 0)
 				outfile.Write([]byte("sym " + myrealdest + " -> " + myto + " " + fmt.Sprint(mymtime/1000000000) + "\n"))
 			} else {
 				showMessage("!!! Failed to move file.\n",
@@ -5572,14 +5659,14 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 					40, -1)
 				return 1
 			}
-		}else if syscall.S_IFDIR&mymode != 0 {
+		} else if syscall.S_IFDIR&mymode != 0 {
 			if mydmode != 0 {
-				if bsd_chflags {
-					dflags = mydstat.st_flags
-					if dflags != 0 {
-						bsd_chflags.lchflags(mydest, 0)
-					}
-				}
+				//if bsd_chflags {
+				//	dflags = mydstat.st_flags
+				//	if dflags != 0 {
+				//		bsd_chflags.lchflags(mydest, 0)
+				//	}
+				//}
 
 				if syscall.S_IFLNK&mydmode == 0 && !osAccess(mydest, unix.W_OK) {
 					pkgstuff := pkgSplit(d.pkg, "")
@@ -5593,9 +5680,9 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 
 				if syscall.S_IFDIR&mydmode != 0 || (syscall.S_IFLNK&mydmode != 0) && pathIsDir(mydest) {
 					showMessage(fmt.Sprintf("--- %s/\n", mydest), 0, 0)
-					if bsd_chflags {
-						bsd_chflags.lchflags(mydest, dflags)
-					}
+					//if bsd_chflags {
+					//	bsd_chflags.lchflags(mydest, dflags)
+					//}
 				} else {
 					backup_dest := d._new_backup_path(mydest)
 					msg := []string{}
@@ -5626,9 +5713,9 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 					//raise
 					//del e
 
-					if bsd_chflags {
-						bsd_chflags.lchflags(mydest, dflags)
-					}
+					//if bsd_chflags {
+					//	bsd_chflags.lchflags(mydest, dflags)
+					//}
 					os.Chmod(mydest, mystat[0])
 					os.Chown(mydest, mystat[4], mystat[5])
 					showMessage(fmt.Sprintf(">>> %s/\n", mydest), 0, 0)
@@ -5655,7 +5742,7 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 			ols, err := os.Lstat(mydest)
 			if err == nil {
 				d._merged_path(mydest, ols, true)
-			}else {
+			} else {
 				//except OSError:
 				//pass
 			}
@@ -5663,11 +5750,11 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 			outfile.Write([]byte("dir " + myrealdest + "\n"))
 
 			lds, _ := listDir(join(srcroot, relative_path))
-			for _, child:= range lds {
+			for _, child := range lds {
 				mergelist = append(mergelist, join(relative_path, child))
 			}
 
-		}else if syscall.S_IFREG&mymode!= 0 {
+		} else if syscall.S_IFREG&mymode != 0 {
 			if !protected && mydmode != 0 && syscall.S_IFDIR&mydmode != 0 {
 				newdest := d._new_backup_path(mydest)
 				msg := []string{}
@@ -5713,9 +5800,9 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 				outfile.Write([]byte("obj " + myrealdest + " " + mymd5 + " " + fmt.Sprint(mymtime/1000000000) + "\n"))
 			}
 			showMessage(fmt.Sprintf("%s %s\n", zing, mydest), 0, 0)
-		}else {
+		} else {
 			zing = "!!!"
-			if mydmode == 0{
+			if mydmode == 0 {
 				if movefile(mysrc, mydest, newmtime = thismtime,
 					sstat = mystat, mysettings = d.settings,
 					encoding=_encodings['merge']) != nil{
@@ -5726,16 +5813,16 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 					except
 					OSError:
 					pass
-				}else{
+				} else {
 					return 1
 				}
 			}
-			if syscall.S_IFIFO&mymode!= 0 {
-				outfile.Write([]byte(fmt.Sprintf("fif %s\n" , myrealdest)))
-			}else {
+			if syscall.S_IFIFO&mymode != 0 {
+				outfile.Write([]byte(fmt.Sprintf("fif %s\n", myrealdest)))
+			} else {
 				outfile.Write([]byte(fmt.Sprintf("dev %s\n", myrealdest)))
 			}
-			showMessage(zing + " " + mydest + "\n",0,0)
+			showMessage(zing+" "+mydest+"\n", 0, 0)
 		}
 	}
 }
