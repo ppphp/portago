@@ -3,7 +3,10 @@ package atom
 import (
 	"fmt"
 	"github.com/ppphp/shlex"
+	"golang.org/x/sys/unix"
 	"io/ioutil"
+	"math/rand"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -29,7 +32,7 @@ type RsyncSync struct {
 	bin_command           string
 	servertimestampfile   string
 	rsync_initial_timeout int
-	proto ,ssh_opts                string
+	proto, ssh_opts       string
 }
 
 func(r *RsyncSync) name() string {
@@ -42,7 +45,7 @@ func NewRsyncSync() *RsyncSync {
 	return r
 }
 
-func(r *RsyncSync) update() {
+func(r *RsyncSync) update() (int,bool) {
 	opts := r.options["emerge_config"].opts
 	r.usersync_uid = r.options["usersync_uid"]
 	enter_invalid := "--ask-enter-invalid"
@@ -58,18 +61,18 @@ func(r *RsyncSync) update() {
 	} else {
 		vcs_dirs = CopyMapSB(VcsDirs)
 		old, _ := listDir(r.repo.Location)
-		for k := range vcs_dirs{
+		for k := range vcs_dirs {
 			if !Ins(old, k) {
 				delete(vcs_dirs, k)
 			}
 		}
 	}
 
-	for vcs_dir:= range vcs_dirs {
+	for vcs_dir := range vcs_dirs {
 		WriteMsgLevel(fmt.Sprintf("!!! %s appears to be under revision "+
 			"control (contains %s).\n!!! Aborting rsync sync "+
 			"(override with \"sync-rsync-vcs-ignore = true\" in repos.conf).\n",
-				r.repo.Location, vcs_dir), 40, -1)
+			r.repo.Location, vcs_dir), 40, -1)
 		return 1, false
 	}
 	r.timeout = 180
@@ -83,10 +86,10 @@ func(r *RsyncSync) update() {
 	r.rsync_opts = r._rsync_opts_extend(opts, rsync_opts)
 
 	r.extra_rsync_opts = []string{}
-	if r.repo.moduleSpecificOptions["sync-rsync-extra-opts"]  != ""{
+	if r.repo.moduleSpecificOptions["sync-rsync-extra-opts"] != "" {
 		ss, _ := shlex.Split(strings.NewReader(
 			r.repo.moduleSpecificOptions["sync-rsync-extra-opts"]), false, true)
-		r.extra_rsync_opts= append(r.extra_rsync_opts,ss...)
+		r.extra_rsync_opts = append(r.extra_rsync_opts, ss...)
 	}
 
 	exitcode := 0
@@ -104,9 +107,9 @@ func(r *RsyncSync) update() {
 		if err != nil || r.verify_jobs < 0 {
 			//raise ValueError(r.verify_jobs)
 			//except ValueError:
-			WriteMsgLevel(fmt.Sprintf("!!! sync-rsync-verify-jobs not a positive integer: %s\n",r.verify_jobs, ), 30, -1)
+			WriteMsgLevel(fmt.Sprintf("!!! sync-rsync-verify-jobs not a positive integer: %s\n", r.verify_jobs, ), 30, -1)
 			r.verify_jobs = 0
-		} else{
+		} else {
 			if r.verify_jobs == 0 {
 				r.verify_jobs = 0
 			}
@@ -115,50 +118,59 @@ func(r *RsyncSync) update() {
 	max_age := r.repo.moduleSpecificOptions["sync-rsync-verify-max-age"]
 	if max_age != "" {
 		var err error
-		r.max_age,err = strconv.Atoi(max_age)
+		r.max_age, err = strconv.Atoi(max_age)
 		if err != nil || r.max_age < 0 {
 			//except ValueError:
 			WriteMsgLevel(fmt.Sprintf("!!! sync-rsync-max-age must be a non-negative integer: %s\n", r.max_age, ), 30, -1)
 			r.max_age = 0
 		}
-	}else {
+	} else {
 		r.max_age = 0
 	}
 
-//	openpgp_env = None
-//	if r.verify_metamanifest and
-//	gemato
-//	is
-//	not
-//None:
-//	if r.repo.syncOpenpgpKeyPath is
-//	not
-//None:
-//	openpgp_env = gemato.openpgp.OpenPGPEnvironment()
-//	else:
-//	openpgp_env = gemato.openpgp.OpenPGPSystemEnvironment()
-//
-//try:
-//	if openpgp_env is
-//	not
-//	None
-//	&&r.repo.syncOpenpgpKeyPath!= nil:
-//try:
-//	out.einfo("Using keys from %s" % (r.repo.syncOpenpgpKeyPath, ))
-//	with
-//	io.open(r.repo.syncOpenpgpKeyPath, "rb")
-//	as
-//f:
-//	openpgp_env.import_key(f)
-//	r._refresh_keys(openpgp_env)
-//	except(GematoException, asyncio.TimeoutError)
-//	as
-//e:
-//	WriteMsgLevel("!!! Manifest verification impossible due to keyring problem:\n%s\n"
-//	% (e,),
-//	level = 40, noiselevel=-1)
-//	return (1, false)
-//
+	//	openpgp_env = None
+	//	if r.verify_metamanifest and
+	//	gemato
+	//	is
+	//	not
+	//None:
+	//	if r.repo.syncOpenpgpKeyPath is
+	//	not
+	//None:
+	//	openpgp_env = gemato.openpgp.OpenPGPEnvironment()
+	//	else:
+	//	openpgp_env = gemato.openpgp.OpenPGPSystemEnvironment()
+	//
+
+	defer func() {
+		if !verify_failure {
+			r.repoStorage().abort_update()
+		}
+		//if openpgp_env is not None:
+		//openpgp_env.close()
+	}()
+
+	//try:
+	//	if openpgp_env is
+	//	not
+	//	None
+	//	&&r.repo.syncOpenpgpKeyPath!= nil:
+	//try:
+	//	out.einfo("Using keys from %s" % (r.repo.syncOpenpgpKeyPath, ))
+	//	with
+	//	io.open(r.repo.syncOpenpgpKeyPath, "rb")
+	//	as
+	//f:
+	//	openpgp_env.import_key(f)
+	//	r._refresh_keys(openpgp_env)
+	//	except(GematoException, asyncio.TimeoutError)
+	//	as
+	//e:
+	//	WriteMsgLevel("!!! Manifest verification impossible due to keyring problem:\n%s\n"
+	//	% (e,),
+	//	level = 40, noiselevel=-1)
+	//	return (1, false)
+	//
 	r.servertimestampfile = filepath.Join(
 		r.repo.Location, "metadata", "timestamp.chk")
 
@@ -166,10 +178,10 @@ func(r *RsyncSync) update() {
 	timestamp := int64(0)
 	if len(content) == 0 {
 		timestampT, err := time.Parse(content[0][0], time.RFC1123) // TimestampFormat)
-		if err!= nil {
+		if err != nil {
 			//except(OverflowError, ValueError):
 			//pass
-		}else {
+		} else {
 			timestamp = timestampT.UnixNano()
 		}
 	}
@@ -196,7 +208,7 @@ func(r *RsyncSync) update() {
 		maxretries = -1
 	}
 
-	if strings.HasPrefix(syncuri,"file://") {
+	if strings.HasPrefix(syncuri, "file://") {
 		r.proto = "file"
 		dosyncuri := syncuri[7:]
 		unchanged, is_synced, exitcode, updatecache_flg := r._do_rsync(
@@ -216,224 +228,222 @@ func(r *RsyncSync) update() {
 	retries := 0
 	ruhp := regexp.MustCompile("(rsync|ssh)://([^:/]+@)?(\\[[:\\da-fA-F]*\\]|[^:/]*)(:[0-9]+)?")
 	r.proto = ruhp.FindStringSubmatch(syncuri)[1]
-	user_name, hostname, port := ruhp.FindStringSubmatch(syncuri)[2],ruhp.FindStringSubmatch(syncuri)[3],ruhp.FindStringSubmatch(syncuri)[4]
-//except ValueError:
-//WriteMsgLevel("!!! sync-uri is invalid: %s\n" % syncuri,
-//noiselevel = -1, level = 40)
-//return (1, false)
+	user_name, hostname, port := ruhp.FindStringSubmatch(syncuri)[2], ruhp.FindStringSubmatch(syncuri)[3], ruhp.FindStringSubmatch(syncuri)[4]
+	//except ValueError:
+	//WriteMsgLevel("!!! sync-uri is invalid: %s\n" % syncuri,
+	//noiselevel = -1, level = 40)
+	//return (1, false)
 
-r.ssh_opts = r.settings.ValueDict["PORTAGE_SSH_OPTS"]
+	r.ssh_opts = r.settings.ValueDict["PORTAGE_SSH_OPTS"]
 
-if port == "" {
-	port = ""
-}
-if user_name == "" {
-	user_name = ""
-}
-
-	getaddrinfo_host:=""
-if ok, _ := regexp.MatchString("^\\[[:\\da-fA-F]*\\]$", hostname) ; !ok{
-	getaddrinfo_host = hostname
-}else {
-	getaddrinfo_host = hostname[1:len(hostname)-1]
-}
-
-all_rsync_opts := map[string]bool{}
-for _, k := range r.rsync_opts{
-	all_rsync_opts[k]=true
-}
-	for _, k := range r.extra_rsync_opts{
-		all_rsync_opts[k]=true
+	if port == "" {
+		port = ""
+	}
+	if user_name == "" {
+		user_name = ""
 	}
 
-	family := socket.AF_UNSPEC
-if "-4" in all_rsync_opts or "--ipv4" in all_rsync_opts{
-		family = socket.AF_INET
-	}else if socket.has_ipv6 and
-("-6" in all_rsync_opts or "--ipv6" in all_rsync_opts){
-		family = socket.AF_INET6
+	getaddrinfo_host := ""
+	if ok, _ := regexp.MatchString("^\\[[:\\da-fA-F]*\\]$", hostname); !ok {
+		getaddrinfo_host = hostname
+	} else {
+		getaddrinfo_host = hostname[1 : len(hostname)-1]
 	}
 
-addrinfos = None
-uris = []
-
-try:
-addrinfos = getaddrinfo_validate(
-socket.getaddrinfo(getaddrinfo_host, None,
-family, socket.SOCK_STREAM))
-except socket.error as e:
-WriteMsgLevel(
-"!!! getaddrinfo failed for "%s": %s\n"
-% (_unicode_decode(hostname), _unicode(e)),
-noiselevel= -1, level = 40)
-
-if addrinfos {
-
-	AF_INET = socket.AF_INET
-	AF_INET6 = None
-	if socket.has_ipv6 {
-		AF_INET6 = socket.AF_INET6
+	all_rsync_opts := map[string]bool{}
+	for _, k := range r.rsync_opts {
+		all_rsync_opts[k] = true
 	}
-}
-
-ips_v4 = []
-ips_v6 = []
-
-for addrinfo in addrinfos{
-		if addrinfo[0] == AF_INET{
-		ips_v4 = append("%s" % addrinfo[4][0])
-	}else if AF_INET6 is not None and addrinfo[0] == AF_INET6{
-		ips_v6 = append("[%s]" % addrinfo[4][0])
-	}
+	for _, k := range r.extra_rsync_opts {
+		all_rsync_opts[k] = true
 	}
 
-random.shuffle(ips_v4)
-random.shuffle(ips_v6)
+	uris := []string{}
 
-if AF_INET6 is not None and addrinfos and \
-addrinfos[0][0] == AF_INET6{
-	ips = ips_v6 + ips_v4
-}else {
-		ips = ips_v4 + ips_v6
+	addrinfos, err := net.LookupIP(getaddrinfo_host)
+	if err != nil {
+		//except socket.error as e:
+		WriteMsgLevel(fmt.Sprintf("!!! getaddrinfo failed for \"%s\": %s\n",
+			hostname, err), -1, 40)
 	}
 
-for ip in ips{
-		uris = append(syncuri.replace(
-		"//" + user_name + hostname + port + "/",
-		"//" + user_name + ip + port + "/", 1))
+	if len(addrinfos) > 0 {
+
+		ips_v4 := []string{}
+		ips_v6 := []string{}
+
+		for _, addrinfo := range addrinfos {
+			if addrinfo.To4() != nil {
+				ips_v4 = append(ips_v4, fmt.Sprintf("%s", addrinfo.String()))
+			} else if addrinfo.To4() == nil {
+				ips_v6 = append(ips_v6, fmt.Sprintf("[%s]", addrinfo.String()))
+			}
+		}
+
+		rand.Shuffle(len(ips_v4), func(i, j int) {
+			ips_v4[i], ips_v4[j] = ips_v4[j], ips_v4[i]
+		})
+		rand.Shuffle(len(ips_v6), func(i, j int) {
+			ips_v6[i], ips_v6[j] = ips_v6[j], ips_v6[i]
+		})
+
+		ips := []string{}
+		if len(addrinfos) > 0 && addrinfos[0].To4() == nil {
+			ips = append(append([]string{}, ips_v6...), ips_v4...)
+		} else {
+			ips = append(append([]string{}, ips_v4...), ips_v6...)
+		}
+
+		for _, ip := range ips {
+			uris = append(uris, strings.Replace(syncuri,
+				"//"+user_name+hostname+port+"/",
+				"//"+user_name+ip+port+"/", 1))
+		}
+
+	}
+	if len(uris) == 0 {
+		uris = append(uris, syncuri)
+	} else if len(uris) == 1 {
+		uris = []string{syncuri}
 	}
 
-if not uris {
-	uris = append(syncuri)
-}else if len(uris) == 1 {
-	uris = [syncuri]
-}
+	ReverseSlice(uris)
+	uris_orig := []string{}
+	copy(uris_orig, uris)
 
-uris.reverse()
-uris_orig = uris[:]
+	effective_maxretries := maxretries
+	if effective_maxretries < 0 {
+		effective_maxretries = len(uris) - 1
+	}
 
-effective_maxretries := maxretries
-if effective_maxretries < 0 {
-	effective_maxretries = len(uris) - 1
-}
+	local_state_unchanged := true
+	dosyncuri := ""
+	for {
+		if len(uris) > 0 {
+			dosyncuri = uris[len(uris)-1]
+			uris = uris[:len(uris)-1]
+		} else if maxretries < 0 ||
+			retries > maxretries {
+			WriteMsg(fmt.Sprintf("!!! Exhausted addresses for %s\n", hostname), -1, nil)
+			return 1, false
+		} else {
+			uris = append(uris, uris_orig...)
+			dosyncuri = uris[len(uris)-1]
+			uris = uris[:len(uris)-1]
+		}
 
-local_state_unchanged := true
-for {
-	if uris:
-	dosyncuri = uris.pop()
-	else if maxretries < 0 or
-	retries > maxretries:
-	writemsg("!!! Exhausted addresses for %s\n"
-	% _unicode_decode(hostname), noiselevel = -1)
-	return (1, false) else:
-	uris.extend(uris_orig)
-	dosyncuri = uris.pop()
+		if (retries == 0) {
+			if "--ask" in opts{
+				uq := NewUserQuery(opts)
+				if uq.query("Do you want to sync your ebuild repository " +
+				"with the mirror at\n" + Blue(dosyncuri) + Bold("?"),
+				enter_invalid, nil, nil) == "No"{
+				print()
+				print("Quitting.")
+				print()
+				os.exit(128 + unix.SIGINT)
+			}
+			}
+			r.logger(r.xtermTitles,
+				">>> Starting rsync with "+dosyncuri)
+			if "--quiet" not
+			in
+			opts{
+				print(">>> Starting rsync with " + dosyncuri + "...")
+			}
+		} else {
+			r.logger(r.xtermTitles,
+				fmt.Sprintf(">>> Starting retry %d of %d with %s",
+					retries, effective_maxretries, dosyncuri))
+			WriteMsgStdout(fmt.Sprintf("\n\n>>> Starting retry %d of %d with %s\n",
+				retries, effective_maxretries, dosyncuri), -1)
+		}
 
-	if (retries == 0):
-	if "--ask" in
-opts:
-	uq = UserQuery(opts)
-	if uq.query("Do you want to sync your ebuild repository " + \
-	"with the mirror at\n" + blue(dosyncuri) + bold("?"),
-		enter_invalid) == "No":
-	print()
-	print("Quitting.")
-	print()
-	sys.exit(128 + signal.SIGINT)
-	r.logger(r.xterm_titles,
-		">>> Starting rsync with "+dosyncuri)
-	if "--quiet" not
-	in
-opts:
-	print(">>> Starting rsync with " + dosyncuri + "...") else:
-	r.logger(r.xterm_titles,
-		">>> Starting retry %d of %d with %s"% \
-	(retries, effective_maxretries, dosyncuri))
-	writemsg_stdout(
-		"\n\n>>> Starting retry %d of %d with %s\n" % \
-	(retries, effective_maxretries, dosyncuri), noiselevel = -1)
+		if strings.HasPrefix(dosyncuri, "ssh://") {
+			dosyncuri = strings.Replace(dosyncuri[6:], "/", ":/", 1)
+		}
 
-	if dosyncuri.startswith("ssh://"):
-	dosyncuri = dosyncuri[6:].replace("/", ":/", 1)
+		unchanged, is_synced, exitcode, updatecache_flg := r._do_rsync(
+			dosyncuri, timestamp, opts)
+		if !unchanged {
+			local_state_unchanged = false
+		}
+		if is_synced {
+			break
+		}
 
-	unchanged, is_synced, exitcode, updatecache_flg = r._do_rsync(
-		dosyncuri, timestamp, opts)
-	if not unchanged:
-	local_state_unchanged = false
-	if is_synced:
-	break
+		retries = retries + 1
 
-	retries = retries + 1
+		if maxretries < 0 || retries <= maxretries {
+			print(">>> Retrying...")
+		} else {
+			exitcode = EXCEEDED_MAX_RETRIES
+			break
+		}
+	}
 
-	if maxretries < 0 or
-	retries <= maxretries:
-	print(">>> Retrying...") else:
-	exitcode = EXCEEDED_MAX_RETRIES
-	break
-}
+	r._process_exitcode(exitcode, dosyncuri, out, maxretries)
 
-r._process_exitcode(exitcode, dosyncuri, out, maxretries)
+	download_dir := ""
+	if local_state_unchanged {
+		download_dir = r.repo.Location
+	} else {
+		download_dir = r.downloadDir
+	}
 
-if local_state_unchanged:
-download_dir = r.repo.Location else:
-download_dir = r.download_dir
+	if exitcode == 0 && r.verify_metamanifest {
+		//if gemato is None:
+		//WriteMsgLevel("!!! Unable to verify: gemato-11.0+ is required\n",
+		//level = 40, noiselevel =-1)
+		//exitcode = 127 else:
+		//try:
+		//m = gemato.recursiveloader.ManifestRecursiveLoader(
+		//filepath.Join(download_dir, "Manifest"),
+		//verify_openpgp = true,
+		//openpgp_env = openpgp_env,
+		//max_jobs= r.verify_jobs)
+		//if not m.openpgp_signed:
+		//raise RuntimeError("OpenPGP signature not found on Manifest")
+		//
+		//ts = m.find_timestamp()
+		//if ts is None:
+		//raise RuntimeError("Timestamp not found in Manifest")
+		//if (r.max_age != 0 and
+		//(datetime.datetime.utcnow() - ts.ts).days > r.max_age):
+		//out.quiet = false
+		//out.ewarn("Manifest is over %d days old, this is suspicious!" % (r.max_age, ))
+		//out.ewarn("You may want to try using another mirror and/or reporting this one:")
+		//out.ewarn("  %s" % (dosyncuri, ))
+		//out.ewarn("")
+		//out.quiet = quiet
+		//
+		//out.einfo("Manifest timestamp: %s UTC" % (ts.ts,))
+		//out.einfo("Valid OpenPGP signature found:")
+		//out.einfo("- primary key: %s" % (
+		//m.openpgp_signature.primary_key_fingerprint))
+		//out.einfo("- subkey: %s" % (
+		//m.openpgp_signature.fingerprint))
+		//out.einfo("- timestamp: %s UTC" % (
+		//m.openpgp_signature.timestamp))
+		//
+		//if not local_state_unchanged:
+		//out.ebegin("Verifying %s" % (download_dir, ))
+		//m.assert_directory_verifies()
+		//out.eend(0)
+		//except GematoException as e:
+		//WriteMsgLevel("!!! Manifest verification failed:\n%s\n"
+		//% (e, ),
+		//level= 40, noiselevel = -1)
+		//exitcode = 1
+		//verify_failure = true
+	}
 
-if exitcode == 0 and r.verify_metamanifest:
-if gemato is None:
-WriteMsgLevel("!!! Unable to verify: gemato-11.0+ is required\n",
-level = 40, noiselevel =-1)
-exitcode = 127 else:
-try:
-m = gemato.recursiveloader.ManifestRecursiveLoader(
-filepath.Join(download_dir, "Manifest"),
-verify_openpgp = true,
-openpgp_env = openpgp_env,
-max_jobs= r.verify_jobs)
-if not m.openpgp_signed:
-raise RuntimeError("OpenPGP signature not found on Manifest")
+	if exitcode == 0 && !local_state_unchanged {
+		r.repo_storage.commit_update()
+		r.repo_storage.garbage_collection()
+	}
 
-ts = m.find_timestamp()
-if ts is None:
-raise RuntimeError("Timestamp not found in Manifest")
-if (r.max_age != 0 and
-(datetime.datetime.utcnow() - ts.ts).days > r.max_age):
-out.quiet = false
-out.ewarn("Manifest is over %d days old, this is suspicious!" % (r.max_age, ))
-out.ewarn("You may want to try using another mirror and/or reporting this one:")
-out.ewarn("  %s" % (dosyncuri, ))
-out.ewarn("")
-out.quiet = quiet
-
-out.einfo("Manifest timestamp: %s UTC" % (ts.ts,))
-out.einfo("Valid OpenPGP signature found:")
-out.einfo("- primary key: %s" % (
-m.openpgp_signature.primary_key_fingerprint))
-out.einfo("- subkey: %s" % (
-m.openpgp_signature.fingerprint))
-out.einfo("- timestamp: %s UTC" % (
-m.openpgp_signature.timestamp))
-
-if not local_state_unchanged:
-out.ebegin("Verifying %s" % (download_dir, ))
-m.assert_directory_verifies()
-out.eend(0)
-except GematoException as e:
-WriteMsgLevel("!!! Manifest verification failed:\n%s\n"
-% (e, ),
-level= 40, noiselevel = -1)
-exitcode = 1
-verify_failure = true
-
-if exitcode == 0 and not local_state_unchanged:
-r.repo_storage.commit_update()
-r.repo_storage.garbage_collection()
-
-return (exitcode, updatecache_flg)
-finally:
-if not verify_failure:
-r.repo_storage.abort_update()
-if openpgp_env is not None:
-openpgp_env.close()
+	return exitcode, updatecache_flg
 }
 
 func(r *RsyncSync) _process_exitcode(exitcode int, syncuri string, out *eOutput, maxretries int) {
@@ -471,7 +481,7 @@ func(r *RsyncSync) _process_exitcode(exitcode int, syncuri string, out *eOutput,
 	}
 }
 
-func(r *RsyncSync) new(r, * *kwargs) (int, bool) {
+func(r *RsyncSync) new(* *kwargs) (int, bool) {
 	if kwargs {
 		r._kwargs(kwargs)
 	}
@@ -702,24 +712,24 @@ finally:
 		if (servertimestamp != 0) && (servertimestamp == timestamp) {
 			local_state_unchanged = true
 			is_synced = true
-			r.logger(r.xterm_titles,
+			r.logger(r.xtermTitles,
 				">>> Cancelling sync -- Already current.")
 			print()
 			print(">>>")
 			print(">>> Timestamps on the server and in the local repository are the same.")
 			print(">>> Cancelling all further sync action. You are already up to date.")
 			print(">>>")
-			print(">>> In order to force sync, remove '%s'." % r.servertimestampfile)
+			print(fmt.Sprintf(">>> In order to force sync, remove '%s'." ,r.servertimestampfile))
 			print(">>>")
 			print()
 		} else if (servertimestamp != 0) && (servertimestamp < timestamp) {
-			r.logger(r.xterm_titles,
-				">>> Server out of date: %s"%syncuri)
+			r.logger(r.xtermTitles,
+				fmt.Sprintf(">>> Server out of date: %s",syncuri))
 			print()
 			print(">>>")
-			print(">>> SERVER OUT OF DATE: %s" % syncuri)
+			print(fmt.Sprintf(">>> SERVER OUT OF DATE: %s" , syncuri))
 			print(">>>")
-			print(">>> In order to force sync, remove '%s'." % r.servertimestampfile)
+			print(fmt.Sprintf(">>> In order to force sync, remove '%s'." , r.servertimestampfile))
 			print(">>>")
 			print()
 			exitcode = SERVER_OUT_OF_DATE
@@ -732,33 +742,29 @@ finally:
 				for path
 					in
 				submodule_paths {
-					command = append(syncuri + "/./" + path)
+					command = append(command,syncuri + "/./" + path)
 				}
 			} else {
-				command = append(syncuri + "/")
+				command = append(command, syncuri + "/")
 			}
 
-			command = append(r.download_dir)
+			command = append(command, r.downloadDir)
 
-			exitcode = None
-		try:
-			exitcode = portage.process.spawn(command,
+			exitcode := spawn(command,
 				**r.spawn_kwargs)
-		finally:
 			if exitcode is
-		None:
+		None{
 			exitcode = 128 + signal.SIGINT
+		}
 
-			if exitcode not
-			in(0, 1, 2, 5, 35):
-			timestamp = 0
-		try:
-			syscall.Unlink(r.servertimestampfile)
-			except
-		OSError:
-			pass
-			else:
-			updatecache_flg = true
+			if exitcode != 0&&exitcode != 1&&exitcode != 2&&exitcode != 5&&exitcode != 35 {
+				if err := syscall.Unlink(r.servertimestampfile); err != nil {
+					//except OSError:
+					//pass
+				} else {
+					updatecache_flg = true
+				}
+			}
 
 			if exitcode == 0 || exitcode == 1 || exitcode == 3 || exitcode == 4 || exitcode == 11 || exitcode == 14 || exitcode == 20 || exitcode == 21 {
 				is_synced = true

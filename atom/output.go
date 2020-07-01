@@ -293,16 +293,8 @@ var compat_functions_colors = []string{
 	"brown", "darkyellow", "red", "darkred",
 }
 
-type create_color_func struct {
-	colorKey string
-}
-
-func (c *create_color_func) call(text string) string {
-	return colorize(c.colorKey, text)
-}
-
-func NewCreateColorFunc(colorKey string) *create_color_func {
-	return &create_color_func{colorKey: colorKey}
+func NewCreateColorFunc(colorKey string) func(text string)string {
+	return func(text string)string{ return colorize(colorKey, text)}
 }
 
 var Bold = func(text string) string { return colorize("bold", text) }

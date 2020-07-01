@@ -1722,8 +1722,8 @@ if find_binary(decompression_binary) is None{
 pkg_xpak = portage.xpak.tbz2(b.pkg_path)
 pkg_xpak.scan()
 
-b.args = [b._shell_binary, "-c",
-("cmd0=(head -c %d -- %s) cmd1=(%s) cmd2=(tar -xp %s -C %s -f -); " +
+b.args = []string{b._shell_binary, "-c",
+fmt.Sprintf("cmd0=(head -c %d -- %s) cmd1=(%s) cmd2=(tar -xp %s -C %s -f -); " +
 '"${cmd0[@]}" | "${cmd1[@]}" | "${cmd2[@]}"; ' +
 "p=(${PIPESTATUS[@]}) ; for i in {0..2}; do " +
 "if [[ ${p[$i]} != 0 && ${p[$i]} != %d ]] ; then " +
@@ -1732,13 +1732,13 @@ b.args = [b._shell_binary, "-c",
 "if [ ${p[$i]} != 0 ] ; then " +
 "echo command $(eval \"echo \\\"'\\${cmd$i[*]}'\\\"\") " +
 "failed with status ${p[$i]} ; exit ${p[$i]} ; fi ; " +
-"exit 0 ;") %
-(pkg_xpak.filestat.st_size - pkg_xpak.xpaksize,
-portage._shell_quote(b.pkg_path),
+"exit 0 ;",
+pkg_xpak.filestat.st_size - pkg_xpak.xpaksize,
+ShellQuote(b.pkg_path),
 decomp_cmd,
 tar_options,
-portage._shell_quote(b.image_dir),
-128 + signal.SIGPIPE)]
+	ShellQuote(b.image_dir),
+128 + signal.SIGPIPE)}
 
 SpawnProcess._start(b)
 }
@@ -7308,23 +7308,76 @@ finally:
 func (s *Scheduler) _pkg( cpv, type_name, root_config, installed=false,
 operation=nil, myrepo=nil) {
 
-	pkg = s._pkg_cache.get(Package._gen_hash_key(cpv = cpv,
+	pkg = s._pkg_cache.get(NewPackage()._gen_hash_key(cpv = cpv,
 		type_name = type_name, repo_name=myrepo, root_config = root_config,
 		installed=installed, operation = operation))
 
-	if pkg != nil:
-	return pkg
+	if pkg != nil {
+		return pkg
+	}
 
 	tree_type = depgraph.pkg_tree_map[type_name]
 	db = root_config.trees[tree_type].dbapi
 	db_keys = list(s.trees[root_config.root][
 		tree_type].dbapi._aux_cache_keys)
 	metadata = zip(db_keys, db.aux_get(cpv, db_keys, myrepo = myrepo))
-	pkg = Package(built = (type_name != "ebuild"),
-		cpv = cpv, installed=installed, metadata = metadata,
-		root_config=root_config, type_name = type_name)
+	pkg := NewPackage(type_name != "ebuild",
+		cpv, installed, metadata,
+		root_config, type_name)
 	s._pkg_cache[pkg] = pkg
 	return pkg
+}
+
+type UserQuery struct{
+	myopts
+}
+
+// nil, nil
+func(u*UserQuery) query(prompt string, enter_invalid bool, responses []string, colours []func(string)string) string {
+	if responses == nil {
+		responses = []string{"Yes", "No"}
+		colours = []func(string) string{
+			NewCreateColorFunc("PROMPT_CHOICE_DEFAULT"),
+			NewCreateColorFunc("PROMPT_CHOICE_OTHER"),
+		}
+	} else if colours == nil {
+		colours = []func(string) string{Bold}
+	}
+	colours = (colours * len(responses))[:len(responses)]
+	if "--alert" in u.myopts{
+		prompt = "\a" + prompt
+	}
+	print(Bold(prompt) + " ")
+	for {
+		rs := []string{}
+		for i := range responses {
+			rs = append(rs, colours[i](responses[i]))
+		}
+		ipt := fmt.Sprintf("[%s] ", strings.Join(rs, "/"))
+
+		fmt.Print(ipt)
+		response := ""
+		_, err := fmt.Scanln(&response)
+		if err != nil {
+			//except (EOFError, KeyboardInterrupt):
+			print("Interrupted.")
+			syscall.Exit(128 + int(unix.SIGINT))
+		}
+		if len(response) > 0 || !enter_invalid {
+			for _, key := range responses {
+				if strings.ToUpper(response) == strings.ToUpper(key[:len(response)]) {
+					return key
+				}
+			}
+		}
+		print(fmt.Sprintf("Sorry, response '%s' not understood.", response) + " ")
+	}
+	return ""
+}
+
+func NewUserQuery(myopts)*UserQuery{
+	u := &UserQuery{}
+	return u
 }
 
 type  SchedulerInterface struct {
