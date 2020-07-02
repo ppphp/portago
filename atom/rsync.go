@@ -738,11 +738,11 @@ finally:
 
 			submodule_paths := r._get_submodule_paths()
 			if submodule_paths {
-				command = append("--relative")
+				command = append(command, "--relative")
 				for path
 					in
 				submodule_paths {
-					command = append(command,syncuri + "/./" + path)
+					command = append(command, syncuri+"/./"+path)
 				}
 			} else {
 				command = append(command, syncuri + "/")

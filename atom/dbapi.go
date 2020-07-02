@@ -5451,22 +5451,21 @@ func (d *dblink) _new_backup_path(p string) string {
 
 func (d *dblink) _merge_contents(srcroot, destroot string, cfgfiledict  map[string][]string) int {
 
-	cfgfiledict_orig := cfgfiledict.copy()
+	cfgfiledict_orig := CopyMapSSS(cfgfiledict)
 
 	outfile := NewAtomic_ofstream(filepath.Join(d.dbtmpdir, "CONTENTS"), os.O_CREATE|os.O_TRUNC|os.O_RDWR, true)
 
 	mymtime = nil
 
 	prevmask := syscall.Umask(0)
-	secondhand := []
+	secondhand := map[string][]string{}
 
-	if d.mergeme(srcroot, destroot, outfile, secondhand,
-		strings.TrimLeft(d.settings.ValueDict["EPREFIX"], string(os.PathSeparator)), cfgfiledict, mymtime) != 0 {
+	if d.mergeme(srcroot, destroot, outfile, secondhand, cfgfiledict, mymtime) != 0 {
 		return 1
 	}
 
 	lastlen := 0
-	for len(secondhand) > 0 && len(secondhand)!=lastlen {
+	for len(secondhand) > 0 && len(secondhand) != lastlen {
 
 		thirdhand = []
 		if d.mergeme(srcroot, destroot, outfile, thirdhand,
@@ -5479,7 +5478,7 @@ func (d *dblink) _merge_contents(srcroot, destroot string, cfgfiledict  map[stri
 		secondhand = thirdhand
 	}
 
-	if len(secondhand)>0 {
+	if len(secondhand) > 0 {
 		if d.mergeme(srcroot, destroot, outfile, nil,
 			secondhand, cfgfiledict, mymtime) != 0 {
 			return 1
@@ -5491,12 +5490,12 @@ func (d *dblink) _merge_contents(srcroot, destroot string, cfgfiledict  map[stri
 	outfile.Close()
 
 	if cfgfiledict != cfgfiledict_orig {
-		cfgfiledict.pop("IGNORE", nil)
+		delete(cfgfiledict,"IGNORE")
 	try:
 		writedict(cfgfiledict, d.vartree.dbapi._conf_mem_file)
 		except
 	InvalidLocation:
-		d.settings._init_dirs()
+		d.settings.InitDirs()
 		writedict(cfgfiledict, d.vartree.dbapi._conf_mem_file)
 	}
 
@@ -6815,23 +6814,23 @@ func (b *bindbapi) unpack_metadata(pkg, dest_dir){
 	}
 }
 
-func (b *bindbapi) unpack_contents(pkg, dest_dir){
+func (b *bindbapi) unpack_contents(pkg *PkgStr, dest_dir){
 
 	loop = asyncio._wrap_loop()
-	if isinstance(pkg, _pkg_str) {
-		settings = b.settings
+	//if isinstance(pkg, _pkg_str) {
+		settings := b.settings
 		cpv = pkg
-	}else {
-		settings = pkg
-		cpv = settings.mycpv
-	}
+	//}else {
+	//	settings = pkg
+	//	cpv = settings.mycpv
+	//}
 
-	pkg_path := b.bintree.getname(cpv, false)
+	pkg_path := b.bintree.getname(cpv.string, false)
 	if pkg_path != "" {
 
 		extractor := NewBinpkgExtractorAsync(
 			settings.ValueDict["PORTAGE_BACKGROUND"] == "1",
-			settings.environ(), settings.features, dest_dir,
+			settings.environ(), settings.Features.Features, dest_dir,
 			 cpv,  pkg_path, settings.ValueDict["PORTAGE_LOG_FILE"],
 			NewSchedulerInterface(loop))
 
@@ -8399,24 +8398,23 @@ func NewBetterCache( repositories []*RepoConfig)*_better_cache {
 
 type portdbapi struct {
 	*dbapi
-	_use_mutable            bool
-	repositories            *repoConfigLoader
-	treemap                 map[string]string
-	doebuild_settings       *Config
-	depcachedir             string
-	porttrees               []string
-	_have_root_eclass_dir   bool
-	xcache                  map[string]map[[2]string][]*PkgStr
-	frozen                  bool
-	auxdb                   map[string]*VolatileDatabase
-	_pregen_auxdb           map[string]string
-	_ro_auxdb               map[string]string
-	_ordered_repo_name_list []string
-	_aux_cache_keys         map[string]bool
-	_aux_cache              map[string]string
-	_broken_ebuilds         map[string]bool
-	_better_cache           *_better_cache
-	_porttrees_repos        map[string]*RepoConfig
+	_use_mutable             bool
+	repositories             *repoConfigLoader
+	treemap                  map[string]string
+	doebuild_settings        *Config
+	depcachedir              string
+	porttrees                []string
+	_have_root_eclass_dir    bool
+	xcache                   map[string]map[[2]string][]*PkgStr
+	frozen                   bool
+	auxdb                    map[string]*VolatileDatabase
+	_pregen_auxdb, _ro_auxdb map[string]map[string]string
+	_ordered_repo_name_list  []string
+	_aux_cache_keys          map[string]bool
+	_aux_cache               map[string]string
+	_broken_ebuilds          map[string]bool
+	_better_cache            *_better_cache
+	_porttrees_repos         map[string]*RepoConfig
 }
 
 func (p *portdbapi) _categories() map[string]bool{
@@ -8604,47 +8602,53 @@ try:
 		traceback.print_exc()
 }
 
-func (p *portdbapi) _pull_valid_cache(cpv, ebuild_path, repo_path) {
+func (p *portdbapi) _pull_valid_cache(cpv, ebuild_path, repo_path string) {
 
 try:
 	ebuild_hash = eclass_cache.hashed_path(ebuild_path)
 	ebuild_hash.mtime
 	except FileNotFound:
-	WriteMsg(_("!!! aux_get(): ebuild for " 
-"'%s' does not exist at:\n") % (cpv,), noiselevel=-1)
-	WriteMsg("!!!            %s\n" % ebuild_path, noiselevel=-1)
+	WriteMsg(fmt.Sprintf("!!! aux_get(): ebuild for "
+"'%s' does not exist at:\n", cpv,),-1, nil)
+	WriteMsg(fmt.Sprintf("!!!            %s\n" , ebuild_path),-1, nil)
 	raise PortageKeyError(cpv)
 
-		auxdbs = []
-	pregen_auxdb = p._pregen_auxdb.get(repo_path)
-	if pregen_auxdb != nil:
-	auxdbs=append(,pregen_auxdb)
-	ro_auxdb = p._ro_auxdb.get(repo_path)
-	if ro_auxdb != nil:
-	auxdbs=append(,ro_auxdb)
-	auxdbs=append(,p.auxdb[repo_path])
-	eclass_db = p.repositories.get_repo_for_location(repo_path).eclass_db
+	auxdbs := []map[string]string{}
+	pregen_auxdb := p._pregen_auxdb[repo_path]
+	if pregen_auxdb != nil {
+		auxdbs = append(auxdbs, pregen_auxdb)
+	}
+	ro_auxdb := p._ro_auxdb[repo_path]
+	if ro_auxdb != nil {
+		auxdbs = append(auxdbs, ro_auxdb)
+	}
+	auxdbs=append(auxdbs,p.auxdb[repo_path])
+	eclass_db := p.repositories.getRepoForLocation(repo_path).eclassDb
 
-	for auxdb in auxdbs:
-try:
-	metadata = auxdb[cpv]
-	except KeyError:
-	continue
-	except CacheError:
-	if not auxdb.readonly:
-try:
-	del auxdb[cpv]
-	except (KeyError, CacheError):
-	pass
-	continue
-	eapi = metadata.get("EAPI", "").strip()
-	if not eapi:
-	eapi = "0"
-	metadata["EAPI"] = eapi
-	if not eapi_is_supported(eapi):
-	continue
-	if auxdb.validate_entry(metadata, ebuild_hash, eclass_db):
-	break
+	for _, auxdb := range auxdbs {
+		metadata, ok := auxdb[cpv]
+		if !ok {
+			//except KeyError:
+			continue
+		}
+		except
+	CacheError:
+		if not auxdb.readonly:
+	try:
+		del
+		auxdb[cpv]
+		except(KeyError, CacheError):
+		pass
+		continue
+		eapi = metadata.get("EAPI", "").strip()
+		if not eapi:
+		eapi = "0"
+		metadata["EAPI"] = eapi
+		if not eapi_is_supported(eapi):
+		continue
+		if auxdb.validate_entry(metadata, ebuild_hash, eclass_db):
+		break
+	}
 	else:
 	metadata = nil
 
@@ -8880,33 +8884,37 @@ func (p *portdbapi) getfetchsizes(mypkg string, useflags []string, debug int, my
 	for myfile
 	in
 myfiles:
-try:
-	fetch_size = int(checksums[myfile]["size"])
-	except(KeyError, ValueError):
-	if debug:
-	WriteMsg(fmt.Sprintf("[bad digest]: missing %s for %s\n", myfile,mypkg), 0,nil)
-	continue
+	fetch_size, err := strconv.Atoi(checksums[myfile]["size"])
+	if err != nil {
+		//except(KeyError, ValueError):
+		if debug {
+			WriteMsg(fmt.Sprintf("[bad digest]: missing %s for %s\n", myfile, mypkg), 0, nil)
+		}
+		continue
+	}
 	file_path := filepath.Join(p.settings.ValueDict["DISTDIR"], myfile)
 	mystat, err := os.Stat(file_path)
 	if err != nil {
 		//except OSError:
 		//pass
-	}else:
-	if mystat.st_size != fetch_size:
-	mystat = nil
+	}else {
+		if mystat.Size() != fetch_size {
+			mystat = nil
+		}
+	}
 
-	if mystat is
-nil:
-try:
-	mystat = os.Stat(file_path + _download_suffix)
-	except
-OSError:
-	pass
+	if mystat == nil {
+		var err error
+		mystat, err = os.Stat(file_path + _download_suffix)
+		if err != nil {
+			//except OSError:
+			//pass
+		}
+	}
 
-	if mystat is
-nil:
+	if mystat == nil {
 	existing_size = 0
-	ro_distdirs = p.settings.ValueDict["PORTAGE_RO_DISTDIRS")
+	ro_distdirs = p.settings.ValueDict["PORTAGE_RO_DISTDIRS"]
 	if ro_distdirs is
 	not
 nil:
@@ -8918,18 +8926,21 @@ try:
 	except
 OSError:
 	pass
-	else:
-	if mystat.st_size == fetch_size:
-	existing_size = fetch_size
-	break
-	else:
-	existing_size = mystat.st_size
+	else{
+			if mystat.st_size == fetch_size {
+				existing_size = fetch_size
+				break
+			}
+		}
+	}else{
+		existing_size = mystat.Size()
+	}
 	remaining_size = fetch_size - existing_size
-	if remaining_size > 0:
-	filesdict[myfile] = remaining_size
-	else if
-	remaining_size < 0:
-	filesdict[myfile] = int(checksums[myfile]["size"])
+	if remaining_size > 0 {
+		filesdict[myfile] = remaining_size
+	}else if remaining_size < 0 {
+		filesdict[myfile], _ = strconv.Atoi(checksums[myfile]["size"])
+	}
 	return filesdict
 
 }

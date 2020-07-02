@@ -19,3 +19,4 @@ TODO:
 - bsd_chflags
 - shlex test
 - configparser test
+- selinux
