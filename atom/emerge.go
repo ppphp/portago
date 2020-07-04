@@ -7507,3 +7507,24 @@ func (s *SchedulerInterface) output( msg , log_path string, background bool, lev
 		}
 	}
 }
+
+type AsyncTaskFuture{
+	*AsynchronousTask
+}
+__slots__ = ('future',)
+def _start(self):
+self.future.add_done_callback(self._done_callback)
+
+def _cancel(self):
+if not self.future.done():
+self.future.cancel()
+
+def _done_callback(self, future):
+if future.cancelled():
+self.cancelled = True
+self.returncode = -signal.SIGINT
+elif future.exception() is None:
+self.returncode = os.EX_OK
+else:
+self.returncode = 1
+self._async_wait()
