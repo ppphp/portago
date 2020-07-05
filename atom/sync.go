@@ -2,7 +2,6 @@ package atom
 
 import (
 	"fmt"
-	"golang.org/x/net/html/atom"
 	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"

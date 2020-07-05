@@ -127,6 +127,7 @@ type Config struct {
 	modules                                                                                                                              map[string]map[string][]string
 	locationsManager                                                                                                                     *locationsManager
 	environWhitelistRe                                                                                                                   *regexp.Regexp
+	_tolerant                                                                                                                            bool
 }
 
 func (c *Config) initIuse() {
@@ -1116,6 +1117,23 @@ func (c *Config) _getPKeywords(cpv *PkgStr, metadata map[string]string) []string
 
 func (c *Config) _getMissingLicenses(cpv *PkgStr, metadata map[string]string) []string {
 	return c.licenseManager.getMissingLicenses(cpv, metadata["USE"], metadata["LICENSE"], metadata["SLOT"], metadata["repository"])
+}
+
+func (c *Config)setinst(){
+}
+
+func (c *Config) reload() {
+	envDFilename := filepath.Join(c.ValueDict["EROOT"], "etc", "profile.env")
+	c.configDict["env.d"] = map[string]string{}
+	envD := getConfig(envDFilename, c._tolerant, false, false, false, nil)
+	if len(envD) > 0 {
+		for k := range c.envDBlacklist {
+			delete(envD, k)
+		}
+		for k, v := range envD {
+			c.configDict["env.d"][k] = v
+		}
+	}
 }
 
 // 0

@@ -250,10 +250,13 @@ func (q *QueryCommand) __call__( argv []string) (string,string,int) {
 			//	return ("", warnings_str, 1)
 			return fmt.Sprintf("%s\n", eclass.location), warnings_str, 0
 		} else if cmd == "license_path" {
-			paths = reversed([]{filepath.Join(x.location, "licenses", args[1])
-				for x
-				in
-				list(repo.masters) + []{repo}})
+			paths := []string{}
+			for _, x := range repo.mastersRepo {
+				paths = append(paths, filepath.Join(x.Location, "licenses", args[1]))
+			}
+			paths = append(paths, filepath.Join(repo.Location, "licenses", args[1]))
+			paths = reversed(paths)
+
 			for _, path := range paths {
 				if pathExists(path) {
 					return fmt.Sprintf("%s\n", path), warnings_str, 0
@@ -267,10 +270,15 @@ func (q *QueryCommand) __call__( argv []string) (string,string,int) {
 	return "", "", 0
 }
 
-func (q *QueryCommand) _elog( elog_funcname, lines) string {
-	out := &bytes.Buffer{}()
+func (q *QueryCommand) _elog( elog_funcname string, lines []string) string {
+	out := &bytes.Buffer{}
 	phase := q.phase
-	elog_func = getattr(elog_messages, elog_funcname)
+
+	var elog_func func(msg string, phase string, key string, out io.Writer)
+	switch elog_funcname {
+	case "eqawarn":
+		elog_func = eqawarn
+	}
 	global_havecolor := HaveColor
 	//try:
 	if strings.ToLower(q.settings.ValueDict["NOCOLOR"]) == "no" || strings.ToLower(q.settings.ValueDict["NOCOLOR"]) == "false" || strings.ToLower(q.settings.ValueDict["NOCOLOR"]) == "" {
@@ -278,10 +286,8 @@ func (q *QueryCommand) _elog( elog_funcname, lines) string {
 	} else {
 		HaveColor = 0
 	}
-	for line
-		in
-	lines {
-		elog_func(line, phase = phase, key = q.settings.mycpv, out = out)
+	for _, line := range lines {
+		elog_func(line, phase, q.settings.mycpv.string, out)
 	}
 	//finally:
 	HaveColor = global_havecolor
@@ -1585,7 +1591,7 @@ fd_pipes=None, returnpid bool) int {
 		if mydo == "preinst" || mydo == "postinst" {
 			env_file := filepath.Join(filepath.Dir(mysettings.ValueDict["EBUILD"]),
 				"environment.bz2")
-			if os.path.isfile(env_file) {
+			if pathIsFile(env_file) {
 				mysettings.ValueDict["PORTAGE_UPDATE_ENV"] = env_file
 			}
 		}
@@ -2613,32 +2619,32 @@ with io.open(_unicode_encode(filepath.Join(build_info_dir,
 k), encoding=_encodings["fs"], errors="strict"),
 mode="w", encoding=_encodings["repo.content"],
 errors="strict") as f{
-f.write(fmt.Sprintf("%s\n" % v)
+f.Write([]byte(fmt.Sprintf("%s\n" , v)))
 	}
 }
 	}
 }
 
 func _preinst_bsdflags(mysettings *Config){
-if bsd_chflags{
-
-os.system(fmt.Sprintf("mtree -c -p %s -k flags > %s" %
-(ShellQuote(mysettings.ValueDict["D"]),
-ShellQuote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
-
-os.system(fmt.Sprintf("chflags -R noschg,nouchg,nosappnd,nouappnd %s" %
-(ShellQuote(mysettings.ValueDict["D"]),))
-os.system(fmt.Sprintf("chflags -R nosunlnk,nouunlnk %s 2>/dev/null" %
-(ShellQuote(mysettings.ValueDict["D"]),))
-}
+//if bsd_chflags{
+//
+//os.system(fmt.Sprintf("mtree -c -p %s -k flags > %s" %
+//(ShellQuote(mysettings.ValueDict["D"]),
+//ShellQuote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
+//
+//os.system(fmt.Sprintf("chflags -R noschg,nouchg,nosappnd,nouappnd %s" %
+//(ShellQuote(mysettings.ValueDict["D"]),))
+//os.system(fmt.Sprintf("chflags -R nosunlnk,nouunlnk %s 2>/dev/null" %
+//(ShellQuote(mysettings.ValueDict["D"]),))
+//}
 }
 
 func _postinst_bsdflags(mysettings *Config) {
-	if bsd_chflags {
-		exec.Command("sh", "-c", fmt.Sprintf("mtree -e -p %s -U -k flags < %s > /dev/null",
-			ShellQuote(mysettings.ValueDict["ROOT"]),
-				ShellQuote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
-	}
+	//if bsd_chflags {
+	//	exec.Command("sh", "-c", fmt.Sprintf("mtree -e -p %s -U -k flags < %s > /dev/null",
+	//		ShellQuote(mysettings.ValueDict["ROOT"]),
+	//			ShellQuote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
+	//}
 }
 
 func _post_src_install_uid_fix(mysettings *Config, out){
@@ -2710,7 +2716,7 @@ for fname in chain(dirs, files){
 
 fpath_relative = fpath[ed_len - 1:]
 if desktop_file_validate && fname.endswith(".desktop") &&
-os.path.isfile(fpath) &&
+pathIsFile(fpath) &&
 fpath_relative.startswith(xdg_dirs) &&
 ! (qdfRe != nil && qdfRe.MatchString(fpath_relative.strip(string(os.PathSeparator)))) {
 
@@ -2720,7 +2726,7 @@ fpath_relative.startswith(xdg_dirs) &&
 	}
 }
 
-if fixlafiles && strings.HasSuffix(fname, ".la") && os.path.isfile(fpath){
+if fixlafiles && strings.HasSuffix(fname, ".la") && pathIsFile(fpath){
 	contents, _ := ioutil.ReadFile(fpath)
 	has_lafile_header := Ins(strings.Split(string(contents), "\n"), ".la - a libtool library file")
 try{
@@ -2813,11 +2819,11 @@ _reapply_bsdflags_to_image(mysettings)
 }
 
 func _reapply_bsdflags_to_image(mysettings *Config) {
-	if bsd_chflags {
-		exec.Command("sh", "-c", fmt.Sprintf("mtree -e -p %s -U -k flags < %s > /dev/null",
-			ShellQuote(mysettings.ValueDict["D"]),
-			ShellQuote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
-	}
+	//if bsd_chflags {
+	//	exec.Command("sh", "-c", fmt.Sprintf("mtree -e -p %s -U -k flags < %s > /dev/null",
+	//		ShellQuote(mysettings.ValueDict["D"]),
+	//		ShellQuote(filepath.Join(mysettings.ValueDict["T"], "bsdflags.mtree"))))
+	//}
 }
 
 func _post_src_install_soname_symlinks(mysettings *Config, out io.Writer) {
@@ -3136,4 +3142,457 @@ func _handle_self_update(settings *Config) bool {
 		return true
 	}
 	return false
+}
+
+// myroot ignored, nil, false
+func prepare_build_dirs(settings *Config, cleanup bool) int{
+	if settings == nil {
+		//raise TypeError("settings argument is required")
+	}
+
+	mysettings := settings
+	clean_dirs := []string{mysettings.ValueDict["HOME"]}
+
+	if cleanup && !mysettings.Features.Features["keeptemp"] {
+		clean_dirs=append(clean_dirs, mysettings.ValueDict["T"])
+	}
+
+	for _, clean_dir:= range clean_dirs {
+		if err := os.RemoveAll(clean_dir); err != nil {
+			//except OSError as oe:
+			if syscall.ENOENT == err {
+				//pass
+			} else if syscall.EPERM == err {
+				WriteMsg(fmt.Sprintf("%s\n", err), -1, nil)
+				WriteMsg(fmt.Sprintf("Operation Not Permitted: rmtree('%s')\n",
+					clean_dir), -1, nil)
+				return 1
+			} else {
+				_raise_exc(err)
+			}
+		}
+	}
+	
+	//makedirs:=func(dir_path string) bool {
+	//	if err := os.MkdirAll(dir_path, 0755); err != nil {
+	//		//except OSError as oe:
+	//		if syscall.EEXIST == err {
+	//			//pass
+	//		} else if
+	//		syscall.EPERM == err {
+	//			WriteMsg(fmt.Sprintf("%s\n", err), -1, nil)
+	//			WriteMsg(fmt.Sprintf("Operation Not Permitted: makedirs('%s')\n",
+	//			dir_path),  -1, nil)
+	//			return false
+	//		} else {
+	//			//raise
+	//		}
+	//	}
+	//	return true
+	//}
+
+	mysettings.ValueDict["PKG_LOGDIR"] = filepath.Join(mysettings.ValueDict["T"], "logging")
+
+	mydirs := []string{filepath.Dir(mysettings.ValueDict["PORTAGE_BUILDDIR"])}
+	mydirs=append(mydirs, filepath.Dir(mydirs[len(mydirs)-1]))
+
+//try:
+	for _, mydir:= range mydirs {
+		ensureDirs(mydir, -1, -1, -1, -1, nil, true)
+		//try:
+		apply_secpass_permissions(mydir,*portage_gid,uint32(*portage_uid),0700, 0,nil,true)
+		//except PortageException:
+		//if not pathIsDir(mydir):
+		//raise
+		for _, dir_key := range []string{"HOME", "PKG_LOGDIR", "T"} {
+			ensureDirs(mysettings.ValueDict[dir_key], -1, -1, 0755, -1, nil, true)
+			apply_secpass_permissions(mysettings.ValueDict[dir_key], uint32(*portage_uid), *portage_gid, -1, -1, nil, true)
+		}
+	}
+	//except PermissionDenied as e:
+	//writemsg(_("Permission Denied: %s\n")%str(e), noiselevel = -1)
+	//return 1
+	//except OperationNotPermitted as e:
+	//writemsg(_("Operation Not Permitted: %s\n")%str(e), noiselevel = -1)
+	//return 1
+	//except FileNotFound as e:
+	//writemsg(_("File Not Found: '%s'\n")%str(e), noiselevel = -1)
+	//return 1
+
+	
+	if err := syscall.Unlink(filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"], ".dir_hooks")); err != nil {
+		//except OSError:
+		//pass
+	}
+
+	_prepare_workdir(mysettings)
+	if !Ins([]string{"info", "fetch", "pretend"},mysettings.ValueDict["EBUILD_PHASE"]) {
+		_prepare_features_dirs(mysettings)
+	}
+	return 0
+}
+
+func _adjust_perms_msg(settings *Config, msg string) {
+
+	write := func(msg string) {
+		WriteMsg(msg, -1, nil)
+	}
+
+	background := settings.ValueDict["PORTAGE_BACKGROUND"] == "1"
+	log_path := settings.ValueDict["PORTAGE_LOG_FILE"]
+	var log_file io.Writer
+	var log_file_real io.ReadWriteCloser
+
+	if background && log_path != "" {
+		var err error
+		log_file_real, err = os.OpenFile(log_path, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
+		if err != nil {
+			//except IOError:
+			write = func(msg string) {
+				//pass
+			}
+		} else {
+			log_file = log_file_real
+			if strings.HasSuffix(log_path, ".gz") {
+				log_file = gzip.NewWriter(log_file_real)
+			}
+			write = func(msg string) {
+				log_file.Write([]byte((msg)))
+			}
+		}
+	}
+	//try:
+	write(msg)
+	//finally:
+	log_file_real.Close()
+}
+
+func _prepare_features_dirs(mysettings *Config) {
+
+	libdir := ""
+	default_abi := mysettings.ValueDict["DEFAULT_ABI"]
+	if default_abi!= "" {
+		libdir = mysettings.ValueDict["LIBDIR_" + default_abi]
+	}
+	if libdir=="" {
+		libdir = "lib"
+	}
+
+	features_dirs := map[string]struct{basedir_var, default_dir string;always_recurse bool;subdirs[]string}{
+		"ccache": {
+			basedir_var:    "CCACHE_DIR",
+			default_dir:    filepath.Join(mysettings.ValueDict["PORTAGE_TMPDIR"], "ccache"),
+			always_recurse: false,
+		},
+		"distcc": {
+			basedir_var: "DISTCC_DIR",
+			default_dir: filepath.Join(mysettings.ValueDict["BUILD_PREFIX"], ".distcc"),
+			subdirs:     []string{"lock", "state"},
+			always_recurse:true,
+		},
+	}
+	dirmode := uint32(02070)
+	filemode := 060
+	modemask := 02
+	restrict := strings.Fields(mysettings.ValueDict["PORTAGE_RESTRICT"])
+	droppriv := *secpass >= 2&& mysettings.Features.Features["userpriv"] && !Ins(restrict,"userpriv")
+	for myfeature, kwargs := range features_dirs {
+		if mysettings.Features.Features[myfeature] {
+			failure := false
+			basedir := mysettings.ValueDict[kwargs.basedir_var]
+			if basedir ==""|| strings.TrimSpace(basedir)=="" {
+				basedir = kwargs.default_dir
+				mysettings.ValueDict[kwargs.basedir_var] = basedir
+			}
+		//try:
+			mydirs := []string{mysettings.ValueDict[kwargs.basedir_var]}
+			if kwargs.subdirs!= nil {
+				for _, subdir:= range kwargs.subdirs {
+					mydirs= append(mydirs, filepath.Join(basedir, subdir))
+				}
+			}
+			for _,  mydir:= range mydirs {
+				modified := ensureDirs(mydir,-1,-1,-1,-1,nil,true)
+				droppriv_fix := false
+				if droppriv {
+					st, _ := os.Stat(mydir)
+					if st.Sys().(*syscall.Stat_t).Gid != *portage_gid || !(dirmode == st.Sys().(*syscall.Stat_t).Mode & dirmode) {
+						droppriv_fix = true
+					}
+					if ! droppriv_fix {
+						lds, _, := listDir(mydir)
+						for _, filename := range lds{
+							subdir_st, err := os.Lstat(
+								filepath.Join(mydir, filename))
+							if err != nil {
+								//except OSError:
+								continue
+							}
+							if subdir_st.Sys().(*syscall.Stat_t).Gid != *portage_gid ||
+								(st.IsDir() &&! (dirmode == uint32(st.Mode()) & dirmode)) {
+								droppriv_fix = true
+								break
+							}
+						}
+					}
+				}
+
+				if droppriv_fix {
+					_adjust_perms_msg(mysettings,
+						colorize("WARN", " * ")+
+							fmt.Sprintf("Adjusting permissions "+
+					"for FEATURES=userpriv: '%s'\n", mydir))
+				}else if modified {
+					_adjust_perms_msg(mysettings,
+						colorize("WARN", " * ")+
+					fmt.Sprintf("Adjusting permissions "+
+					"for FEATURES=%s: '%s'\n", myfeature, mydir)))
+				}
+
+				if modified || kwargs.always_recurse|| droppriv_fix {
+					onerror:=func (e error) {
+						raise
+					}
+					if ! apply_recursive_permissions(mydir,
+						gid = portage_gid, dirmode = dirmode, dirmask=modemask,
+						filemode = filemode, filemask=modemask, onerror = onerror){
+						raise
+						OperationNotPermitted(
+							_("Failed to apply recursive permissions for the portage group."))
+					}
+				}
+			}
+			//except DirectoryNotFound as e:
+			//failure = true
+			//writemsg(_("\n!!! Directory does not exist: '%s'\n") % \
+			//(e,), noiselevel = -1)
+			//writemsg(_("!!! Disabled FEATURES='%s'\n")%myfeature,
+			//	noiselevel = -1)
+
+			//except PortageException as e:
+			//failure = true
+			//writemsg("\n!!! %s\n"%str(e), noiselevel = -1)
+			//writemsg(_("!!! Failed resetting perms on %s='%s'\n") % \
+			//(kwargs["basedir_var"], basedir), noiselevel = -1)
+			//writemsg(_("!!! Disabled FEATURES='%s'\n")%myfeature,
+			//	noiselevel = -1)
+
+			if failure {
+				delete(mysettings.Features.Features, myfeature)
+				time.Sleep(5*time.Second)
+			}
+		}
+	}
+}
+
+func _prepare_workdir(mysettings *Config) {
+	workdir_mode := 0700
+	//try:
+	mode := mysettings.ValueDict["PORTAGE_WORKDIR_MODE"]
+	var parsed_mode int64
+	if md, err := strconv.ParseInt(mode, 8, 64);err == nil {
+		parsed_mode = md
+	} else if mode == "" {
+		//raise KeyError()
+	} else {
+		//raise ValueError()
+	}
+	if parsed_mode&07777 != parsed_mode {
+		//raise ValueError("Invalid file mode: %s" % mode)
+	} else {
+		workdir_mode = int(parsed_mode)
+	}
+	//except KeyError as e:
+	//writemsg(_("!!! PORTAGE_WORKDIR_MODE is unset, using %s.\n") % oct(workdir_mode))
+	//except ValueError as e:
+	//if len(str(e)) > 0:
+	//writemsg("%s\n" % e)
+	//writemsg(_("!!! Unable to parse PORTAGE_WORKDIR_MODE='%s', using %s.\n") % \
+	//(mysettings["PORTAGE_WORKDIR_MODE"], oct(workdir_mode)))
+	mysettings.ValueDict["PORTAGE_WORKDIR_MODE"] = strings.ReplaceAll(fmt.Sprintf("%o",workdir_mode), "o", "")
+
+
+	md := os.FileMode(uint32(workdir_mode))
+	var uid uint32
+	if *secpass >= 2 {
+		uid = uint32(*portage_uid)
+	}else {
+		uid = -1
+	}
+	var gid uint32
+	if *secpass >= 1 {
+		 gid = *portage_gid
+	}else {
+		gid = -1
+	}
+
+	ensureDirs(mysettings.ValueDict["PORTAGE_BUILDDIR"], uid,gid, md, -1 ,nil, true)
+	ensureDirs(mysettings.ValueDict["WORKDIR"], uid,gid, md, -1 ,nil, true)
+
+	if mysettings.ValueDict["PORTAGE_LOGDIR"] == "" {
+		delete(mysettings.ValueDict, "PORTAGE_LOGDIR")
+	}
+	if Inmss(mysettings.ValueDict, "PORTAGE_LOGDIR") {
+		//try:
+		modified := ensureDirs(mysettings.ValueDict["PORTAGE_LOGDIR"],-1,-1,-1,-1,nil,true)
+		if modified {
+			apply_secpass_permissions(mysettings.ValueDict["PORTAGE_LOGDIR"],
+				uid = portage_uid, gid = portage_gid, mode = 0o2770)
+		}
+		//except PortageException as e:
+		//writemsg("!!! %s\n"%str(e), noiselevel = -1)
+		//writemsg(_("!!! Permission issues with PORTAGE_LOGDIR='%s'\n") % \
+		//mysettings["PORTAGE_LOGDIR"], noiselevel = -1)
+		//writemsg(_("!!! Disabling logging.\n"), noiselevel = -1)
+		//while "PORTAGE_LOGDIR" in mysettings:
+		//del mysettings["PORTAGE_LOGDIR"]
+	}
+
+	compress_log_ext := ""
+	if mysettings.Features.Features["compress-build-logs"] {
+		compress_log_ext = ".gz"
+	}
+
+	logdir_subdir_ok := false
+	if Inmss(mysettings.ValueDict, "PORTAGE_LOGDIR") && osAccess(mysettings.ValueDict["PORTAGE_LOGDIR"], unix.W_OK) {
+		logdir := NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])
+		logid_path := filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"], ".logid")
+		if !pathExists(logid_path) {
+			f, _ := os.OpenFile(logid_path, os.O_CREATE| os.O_RDWR, 0644)
+			f.Close()
+		}
+		st, _ := os.Stat(logid_path)
+		logid_time := st.ModTime().Format("20060102-150405")
+
+		log_subdir := ""
+		if mysettings.Features.Features["split-log"] {
+			log_subdir = filepath.Join(logdir, "build", mysettings.ValueDict["CATEGORY"])
+			mysettings.ValueDict["PORTAGE_LOG_FILE"] = filepath.Join(
+				log_subdir, fmt.Sprintf("%s:%s.log%s",
+					mysettings.ValueDict["PF"], logid_time, compress_log_ext))
+		} else {
+			log_subdir = logdir
+			mysettings.ValueDict["PORTAGE_LOG_FILE"] = filepath.Join(logdir, fmt.Sprintf("%s:%s:%s.log%s",
+				mysettings.ValueDict["CATEGORY"], mysettings.ValueDict["PF"], logid_time,
+				compress_log_ext))
+		}
+
+		if log_subdir == logdir {
+			logdir_subdir_ok = true
+		} else {
+			//try:
+			_ensure_log_subdirs(logdir, log_subdir)
+			//except PortageException as e:
+			//writemsg("!!! %s\n" % (e, ), noiselevel = -1)
+
+			if osAccess(log_subdir, unix.W_OK) {
+				logdir_subdir_ok = true
+			} else {
+				WriteMsg(fmt.Sprintf("!!! %s: %s\n",
+					"Permission Denied", log_subdir), -1, nil)
+			}
+		}
+	}
+
+	tmpdir_log_path := filepath.Join(
+		mysettings.ValueDict["T"], fmt.Sprintf("build.log%s", compress_log_ext))
+	if !logdir_subdir_ok {
+		mysettings.ValueDict["PORTAGE_LOG_FILE"] = tmpdir_log_path
+	} else {
+		make_new_symlink := false
+		target, err := filepath.EvalSymlinks(tmpdir_log_path)
+		if err != nil {
+			//except OSError:
+			make_new_symlink = true
+		} else {
+			if target != mysettings.ValueDict["PORTAGE_LOG_FILE"] {
+				make_new_symlink = true
+			}
+		}
+		if make_new_symlink {
+			if err := syscall.Unlink(tmpdir_log_path); err != nil {
+				//except OSError:
+				//pass
+			}
+			os.Symlink(mysettings.ValueDict["PORTAGE_LOG_FILE"], tmpdir_log_path)
+		}
+	}
+}
+
+func _ensure_log_subdirs(logdir, subdir string) {
+	st, _ := os.Stat(logdir)
+	uid := -1
+	gid := st.Sys().(*syscall.Stat_t).Gid
+	grp_mode := 02070 & st.Mode()
+
+	if grp_mode != 0 && gid == *portage_gid && *secpass >= 2 {
+		uid := *portage_uid
+		if st.Sys().(*syscall.Stat_t).Uid != uint32(*portage_uid) {
+			ensureDirs(logdir, uint32(uid), -1, -1, -1, nil, true)
+		}
+	}
+
+	logdir_split_len := len(strings.Split(logdir, string(os.PathSeparator)))
+	subdir_split := strings.Split(subdir, string(os.PathSeparator))[logdir_split_len:]
+	ReverseSlice(subdir_split)
+	current := logdir
+	for len(subdir_split) > 0 {
+		ss := subdir_split[len(subdir_split)-1]
+		subdir_split = subdir_split[:len(subdir_split)-1]
+		current = filepath.Join(current, ss)
+		ensureDirs(current, uint32(uid), gid, grp_mode, 0, nil, true)
+	}
+}
+
+func _prepare_fake_filesdir(settings *Config) {
+	real_filesdir := settings.ValueDict["O"] + "/files"
+	symlink_path := settings.ValueDict["FILESDIR"]
+
+
+	link_target,err := filepath.EvalSymlinks(symlink_path)
+	if err != nil {
+		//except OSError:
+		os.Symlink(real_filesdir, symlink_path)
+	}else {
+		if link_target != real_filesdir {
+			syscall.Unlink(symlink_path)
+			os.Symlink(real_filesdir, symlink_path)
+		}
+	}
+}
+
+func _prepare_fake_distdir(settings *Config, alist[]string){
+	orig_distdir := settings.ValueDict["DISTDIR"]
+	edpath := filepath.Join(settings.ValueDict["PORTAGE_BUILDDIR"], "distdir")
+	ensureDirs(edpath, -1, *portage_gid, 0755, -1, nil,true)
+
+	lds , _ := listDir(edpath)
+	for _, x:= range lds {
+		symlink_path := filepath.Join(edpath, x)
+		st, _ := os.Lstat(symlink_path)
+		if Ins(alist, x) &&st.Mode()&unix.S_IFLNK!=0{
+			continue
+		}
+		if st.IsDir() {
+			os.RemoveAll(symlink_path)
+		}else {
+			syscall.Unlink(symlink_path)
+		}
+	}
+
+	for _, x:= range alist {
+		symlink_path := filepath.Join(edpath, x)
+		target := filepath.Join(orig_distdir, x)
+
+		link_target,err := filepath.EvalSymlinks(symlink_path)
+		if err != nil {
+			//except OSError:
+			os.Symlink(target, symlink_path)
+		}else {
+			if link_target != target {
+				syscall.Unlink(symlink_path)
+				os.Symlink(target, symlink_path)
+			}
+		}
+	}
 }

@@ -2190,7 +2190,7 @@ func (o*linkageMapELF) listBrokenBinaries( debug bool) {
 			libraries {
 				rValue.setdefault(lib, set()).add(soname)
 				if debug {
-					if not os.path.isfile(lib) {
+					if not pathIsFile(lib) {
 						WriteMsgLevel(fmt.Sprintf("Missing library:"+" %s\n", lib, ), 20, -1)
 					}else {
 						WriteMsgLevel(fmt.Sprintf("Possibly missing symlink:"+
@@ -4219,7 +4219,7 @@ writemsg_level func(string, int, int)) {
 
 	if ldconfig == "" {
 		//pass
-	} else if !(osAccess(ldconfig, unix.X_OK) && os.path.isfile(ldconfig)) {
+	} else if !(osAccess(ldconfig, unix.X_OK) && pathIsFile(ldconfig)) {
 		ldconfig = ""
 	}
 

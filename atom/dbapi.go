@@ -2946,7 +2946,7 @@ func (d *dblink) unmerge(pkgfiles map[string][]string, cleanup bool,
 	if !Inmss(d.settings.ValueDict, "PORTAGE_BUILDDIR_LOCKED") {
 		builddir_lock = NewEbuildBuildDir(scheduler, d.settings)
 		scheduler.run_until_complete(builddir_lock.async_lock())
-		prepare_build_dirs(settings = d.settings, cleanup = true)
+		prepare_build_dirs(d.settings, true)
 		log_path = d.settings.ValueDict["PORTAGE_LOG_FILE"]
 	}
 	if !caller_handles_backup {
@@ -2964,7 +2964,7 @@ func (d *dblink) unmerge(pkgfiles map[string][]string, cleanup bool,
 		failures += 1
 		showMessage(fmt.Sprintf("!!! FAILED prerm: %s\n", filepath.Join(d.dbdir, "EAPI")), 40, -1)
 		showMessage(fmt.Sprintf("%s\n", eapi_unsupported, ), 40, -1)
-	} else if os.path.isfile(myebuildpath) {
+	} else if pathIsFile(myebuildpath) {
 		phase := NewEbuildPhase(nil, background, ebuild_phase, scheduler, d.settings, nil)
 		phase.start()
 		retval = phase.wait()
@@ -2983,7 +2983,7 @@ func (d *dblink) unmerge(pkgfiles map[string][]string, cleanup bool,
 	d.vartree.dbapi._fs_unlock()
 	d._clear_contents_cache()
 
-	if !eapi_unsupported && os.path.isfile(myebuildpath) {
+	if !eapi_unsupported && pathIsFile(myebuildpath) {
 		ebuild_phase := "postrm"
 		phase := NewEbuildPhase(nil, background, ebuild_phase, scheduler, d.settings, nil)
 		phase.start()
@@ -2998,7 +2998,7 @@ func (d *dblink) unmerge(pkgfiles map[string][]string, cleanup bool,
 	//finally:
 	d.vartree.dbapi._bump_mtime(d.mycpv.string)
 	//try:
-	if !eapi_unsupported && os.path.isfile(myebuildpath) {
+	if !eapi_unsupported && pathIsFile(myebuildpath) {
 		if retval != 0 {
 			msg_lines := []string{}
 			msg := fmt.Sprintf("The '%s' "+

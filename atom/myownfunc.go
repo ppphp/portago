@@ -167,6 +167,11 @@ func pathIsDir(filename string) bool {
 	return st != nil && st.IsDir()
 }
 
+func pathIsFile(filename string) bool {
+	st, _ := os.Stat(filename)
+	return st != nil && !st.IsDir()
+}
+
 func osAccess(filename string, mode os.FileMode) bool {
 	st, _ := os.Stat(filename)
 	if st == nil {
