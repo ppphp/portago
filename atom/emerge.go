@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"golang.org/x/sys/unix"
+	"golang.org/x/text/transform"
 	"io"
 	"io/ioutil"
 	"os"
@@ -19,11 +20,20 @@ import (
 	"time"
 )
 
-// my interface
+// my interface for python abstraction
 type Starter interface {
 	start()
 }
 
+type Future interface{
+	done()
+	cancel()
+	add_done_callback()
+	cancelled()
+	exception()
+}
+
+// ------------------emerge begins
 
 // SlotObject
 type AbstractDepPriority struct {
@@ -636,16 +646,19 @@ type AsynchronousLock struct {
 
 func(a *AsynchronousLock) _start() {
 
-	if not a._force_async:
-try:
-	a._imp := Lockfile(a.path, true, false, "", syscall.O_NONBLOCK)
-	except
-TryAgain:
-	pass
-	else:
-	a.returncode = 0
-	a._async_wait()
-	return
+	if not a._force_async {
+		var err error
+		a._imp, err = Lockfile(a.path, true, false, "", syscall.O_NONBLOCK)
+		if err != nil {
+			//except TryAgain:
+			//pass
+		}else {
+			i := 0
+			a.returncode = &i
+			a._async_wait()
+			return
+		}
+	}
 
 	if a._force_process or
 	(not
@@ -1218,7 +1231,7 @@ func (b *Binpkg)_prefetch_exit(prefetcher){
 	if not(b.opts.pretend ||
 	b.opts.fetchonly){
 		b._start_task(
-			AsyncTaskFuture(future = b._build_dir.async_lock()),
+			NewAsyncTaskFuture(b._build_dir.async_lock()),
 		b._start_fetcher)
 	}else {
 		b._start_fetcher()
@@ -1358,7 +1371,7 @@ func (b *Binpkg) _clean_exit( clean_phase) {
 	}
 
 	b._start_task(
-		AsyncTaskFuture(future = b._unpack_metadata()),
+		NewAsyncTaskFuture(b._unpack_metadata()),
 	b._unpack_metadata_exit)
 }
 
@@ -1450,7 +1463,7 @@ func (b *Binpkg) _setup_exit( setup_phase *SpawnProcess) {
 
 	b._writemsg_level(fmt.Sprintf(">>> Extracting %s\n" , b.pkg.cpv), 0, 0)
 	b._start_task(
-		AsyncTaskFuture(future = b._bintree.dbapi.unpack_contents(
+		NewAsyncTaskFuture(b._bintree.dbapi.unpack_contents(
 		b.settings,
 		b._image_dir)),
 	b._unpack_contents_exit)
@@ -1536,7 +1549,7 @@ func (b *Binpkg) _async_unlock_builddir(returncode *int) {
 	}
 	elog_process(b.pkg.cpv, b.settings, nil)
 	b._start_task(
-		AsyncTaskFuture(future = b._build_dir.async_unlock()),
+		NewAsyncTaskFuture(b._build_dir.async_unlock()),
 	func(unlock_task) { 
 		return b._unlock_builddir_exit(unlock_task, returncode) 
 	})
@@ -1791,7 +1804,7 @@ func (b *BinpkgFetcher) _start() {
 		b.pkg.root_config.settings.features
 		{
 			b._start_task(
-				AsyncTaskFuture(future = fetcher.async_lock()),
+				NewAsyncTaskFuture(fetcher.async_lock()),
 			functools.partial(b._start_locked, fetcher))
 			return
 		}
@@ -1820,7 +1833,7 @@ func (b *BinpkgFetcher) _fetcher_exit(fetcher) {
 	}
 	if fetcher.locked {
 		b._start_task(
-			AsyncTaskFuture(future = fetcher.async_unlock()),
+			NewAsyncTaskFuture(fetcher.async_unlock()),
 		functools.partial(b._fetcher_exit_unlocked, fetcher))
 	}else {
 		b._fetcher_exit_unlocked(fetcher)
@@ -2278,7 +2291,7 @@ func NewBlocker( **kwargs) {
 	b.Task = NewTask( **kwargs)
 	b.cp = b.atom.cp
 	b._hash_key = ("blocks", b.root, b.atom, b.eapi)
-	b._hash_value = hash(self._hash_key)
+	b._hash_value = hash(b._hash_key)
 }
 
 type BlockerCache struct {
@@ -2908,9 +2921,8 @@ func(e *EbuildBuild) _start() {
 	}
 
 	e._start_task(
-		AsyncTaskFuture(
-			future = e.pkg.root_config.trees["porttree"].dbapi.\
-	async_aux_get(e.pkg.cpv, ["SRC_URI"], myrepo = e.pkg.repo,
+		NewAsyncTaskFuture(
+			e.pkg.root_config.trees["porttree"].dbapi.async_aux_get(e.pkg.cpv, ["SRC_URI"], myrepo = e.pkg.repo,
 		loop = e.scheduler)),
 	e._start_with_metadata)
 }
@@ -3031,15 +3043,9 @@ func(e *EbuildBuild) _prefetch_exit( prefetcher) {
 			}
 			return
 		}else {
-			fetcher = EbuildFetcher(
-				config_pool = e.config_pool,
-				ebuild_path = e._ebuild_path,
-				fetchall=e.opts.fetch_all_uri,
-				fetchonly = e.opts.fetchonly,
-				background=false,
-				logfile = None,
-				pkg=e.pkg,
-				scheduler = e.scheduler)
+			fetcher = NewEbuildFetcher(e.config_pool, e._ebuild_path,
+				e.opts.fetch_all_uri, e.opts.fetchonly, false, "",
+				e.pkg, e.scheduler,false)
 			e._start_task(fetcher, e._fetchonly_exit)
 			return
 		}
@@ -3047,7 +3053,7 @@ func(e *EbuildBuild) _prefetch_exit( prefetcher) {
 
 	e._build_dir = NewEbuildBuildDir(e.scheduler, settings)
 	e._start_task(
-		AsyncTaskFuture(future = e._build_dir.async_lock()),
+		NewAsyncTaskFuture(e._build_dir.async_lock()),
 	e._start_pre_clean)
 }
 
@@ -3102,18 +3108,14 @@ func(e *EbuildBuild) _pre_clean_exit( pre_clean_phase) {
 		return
 	}
 
-	portage.prepare_build_dirs(e.pkg.root, e.settings, 1)
+	prepare_build_dirs(e.settings, 1)
 
-	fetcher = EbuildFetcher(config_pool = e.config_pool,
-		ebuild_path = e._ebuild_path,
-		fetchall=e.opts.fetch_all_uri,
-		fetchonly = e.opts.fetchonly,
-		background=e.background,
-		logfile = e.settings.get('PORTAGE_LOG_FILE'),
-		pkg=e.pkg, scheduler = e.scheduler)
+	fetcher := NewEbuildFetcher(e.config_pool, e._ebuild_path, e.opts.fetch_all_uri,
+		 e.opts.fetchonly, e.background, e.settings.ValueDict["PORTAGE_LOG_FILE"],
+		e.pkg, e.scheduler, false)
 
-	e._start_task(AsyncTaskFuture(
-		future = fetcher.async_already_fetched(e.settings)),
+	e._start_task(NewAsyncTaskFuture(
+		fetcher.async_already_fetched(e.settings)),
 	functools.partial(e._start_fetch, fetcher))
 }
 
@@ -3167,36 +3169,31 @@ func(e *EbuildBuild) _fetch_exit( fetcher) {
 	ebuild_path := e._ebuild_path
 	system_set := pkg.root_config.sets["system"]
 
-	e._issyspkg = features["buildsyspkg"] &&
-		system_set.findAtomForPackage(pkg)
-	and \
-	!features["buildpkg"]
-	and \
-	opts.buildpkg != 'n'
+	e._issyspkg = features["buildsyspkg"] && system_set.findAtomForPackage(pkg) && !features["buildpkg"] && opts.buildpkg != "n"
 
 	if (features["buildpkg"] ||
 		e._issyspkg) \
 	and
 	not
-	e.opts.buildpkg_exclude.findAtomForPackage(pkg){
+	e.opts.buildpkg_exclude.findAtomForPackage(pkg)
+	{
 
 		e._buildpkg = true
 
-		msg := " === (%s of %s) Compiling/Packaging (%s::%s)" % \
-		(pkg_count.curval, pkg_count.maxval, pkg.cpv, ebuild_path)
-		short_msg = "emerge: (%s of %s) %s Compile" % \
-		(pkg_count.curval, pkg_count.maxval, pkg.cpv)
+		msg := fmt.Sprintf(" === (%s of %s) Compiling/Packaging (%s::%s)",
+			pkg_count.curval, pkg_count.maxval, pkg.cpv, ebuild_path)
+		short_msg := fmt.Sprintf("emerge: (%s of %s) %s Compile",
+			pkg_count.curval, pkg_count.maxval, pkg.cpv)
 		logger.log(msg, short_msg = short_msg)
 	} else {
-		msg = " === (%s of %s) Compiling/Merging (%s::%s)" % \
-		(pkg_count.curval, pkg_count.maxval, pkg.cpv, ebuild_path)
-		short_msg = "emerge: (%s of %s) %s Compile" % \
-		(pkg_count.curval, pkg_count.maxval, pkg.cpv)
+		msg := fmt.Sprintf(" === (%s of %s) Compiling/Merging (%s::%s)",
+			pkg_count.curval, pkg_count.maxval, pkg.cpv, ebuild_path)
+		short_msg := fmt.Sprintf("emerge: (%s of %s) %s Compile",
+			pkg_count.curval, pkg_count.maxval, pkg.cpv)
 		logger.log(msg, short_msg = short_msg)
 	}
 
-	build = EbuildExecuter(background = e.background, pkg = pkg,
-		scheduler=scheduler, settings = settings)
+	build := NewEbuildExecuter(e.background, pkg, scheduler, settings)
 	e._start_task(build, e._build_exit)
 }
 
@@ -3233,7 +3230,7 @@ func(e *EbuildBuild) _async_unlock_builddir( returncode *int) {
 	}
 	elog_process(e.pkg.cpv, e.settings, nil)
 	e._start_task(
-		AsyncTaskFuture(future = e._build_dir.async_unlock()),
+		NewAsyncTaskFuture(e._build_dir.async_unlock()),
 	func(unlock_task) {
 		e._unlock_builddir_exit(unlock_task, returncode)
 	})
@@ -3290,7 +3287,7 @@ func(e *EbuildBuild) _build_exit( build) {
 				task := NewEbuildBinpkg(e.background, e.pkg, e.scheduler, e.settings)
 				binpkg_tasks.add(task)
 				binpkg_tasks.add(NewRecordBinpkgInfo(
-					ebuild_binpkg = task, ebuild_build = e))
+					 task,  e))
 			}
 		}
 	}
@@ -3586,6 +3583,522 @@ type AlreadyLocked struct {
 	PortageException
 }
 
+type EbuildExecuter struct {
+	*CompositeTask
+	// slot
+	pkg
+	settings *Config
+}
+
+var _phases = []string{"prepare", "configure", "compile", "test", "install"}
+
+func (e*EbuildExecuter)_start() {
+	pkg := e.pkg
+	scheduler := e.scheduler
+	settings := e.settings
+	cleanup := 0
+	prepare_build_dirs(settings, cleanup!=0)
+
+	if eapiExportsReplaceVars(settings.ValueDict["EAPI"]) {
+		vardb = pkg.root_config.trees['vartree'].dbapi
+		settings["REPLACING_VERSIONS"] = " ".join(
+			set(portage.versions.cpv_getversion(match) \
+		for match
+			in
+		vardb.match(pkg.slot_atom) + \
+		vardb.match('=' + pkg.cpv)))
+
+		setup_phase := NewEbuildPhase(nil, e.background, "setup", scheduler, settings, nil)
+
+		setup_phase.addExitListener(e._setup_exit)
+		e._task_queued(setup_phase)
+		e.scheduler.scheduleSetup(setup_phase)
+	}
+}
+
+func (e*EbuildExecuter) _setup_exit( setup_phase) {
+
+	if e._default_exit(setup_phase) != 0 {
+		e.wait()
+		return
+	}
+
+	unpack_phase := NewEbuildPhase(nil, e.background, "unpack", e.scheduler, e.settings, nil)
+
+	if Ins(strings.Fields(
+		e.settings.ValueDict["PROPERTIES"]), "live") {
+
+		unpack_phase.addExitListener(e._unpack_exit)
+		e._task_queued(unpack_phase)
+		e.scheduler.scheduleUnpack(unpack_phase)
+
+	} else {
+		e._start_task(unpack_phase, e._unpack_exit)
+	}
+}
+
+func (e*EbuildExecuter) _unpack_exit( unpack_phase) {
+
+	if e._default_exit(unpack_phase) != 0 {
+		e.wait()
+		return
+	}
+
+	ebuild_phases = TaskSequence(scheduler = e.scheduler)
+
+	pkg = e.pkg
+	phases := e._phases
+	eapi := pkg.eapi
+	if ! eapiHasSrcPrepareAndSrcConfigure(eapi) {
+		phases = phases[2:]
+	}
+
+	for phase
+	in
+phases {
+		ebuild_phases.add(NewEbuildPhase(nil, e.background, phase, e.scheduler, e.settings, nil))
+	}
+
+	e._start_task(ebuild_phases, e._default_final_exit)
+}
+
+func NewEbuildExecuter(background bool, pkg, scheduler *SchedulerInterface, settings *Config)*EbuildExecuter{
+	e := &EbuildExecuter{}
+	e.CompositeTask = NewCompositeTask()
+	e.background = background
+	e.pkg = pkg
+	e.scheduler = scheduler
+	e.settings = settings
+	return e
+}
+
+
+type EbuildFetcher struct {
+	*CompositeTask
+	//slots
+	prefetch bool
+	logfile string
+	_fetcher_proc *_EbuildFetcherProcess
+	config_pool, ebuild_path, fetchonly, fetchall,
+	pkg, _fetcher_proc
+}
+
+func NewEbuildFetcher(config_pool,ebuild_path,fetchall,fetchonly, background bool,logfile string,pkg,scheduler *SchedulerInterface,prefetch bool, **kwargs) {
+	e := &EbuildFetcher{}
+	e.CompositeTask = NewCompositeTask(**kwargs)
+	e._fetcher_proc = NewEbuildFetcherProcess(**kwargs)
+	e.config_pool=config_pool
+	e.ebuild_path=ebuild_path
+	e.fetchall=fetchall
+	e.fetchonly=fetchonly
+	e.background=background
+	e.logfile=logfile
+	e.pkg=pkg
+	e.scheduler=scheduler
+	e.prefetch=prefetch
+	
+	return e
+
+}
+
+func (e*EbuildFetcher) async_already_fetched(settings *Config) {
+	return e._fetcher_proc.async_already_fetched(settings)
+}
+
+func (e*EbuildFetcher) _start() {
+	e._start_task(
+		NewAsyncTaskFuture(e._fetcher_proc._async_uri_map()),
+	e._start_fetch)
+}
+
+func (e*EbuildFetcher) _start_fetch( uri_map_task) {
+	e._assert_current(uri_map_task)
+	if uri_map_task.cancelled {
+		e._default_final_exit(uri_map_task)
+		return
+	}
+
+try:
+	uri_map = uri_map_task.future.result()
+	except
+	portage.exception.InvalidDependString
+	as
+e:
+	msg_lines = []
+	msg = "Fetch failed for '%s' due to invalid SRC_URI: %s" % \
+	(e.pkg.cpv, e)
+	msg_lines.append(msg)
+	e._fetcher_proc._eerror(msg_lines)
+	e._current_task = None
+	e.returncode = 1
+	e._async_wait()
+	return
+
+	e._start_task(
+		NewAsyncTaskFuture(
+			e.pkg.root_config.trees["porttree"].dbapi.
+	async_aux_get(e.pkg.cpv, ["SRC_URI"], myrepo = e.pkg.repo,
+		loop = e.scheduler)),
+	e._start_with_metadata)
+}
+
+func (e*EbuildFetcher) _start_with_metadata( aux_get_task) {
+	e._assert_current(aux_get_task)
+	if aux_get_task.cancelled {
+		e._default_final_exit(aux_get_task)
+		return
+	}
+
+	e._fetcher_proc.src_uri, = aux_get_task.future.result()
+	e._start_task(e._fetcher_proc, e._default_final_exit)
+}
+
+
+type _EbuildFetcherProcess struct {
+	*ForkProcess
+	// slots
+	ebuild_path string
+	_manifest *Manifest
+	_digests map[string]map[string]string
+	config_pool, fetchonly, fetchall,
+	pkg, prefetch, src_uri,
+	_settings, _uri_map
+}
+
+func(e*_EbuildFetcherProcess) async_already_fetched(settings *Config) {
+	result := e.scheduler.create_future()
+	
+	uri_map_done:= func(uri_map_future) {
+		if uri_map_future.cancelled() {
+			result.cancel()
+			return
+		}
+
+		if uri_map_future.exception() is
+		not
+		None
+		or
+		result.cancelled()
+		{
+			if not result.cancelled() {
+				result.set_exception(uri_map_future.exception())
+			}
+			return
+		}
+
+		uri_map = uri_map_future.result()
+		if uri_map {
+			result.set_result(
+				e._check_already_fetched(settings, uri_map))
+		} else {
+			result.set_result(true)
+		}
+	}
+	
+	uri_map_future = e._async_uri_map()
+	result.add_done_callback(lambda
+result:
+	uri_map_future.cancel()
+	if result.cancelled()
+	else
+	None)
+	uri_map_future.add_done_callback(uri_map_done)
+	return result
+}
+
+func(e*_EbuildFetcherProcess) _check_already_fetched( settings *Config, uri_map) {
+	digests := e._get_digests()
+	distdir := settings.ValueDict["DISTDIR"]
+	allow_missing := e._get_manifest().allow_missing
+
+	for filename
+	in
+uri_map:
+try:
+	st = os.stat(filepath.Join(distdir, filename))
+	except
+OSError:
+	return false
+	if st.st_size == 0:
+	return false
+	expected_size = digests.get(filename,
+	{
+	}).get('size')
+	if expected_size is
+None:
+	continue
+	if st.st_size != expected_size:
+	return false
+
+	hash_filter = _hash_filter(settings.get("PORTAGE_CHECKSUM_FILTER", ""))
+	if hash_filter.transparent:
+	hash_filter = None
+	stdout_orig = sys.stdout
+	stderr_orig = sys.stderr
+	global_havecolor = portage.output.havecolor
+	out = io.StringIO()
+	eout = portage.output.EOutput()
+	eout.quiet = settings.get("PORTAGE_QUIET") == "1"
+	success = true
+try:
+	sys.stdout = out
+	sys.stderr = out
+	if portage.output.havecolor:
+	portage.output.havecolor = not
+	e.background
+
+	for filename
+	in
+uri_map:
+	mydigests = digests.get(filename)
+	if mydigests is
+None:
+	if not allow_missing:
+	success = false
+	break
+	continue
+	ok, st = _check_distfile(filepath.Join(distdir, filename),
+		mydigests, eout, show_errors = false, hash_filter = hash_filter)
+	if not ok:
+	success = false
+	break
+	except
+	portage.exception.FileNotFound:
+	return false
+finally:
+	sys.stdout = stdout_orig
+	sys.stderr = stderr_orig
+	portage.output.havecolor = global_havecolor
+
+	if success:
+	msg = out.getvalue()
+	if msg:
+	e.scheduler.output(msg, log_path = e.logfile)
+
+	return success
+}
+
+func(e*_EbuildFetcherProcess) _start() {
+
+	root_config = e.pkg.root_config
+	portdb = root_config.trees["porttree"].dbapi
+	ebuild_path = e._get_ebuild_path()
+		uri_map = e._uri_map
+
+	if not uri_map:
+		e.returncode = 0
+	e._async_wait()
+	return
+
+	settings = e.config_pool.allocate()
+	settings.setcpv(e.pkg)
+	settings.configdict["pkg"]["SRC_URI"] = e.src_uri
+	portage.doebuild_environment(ebuild_path, 'fetch',
+		settings = settings, db = portdb)
+
+	if e.prefetch and \
+	e._prefetch_size_ok(uri_map, settings, ebuild_path):
+	e.config_pool.deallocate(settings)
+	e.returncode = 0
+	e._async_wait()
+	return
+
+	nocolor = settings.get("NOCOLOR")
+
+	if e.prefetch:
+	settings["PORTAGE_PARALLEL_FETCHONLY"] = "1"
+
+	if e.background:
+	nocolor = "true"
+
+	if nocolor is
+	not
+None:
+	settings["NOCOLOR"] = nocolor
+
+	e._settings = settings
+	e.ForkProcess._start()
+
+	e.config_pool.deallocate(settings)
+	settings = None
+	e._settings = None
+}
+
+func(e*_EbuildFetcherProcess) _run() {
+	HaveColor = e._settings.get('NOCOLOR') \
+	not
+	in('yes', 'true')
+
+	if _want_userfetch(e._settings):
+	_drop_privs_userfetch(e._settings)
+
+	rval = 1
+	allow_missing = e._get_manifest().allow_missing
+	or \
+	'digest'
+	in
+	e._settings.features
+	if fetch(e._uri_map, e._settings, fetchonly = e.fetchonly,
+		digests = copy.deepcopy(e._get_digests()),
+		allow_missing_digests = allow_missing):
+	rval = 0
+	return rval
+}
+
+func(e*_EbuildFetcherProcess) _get_ebuild_path() string {
+	if e.ebuild_path != "" {
+		return e.ebuild_path
+	}
+	portdb = e.pkg.root_config.trees["porttree"].dbapi
+	e.ebuild_path = portdb.findname(e.pkg.cpv, myrepo = e.pkg.repo)
+	if e.ebuild_path == "" {
+		//raise AssertionError("ebuild not found for '%s'" % e.pkg.cpv)
+	}
+	return e.ebuild_path
+}
+
+func(e*_EbuildFetcherProcess) _get_manifest() *Manifest{
+	if e._manifest == nil {
+		pkgdir := filepath.Dir(e._get_ebuild_path())
+		e._manifest = e.pkg.root_config.settings.repositories.get_repo_for_location(
+			filepath.Dir(filepath.Dir(pkgdir))).load_manifest(pkgdir, None)
+	}
+	return e._manifest
+}
+
+func(e*_EbuildFetcherProcess) _get_digests() map[string]map[string]string{
+	if e._digests == nil {
+		e._digests = e._get_manifest().getTypeDigests("DIST")
+	}
+	return e._digests
+}
+
+func(e*_EbuildFetcherProcess) _async_uri_map() {
+	if e._uri_map is
+	not
+None:
+	result = e.scheduler.create_future()
+	result.set_result(e._uri_map)
+	return result
+
+	pkgdir = filepath.Dir(e._get_ebuild_path())
+	mytree = filepath.Dir(filepath.Dir(pkgdir))
+	use = None
+	if not e.fetchall:
+	use = e.pkg.use.enabled
+	portdb = e.pkg.root_config.trees["porttree"].dbapi
+
+	def
+	cache_result(result):
+try:
+	e._uri_map = result.result()
+	except
+Exception:
+	pass
+
+	result = portdb.async_fetch_map(e.pkg.cpv,
+		useflags = use, mytree = mytree, loop=e.scheduler)
+	result.add_done_callback(cache_result)
+	return result
+}
+
+func(e*_EbuildFetcherProcess) _prefetch_size_ok(uri_map, settings, ebuild_path) {
+	distdir := settings["DISTDIR"]
+
+	sizes :=
+	{
+	}
+	for filename
+	in
+uri_map:
+try:
+	st = os.stat(filepath.Join(distdir, filename))
+	except
+OSError:
+	return false
+	if st.st_size == 0:
+	return false
+	sizes[filename] = st.st_size
+
+	digests = e._get_digests()
+	for filename, actual_size
+	in
+	sizes.items():
+	size = digests.get(filename,
+	{
+	}).get('size')
+	if size is
+None:
+	continue
+	if size != actual_size:
+	return false
+
+	if e.logfile is
+	not
+None:
+	f = io.open(_unicode_encode(e.logfile,
+		encoding = _encodings['fs'], errors = 'strict'),
+	mode = 'a', encoding=_encodings['content'],
+		errors = 'backslashreplace')
+	for filename
+	in
+uri_map:
+	f.write(_unicode_decode((' * %s size ;-) ...' % \
+	filename).ljust(73) + '[ ok ]\n'))
+	f.close()
+
+	return true
+}
+
+func(e*_EbuildFetcherProcess) _pipe(fd_pipes) {
+	if e.background or
+	not
+	sys.stdout.isatty():
+	return os.pipe()
+	stdout_pipe = None
+	if not e.background:
+	stdout_pipe = fd_pipes.get(1)
+	got_pty, master_fd, slave_fd = \
+	_create_pty_or_pipe(copy_term_size = stdout_pipe)
+	return (master_fd, slave_fd)
+}
+
+func(e*_EbuildFetcherProcess) _eerror( lines []string) {
+	out := &bytes.Buffer{}
+	for _, line:= range lines {
+		eerror(line, "unpack", e.pkg.cpv, out)
+	}
+	msg := out.String()
+	if msg!= "" {
+		e.scheduler.output(msg, e.logfile, false, 0, -1)
+	}
+}
+
+func(e*_EbuildFetcherProcess) _async_waitpid_cb( *args, **kwargs) {
+	ForkProcess._async_waitpid_cb(e, *args, **kwargs)
+	if not e.prefetch
+	and
+	e.returncode != 0:
+	msg_lines = []
+	msg = "Fetch failed for '%s'" % (e.pkg.cpv,)
+	if e.logfile is
+	not
+None:
+	msg += ", Log file:"
+	msg_lines.append(msg)
+	if e.logfile is
+	not
+None:
+	msg_lines.append(" '%s'" % (e.logfile, ))
+	e._eerror(msg_lines)
+}
+
+func NewEbuildFetcherProcess()*_EbuildFetcherProcess{
+	e := &_EbuildFetcherProcess{}
+	e.ForkProcess = NewForkProcess()
+	return e
+}
+
 type SubProcess struct {
 	*AbstractPollTask
 	pid, _waitpid_id int
@@ -3667,6 +4180,7 @@ func NewSubProcess() *SubProcess {
 type SpawnProcess struct {
 	*SubProcess
 	_CGROUP_CLEANUP_RETRY_MAX int
+	_spawn_kwarg_names []string
 
 	// slot
 	opt_name,
@@ -3678,11 +4192,6 @@ type SpawnProcess struct {
 	args     []string
 	env      map[string]string
 }
-
-var _spawn_kwarg_names = []string{"env", "opt_name", "fd_pipes",
-"uid", "gid", "groups", "umask", "logfile",
-"path_lookup", "pre_exec", "close_fds", "cgroup",
-"unshare_ipc", "unshare_mount", "unshare_pid", "unshare_net"}
 
 func(s *SpawnProcess) _start(){
 	if s.fd_pipes == nil{
@@ -3904,6 +4413,11 @@ func(s *SpawnProcess) _elog(elog_funcname string, lines []string){
 
 func NewSpawnProcess(args []string, background bool, env map[string]string, fd_pipes map[int]int, scheduler *SchedulerInterface, logfile string) *SpawnProcess {
 	s := &SpawnProcess{}
+
+	s._spawn_kwarg_names = []string{"env", "opt_name", "fd_pipes",
+		"uid", "gid", "groups", "umask", "logfile",
+		"path_lookup", "pre_exec", "close_fds", "cgroup",
+		"unshare_ipc", "unshare_mount", "unshare_pid", "unshare_net"}
 	s.args =args
 	s.background = background
 	s.env = env
@@ -4202,7 +4716,7 @@ func(m *MergeProcess) _unregister() {
 }
 
 func NewMergeProcess(mycat, mypkg string, settings *Config,treetype string,
-	vartree *varTree, scheduler interface{}, background bool, blockers interface{},
+	vartree *varTree, scheduler *SchedulerInterface, background bool, blockers interface{},
 pkgloc, infloc, myebuild string,mydbapi DBAPI ,prev_mtimes interface{},
 logfile string, fd_pipes map[int]int) *MergeProcess {
 	m := &MergeProcess{}
@@ -4215,7 +4729,7 @@ logfile string, fd_pipes map[int]int) *MergeProcess {
 	m.scheduler = scheduler
 	m.background = background
 	m.blockers = blockers
-	m.mydbapi = DBAPI
+	m.mydbapi = mydbapi
 	m.prev_mtimes = prev_mtimes
 	m.logfile = logfile
 	m.fd_pipes = fd_pipes
@@ -4472,7 +4986,7 @@ func (e *EbuildPhase) _ebuild_exit( ebuild_process) {
 		e._ebuild_exit_unlocked(ebuild_process)
 	} else {
 		e._start_task(
-			AsyncTaskFuture(future = e._ebuild_lock.async_unlock()),
+			NewAsyncTaskFuture( e._ebuild_lock.async_unlock()),
 		functools.partial(e._ebuild_exit_unlocked, ebuild_process))
 	}
 }
@@ -4528,12 +5042,12 @@ func (e *EbuildPhase) _ebuild_exit_unlocked( ebuild_process, unlock_task=nil) {
 		syscall.Utime(settings.ValueDict["WORKDIR"], nil)
 		_prepare_workdir(settings)
 	} else if e.phase == "install" {
-		out = io.StringIO()
+		out := &bytes.Buffer{}
 		_post_src_install_write_metadata(settings)
 		_post_src_install_uid_fix(settings, out)
-		msg = out.getvalue()
+		msg := out.String()
 		if len(msg) > 0 {
-			e.scheduler.output(msg, log_path = logfile)
+			e.scheduler.output(msg, logfile, false, 0, -1)
 		}
 	} else if e.phase == "preinst" {
 		_preinst_bsdflags(settings)
@@ -4979,7 +5493,7 @@ func(p*_PostPhaseCommands) _commands_exit( task) {
 			future.add_done_callback(func(future) {
 				return future.cancelled() || future.result()
 			})
-			p._start_task(AsyncTaskFuture(future = future), p._default_final_exit)
+			p._start_task(NewAsyncTaskFuture(future), p._default_final_exit)
 		} else {
 			p._default_final_exit(task)
 		}
@@ -5981,13 +6495,9 @@ func (s *Scheduler) _create_prefetcher( pkg *Package) {
 	prefetcher = nil
 
 	if pkg.type_name == "ebuild" {
-
-		prefetcher = NewEbuildFetcher(background = true,
-			config_pool = NewConfigPool(pkg.root,
-			s._allocate_config, s._deallocate_config),
-			fetchonly=1, fetchall = s._build_opts.fetch_all_uri,
-			logfile=s._fetch_log,
-			pkg = pkg, prefetch=true, scheduler = s._sched_iface)
+		prefetcher = NewEbuildFetcher(NewConfigPool(pkg.root, s._allocate_config,
+			s._deallocate_config), "", s._build_opts.fetch_all_uri, 1, true,
+			s._fetch_log, pkg, s._sched_iface, true)
 	} else if
 	pkg.type_name == "binary" &&
 		"--getbinpkg"
@@ -7508,23 +8018,40 @@ func (s *SchedulerInterface) output( msg , log_path string, background bool, lev
 	}
 }
 
-type AsyncTaskFuture{
+type AsyncTaskFuture struct {
 	*AsynchronousTask
+	// slot
+	future Future
 }
-__slots__ = ('future',)
-def _start(self):
-self.future.add_done_callback(self._done_callback)
 
-def _cancel(self):
-if not self.future.done():
-self.future.cancel()
+func (a* AsyncTaskFuture) _start() {
+	a.future.add_done_callback(a._done_callback)
+}
 
-def _done_callback(self, future):
-if future.cancelled():
-self.cancelled = True
-self.returncode = -signal.SIGINT
-elif future.exception() is None:
-self.returncode = os.EX_OK
-else:
-self.returncode = 1
-self._async_wait()
+func (a* AsyncTaskFuture) _cancel() {
+	if ! a.future.done() {
+		a.future.cancel()
+	}
+}
+
+func (a* AsyncTaskFuture) _done_callback(future Future) {
+	if future.cancelled() {
+		a.cancelled = true
+		i := -int(unix.SIGINT)
+		a.returncode = &i
+	} else if future.exception() == nil {
+		i := 0
+		a.returncode = &i
+	} else {
+		i := 1
+		a.returncode = &i
+	}
+	a._async_wait()
+}
+
+func NewAsyncTaskFuture(future Future)*AsyncTaskFuture{
+	a := &AsyncTaskFuture{}
+	a.AsynchronousTask = NewAsynchronousTask()
+	a.future = future
+	return a
+}

@@ -2946,7 +2946,7 @@ func (d *dblink) unmerge(pkgfiles map[string][]string, cleanup bool,
 	if !Inmss(d.settings.ValueDict, "PORTAGE_BUILDDIR_LOCKED") {
 		builddir_lock = NewEbuildBuildDir(scheduler, d.settings)
 		scheduler.run_until_complete(builddir_lock.async_lock())
-		prepare_build_dirs(settings = d.settings, cleanup = true)
+		prepare_build_dirs(d.settings, true)
 		log_path = d.settings.ValueDict["PORTAGE_LOG_FILE"]
 	}
 	if !caller_handles_backup {
