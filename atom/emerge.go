@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/ppphp/shlex"
 	"golang.org/x/sys/unix"
-	"golang.org/x/text/transform"
 	"io"
 	"io/ioutil"
 	"os"
@@ -1508,7 +1507,7 @@ b._start_task(chpathtool, b._chpathtool_exit)
 }
 
 func (b *Binpkg) _chpathtool_exit( chpathtool) {
-	if b._final_exit(chpathtool) != 0 {
+	if i := b._final_exit(chpathtool); i!= nil &&*i != 0 {
 		b._writemsg_level(fmt.Sprintf("!!! Error Adjusting Prefix to %s\n",
 			b.settings.ValueDict["EPREFIX"], ),
 			-1, 40)
@@ -1557,6 +1556,7 @@ func (b *Binpkg) _async_unlock_builddir(returncode *int) {
 	})
 }
 
+// nil
 func (b *Binpkg) _unlock_builddir_exit(unlock_task, returncode=nil) {
 	b._assert_current(unlock_task)
 	if unlock_task.cancelled && returncode!= nil{
@@ -1676,7 +1676,8 @@ type BinpkgExtractorAsync struct {
 
 	// slot
 	features map[string]bool
-	pkg, pkg_path string
+	pkg *PkgStr
+	pkg_path string
 	image_dir                         string
 }
 
@@ -1776,7 +1777,7 @@ func(b *BinpkgExtractorAsync) _start() {
 	b.SpawnProcess._start()
 }
 
-func NewBinpkgExtractorAsync(background bool, env map[string]string, features map[string]bool, image_dir string, pkg interface{}, pkg_path, logfile string, scheduler *SchedulerInterface) *BinpkgExtractorAsync{
+func NewBinpkgExtractorAsync(background bool, env map[string]string, features map[string]bool, image_dir string, pkg *PkgStr, pkg_path, logfile string, scheduler *SchedulerInterface) *BinpkgExtractorAsync{
 	b:= &BinpkgExtractorAsync{}
 	b._shell_binary=BashBinary
 	b.SpawnProcess=NewSpawnProcess()
@@ -2554,14 +2555,14 @@ func (b *BlockerDB)findInstalledBlockers( new_pkg) {
 	blocker_cache.flush()
 
 	blocker_parents := NewDigraph()
-	blocker_atoms := []*Atom{}
+	blocker_atoms1 := []*Atom{}
 	for _, pkg := range installed_pkgs {
 		for blocker_atom
 			in
-		blocker_cache[pkg.cpv].atoms
+		blocker_cache.__getitem__(pkg.cpv).atoms
 		{
 			blocker_atom = blocker_atom.lstrip("!")
-			blocker_atoms = append(blocker_atoms, blocker_atom)
+			blocker_atoms1 = append(blocker_atoms1, blocker_atom)
 			blocker_parents.add(blocker_atom, pkg)
 		}
 	}
@@ -2575,13 +2576,13 @@ func (b *BlockerDB)findInstalledBlockers( new_pkg) {
 		blocking_pkgs.update(blocker_parents.parent_nodes(atom))
 	}
 
-	depstr = " ".join(new_pkg._metadata[k]
+	depstr := " ".join(new_pkg._metadata[k]
 	for k
 		in
 	dep_keys)
-	success, atoms = dep_check(depstr,
+	success, atoms := dep_check(depstr,
 		vardb, settings, "yes", new_pkg.use.enabled, 1, 0,
-		new_pkg.root, dep_check_trees)
+		0, new_pkg.root, dep_check_trees)
 	if success == 0 {
 		show_invalid_depstring_notice(new_pkg, atoms)
 		assert
@@ -2639,8 +2640,8 @@ func (c*CompositeTask)_cancel() {
 	if c._current_task != nil {
 		if c._current_task is
 		c._TASK_QUEUED{
-			c.returncode = new(int)
-			*c.returncode = 1
+			i := 1
+			c.returncode = &i
 			c._current_task = nil
 			c._async_wait()
 		} else {
@@ -2652,7 +2653,7 @@ func (c*CompositeTask)_cancel() {
 	}
 }
 
-func(c*CompositeTask) _poll() {
+func(c*CompositeTask) _poll() *int {
 	prev = nil
 	for true {
 		task = c._current_task
@@ -2680,14 +2681,15 @@ func(c*CompositeTask) _assert_current(task *SpawnProcess) {
 
 func(c*CompositeTask) _default_exit( task *SpawnProcess) int {
 	c._assert_current(task)
-	if task.returncode != 0 {
+	if task.returncode != nil && *task.returncode == 0 {
 		c.returncode = task.returncode
 		c.cancelled = task.cancelled
 		c._current_task = nil
 		return *task.returncode
 	}
 }
-func(c*CompositeTask) _final_exit( task) {
+
+func(c*CompositeTask) _final_exit( task) *int{
 	c._default_exit(task)
 	c._current_task = nil
 	c.returncode = task.returncode
@@ -6084,7 +6086,7 @@ func(p*PollScheduler)  _can_add_job() bool{
 	if max_load !=0 &&
 	(max_jobs != 0 || max_jobs > 1) &&
 	p._running_job_count() >= 1 {
-		avg1, avg5, avg15, err := getloadavg()
+		avg1, _, _, err := getloadavg()
 		if err != nil {
 			//except OSError:
 			return false
@@ -6106,7 +6108,7 @@ func NewPollScheduler( main bool, event_loop=nil)*PollScheduler {
 	p._terminated_tasks = false
 	p._term_check_handle = nil
 	p._max_jobs = 1
-	p._max_load = nil
+	p._max_load = 0
 	p._scheduling = false
 	p._background = false
 	if event_loop != nil {
@@ -6116,8 +6118,7 @@ func NewPollScheduler( main bool, event_loop=nil)*PollScheduler {
 	}else {
 		p._event_loop = asyncio._safe_loop()
 	}
-	p._sched_iface = NewSchedulerInterface(p._event_loop,
-		p._is_background)
+	p._sched_iface = NewSchedulerInterface(p._event_loop, p._is_background)
 	return p
 }
 
@@ -8500,4 +8501,143 @@ func getloadavg() (float64,float64,float646,error) {
 		return 0, 0, 0, err
 	}
 	return f0, f1, f2, nil
+}
+
+type AsyncScheduler struct {
+	*AsynchronousTask
+	*PollScheduler
+	_remaining_tasks bool
+	_error_count     int
+}
+
+// 0, 0
+func NewAsyncScheduler(max_jobs int, max_load float64, event_loop) *AsyncScheduler{
+	a := &AsyncScheduler{}
+	a.AsynchronousTask= NewAsynchronousTask()
+	a.PollScheduler=NewPollScheduler(false, event_loop)
+	if max_jobs == 0{
+		max_jobs = 1
+	}
+	a._max_jobs = max_jobs
+	if max_load != 0 {
+		a._max_load = 0
+	}else{
+		a._max_load = max_load
+	}
+	a._error_count = 0
+	a._running_tasks = set()
+	a._remaining_tasks = true
+	a._loadavg_check_id = None
+	return a
+}
+
+func(a*AsyncScheduler) scheduler() {
+	return a._event_loop
+}
+
+func(a*AsyncScheduler) _poll() *int {
+	if !(a._is_work_scheduled() || a._keep_scheduling()){
+		if a._error_count > 0 {
+			i := 1
+			a.returncode = &i
+		} else {
+			i := 0
+			a.returncode = &i
+		}
+		a._async_wait()
+	}
+	return a.returncode
+}
+
+func(a*AsyncScheduler) _cancel() {
+	a._terminated.set()
+	a._termination_check(false)
+}
+
+func(a*AsyncScheduler) _terminate_tasks() {
+	for task
+	in
+	list(a._running_tasks):
+	task.cancel()
+}
+
+func(a*AsyncScheduler) _next_task() {
+	raise
+	NotImplementedError(a)
+}
+
+func(a*AsyncScheduler) _keep_scheduling() bool {
+	return a._remaining_tasks&&!a._terminated.is_set()
+}
+
+func(a*AsyncScheduler) _running_job_count() int {
+	return len(a._running_tasks)
+}
+
+func(a*AsyncScheduler) _schedule_tasks() {
+	for a._keep_scheduling()&& a._can_add_job() {
+	try:
+		task = a._next_task()
+		except
+	StopIteration:
+		a._remaining_tasks = false
+		else:
+		a._running_tasks.add(task)
+		task.scheduler = a._sched_iface
+		task.addExitListener(a._task_exit)
+		task.start()
+	}
+
+	if a._loadavg_check_id is
+	not
+None{
+	a._loadavg_check_id.cancel()
+	a._loadavg_check_id = a._event_loop.call_later(
+	a._loadavg_latency, a._schedule)
+}
+	a.poll()
+}
+
+func(a*AsyncScheduler) _task_exit( task) {
+	a._running_tasks.discard(task)
+	if task.returncode != 0 {
+		a._error_count += 1
+	}
+	a._schedule()
+}
+
+func(a*AsyncScheduler) _start() {
+	if a._max_load is
+	not
+	None
+	&&
+	a._loadavg_latency
+	is
+	not
+	None
+	&&
+	(a._max_jobs
+	is
+	True
+	||
+	a._max_jobs > 1){
+a._loadavg_check_id = a._event_loop.call_later(
+a._loadavg_latency, a._schedule)
+}
+	a._schedule()
+}
+
+func(a*AsyncScheduler) _cleanup() {
+	a.PollScheduler._cleanup()
+	if a._loadavg_check_id is
+	not
+None{
+	a._loadavg_check_id.cancel()
+	a._loadavg_check_id = None
+}
+}
+
+func(a*AsyncScheduler) _async_wait() {
+	a._cleanup()
+	a.AsynchronousTask._async_wait()
 }

@@ -5,6 +5,7 @@ import (
 	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -262,22 +263,20 @@ func (s *SyncRepos) _sync(selected_repos map[string]*RepoConfig, return_messages
 	syscall.Umask(022)
 	sync_manager := NewSyncManager(s.emerge_config.targetConfig.Settings, emergelog)
 
-	var max_jobs string
+	var max_jobs int
 
 	if _, ok := s.emerge_config.targetConfig.Settings.Features.Features["parallel-fetch"]; ok {
-		max_jobs, ok = s.emerge_config.opts["--jobs"]
+		max_jobs1, ok := s.emerge_config.opts["--jobs"]
 		if !ok {
-			max_jobs = "1"
+			max_jobs = 1
+		} else {
+			max_jobs, _ = strconv.Atoi(max_jobs1)
 		}
 	} else {
-		max_jobs = "1"
+		max_jobs = 1
 	}
-	fmt.Sprint(max_jobs) // TODO: remove it
 	sync_scheduler := NewSyncScheduler(s.emerge_config,
-		selected_repos, sync_manager)
-	//,
-	//		max_jobs=max_jobs,
-	//		event_loop=asyncio._safe_loop())
+		selected_repos, sync_manager, max_jobs, asyncio._safe_loop())
 
 	sync_scheduler.start()
 	sync_scheduler.wait()
@@ -432,10 +431,10 @@ func (s *SyncScheduler) _can_add_job() {}
 
 func (s *SyncScheduler) _keep_scheduling() {}
 
-func NewSyncScheduler(emerge_config *EmergeConfig, selected_repos interface{}, sync_manager *SyncManager) *SyncScheduler {
+func NewSyncScheduler(emerge_config *EmergeConfig, selected_repos interface{}, sync_manager *SyncManager, max_jobs int, event_loop) *SyncScheduler {
 	s := &SyncScheduler{_emerge_config: emerge_config, selected_repos: selected_repos, _sync_manager: sync_manager}
 
-	//AsyncScheduler.__init__(self, **kwargs)
+	s.AsyncScheduler=NewAsyncScheduler(max_jobs, 0, event_loop)
 	s._init_graph()
 	s.retvals = [][2]string{}
 	s.msgs = []string{}

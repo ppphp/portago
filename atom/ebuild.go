@@ -1370,9 +1370,7 @@ fd_pipes map[int]int, returnpid bool) int {
 		builddir_lock = nil
 		if !returnpid &&
 			!Inmss(mysettings.ValueDict, "PORTAGE_BUILDDIR_LOCKED") {
-			builddir_lock = EbuildBuildDir(
-				scheduler = asyncio._safe_loop(),
-				settings = mysettings)
+			builddir_lock = NewEbuildBuildDir(asyncio._safe_loop(), mysettings)
 			builddir_lock.scheduler.run_until_complete(
 				builddir_lock.async_lock())
 		}
@@ -1399,7 +1397,7 @@ fd_pipes map[int]int, returnpid bool) int {
 				filepath.Join(mysettings.depcachedir, "aux_db_key_temp")
 		}
 
-		return _spawn_phase(mydo, mysettings, nil, returnpid, ""
+		return _spawn_phase(mydo, mysettings, nil, returnpid, "",
 			fd_pipes = fd_pipes)
 
 	} else if mydo == "nofetch" {
@@ -1691,11 +1689,11 @@ fd_pipes map[int]int, returnpid bool) int {
 	if mydo == "manifest" {
 		mf = nil
 		_doebuild_manifest_cache = nil
-		return digestgen(nil, mysettings, mydbapi) == 0
+		return digestgen(nil, mysettings, mydbapi)
 	} else if mydo == "digest" {
 		mf = nil
 		_doebuild_manifest_cache = nil
-		return digestgen(nil, mysettings, mydbapi) == 0
+		return digestgen(nil, mysettings, mydbapi)
 	} else if mysettings.Features.Features["digest"] {
 		mf = nil
 		_doebuild_manifest_cache = nil
@@ -1983,7 +1981,7 @@ func _validate_deps(mysettings *Config, myroot, mydo string, mydbapi DBAPI)int {
 		return f
 	}
 
-	root_config := NewRootConfig(mysettings, Tree{_porttree: NewFakeTree(mydbapi)}, nil)
+	root_config := NewRootConfig(mysettings, &Tree{_porttree: NewFakeTree(mydbapi)}, nil)
 
 	pkg := NewPackage(false, mysettings.mycpv, false, metadata, root_config, "ebuild")
 
