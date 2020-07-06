@@ -1157,7 +1157,7 @@ _doebuild_commands_without_builddir = []string{
 func doebuild(myebuild, mydo string, settings *Config, debug, listonly,
 fetchonly, cleanup, use_cache, fetchall int, tree string,
 mydbapi DBAPI, vartree *varTree, prev_mtimes=None,
-fd_pipes=None, returnpid bool) int {
+fd_pipes map[int]int, returnpid bool) int {
 	if settings == nil {
 		//raise TypeError("Settings parameter is required")
 	}
@@ -2043,18 +2043,15 @@ func _validate_deps(mysettings *Config, myroot, mydo string, mydbapi DBAPI)int {
 	return 0
 }
 
-// false, false, false, false, false, true, true, false, false
+// false, false, false, false, false, true, true, false, false, nil
 func spawnE(mystring string, mysettings  *Config, debug, free, droppriv,
-sesandbox, fakeroot, networked, ipc, mountns, pidns bool, **keywords) {
-	check_config_instance(mysettings)
+sesandbox, fakeroot, networked, ipc, mountns, pidns bool, fd_pipes map[int]int, **keywords) {
 
-	fd_pipes = keywords.get("fd_pipes")
 	if fd_pipes == nil {
-		fd_pipes = map[]
-		{
-			0:getStdin().Fd(),
-			1:sys.__stdout__.fileno(),
-			2:sys.__stderr__.fileno(),
+		fd_pipes = map[int]int{
+			0:int(getStdin().Fd()),
+			1:syscall.Stdout,
+			2:syscall.Stderr,
 		}
 	}
 
@@ -2218,15 +2215,15 @@ sesandbox, fakeroot, networked, ipc, mountns, pidns bool, **keywords) {
 		}
 	}()
 	if keywords.get("returnpid") {
-		return spawn_func(mystring, env = mysettings.environ(),
+		return spawn_func(mystring, env = mysettings.environ(),fd_pipes
 			**keywords)
 	}
 
-	proc := EbuildSpawnProcess(
-		background = false, args = mystring,
+	proc := NewEbuildSpawnProcess(
+		false, mystring,
 		scheduler = SchedulerInterface(asyncio._safe_loop()),
 		spawn_func = spawn_func,
-		settings = mysettings, **keywords)
+		settings = mysettings, fd_pipes, **keywords)
 
 	proc.start()
 	proc.wait()

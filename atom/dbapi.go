@@ -8687,16 +8687,16 @@ func (p *portdbapi) async_aux_get(mycpv string, mylist []string, mytree, myrepo 
 		cache_me = true
 	}
 
-	pkimdpack := map[string]bool {	}
-	for _, k := range mylist{
-		if p._known_keys[k]{
-			pkimdpack[k]=true
+	pkimdpack := map[string]bool{}
+	for _, k := range mylist {
+		if p._known_keys[k] {
+			pkimdpack[k] = true
 		}
 	}
-	for k := range p._aux_cache_keys{
-		delete(pkimdpack,k)
+	for k := range p._aux_cache_keys {
+		delete(pkimdpack, k)
 	}
-	if mytree == "" && len(pkimdpack) == 0{
+	if mytree == "" && len(pkimdpack) == 0 {
 		aux_cache := p._aux_cache[mycpv]
 		if aux_cache != nil {
 			res := []string{}
@@ -8740,10 +8740,7 @@ func (p *portdbapi) async_aux_get(mycpv string, mylist []string, mytree, myrepo 
 		return future
 	}
 
-	proc := EbuildMetadataPhase(cpv = mycpv,
-		ebuild_hash = ebuild_hash, portdb = p,
-		repo_path = mylocation, scheduler = loop,
-		settings = p.doebuild_settings)
+	proc := NewEbuildMetadataPhase(mycpv, ebuild_hash, p, mylocation, loop, p.doebuild_settings)
 
 	proc.addExitListener(functools.partial(p._aux_get_return,
 		future, mycpv, mylist, myebuild, ebuild_hash, mydata, mylocation,
@@ -8759,8 +8756,8 @@ func (p *portdbapi) _aux_get_cancel(proc, future) {
 	}
 }
 
-func (p *portdbapi) _aux_get_return(future, mycpv, mylist, myebuild, ebuild_hash,
-	mydata, mylocation, cache_me, proc) {
+func (p *portdbapi) _aux_get_return(future Future, mycpv, mylist, myebuild, ebuild_hash,
+	mydata, mylocation string, cache_me, proc) {
 	if future.cancelled() {
 		return
 	}
@@ -8772,7 +8769,7 @@ nil:
 	future.set_exception(PortageKeyError(mycpv))
 	return
 	mydata = proc.metadata
-	mydata["repository"] = p.repositories.get_name_for_location(mylocation)
+	mydata["repository"] = p.repositories.getNameForLocation(mylocation)
 	mydata["_mtime_"] = ebuild_hash.mtime
 	eapi = mydata.get("EAPI")
 	if not eapi:
