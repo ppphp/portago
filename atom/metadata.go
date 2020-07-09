@@ -1,18 +1,17 @@
 package atom
 
-import (
-	"encoding/xml"
-	"fmt"
-	"io/ioutil"
-)
-
 // https://devmanual.gentoo.org/ebuild-writing/misc-files/metadata/
 
-var m Metadata
-
 // catmetadata for category and pkgmetadata for package
-type Metadata struct {
+type MetadataXML struct {
 	Maintainers []Maintainer `xml:"maintainer"`
+}
+
+func NewMetaDataXML(metadata_xml_path string, herds string) *MetadataXML {
+	m := &MetadataXML{}
+
+
+	return m
 }
 
 type Maintainer struct {
@@ -83,17 +82,4 @@ type Pkg struct {
 
 type Cat struct {
 	Cat string `xml:",chardata"`
-}
-
-//func init() {
-//	Read("app-misc/hello")
-//}
-
-func Read(cvp string) {
-	a, err := ioutil.ReadFile(fmt.Sprintf("./tmp/%v/metadata.xml", cvp))
-	if err != nil {
-		panic(err.Error())
-	}
-	xml.Unmarshal(a, &m)
-	fmt.Printf("%+v", m)
 }
