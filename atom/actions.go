@@ -88,7 +88,7 @@ func print_results(results []string) {
 func runAction(emergeConfig *EmergeConfig) int {
 	if map[string]bool{"help": true, "info": true, "sync": true, "version": true}[emergeConfig.action] && emergeConfig.opts["--package-moves"] != "n" &&
 		Global_updates(emergeConfig.Trees,
-			emergeConfig.targetConfig.Mtimedb.dict["updates"],
+			emergeConfig.targetConfig.Mtimedb.dict["updates"].(map[string]string),
 			Inmss(emergeConfig.opts, "--quiet"), false) {
 		emergeConfig.targetConfig.Mtimedb.Commit()
 		LoadEmergeConfig(emergeConfig, nil, "", nil, nil)
@@ -104,27 +104,27 @@ func runAction(emergeConfig *EmergeConfig) int {
 		LoadEmergeConfig(emergeConfig, nil, "", nil, nil)
 	}
 	if Inmss(emergeConfig.opts, "--buildpkgonly") {
-		emergeConfig.opts["--buildpkg"] = true
+		emergeConfig.opts["--buildpkg"] = "true"
 	}
 
 	if emergeConfig.targetConfig.Settings.Features.Features["getbinpkg"] {
-		emergeConfig.opts["--getbinpkg"] = true
+		emergeConfig.opts["--getbinpkg"] = "true"
 	}
 
 	if Inmss(emergeConfig.opts, "--getbinpkgonly") {
-		emergeConfig.opts["--getbinpkg"] = true
+		emergeConfig.opts["--getbinpkg"] = "true"
 	}
 
 	if Inmss(emergeConfig.opts, "--getbinpkgonly") {
-		emergeConfig.opts["--usepkgonly"] = true
+		emergeConfig.opts["--usepkgonly"] = "true"
 	}
 
 	if Inmss(emergeConfig.opts, "--getbinpkg") {
-		emergeConfig.opts["--usepkg"] = true
+		emergeConfig.opts["--usepkg"] = "true"
 	}
 
 	if Inmss(emergeConfig.opts, "--usepkgonly") {
-		emergeConfig.opts["--usepkg"] = true
+		emergeConfig.opts["--usepkg"] = "true"
 	}
 
 	if emergeConfig.action == "version" {
