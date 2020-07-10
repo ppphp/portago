@@ -125,7 +125,8 @@ func mapDictListVals(f func(string) string, mydict map[string][]string) {
 	}
 }
 
-func stackDictList(originalDicts []map[string][]string, incremental int, incrementalS []string, ignoreNone int) map[string][]string { // false, []string{}, false
+// false, []string{}, false
+func stackDictList(originalDicts []map[string][]string, incremental int, incrementalS []string, ignoreNone int) map[string][]string {
 	finalDict := map[string][]string{}
 	for _, myDict := range originalDicts {
 		if myDict == nil {

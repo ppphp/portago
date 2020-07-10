@@ -94,7 +94,7 @@ type Config struct {
 	constantKeys, setcpvAuxKeys, envBlacklist, environFilter, environWhitelist, globalOnlyVars, caseInsensitiveVars map[string]bool
 	tolerent, unmatchedRemoval, localConfig, setCpvActive                                                           bool
 	locked                                                                                                          int
-	acceptChostRe                                                                                                   *int
+	acceptChostRe                                                                                                   *regexp.Regexp
 	penv, modifiedkeys                                                                                              []string
 	mycpv                                                                                                           *PkgStr
 	setcpvArgsHash                                                                                                  struct {
@@ -128,6 +128,7 @@ type Config struct {
 	locationsManager                                                                                                                     *locationsManager
 	environWhitelistRe                                                                                                                   *regexp.Regexp
 	_tolerant                                                                                                                            bool
+	_thirdpartymirrors                                                                                                                   map[string][]string
 }
 
 func (c *Config) initIuse() {
@@ -314,7 +315,7 @@ func (c *Config) Validate() {
 		if compression, ok := _compressors[binpkgCompression]; !ok {
 			WriteMsg(fmt.Sprintf("!!! BINPKG_COMPRESS contains invalid or unsupported compression method: %s", binpkgCompression), -1, nil)
 		} else {
-			if cs, err := shlex.Split(varExpand(compression["compress"], c.ValueDict, "")); err != nil {
+			if cs, err := shlex.Split(varExpand(compression["compress"], c.ValueDict, nil)); err != nil {
 
 			} else if len(cs) == 0 {
 				WriteMsg(fmt.Sprintf("!!! BINPKG_COMPRESS contains invalid or unsupported compression method: %s", compression["compress"]), -1, nil)
@@ -1119,6 +1120,171 @@ func (c *Config) _getMissingLicenses(cpv *PkgStr, metadata map[string]string) []
 	return c.licenseManager.getMissingLicenses(cpv, metadata["USE"], metadata["LICENSE"], metadata["SLOT"], metadata["repository"])
 }
 
+func (c *Config) _getMissingProperties(cpv *PkgStr, metadata map[string]string) []string {
+
+	accept_properties := []string{}
+	for k := range c.acceptProperties{
+		accept_properties = append(accept_properties, k)
+	}
+	//try:
+	//	cpv.slot
+	//	except AttributeError:
+	//	cpv = _pkg_str(cpv, metadata=metadata, settings=c)
+	cp := cpvGetKey(cpv.string, "")
+	cpdict := c.ppropertiesdict[cp]
+	if len(cpdict) > 0 {
+		pproperties_list := orderedByAtomSpecificity(cpdict, cpv, "")
+		if len(pproperties_list) > 0 {
+			accept_properties = []string{}
+			for k := range c.acceptProperties{
+				accept_properties = append(accept_properties, k)
+			}
+			for _, x := range pproperties_list {
+				accept_properties = append(accept_properties, x...)
+			}
+		}
+	}
+
+	properties_str := metadata["PROPERTIES"]
+	properties := map[string]bool{}
+	for _, v := range useReduce(properties_str, map[string]bool{}, []string{}, true, []string{}, false, "", false, true, nil, nil, false) {
+		properties[v] = true
+	}
+
+	acceptable_properties := map[string]bool{}
+	for _, x := range accept_properties {
+		if x == "*" {
+			for k := range properties {
+				acceptable_properties[k] = true
+			}
+		} else if x == "-*" {
+			acceptable_properties = map[string]bool{}
+		} else if x[:1] == "-" {
+			delete(acceptable_properties, x[1:])
+		} else {
+			acceptable_properties[x] = true
+		}
+	}
+
+	use := []string{}
+	if strings.Contains(properties_str, "?") {
+		use = strings.Fields(metadata["USE"])
+	}
+
+	ret := []string{}
+	usemsb := map[string]bool{}
+	for _, v := range use {
+		usemsb[v] = true
+	}
+	for _, x := range useReduce(properties_str, usemsb, []string{}, false, []string{}, false, "", false, true, nil, nil, false) {
+		if !acceptable_properties[x] {
+			ret = append(ret, x)
+		}
+	}
+	return ret
+}
+
+func (c *Config) _getMissingRestrict(cpv *PkgStr, metadata map[string]string) []string {
+
+	accept_restrict := []string{}
+	for _, k := range c.acceptRestrict{
+		accept_restrict = append(accept_restrict, k)
+	}
+	//try:
+	//	cpv.slot
+	//	except AttributeError:
+	//	cpv = _pkg_str(cpv, metadata=metadata, settings=c)
+	cp := cpvGetKey(cpv.string, "")
+	cpdict := c.pacceptRestrict[cp]
+	if len(cpdict) > 0 {
+		paccept_restrict_list := orderedByAtomSpecificity(cpdict, cpv, "")
+		if len(paccept_restrict_list) > 0 {
+			accept_restrict = []string{}
+			for _, k := range c.acceptRestrict{
+				accept_restrict = append(accept_restrict, k)
+			}
+			for _, x := range paccept_restrict_list {
+				accept_restrict = append(accept_restrict, x...)
+			}
+		}
+	}
+
+	restrict_str := metadata["RESTRICT"]
+	all_restricts := map[string]bool{}
+	for _, v := range useReduce(restrict_str, map[string]bool{}, []string{}, true, []string{}, false, "", false, true, nil, nil, false) {
+		all_restricts[v] = true
+	}
+
+	acceptable_restricts := map[string]bool{}
+	for _, x := range accept_restrict {
+		if x == "*" {
+			for k := range all_restricts {
+				acceptable_restricts[k] = true
+			}
+		} else if x == "-*" {
+			acceptable_restricts = map[string]bool{}
+		} else if x[:1] == "-" {
+			delete(acceptable_restricts, x[1:])
+		} else {
+			acceptable_restricts[x] = true
+		}
+	}
+
+	use := []string{}
+	if strings.Contains(restrict_str, "?") {
+		use = strings.Fields(metadata["USE"])
+	}
+
+	ret := []string{}
+	usemsb := map[string]bool{}
+	for _, v := range use {
+		usemsb[v] = true
+	}
+	for _, x := range useReduce(restrict_str, usemsb, []string{}, false, []string{}, false, "", false, true, nil, nil, false) {
+		if !acceptable_restricts[x] {
+			ret = append(ret, x)
+		}
+	}
+	return ret
+}
+
+func (c *Config)_accept_chost(metadata map[string]string)bool{
+
+	if c.acceptChostRe == nil {
+		accept_chost := strings.Fields(c.ValueDict["ACCEPT_CHOSTS"])
+		if len(accept_chost)== 0 {
+			chost := c.ValueDict["CHOST"]
+			if chost== "" {
+				accept_chost=append(accept_chost,chost)
+			}
+		}
+		if len(accept_chost) == 0 {
+			c.acceptChostRe = regexp.MustCompile(".*")
+		}else if len(accept_chost) == 1 {
+			var err error
+			c.acceptChostRe, err = regexp.Compile(fmt.Sprintf("^%s$", accept_chost[0]))
+			if err != nil {
+				//except re.error as e:
+				WriteMsg(fmt.Sprintf("!!! Invalid ACCEPT_CHOSTS value: '%s': %s\n",
+				accept_chost[0], err), -1, nil)
+				c.acceptChostRe = regexp.MustCompile("^$")
+			}
+		}else {
+			var err error
+			c.acceptChostRe, err = regexp.Compile(fmt.Sprintf("^(%s)$", strings.Join(accept_chost, "|")))
+			if err != nil {
+				//except re.error as e:
+				WriteMsg(fmt.Sprintf("!!! Invalid ACCEPT_CHOSTS value: '%s': %s\n",
+					strings.Join(accept_chost, " "), err), -1, nil)
+				c.acceptChostRe = regexp.MustCompile("^$")
+			}
+		}
+	}
+
+	pkg_chost := metadata["CHOST"]
+	return pkg_chost == "" || c.acceptChostRe.MatchString(pkg_chost)
+}
+
 func (c *Config)setinst(){
 }
 
@@ -1488,6 +1654,156 @@ func (c *Config) _populate_treeVirtuals_if_needed(vartree *varTree) {
 			c.virtualsManager()._treeVirtuals = map[string][]string{}
 		}
 	}
+}
+
+func (c *Config) environ() map[string]string {
+	mydict := map[string]string{}
+	environ_filter := c.environFilter
+
+	eapi := c.ValueDict["EAPI"]
+	eapi_attrs := getEapiAttrs(eapi)
+	phase := c.ValueDict["EBUILD_PHASE"]
+	emerge_from := c.ValueDict["EMERGE_FROM"]
+	filter_calling_env := false
+	if c.mycpv != nil &&
+		!(emerge_from == "ebuild" && phase == "setup") &&
+		!Ins([]string{"clean", "cleanrm", "depend", "fetch"}, phase) {
+		temp_dir := c.ValueDict["T"]
+		if temp_dir != "" && pathExists(filepath.Join(temp_dir, "environment")) {
+			filter_calling_env = true
+		}
+	}
+
+	environ_whitelist := c.environWhitelist
+	for x, myvalue := range c.ValueDict {
+		if environ_filter[x] {
+			continue
+		}
+		if filter_calling_env &&
+			!environ_whitelist[x] &&
+			!c.environWhitelistRe.MatchString(x) {
+			continue
+		}
+		mydict[x] = myvalue
+	}
+	if !Inmss(mydict, "HOME") && Inmss(mydict, "BUILD_PREFIX") {
+		WriteMsg("*** HOME not set. Setting to "+mydict["BUILD_PREFIX"]+"\n", 0, nil)
+		mydict["HOME"] = mydict["BUILD_PREFIX"][:]
+	}
+
+	if filter_calling_env {
+		if phase != "" {
+			whitelist := []string{}
+			if "rpm" == phase {
+				whitelist = append(whitelist, "RPMDIR")
+			}
+			for _, k := range whitelist {
+				v := c.ValueDict[k]
+				if v != "" {
+					mydict[k] = v
+				}
+			}
+		}
+	}
+
+	mydict["PORTAGE_FEATURES"] = c.ValueDict["FEATURES"]
+
+	mydict["USE"] = c.ValueDict["PORTAGE_USE"]
+
+	if !eapiExportsAa(eapi) {
+		delete(mydict, "AA")
+	}
+
+	if !eapiExportsMergeType(eapi) {
+		delete(mydict, "MERGE_TYPE")
+	}
+
+	src_like_phase := phase == "setup" || strings.HasPrefix(_phase_func_map[phase], "src_")
+
+	if !(src_like_phase && eapi_attrs.sysroot) {
+		delete(mydict, "ESYSROOT")
+	}
+
+	if !(src_like_phase && eapi_attrs.broot) {
+		delete(mydict, "BROOT")
+	}
+
+	if phase == "depend" || (!c.Features.Features["force-prefix"] && eapi != "" && !eapiSupportsPrefix(eapi)) {
+		delete(mydict, "ED")
+		delete(mydict, "EPREFIX")
+		delete(mydict, "EROOT")
+		delete(mydict, "ESYSROOT")
+	}
+
+	if !Ins([]string{"pretend", "setup", "preinst", "postinst"}, phase) || !eapiExportsReplaceVars(eapi) {
+		delete(mydict, "REPLACING_VERSIONS")
+	}
+
+	if !Ins([]string{"prerm", "postrm"}, phase) || !eapiExportsReplaceVars(eapi) {
+		delete(mydict, "REPLACED_BY_VERSION")
+	}
+
+	if phase != "" && eapi_attrs.exportsEbuildPhaseFunc {
+		phase_func := _phase_func_map[phase]
+		if phase_func != "" {
+			mydict["EBUILD_PHASE_FUNC"] = phase_func
+		}
+	}
+
+	if eapi_attrs.posixishLocale {
+		split_LC_ALL(mydict)
+		mydict["LC_COLLATE"] = "C"
+		if check_locale(silent = True, env = mydict) is
+	False:
+		for _, l := range []string{"C.UTF-8", "en_US.UTF-8", "en_GB.UTF-8", "C"} {
+			mydict["LC_CTYPE"] = l
+			if check_locale(silent = True, env = mydict){
+				break
+			}
+		}
+		else:
+		raise
+		AssertionError("C locale did not pass the test!")
+	}
+
+	if !eapi_attrs.exportsPortdir {
+		delete(mydict, "PORTDIR")
+	}
+	if !eapi_attrs.exportsEclassdir {
+		delete(mydict, "ECLASSDIR")
+	}
+
+	if !eapi_attrs.pathVariablesEndWithTrailingSlash {
+		for _, v := range []string{"D", "ED", "ROOT", "EROOT", "ESYSROOT", "BROOT"} {
+			if Inmss(mydict, v) {
+				mydict[v] = strings.TrimRight(mydict[v], string(os.PathSeparator))
+			}
+		}
+	}
+
+	if Inmss(mydict, "SYSROOT") {
+		mydict["SYSROOT"] = strings.TrimRight(mydict["SYSROOT"], string(os.PathSeparator))
+	}
+
+	builddir := mydict["PORTAGE_BUILDDIR"]
+	distdir := mydict["DISTDIR"]
+	mydict["PORTAGE_ACTUAL_DISTDIR"] = distdir
+	mydict["DISTDIR"] = filepath.Join(builddir, "distdir")
+
+	return mydict
+}
+
+func (c *Config) thirdpartymirrors()  map[string][]string {
+	if c._thirdpartymirrors == nil {
+		thirdparty_lists := []map[string][]string{}
+		for _, repo_name := range reversed(c.Repositories.preposOrder) {
+			thirdparty_lists = append(thirdparty_lists, grabDict(filepath.Join(
+				c.Repositories.Prepos[repo_name].Location,
+				"profiles", "thirdpartymirrors"), false, false, false, true, false))
+		}
+		c._thirdpartymirrors = stackDictList(thirdparty_lists, 1, []string{}, 0)
+	}
+	return c._thirdpartymirrors
 }
 
 func (c *Config) archlist() map[string]bool {
