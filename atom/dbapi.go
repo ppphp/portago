@@ -9312,7 +9312,7 @@ func (p *portdbapi) _visible(cpv *PkgStr, metadata map[string]string) bool {
 	}
 	if settings.localConfig {
 		metadata["CHOST"] = settings.ValueDict["CHOST"]
-		if !settings._accept_chost(cpv, metadata) {
+		if !settings._accept_chost(metadata) {
 			return false
 		}
 		metadata["USE"] = ""
@@ -9322,13 +9322,13 @@ func (p *portdbapi) _visible(cpv *PkgStr, metadata map[string]string) bool {
 			metadata["USE"] = p.doebuild_settings.ValueDict["PORTAGE_USE"]
 		}
 		//try:
-		if settings._getMissingLicenses(cpv, metadata) {
+		if len(settings._getMissingLicenses(cpv, metadata)) > 0 {
 			return false
 		}
-		if settings._getMissingProperties(cpv, metadata) {
+		if len(settings._getMissingProperties(cpv, metadata)) > 0 {
 			return false
 		}
-		if settings._getMissingRestrict(cpv, metadata) {
+		if len(settings._getMissingRestrict(cpv, metadata)) > 0 {
 			return false
 		}
 		//except

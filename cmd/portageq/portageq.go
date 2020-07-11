@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/pkg/emerge"
 	"github.com/ppphp/shlex"
 	"io/ioutil"
 	"os"
@@ -634,7 +633,7 @@ func bestVisible(argv []string) int {
 
 		atom.ReverseSlice(cpv_list)
 
-		atom_set := InternalPackageSet(initial_atoms = (atom2,))
+		atom_set := atom.NewInternalPackageSet(initial_atoms = (atom2,))
 
 		var repo_list []string
 
@@ -646,12 +645,14 @@ func bestVisible(argv []string) int {
 
 		for _, cpv := range cpv_list {
 			for _, repo := range repo_list {
-
-			try:
-				metadata := dict(zip(Package.metadata_keys,
-					db.aux_get(cpv, Package.metadata_keys, myrepo = repo)))
-				except KeyError:
-				continue
+				metadata := map[string]string{}
+				if len(NewPackage().metadata_keys) != len(db.AuxGet(cpv, NewPackage().metadata_keys, repo)){
+					//except KeyError:
+					continue
+				}
+				for i, v := range db.AuxGet(cpv, NewPackage().metadata_keys, repo){
+					metadata[NewPackage().metadata_keys[i]] = v
+				}
 				pkg := atom.NewPackage(pkgtype != "ebuild", cpv,
 					pkgtype == "installed", metadata,
 					root_config, pkgtype)
@@ -1051,10 +1052,10 @@ func list_preserved_libs(argv []string) int {
 
 func MaintainerEmailMatcher(maintainer_emails []string) func()bool{
 	_re := regexp.MustCompile(fmt.Sprintf("^(%s)$" , strings.Join(maintainer_emails, "|")))
-	return func(metadata_xml)bool{
+	return func(metadata_xml atom.MetadataXML)bool{
 		match := false
 		matcher := _re.MatchString
-		for _, x := range metadata_xml.maintainers() {
+		for _, x := range metadata_xml.Maintainers() {
 			if x.email != "" && matcher(x.email) {
 				match = true
 				break
@@ -1064,7 +1065,7 @@ func MaintainerEmailMatcher(maintainer_emails []string) func()bool{
 	}
 }
 
-func match_orphaned(metadata_xml) bool {
+func match_orphaned(metadata_xml atom.MetadataXML) bool {
 	if len(metadata_xml.maintainers()) == 0 {
 		return true
 	} else {
@@ -1099,7 +1100,7 @@ func pquery(opts Opts, args []string) int {
 		atom1 := ""
 
 		if !strings.Contains(strings.Split(arg, ":")[0], "/") {
-			atom1 = emerge.insert_category_into_atom(arg, "*")
+			atom1 = atom.insert_category_into_atom(arg, "*")
 			if atom1 == "" {
 				atom.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n", arg),
 					-1, nil)
@@ -1141,7 +1142,7 @@ func pquery(opts Opts, args []string) int {
 		need_metadata = true
 	}
 
-	xml_matchers := []func() bool{}
+	xml_matchers := []func(atom.MetadataXML) bool{}
 	if len(opts.maintainerEmail) > 0 {
 		maintainer_emails := []string{}
 		for _, x := range opts.maintainerEmail {
@@ -1166,14 +1167,14 @@ func pquery(opts Opts, args []string) int {
 	}
 
 	var categories []string
+	names := []string{}
 	if len(atoms) == 0 {
-		names = None
-		categories = list(portdb.categories)
+		names = nil
+		copy(categories, portdb.categories)
 	} else {
 		category_wildcard := false
 		name_wildcard := false
 		categories = []string{}
-		names := []string{}
 		for _, atom1 := range atoms {
 			category, name := atom.catsplit(atom1.cp)[0], atom.catsplit(atom1.cp)[1]
 			categories = append(categories, category)
@@ -1195,17 +1196,21 @@ func pquery(opts Opts, args []string) int {
 		if name_wildcard {
 			names = nil
 		} else {
-			names = sorted(set(names))
+			ns := map[string]bool{}
+			for _, n := range names {
+				ns[n]=true
+			}
+			names = atom.sortedmsb(ns)
 		}
 	}
 
 	no_version := opts.noVersion
-	categories.sort()
+	sort.Strings(categories)
 
 	for _, category := range categories {
 		cp_list := []string{}
 		if names == nil {
-			cp_list = portdb.cp_all(categories = (category,))
+			cp_list = portdb.cp_all(map[string]bool{category:true}, nil, false, true)
 		} else {
 			cp_list = []string{}
 			for _, name := range names {
@@ -1217,10 +1222,10 @@ func pquery(opts Opts, args []string) int {
 			for _, repo := range repos {
 				match := true
 				if len(xml_matchers) > 0 {
-					metadata_xml_path = filepath.Join(
+					metadata_xml_path := filepath.Join(
 						repo.location, cp, "metadata.xml")
 				try:
-					metadata_xml = MetaDataXML(metadata_xml_path, None)
+					metadata_xml := atom.MetadataXML{}(metadata_xml_path, None)
 					except(EnvironmentError, SyntaxError):
 					match = false
 					else
@@ -1234,13 +1239,13 @@ func pquery(opts Opts, args []string) int {
 				if !match {
 					continue
 				}
-				cpv_list = portdb.cp_list(cp, mytree = [repo.location])
+				cpv_list := portdb.cp_list(cp, 1, []string{repo.location})
 				if len(atoms) > 0 {
 					for _, cpv := range cpv_list {
-						pkg = None
-						for _, atom := range atoms {
-							if atom.repo != nil &&
-								atom.repo != repo.name {
+						var pkg *Package
+						for _, atom2 := range atoms {
+							if atom2.repo != nil &&
+								atom2.repo != repo.name {
 								continue
 							}
 							if !atom.matchFromList(atom, []*atom.pkgStr{cpv}) {
@@ -1248,17 +1253,16 @@ func pquery(opts Opts, args []string) int {
 							}
 							if need_metadata {
 								if pkg == nil {
-								try:
+								//try:
 									pkg = _pkg(cpv, repo.name)
-									except
-									portage.exception.PackageNotFound:
-									continue
+									//except portage.exception.PackageNotFound:
+									//continue
 								}
 
 								if !(opts.noFilter || pkg.visible) {
 									continue
 								}
-								if !atom.matchFromList(atom, [pkg]) {
+								if !atom.matchFromList(atom2, [pkg]) {
 									continue
 								}
 							}
