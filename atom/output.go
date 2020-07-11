@@ -3,6 +3,7 @@ package atom
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -309,10 +310,11 @@ var Green = func(text string) string { return colorize("green", text) }
 var Red = func(text string) string { return colorize("red", text) }
 
 type consoleStyleFile struct {
-	_file, _styles, write_listener string
+	_file, write_listener io.Writer
+	_styles               string
 }
 
-func NewConsoleStylefile(f string) *consoleStyleFile {
+func NewConsoleStylefile(f io.Writer) *consoleStyleFile {
 	c := &consoleStyleFile{_file: f}
 	return c
 }
@@ -681,6 +683,7 @@ func (a *AbstractFormatter) PopStyle(s string) {
 type StyleWriter struct {
 	File          *os.File
 	StyleListener []string
+	maxcol int
 }
 
 func (d *StyleWriter) Flush() {

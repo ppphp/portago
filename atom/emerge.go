@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/ppphp/shlex"
+	"golang.org/x/crypto/ssh/terminal"
 	"golang.org/x/sys/unix"
 	"io"
 	"io/ioutil"
+	"math"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -5213,6 +5215,727 @@ spawn_func = spawn_func, settings *Config, **keywords)*EbuildSpawnProcess {
 	return e
 }
 
+func FakeVardbGetPath(vardb *vardbapi)func(string, string)string {
+	return func(cpv, filename string) string {
+		settings := vardb.settings
+		path := filepath.Join(settings.ValueDict["EROOT"], VdbPath, cpv)
+		if filename != "" {
+			path = filepath.Join(path, filename)
+		}
+		return path
+	}
+}
+
+type _DynamicDepsNotApplicable struct {
+	Exception
+}
+
+type FakeVartree struct {
+	*vartree
+	_dynamic_deps, _ignore_built_slot_operator_deps bool
+	settings                                        *Config
+	_db_keys                                        []string
+}
+
+// nil, nil, false, false, false
+func NewFakeVartree(root_config, pkg_cache=None, pkg_root_config=None,
+dynamic_deps, ignore_built_slot_operator_deps, soname_deps bool)*FakeVartree{
+	f := &FakeVartree{}
+	f.vartree = NewVarTree()
+
+	f._root_config = root_config
+	f._dynamic_deps = dynamic_deps
+	f._ignore_built_slot_operator_deps = ignore_built_slot_operator_deps
+	if pkg_root_config is None{
+		pkg_root_config = f._root_config
+	}
+	f._pkg_root_config = pkg_root_config
+	if pkg_cache is None{
+		pkg_cache ={}
+	}
+	real_vartree := root_config.trees["vartree"]
+	f._real_vardb = real_vartree.dbapi
+	portdb := root_config.trees["porttree"].dbapi
+	f.settings = real_vartree.settings
+	mykeys := list(real_vartree.dbapi._aux_cache_keys)
+	if "_mtime_" not in mykeys{
+		mykeys.append("_mtime_")
+	}
+	f._db_keys = mykeys
+	f._pkg_cache = pkg_cache
+	f.dbapi = PackageVirtualDbapi(real_vartree.settings)
+	if soname_deps {
+		f.dbapi = PackageDbapiProvidesIndex(f.dbapi)
+	}
+	f.dbapi.getpath = FakeVardbGetPath(f.dbapi)
+	f.dbapi._aux_cache_keys = set(f._db_keys)
+
+	f._aux_get = f.dbapi.aux_get
+	f._match = f.dbapi.match
+	if dynamic_deps {
+		f.dbapi.aux_get = f._aux_get_wrapper
+		f.dbapi.match = f._match_wrapper
+	}
+	f._aux_get_history = set()
+	f._portdb_keys = Package._dep_keys + ("EAPI", "KEYWORDS")
+	f._portdb = portdb
+	f._global_updates = None
+
+	return f
+}
+
+func(f*FakeVartree) _match_wrapper(cpv, use_cache=1) {
+	matches = f._match(cpv, use_cache = use_cache)
+	for cpv in matches{
+		if cpv in f._aux_get_history{
+		continue
+	}
+		f._aux_get_wrapper(cpv, [])
+	}
+	return matches
+}
+
+func(f*FakeVartree) _aux_get_wrapper( cpv, wants, myrepo=None) {
+	if cpv in
+	f._aux_get_history:
+	return f._aux_get(cpv, wants)
+	f._aux_get_history.add(cpv)
+
+	pkg = f.dbapi._cpv_map[cpv]
+
+try:
+	live_metadata = dict(zip(f._portdb_keys,
+		f._portdb.aux_get(cpv, f._portdb_keys,
+			myrepo = pkg.repo)))
+	except(KeyError, portage.exception.PortageException):
+	live_metadata = None
+
+	f._apply_dynamic_deps(pkg, live_metadata)
+
+	return f._aux_get(cpv, wants)
+}
+
+func(f*FakeVartree) _apply_dynamic_deps(pkg, live_metadata) {
+
+try:
+	if live_metadata is
+None:
+	raise
+	_DynamicDepsNotApplicable()
+	if not(eapiIsSupported(live_metadata["EAPI"]) and \
+	eapiIsSupported(pkg.eapi)):
+	raise
+	_DynamicDepsNotApplicable()
+
+	built_slot_operator_atoms = None
+	if not f._ignore_built_slot_operator_deps
+	and \
+	_get_eapi_attrs(pkg.eapi).slot_operator:
+try:
+	built_slot_operator_atoms = \
+	find_built_slot_operator_atoms(pkg)
+	except
+InvalidDependString:
+	pass
+
+	if built_slot_operator_atoms:
+	live_eapi_attrs = _get_eapi_attrs(live_metadata["EAPI"])
+	if not live_eapi_attrs.slot_operator:
+	raise
+	_DynamicDepsNotApplicable()
+	for k, v
+	in
+	built_slot_operator_atoms.items():
+	live_metadata[k] += (" " +
+		" ".join(_unicode(atom)
+	for atom
+	in
+	v))
+
+	f.dbapi.aux_update(pkg.cpv, live_metadata)
+	except
+_DynamicDepsNotApplicable:
+	if f._global_updates is
+None:
+	f._global_updates = \
+	grab_global_updates(f._portdb)
+
+	aux_keys = Package._dep_keys + f.dbapi._pkg_str_aux_keys
+	aux_dict = dict(zip(aux_keys, f._aux_get(pkg.cpv, aux_keys)))
+	perform_global_updates(
+		pkg.cpv, aux_dict, f.dbapi, f._global_updates)
+}
+
+func(f*FakeVartree) dynamic_deps_preload(pkg, metadata) {
+	if metadata is
+	not
+None:
+	metadata = dict((k, metadata.get(k, ''))
+	for k
+	in
+	f._portdb_keys)
+	f._apply_dynamic_deps(pkg, metadata)
+	f._aux_get_history.add(pkg.cpv)
+}
+
+func(f*FakeVartree) cpv_discard( pkg) {
+	old_pkg = f.dbapi.get(pkg)
+	if old_pkg is
+	not
+None:
+	f.dbapi.cpv_remove(old_pkg)
+	f._pkg_cache.pop(old_pkg, None)
+	f._aux_get_history.discard(old_pkg.cpv)
+}
+
+// 1
+func(f*FakeVartree) sync(acquire_lock int) {
+	locked = false
+try:
+	if acquire_lock and
+	os.access(f._real_vardb._dbroot, os.W_OK):
+	f._real_vardb.lock()
+	locked = true
+	f._sync()
+finally:
+	if locked:
+	f._real_vardb.unlock()
+
+try:
+	f.dbapi.aux_get = f._aux_get
+	f.settings._populate_treeVirtuals_if_needed(f)
+finally:
+	if f._dynamic_deps:
+	f.dbapi.aux_get = f._aux_get_wrapper
+}
+
+func(f*FakeVartree) _sync() {
+
+	real_vardb = f._root_config.trees["vartree"].dbapi
+	current_cpv_set = frozenset(real_vardb.cpv_all())
+	pkg_vardb = f.dbapi
+
+	for pkg
+	in
+	list(pkg_vardb):
+	if pkg.cpv not
+	in
+current_cpv_set:
+	f.cpv_discard(pkg)
+
+	slot_counters =
+	{
+	}
+	root_config = f._pkg_root_config
+	validation_keys = ["COUNTER", "_mtime_"]
+for cpv in current_cpv_set:
+
+pkg_hash_key = Package._gen_hash_key(cpv = cpv,
+installed = true, root_config = root_config,
+type_name = "installed")
+pkg = pkg_vardb.get(pkg_hash_key)
+if pkg is not None:
+counter, mtime = real_vardb.aux_get(cpv, validation_keys)
+try:
+counter = long(counter)
+except ValueError:
+counter = 0
+
+if counter != pkg.counter or \
+mtime != pkg.mtime:
+f.cpv_discard(pkg)
+pkg = None
+
+if pkg is None:
+pkg = f._pkg(cpv)
+
+other_counter = slot_counters.get(pkg.slot_atom)
+if other_counter is not None:
+if other_counter > pkg.counter:
+continue
+
+slot_counters[pkg.slot_atom] = pkg.counter
+pkg_vardb.cpv_inject(pkg)
+
+real_vardb.flush_cache()
+}
+
+func(f*FakeVartree) _pkg(cpv) *Package {
+	pkg := NewPackage(true,  cpv, true,
+		zip(f._db_keys, f._real_vardb.aux_get(cpv, f._db_keys)),
+		f._pkg_root_config, "installed")
+
+	f._pkg_cache[pkg] = pkg
+	return pkg
+}
+
+func grab_global_updates(portdb *portdbapi) map[string][][]string{
+	retupdates := map[string][][]string{}
+
+	for _, repo_name := range portdb.getRepositories("") {
+		repo := portdb.getRepositoryPath(repo_name)
+		updpath := filepath.Join(repo, "profiles", "updates")
+		if !pathIsDir(updpath) {
+			continue
+		}
+
+		//try:
+		rawupdates := grab_updates(updpath, nil)
+		//except portage.exception.DirectoryNotFound:
+		//rawupdates = []
+		upd_commands := [][]string{}
+		for _, v := range rawupdates {
+			mycontent := v.c
+			commands, _ := parse_updates(mycontent)
+			upd_commands = append(upd_commands, commands...)
+		}
+		retupdates[repo_name] = upd_commands
+	}
+
+	master_repo := portdb.repositories.mainRepo()
+	if _, ok := retupdates[master_repo.Name]; ok {
+		retupdates["DEFAULT"] = retupdates[master_repo.Name]
+	}
+
+	return retupdates
+}
+
+func perform_global_updates(mycpv string, aux_dict map[string]string, mydb DBAPI, myupdates map[string][][]string) {
+
+	//try:
+	pkg := NewPkgStr(mycpv, aux_dict, mydb.settings, "", "", "", 0, 0, "", 0, nil)
+	//except InvalidData:
+	//return
+	aux_dict2 := map[string]string{}
+	for _, k := range NewPackage()._dep_keys {
+		aux_dict2[k] = aux_dict[k]
+	}
+	aux_dict = aux_dict2
+	mycommands, ok := myupdates[pkg.repo]
+	if !ok {
+		//except KeyError:
+		mycommands, ok = myupdates["DEFAULT"]
+		if !ok {
+			//except KeyError:
+			return
+		}
+	}
+
+	if len(mycommands) == 0 {
+		return
+	}
+
+	updates := update_dbentries(mycommands, aux_dict, "", pkg)
+	if len(updates) > 0 {
+		mydb.aux_update(mycpv, updates)
+	}
+}
+
+type FifoIpcDaemon struct {
+	*AbstractPollTask
+
+	_files *struct{pipe_in int}
+	input_fifo, output_fifo string
+}
+
+func (f *FifoIpcDaemon) _start() {
+	f._files = &struct{ pipe_in int }{}
+
+	f._files.pipe_in, _ = syscall.Open(f.input_fifo, os.O_RDONLY|syscall.O_NONBLOCK, 0644)
+
+	if sys.hexversion < 0x3040000 and
+	fcntl
+	!= nil:
+try:
+	fcntl.FD_CLOEXEC
+	except
+AttributeError:
+	pass
+	else:
+	fcntl.fcntl(f._files.pipe_in, fcntl.F_SETFD,
+		fcntl.fcntl(f._files.pipe_in,
+			fcntl.F_GETFD)|fcntl.FD_CLOEXEC)
+
+	f.scheduler.add_reader(
+		f._files.pipe_in,
+		f._input_handler)
+
+	f._registered = true
+}
+
+func (f *FifoIpcDaemon) _reopen_input() {
+	f.scheduler.remove_reader(f._files.pipe_in)
+	syscall.Close(f._files.pipe_in)
+	f._files.pipe_in =
+		os.open(f.input_fifo, os.O_RDONLY|os.O_NONBLOCK)
+
+	if sys.hexversion < 0x3040000 and
+	fcntl
+	!= nil:
+try:
+	fcntl.FD_CLOEXEC
+	except
+AttributeError:
+	pass
+	else:
+	fcntl.fcntl(f._files.pipe_in, fcntl.F_SETFD,
+		fcntl.fcntl(f._files.pipe_in,
+			fcntl.F_GETFD)|fcntl.FD_CLOEXEC)
+
+	f.scheduler.add_reader(
+		f._files.pipe_in,
+		f._input_handler)
+}
+
+func (f *FifoIpcDaemon) _cancel() {
+	if f.returncode == nil {
+		i := 1
+		f.returncode = &i
+	}
+	f._unregister()
+	f._async_wait()
+}
+
+func (f *FifoIpcDaemon) _input_handler() {
+	//raise NotImplementedError(f)
+}
+
+func (f *FifoIpcDaemon) _unregister() {
+
+	f._registered = false
+
+	if f._files != nil:
+	for f
+		in
+	f._files.values():
+	f.scheduler.remove_reader(f)
+	syscall.Close(f)
+	f._files = nil
+}
+
+func NewFifoIpcDaemon()*FifoIpcDaemon{
+	f := &FifoIpcDaemon{}
+	f.AbstractPollTask = NewAbstractPollTask()
+
+	return f
+}
+
+type JobStatusDisplay struct {
+	_bound_properties                      []string
+	_min_display_latency                   int
+	_default_term_codes, _termcap_name_map map[string]string
+
+	quiet, xterm_titles, _changed, _displayed, _isatty bool
+	maxval, merges, width, _jobs_column_width          int
+	_last_display_time                                 int64
+	_term_codes                                        map[string]string
+
+	curval,failed,running int
+}
+
+// false, true
+func NewJobStatusDisplay(quiet, xterm_titles bool)*JobStatusDisplay{
+	j := &JobStatusDisplay{}
+
+	j._bound_properties = []string{"curval", "failed", "running"}
+
+	j._min_display_latency = 2
+
+	j._default_term_codes = map[string]string {
+		"cr"  : "\r",
+			"el"  : "\x1b[K",
+			"nel" : "\n",
+	}
+
+	j._termcap_name_map = map[string]string{
+		"carriage_return" : "cr",
+			"clr_eol"         : "el",
+			"newline"         : "nel",
+	}
+
+
+	j.quiet=quiet
+	j.xterm_titles=xterm_titles
+	j.maxval=0
+	j.merges=0
+	j._changed=false
+	j._displayed=false
+	j._last_display_time=int64(0)
+
+	j.reset()
+
+	isatty := os.Getenv("TERM") != "dumb" &&terminal.IsTerminal(syscall.Stdout)
+	j._isatty=isatty
+	if ! isatty || ! j._init_term() {
+		term_codes :=map[string]string{}
+		for k, capname:= range j._termcap_name_map {
+			term_codes[k] = j._default_term_codes[capname]
+		}
+		j._term_codes = term_codes
+	}
+
+	width := 80
+	if j._isatty {
+		_, width, _ = get_term_size(0)
+	}
+	j._set_width(width)
+	return j
+}
+
+func(j*JobStatusDisplay) _set_width( width int) {
+	if width == j.width {
+		return
+	}
+	if width <= 0 || width > 80 {
+		width = 80
+	}
+	j.width = width
+	j._jobs_column_width = width-32
+}
+
+func(j*JobStatusDisplay) _write(s string) {
+	out := os.Stdout
+	out.Write([]byte(s))
+	out.Sync()
+}
+
+func(j*JobStatusDisplay) _init_term() {
+
+	term_type := strings.TrimSpace(os.Getenv("TERM"))
+	if  term_type== "" {
+		return false
+	}
+	tigetstr = None
+
+try:
+	import curses
+
+try:
+	curses.setupterm(term_type, j.out.fileno())
+	tigetstr = curses.tigetstr
+	except
+	curses.error:
+	pass
+	except
+ImportError:
+	pass
+
+	if tigetstr is
+None:
+	return false
+
+	term_codes =
+	{
+	}
+	for k, capname
+	in
+	j._termcap_name_map.items():
+	code = tigetstr(portage._native_string(capname))
+	if code is
+None:
+	code = j._default_term_codes[capname]
+	term_codes[k] = code
+	object.__setattr__(j, "_term_codes", term_codes)
+	return true
+}
+
+func(j*JobStatusDisplay) _format_msg( msg string)string {
+	return fmt.Sprintf(">>> %s" , msg)
+}
+
+func(j*JobStatusDisplay) _erase() {
+	j._write(j._term_codes["carriage_return"] + j._term_codes["clr_eol"])
+	j._displayed = false
+}
+
+func(j*JobStatusDisplay) _display( line string) {
+	j._write(line)
+	j._displayed = true
+}
+
+func(j*JobStatusDisplay) _update( msg string) {
+
+	if ! j._isatty {
+		j._write(j._format_msg(msg) + j._term_codes["newline"])
+		j._displayed = true
+		return
+	}
+
+	if j._displayed {
+		j._erase()
+	}
+
+	j._display(j._format_msg(msg))
+}
+
+func(j*JobStatusDisplay) displayMessage(msg string) {
+
+	was_displayed := j._displayed
+
+	if j._isatty && j._displayed {
+		j._erase()
+	}
+
+	j._write(j._format_msg(msg) + j._term_codes["newline"])
+	j._displayed = false
+
+	if was_displayed {
+		j._changed = true
+		j.display()
+	}
+}
+
+func(j*JobStatusDisplay) reset() {
+	j.maxval = 0
+	j.merges = 0
+
+	j.curval = 0
+	j.failed = 0
+	j.running = 0
+
+	if j._displayed {
+		j._write(j._term_codes["newline"])
+		j._displayed = false
+	}
+}
+
+func(j*JobStatusDisplay) setCurval(curval int) {
+	if j.curval!= curval{
+		j.curval=curval
+		j._property_change()
+	}
+}
+
+
+func(j*JobStatusDisplay) setFailed(failed int) {
+	if j.failed!= failed{
+		j.failed=failed
+		j._property_change()
+	}
+}
+
+func(j*JobStatusDisplay) setRunning(running int) {
+	if j.running!= running{
+		j.running=running
+		j._property_change()
+	}
+}
+
+func(j*JobStatusDisplay) _property_change() {
+	j._changed = true
+	j.display()
+}
+
+func(j*JobStatusDisplay) _load_avg_str()string {
+	avg1, avg2, avg3, err := getloadavg()
+	if err != nil {
+		//except OSError:
+		return "unknown"
+	}
+
+	max_avg := math.Max(math.Max(avg1, avg2), avg3)
+
+	digits := 0
+	if max_avg < 10 {
+		digits = 2
+	} else if max_avg < 100 {
+		digits = 1
+	}
+
+	return fmt.Sprintf("%."+fmt.Sprint(digits)+"f", avg1) + ", " +
+		fmt.Sprintf("%."+fmt.Sprint(digits)+"f", avg2) + ", " +
+		fmt.Sprintf("%."+fmt.Sprint(digits)+"f", avg3)
+}
+
+func(j*JobStatusDisplay) display() bool {
+
+	if j.quiet {
+		return true
+	}
+	current_time := time.Now().Unix()
+	time_delta := current_time - j._last_display_time
+	if j._displayed && !j._changed {
+		if !j._isatty {
+			return true
+		}
+		if int(time_delta) < j._min_display_latency {
+			return true
+		}
+	}
+
+	j._last_display_time = current_time
+	j._changed = false
+	j._display_status()
+	return true
+}
+
+func(j*JobStatusDisplay) _display_status() {
+	curval_str := fmt.Sprintf("%s", j.curval, )
+	maxval_str := fmt.Sprintf("%s", j.maxval, )
+	running_str := fmt.Sprintf("%s", j.running, )
+	failed_str := fmt.Sprintf("%s", j.failed, )
+	load_avg_str := j._load_avg_str()
+
+	color_output := &bytes.Buffer{}
+	plain_output := &bytes.Buffer{}
+	style_file := NewConsoleStylefile(color_output)
+	style_file.write_listener = plain_output
+	style_writer := &StyleWriter{File: style_file, maxcol: 9999}
+	style_writer.style_listener = style_file.new_styles
+	f := &AbstractFormatter{Writer: style_writer}
+
+	number_style := "INFORM"
+	f.add_literal_data("Jobs: ")
+	f.push_style(number_style)
+	f.add_literal_data(curval_str)
+	f.pop_style()
+	f.add_literal_data(" of ")
+	f.push_style(number_style)
+	f.add_literal_data(maxval_str)
+	f.pop_style()
+	f.add_literal_data(" complete")
+
+	if j.running != 0 {
+		f.add_literal_data(", ")
+		f.push_style(number_style)
+		f.add_literal_data(running_str)
+		f.pop_style()
+		f.add_literal_data(" running")
+	}
+
+	if j.failed != 0 {
+		f.add_literal_data(", ")
+		f.push_style(number_style)
+		f.add_literal_data(failed_str)
+		f.pop_style()
+		f.add_literal_data(" failed")
+	}
+
+	padding := j._jobs_column_width - len(plain_output.String())
+	if padding > 0 {
+		f.add_literal_data(strings.Repeat(" ", padding))
+	}
+
+	f.add_literal_data("Load avg: ")
+	f.add_literal_data(load_avg_str)
+
+	plain_outputS := plain_output.String()
+	if j._isatty && len(plain_outputS) > j.width {
+		j._update(plain_outputS[:j.width])
+	} else {
+		j._update(color_output.String())
+	}
+
+	if j.xterm_titles {
+		title_str := strings.Join(strings.Fields(plain_outputS), " ")
+		hostname := os.Getenv("HOSTNAME")
+		if hostname != "" {
+			title_str = fmt.Sprintf("%s: %s", hostname, title_str)
+		}
+		xtermTitle(title_str)
+	}
+}
+
 type SpawnProcess struct {
 	*SubProcess
 	_CGROUP_CLEANUP_RETRY_MAX int
@@ -5786,95 +6509,6 @@ logfile string, fd_pipes map[int]int) *MergeProcess {
 	return m
 }
 
-type FifoIpcDaemon struct {
-	*AbstractPollTask
-
-	_files *struct{pipe_in int}
-	input_fifo, output_fifo string
-}
-
-func (f *FifoIpcDaemon) _start() {
-	f._files = &struct{ pipe_in int }{}
-
-	f._files.pipe_in, _ = syscall.Open(f.input_fifo, os.O_RDONLY|syscall.O_NONBLOCK, 0644)
-
-	if sys.hexversion < 0x3040000 and
-	fcntl
-	!= nil:
-try:
-	fcntl.FD_CLOEXEC
-	except
-AttributeError:
-	pass
-	else:
-	fcntl.fcntl(f._files.pipe_in, fcntl.F_SETFD,
-		fcntl.fcntl(f._files.pipe_in,
-			fcntl.F_GETFD)|fcntl.FD_CLOEXEC)
-
-	f.scheduler.add_reader(
-		f._files.pipe_in,
-		f._input_handler)
-
-	f._registered = true
-}
-
-func (f *FifoIpcDaemon) _reopen_input() {
-	f.scheduler.remove_reader(f._files.pipe_in)
-	syscall.Close(f._files.pipe_in)
-	f._files.pipe_in = 
-	os.open(f.input_fifo, os.O_RDONLY|os.O_NONBLOCK)
-
-	if sys.hexversion < 0x3040000 and
-	fcntl
-	!= nil:
-try:
-	fcntl.FD_CLOEXEC
-	except
-AttributeError:
-	pass
-	else:
-	fcntl.fcntl(f._files.pipe_in, fcntl.F_SETFD,
-		fcntl.fcntl(f._files.pipe_in,
-			fcntl.F_GETFD)|fcntl.FD_CLOEXEC)
-
-	f.scheduler.add_reader(
-		f._files.pipe_in,
-		f._input_handler)
-}
-
-func (f *FifoIpcDaemon) _cancel() {
-	if f.returncode == nil {
-		i := 1
-		f.returncode = &i
-	}
-	f._unregister()
-	f._async_wait()
-}
-
-func (f *FifoIpcDaemon) _input_handler() {
-	//raise NotImplementedError(f)
-}
-
-func (f *FifoIpcDaemon) _unregister() {
-
-	f._registered = false
-
-	if f._files != nil:
-	for f
-	in
-	f._files.values():
-	f.scheduler.remove_reader(f)
-	syscall.Close(f)
-	f._files = nil
-}
-
-func NewFifoIpcDaemon()*FifoIpcDaemon{
-	f := &FifoIpcDaemon{}
-	f.AbstractPollTask = NewAbstractPollTask()
-
-	return f
-}
-
 type MiscFunctionsProcess struct {
 	*AbstractEbuildProcess
 	commands []string
@@ -6162,6 +6796,7 @@ type  Scheduler struct {
 	_running_portage         *Package
 	_running_root            *RootConfig
 	_previous_job_start_time int
+	_status_display          *JobStatusDisplay
 }
 
 type  _iface_class struct {
@@ -6178,7 +6813,8 @@ type  _fetch_iface_class struct {
 
 type _task_queues_class struct {
 	// slot
-	merge, jobs, ebuild_locks, fetch, unpack
+	jobs
+	merge, ebuild_locks, fetch, unpack
 }
 
 // SlotObject
@@ -6313,8 +6949,7 @@ func NewScheduler(settings *Config, trees, mtimedb, myopts, spinner, mergelist, 
 
 	s._unsatisfied_system_deps = map[string]string{}
 
-	s._status_display = JobStatusDisplay(
-		xterm_titles = (!settings.Features.Features["notitles"]))
+	s._status_display = NewJobStatusDisplay(false, !settings.Features.Features["notitles"])
 	s._max_load = myopts.get("--load-average")
 	max_jobs = myopts.get("--jobs")
 	if max_jobs == nil {
@@ -6375,7 +7010,7 @@ func NewScheduler(settings *Config, trees, mtimedb, myopts, spinner, mergelist, 
 	s._status_display.maxval = s._pkg_count.maxval
 
 	s._job_delay_max = 5
-	s._previous_job_start_time = nil
+	s._previous_job_start_time = 0
 	s._job_delay_timeout_id = nil
 
 	s._sigcont_delay = 5
@@ -6486,16 +7121,15 @@ func (s*Scheduler) _init_graph( graph_config) {
 	dynamic_deps = "dynamic_deps"
 	in
 	depgraph_params
-	ignore_built_slot_operator_deps = s.myopts.get(
+	ignore_built_slot_operator_deps := s.myopts.get(
 		"--ignore-built-slot-operator-deps", "n") == "y"
 	for root
 	in
 	s.trees {
 		if graph_config == nil {
-			fake_vartree = FakeVartree(s.trees[root]["root_config"],
-				pkg_cache = s._pkg_cache, dynamic_deps = dynamic_deps,
-				ignore_built_slot_operator_deps=ignore_built_slot_operator_deps)
-			fake_vartree.sync()
+			fake_vartree := NewFakeVartree(s.trees[root]["root_config"],
+				s._pkg_cache,nil,  dynamic_deps, ignore_built_slot_operator_deps, false)
+			fake_vartree.sync(1)
 		}else {
 			fake_vartree = graph_config.trees[root]['vartree']
 		}
@@ -6603,7 +7237,7 @@ func(s *Scheduler) _set_graph_config( graph_config) {
 		s._digraph = nil
 		s._mergelist = []
 		s._world_atoms = nil
-		s._deep_system_deps.clear()
+		s._deep_system_deps= map[string]string{}
 		return
 	}
 
@@ -7557,35 +8191,38 @@ ValueError:
 func (s *Scheduler) _build_exit( build) {
 	s._running_tasks.pop(id(build), nil)
 	if build.returncode == 0 &&
-	s._terminated_tasks:
-	s.curval += 1
-	s._deallocate_config(build.settings)
-	else if
-	build.returncode == 0:
-	s.curval += 1
-	merge = PackageMerge(merge = build, scheduler = s._sched_iface)
-	s._running_tasks[id(merge)] = merge
-	if not build.build_opts.buildpkgonly&& 
-	build.pkg
-	in
-	s._deep_system_deps:
-	s._merge_wait_queue.append(merge)
-	merge.addStartListener(s._system_merge_started)
-	else:
-	s._task_queues.merge.add(merge)
-	merge.addExitListener(s._merge_exit)
-	s._status_display.merges = len(s._task_queues.merge)
-	else:
-	settings = build.settings
-	build_dir =  settings.ValueDict["PORTAGE_BUILDDIR"]
-	build_log =  settings.ValueDict["PORTAGE_LOG_FILE"]
+	s._terminated_tasks {
+		s.curval += 1
+		s._deallocate_config(build.settings)
+	}else if
+	build.returncode == 0 {
+		s.curval += 1
+		merge = PackageMerge(merge = build, scheduler = s._sched_iface)
+		s._running_tasks[id(merge)] = merge
+		if not build.build_opts.buildpkgonly &&
+			build.pkg
+		in
+		s._deep_system_deps{
+			s._merge_wait_queue.append(merge)
+			merge.addStartListener(s._system_merge_started)
+		} else {
+			s._task_queues.merge.add(merge)
+			merge.addExitListener(s._merge_exit)
+			s._status_display.merges = len(s._task_queues.merge)
+		}
+	}else{
+		settings = build.settings
+		build_dir = settings.ValueDict["PORTAGE_BUILDDIR"]
+		build_log = settings.ValueDict["PORTAGE_LOG_FILE"]
 
-	s._failed_pkgs=append(s._failed_pkgs,&_failed_pkg{
-		 build_dir, build_log, build.pkg,"", build.returncode})
-	if not s._terminated_tasks:
-	s._failed_pkg_msg(s._failed_pkgs[len(s._failed_pkgs)-1], "emerge", "for")
-	s._status_display.failed = len(s._failed_pkgs)
-	s._deallocate_config(build.settings)
+		s._failed_pkgs = append(s._failed_pkgs, &_failed_pkg{
+			build_dir, build_log, build.pkg, "", build.returncode})
+		if !s._terminated_tasks {
+			s._failed_pkg_msg(s._failed_pkgs[len(s._failed_pkgs)-1], "emerge", "for")
+			s._status_display.failed = len(s._failed_pkgs)
+		}
+		s._deallocate_config(build.settings)
+	}
 	s._jobs -= 1
 	s._status_display.running = s._jobs
 	s._schedule()
@@ -7703,8 +8340,9 @@ func (s *Scheduler) _choose_pkg() {
 	return nil
 	return s._pkg_queue.pop(0)
 
-	if not s._is_work_scheduled():
-	return s._pkg_queue.pop(0)
+	if ! s._is_work_scheduled() {
+		return s._pkg_queue.pop(0)
+	}
 
 	s._prune_digraph()
 
@@ -8618,7 +9256,7 @@ func(a*AsyncScheduler) _start() {
 	&&
 	(a._max_jobs
 	is
-	True
+	true
 	||
 	a._max_jobs > 1){
 a._loadavg_check_id = a._event_loop.call_later(
