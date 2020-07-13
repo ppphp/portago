@@ -36,11 +36,11 @@ func encodeint(myint int) string {
 }
 
 func decodeint(mystring string) int {
-	myint := uint8(0)
-	myint += mystring[3]
-	myint += mystring[2] << 8
-	myint += mystring[1] << 16
-	myint += mystring[0] << 24
+	myint := uint32(0)
+	myint += uint32(mystring[3])
+	myint += uint32(mystring[2]) << 8
+	myint += uint32(mystring[1]) << 16
+	myint += uint32(mystring[0]) << 24
 	return int(myint)
 }
 
@@ -116,11 +116,11 @@ func xsplit_mem(mydat string) [2]string {
 	if mydat[0:8] != "XPAKPACK" {
 		return [2]string{}
 	}
-	if mydat[-8:] != "XPAKSTOP" {
+	if mydat[len(mydat)-8:] != "XPAKSTOP" {
 		return [2]string{}
 	}
 	indexsize := decodeint(mydat[8:12])
-	return [2]string{mydat[16 : indexsize+16], mydat[indexsize+16 : -8]}
+	return [2]string{mydat[16 : indexsize+16], mydat[indexsize+16 : len(mydat)-8]}
 }
 
 func getindex(infile string) string {
@@ -356,7 +356,7 @@ func (t *tbz2) scan() int {
 		err = err1
 		t.infosize = 0
 		t.xpaksize = 0
-		if string(trailer)[-4:] != "Stop" {
+		if string(trailer)[len(string(trailer))-4:] != "Stop" {
 			return 0
 		}
 		if string(trailer)[0:8] != "XPAKSTOP" {

@@ -4785,10 +4785,8 @@ func (e *EbuildPhase) _get_log_path() string {
 
 func (e *EbuildPhase) _start_ebuild() {
 	if e.phase == "package" {
-		e._start_task(PackagePhase(actionmap = e.actionmap,
-			background = e.background, fd_pipes = e.fd_pipes,
-			logfile=e._get_log_path(), scheduler = e.scheduler,
-			settings=e.settings), e._ebuild_exit)
+		e._start_task(NewPackagePhase(e.actionmap, e.background, e.fd_pipes,
+			e._get_log_path(), e.scheduler, e.settings), e._ebuild_exit)
 		return
 	}
 
@@ -5936,6 +5934,973 @@ func(j*JobStatusDisplay) _display_status() {
 	}
 }
 
+type MergeListItem struct{
+	*CompositeTask
+	args_set,
+	binpkg_opts, build_opts, config_pool, emerge_opts,
+	find_blockers, logger, mtimedb, pkg,
+	pkg_count, pkg_to_replace, prefetcher,
+	settings, statusMessage, world_atom, _install_task
+}
+
+func(m *MergeListItem) _start() {
+
+	pkg := m.pkg
+	build_opts := m.build_opts
+
+	if pkg.installed {
+		m.returncode = 0
+		m._async_wait()
+		return
+	}
+
+	args_set := m.args_set
+	find_blockers := m.find_blockers
+	logger := m.logger
+	mtimedb := m.mtimedb
+	pkg_count := m.pkg_count
+	scheduler := m.scheduler
+	settings := m.settings
+	world_atom := m.world_atom
+	ldpath_mtimes := mtimedb["ldpath"]
+
+	action_desc := "Emerging"
+	preposition := "for"
+	pkg_color := "PKG_MERGE"
+	if pkg.type_name == "binary" {
+		pkg_color = "PKG_BINARY_MERGE"
+		action_desc += " binary"
+	}
+
+	if build_opts.fetchonly {
+		action_desc = "Fetching"
+	}
+
+	msg := fmt.Sprintf("%s (%s of %s) %s" ,
+	action_desc,
+		colorize("MERGE_LIST_PROGRESS", str(pkg_count.curval)),
+		colorize("MERGE_LIST_PROGRESS", str(pkg_count.maxval)),
+		colorize(pkg_color, pkg.cpv+repoSeparator+pkg.repo))
+
+	if pkg.root_config.settings["ROOT"] != "/" {
+		msg += " %s %s" % (preposition, pkg.root)
+	}
+
+	if not build_opts.pretend {
+		m.statusMessage(msg)
+		logger.log(fmt.Sprintf(" >>> emerge (%s of %s) %s to %s" ,
+		pkg_count.curval, pkg_count.maxval, pkg.cpv, pkg.root))
+	}
+
+	if pkg.type_name == "ebuild" {
+
+		build := NewEbuildBuild(args_set = args_set,
+			background = m.background,
+			config_pool=m.config_pool,
+			find_blockers = find_blockers,
+			ldpath_mtimes=ldpath_mtimes, logger = logger,
+			opts=build_opts, pkg = pkg, pkg_count=pkg_count,
+			prefetcher = m.prefetcher, scheduler=scheduler,
+			settings = settings, world_atom=world_atom)
+
+		m._install_task = build
+		m._start_task(build, m._default_final_exit)
+		return
+	}else if pkg.type_name == "binary" {
+
+		binpkg := NewBinpkg(background = m.background,
+			find_blockers = find_blockers,
+			ldpath_mtimes=ldpath_mtimes, logger = logger,
+			opts=m.binpkg_opts, pkg = pkg, pkg_count=pkg_count,
+			prefetcher = m.prefetcher, settings=settings,
+			scheduler = scheduler, world_atom=world_atom)
+
+		m._install_task = binpkg
+		m._start_task(binpkg, m._default_final_exit)
+		return
+	}
+}
+
+func(m *MergeListItem) create_install_task() {
+
+	pkg = m.pkg
+	build_opts = m.build_opts
+	mtimedb = m.mtimedb
+	scheduler = m.scheduler
+	settings = m.settings
+	world_atom = m.world_atom
+	ldpath_mtimes = mtimedb["ldpath"]
+
+	if pkg.installed {
+		if not(build_opts.buildpkgonly || build_opts.fetchonly || build_opts.pretend) {
+
+			task = NewPackageUninstall(background = m.background,
+				ldpath_mtimes = ldpath_mtimes, opts=m.emerge_opts,
+				pkg = pkg, scheduler=scheduler, settings = settings,
+				world_atom=world_atom)
+		}else {
+			task = NewAsynchronousTask()
+		}
+
+	}else if  build_opts.fetchonly || build_opts.buildpkgonly {
+		task = NewAsynchronousTask()
+	}else {
+		task = m._install_task.create_install_task()
+	}
+
+	return task
+}
+
+func NewMergeListItem()*MergeListItem{
+	m := &MergeListItem{}
+	m.CompositeTask = NewCompositeTask()
+	return m
+}
+
+type MetadataRegen struct{
+	*AsyncScheduler
+}
+
+// nil, nil, true
+func NewMetadataRegen( portdb, cp_iter=None, consumer=None,
+write_auxdb bool, **kwargs)*MetadataRegen {
+	m := &MetadataRegen{}
+	m.AsyncScheduler =NewAsyncScheduler(**kwargs)
+	m._portdb = portdb
+	m._write_auxdb = write_auxdb
+	m._global_cleanse = false
+	if cp_iter == nil {
+		cp_iter = m._iter_every_cp()
+		m._global_cleanse = true
+	}
+	m._cp_iter = cp_iter
+	m._consumer = consumer
+
+	m._valid_pkgs = set()
+	m._cp_set = set()
+	m._process_iter = m._iter_metadata_processes()
+	m._running_tasks = set()
+	return m
+}
+
+func(m*MetadataRegen) _next_task() {
+	return next(m._process_iter)
+}
+
+func(m*MetadataRegen) _iter_every_cp() {
+	cp_all := m._portdb.cp_all
+	for category
+	in
+	sorted(m._portdb.categories):
+	for cp
+	in
+	cp_all(categories = (category,)):
+	yield
+	cp
+}
+
+func(m*MetadataRegen) _iter_metadata_processes() {
+	portdb := m._portdb
+	valid_pkgs := m._valid_pkgs
+	cp_set := m._cp_set
+	consumer := m._consumer
+
+	WriteMsgStdout("Regenerating cache entries...\n", 0)
+	for cp
+	in
+	m._cp_iter:
+	if m._terminated.is_set():
+	break
+	cp_set.add(cp)
+	portage.writemsg_stdout("Processing %s\n" % cp)
+	for mytree
+	in
+	portdb.porttrees:
+	repo = portdb.repositories.get_repo_for_location(mytree)
+	cpv_list = portdb.cp_list(cp, mytree = [repo.location])
+	for cpv
+	in
+cpv_list:
+	if m._terminated.is_set():
+	break
+	valid_pkgs.add(cpv)
+	ebuild_path, repo_path = portdb.findname2(cpv, myrepo = repo.name)
+	if ebuild_path is
+None:
+	raise
+	AssertionError("ebuild not found for '%s%s%s'"%(cpv, _repo_separator, repo.name))
+	metadata, ebuild_hash = portdb._pull_valid_cache(
+		cpv, ebuild_path, repo_path)
+	if metadata is
+	not
+None:
+	if consumer is
+	not
+None:
+	consumer(cpv, repo_path, metadata, ebuild_hash, true)
+	continue
+
+	yield
+	EbuildMetadataPhase(cpv = cpv,
+		ebuild_hash = ebuild_hash,
+		portdb = portdb, repo_path=repo_path,
+		settings = portdb.doebuild_settings,
+		write_auxdb=m._write_auxdb)
+}
+
+func(m*MetadataRegen) _cleanup() {
+	m.AsyncScheduler._cleanup()
+
+	portdb := m._portdb
+	dead_nodes :=
+	{
+	}
+
+	if m._terminated.is_set():
+	portdb.flush_cache()
+	return
+
+	if m._global_cleanse:
+	for mytree
+	in
+	portdb.porttrees:
+try:
+	dead_nodes[mytree] = set(portdb.auxdb[mytree])
+	except
+	CacheError
+	as
+e:
+	portage.writemsg("Error listing cache entries for " + \
+	"'%s': %s, continuing...\n" % (mytree, e),
+	noiselevel = -1)
+	del
+	e
+	dead_nodes = None
+	break
+	else:
+	cp_set = m._cp_set
+	cpv_getkey = portage.cpv_getkey
+	for mytree
+	in
+	portdb.porttrees:
+try:
+	dead_nodes[mytree] = set(cpv
+	for cpv
+	in \
+	portdb.auxdb[mytree] \
+	if cpv_getkey(cpv) in
+	cp_set)
+	except
+	CacheError
+	as
+e:
+	portage.writemsg("Error listing cache entries for " + \
+	"'%s': %s, continuing...\n" % (mytree, e),
+	noiselevel = -1)
+	del
+	e
+	dead_nodes = None
+	break
+
+	if dead_nodes:
+	for y
+	in
+	m._valid_pkgs:
+	for mytree
+	in
+	portdb.porttrees:
+	if portdb.findname2(y, mytree = mytree)[0]:
+	dead_nodes[mytree].discard(y)
+
+	for mytree, nodes
+	in
+	dead_nodes.items():
+	auxdb = portdb.auxdb[mytree]
+	for y
+	in
+nodes:
+try:
+	del
+	auxdb[y]
+	except(KeyError, CacheError):
+	pass
+
+	portdb.flush_cache()
+}
+
+func(m*MetadataRegen) _task_exit(metadata_process) {
+
+	if metadata_process.returncode != 0:
+	m._valid_pkgs.discard(metadata_process.cpv)
+	if not m._terminated_tasks:
+	portage.writemsg("Error processing %s, continuing...\n" % \
+	(metadata_process.cpv,), noiselevel = -1)
+
+	if m._consumer is
+	not
+None:
+	m._consumer(metadata_process.cpv,
+		metadata_process.repo_path,
+		metadata_process.metadata,
+		metadata_process.ebuild_hash,
+		metadata_process.eapi_supported)
+
+	m.AsyncScheduler._task_exit(metadata_process)
+}
+
+type MiscFunctionsProcess struct {
+	*AbstractEbuildProcess
+	commands []string
+	ld_preload_sandbox
+}
+
+func (m *MiscFunctionsProcess)_start() {
+	settings := m.settings
+	portage_bin_path := settings.ValueDict["PORTAGE_BIN_PATH"]
+	misc_sh_binary := filepath.Join(portage_bin_path,
+		filepath.Base(MISC_SH_BINARY))
+
+	m.args = append([]string{ShellQuote(misc_sh_binary)}, m.commands...)
+	if m.logfile == "" &&m.settings.ValueDict["PORTAGE_BACKGROUND"] != "subprocess" {
+		m.logfile = settings.ValueDict["PORTAGE_LOG_FILE"]
+	}
+
+	m.AbstractEbuildProcess._start()
+}
+
+func (m *MiscFunctionsProcess) _spawn(args []string, debug bool, free *bool, droppriv,
+	sesandbox, fakeroot, networked, ipc, mountns, pidns bool, **keywords) {
+
+	if free == nil {
+		if m.ld_preload_sandbox == nil {
+			*free = false
+		} else {
+			*free = not m.ld_preload_sandbox
+		}
+	}
+
+	if m._dummy_pipe_fd != 0 {
+		m.settings.ValueDict["PORTAGE_PIPE_FD"] = fmt.Sprint(m._dummy_pipe_fd)
+	}
+
+	if m.settings.Features.Features["fakeroot"]{
+		fakeroot = true
+	}
+
+	phase_backup := m.settings.ValueDict["EBUILD_PHASE"]
+	delete(m.settings.ValueDict, "EBUILD_PHASE")
+
+	defer func() {
+		if phase_backup != "" {
+			m.settings.ValueDict["EBUILD_PHASE"] = phase_backup
+		}
+		delete(m.settings.ValueDict, "PORTAGE_PIPE_FD")
+	}()
+	return spawnE(strings.Join(args, " "), m.settings, debug, *free, droppriv,
+		sesandbox, fakeroot, networked, ipc, mountns, pidns, **keywords)
+}
+
+func NewMiscFunctionsProcess(background bool, commands []string, phase string, logfile string, fd_pipe map[int]int, scheduler *SchedulerInterface, settings *Config)*MiscFunctionsProcess{
+	m := &MiscFunctionsProcess{}
+	m.AbstractEbuildProcess = NewAbstractEbuildProcess(nil, background, fd_pipe, logfile, phase, scheduler, settings, )
+	m.background = background
+	m.commands = commands
+	m.phase = phase
+	m.logfile = logfile
+	m.fd_pipes = fd_pipe
+	m.scheduler = scheduler
+	m.settings = settings
+	return m
+}
+
+type iUse struct {
+	__weakref__, _pkg                  string
+	tokens                             []string
+	iuseImplicitMatch                  func(string) bool
+	aliasMapping                       map[string][]string
+	all, allAliases, enabled, disabled map[string]bool
+}
+
+func (i *iUse) isValidFlag(flags []string) bool {
+	for _, flag := range flags {
+		if !i.all[flag] && !i.allAliases[flag] && !i.iuseImplicitMatch(flag) {
+			return false
+		}
+	}
+	return true
+}
+
+func (i *iUse) getMissingIuse(flags []string) []string {
+	missingIUse := []string{}
+	for _, flag := range flags {
+		if !i.all[flag] && !i.allAliases[flag] && !i.iuseImplicitMatch(flag) {
+			missingIUse = append(missingIUse, flag)
+		}
+	}
+	return missingIUse
+}
+
+func (i *iUse) getRealFlag(flag string) string {
+	if i.all[flag] {
+		return flag
+	} else if i.allAliases[flag] {
+		for k, v := range i.aliasMapping {
+			for _, x := range v {
+				if flag == x {
+					return k
+				}
+			}
+		}
+	}
+	if i.iuseImplicitMatch(flag) {
+		return flag
+	}
+	return ""
+}
+
+func NewIUse(pkg string, tokens []string, iuseImplicitMatch func(string) bool, aliases map[string][]string, eapi string) *iUse {
+	i := &iUse{}
+	i._pkg = pkg
+	i.tokens = tokens
+	i.iuseImplicitMatch = iuseImplicitMatch
+	enabled := []string{}
+	disabled := []string{}
+	other := []string{}
+	enabledAliases := []string{}
+	disabledAliases := []string{}
+	otherAliases := []string{}
+	aliasesSupported := eapiHasUseAliases(eapi)
+	i.aliasMapping = map[string][]string{}
+	for _, x := range tokens {
+		prefix := x[:1]
+		if prefix == "+" {
+			enabled = append(enabled, x[1:])
+			if aliasesSupported {
+				if a, ok := aliases[x[1:]]; ok {
+					i.aliasMapping[x[1:]] = a
+				} else {
+					i.aliasMapping[x[1:]] = []string{}
+				}
+				enabledAliases = append(enabledAliases, i.aliasMapping[x[1:]]...)
+			}
+		} else if prefix == "-" {
+			disabled = append(disabled, x[1:])
+			if aliasesSupported {
+				if a, ok := aliases[x[1:]]; ok {
+					i.aliasMapping[x[1:]] = a
+				} else {
+					i.aliasMapping[x[1:]] = []string{}
+				}
+				disabledAliases = append(disabledAliases, i.aliasMapping[x[1:]]...)
+			}
+		} else {
+			other = append(other, x[1:])
+			if aliasesSupported {
+				if a, ok := aliases[x[1:]]; ok {
+					i.aliasMapping[x[1:]] = a
+				} else {
+					i.aliasMapping[x[1:]] = []string{}
+				}
+				otherAliases = append(otherAliases, i.aliasMapping[x[1:]]...)
+			}
+		}
+	}
+	i.enabled = map[string]bool{}
+	for _, x := range append(enabled, enabledAliases...) {
+		i.enabled[x] = true
+	}
+	i.disabled = map[string]bool{}
+	for _, x := range append(disabled, disabledAliases...) {
+		i.disabled[x] = true
+	}
+	i.all = map[string]bool{}
+	for _, x := range append(append(enabled, disabled...), other...) {
+		i.enabled[x] = true
+	}
+	i.allAliases = map[string]bool{}
+	for _, x := range append(append(enabledAliases, disabledAliases...), otherAliases...) {
+		i.allAliases[x] = true
+	}
+
+	return i
+}
+
+type Package struct {
+	*Task
+	metadataKeys, buildtimeKeys, runtimeKeys, useConditionalMiscKeys                                                                                                                                            map[string]bool
+	depKeys                                                                                                                                                                                                     []string
+	UnknownRepo                                                                                                                                                                                                 string
+	built, installed                                                                                                                                                                                            bool
+	cpv                                                                                                                                                                                                         *PkgStr
+	counter, mtime                                                                                                                                                                                              int
+	metadata                                                                                                                                                                                                    *packageMetadataWrapper
+	_raw_metadata                                                                                                                                                                                               map[string]string
+	inherited                                                                                                                                                                                                   map[string]bool
+	depth, onlydeps, operation, type_name, category, cp, cpv_split, iuse, pf, root, slot, sub_slot, slot_atom, version, _invalid, _masks, _provided_cps, _provides, _requires, _use, _validated_atoms, _visible string
+	root_config                                                                                                                                                                                                 *RootConfig
+}
+
+func (p *Package) eapi() string {
+	return p.metadata.valueDict["EAPI"]
+}
+
+func (p *Package) buildId() int {
+	return p.cpv.buildId
+}
+
+func (p *Package) buildTime() int {
+	return p.cpv.buildTime
+}
+
+//func (p *Package)definedPhases()string{
+//	return p.metadata
+//}
+
+func (p *Package) masks() {
+	if p._masks == "" {
+
+	}
+}
+
+func NewPackage(built bool, cpv *PkgStr, installed bool, metadata map[string]string, root_config *RootConfig, type_name string) *Package {
+	p := &Package{metadataKeys: map[string]bool{
+		"BDEPEND": true, "BUILD_ID": true, "BUILD_TIME": true, "CHOST": true, "COUNTER": true, "DEFINED_PHASES": true,
+		"DEPEND": true, "EAPI": true, "HDEPEND": true, "INHERITED": true, "IUSE": true, "KEYWORDS": true,
+		"LICENSE": true, "MD5": true, "PDEPEND": true, "PROVIDES": true, "RDEPEND": true, "repository": true, "REQUIRED_USE": true,
+		"PROPERTIES": true, "REQUIRES": true, "RESTRICT": true, "SIZE": true, "SLOT": true, "USE": true, "_mtime_": true,
+	}, depKeys: []string{"BDEPEND", "DEPEND", "HDEPEND", "PDEPEND", "RDEPEND"},
+		buildtimeKeys:          map[string]bool{"BDEPEND": true, "DEPEND": true, "HDEPEND": true},
+		runtimeKeys:            map[string]bool{"PDEPEND": true, "RDEPEND": true},
+		useConditionalMiscKeys: map[string]bool{"LICENSE": true, "PROPERTIES": true, "RESTRICT": true},
+		UnknownRepo:            unknownRepo}
+	p.built = built
+	p.cpv = cpv
+	p.installed = installed
+	p.root_config = root_config
+	p.type_name = type_name
+
+	//p.root = p.root_config.root
+	p._raw_metadata = metadata
+
+	p.metadata = NewPackageMetadataWrapper(p, metadata)
+
+	return p
+}
+
+var allMetadataKeys = map[string]bool{
+	"DEPEND": true, "RDEPEND": true, "SLOT": true, "SRC_URI": true,
+	"RESTRICT": true, "HOMEPAGE": true, "LICENSE": true, "DESCRIPTION": true,
+	"KEYWORDS": true, "INHERITED": true, "IUSE": true, "REQUIRED_USE": true,
+	"PDEPEND": true, "BDEPEND": true, "EAPI": true, "PROPERTIES": true,
+	"DEFINED_PHASES": true, "HDEPEND": true, "BUILD_ID": true, "BUILD_TIME": true,
+	"CHOST": true, "COUNTER": true, "MD5": true, "PROVIDES": true,
+	"repository": true, "REQUIRES": true, "SIZE": true, "USE": true, "_mtime_": true,
+}
+
+var wrappedKeys = map[string]bool{
+	"COUNTER": true, "INHERITED": true, "USE": true, "_mtime_": true,
+}
+
+var useConditionalKeys = map[string]bool{
+	"LICENSE": true, "PROPERTIES": true, "RESTRICT": true,
+}
+
+type packageMetadataWrapper struct {
+	valueDict                                        map[string]string
+	pkg                                              *Package
+	allMetadataKeys, wrappedKeys, useConditionalKeys map[string]bool
+}
+
+func (p *packageMetadataWrapper) setItem(k, v string) {
+	if p.allMetadataKeys[k] {
+		p.valueDict[k] = v
+	}
+	switch k {
+	case "COUNTER":
+		p.setCounter(k, v)
+	case "INHERITED":
+		p.setInherited(k, v)
+	case "USE":
+		p.setUse(k, v)
+	case "_mtime_":
+		p.setMtime(k, v)
+	}
+}
+
+func (p *packageMetadataWrapper) setInherited(k, v string) {
+	p.pkg.inherited = map[string]bool{}
+	for _, f := range strings.Fields(v) {
+		p.pkg.inherited[f] = true
+	}
+}
+
+func (p *packageMetadataWrapper) setCounter(k, v string) {
+	n, _ := strconv.Atoi(v)
+	p.pkg.counter = n
+}
+
+func (p *packageMetadataWrapper) setUse(k, v string) {
+	p.pkg._use = ""
+	rawMetadata := p.pkg._raw_metadata
+	for x := range p.useConditionalKeys {
+		if v, ok := rawMetadata[x]; ok {
+			p.valueDict[x] = v
+		}
+	}
+}
+
+func (p *packageMetadataWrapper) setMtime(k, v string) {
+	n, _ := strconv.Atoi(v)
+	p.pkg.mtime = n
+}
+
+func (p *packageMetadataWrapper) properties() []string {
+	return strings.Fields(p.valueDict["PROPERTIES"])
+}
+
+func (p *packageMetadataWrapper) restrict() []string {
+	return strings.Fields(p.valueDict["RESTRICT"])
+}
+
+func (p *packageMetadataWrapper) definedPhases() map[string]bool {
+	if s, ok := p.valueDict["DEFINED_PHASES"]; ok {
+		phases := map[string]bool{}
+		for _, v := range strings.Fields(s) {
+			phases[v] = true
+		}
+		return phases
+	}
+	return EBUILD_PHASES
+}
+
+func NewPackageMetadataWrapper(pkg *Package, metadata map[string]string) *packageMetadataWrapper {
+	p := &packageMetadataWrapper{pkg: pkg, valueDict: make(map[string]string), useConditionalKeys: useConditionalKeys, wrappedKeys: wrappedKeys, allMetadataKeys: CopyMapSB(allMetadataKeys)}
+	if !pkg.built {
+		p.valueDict["USE"] = ""
+	}
+	for k, v := range metadata {
+		p.valueDict[k] = v
+	}
+	return p
+}
+
+type PackageArg struct {
+	*DependencyArg
+}
+
+func NewPackageArg(packagee=None, **kwargs)*PackageArg {
+	p := &PackageArg{}
+	p.DependencyArg = NewDependencyArg(**kwargs)
+	p.packagee = packagee
+	atom = "=" + packagee.cpv
+	if packagee.repo != Package.UNKNOWN_REPO:
+	atom += _repo_separator + packagee.repo
+	p.atom = portage.dep.Atom(atom, allow_repo = True)
+	p.pset = NewInternalPackageSet([]*Atom{p.atom,}, true, true)
+	return p
+}
+
+type PackageMerge struct{
+	*CompositeTask
+	
+	// slot
+	merge, postinst_failure
+}
+
+func (p *PackageMerge) _start() {
+
+	p.scheduler = p.merge.scheduler
+	pkg := p.merge.pkg
+	pkg_count := p.merge.pkg_count
+	pkg_color := "PKG_MERGE"
+	if pkg.type_name == "binary" {
+		pkg_color = "PKG_BINARY_MERGE"
+	}
+
+	if pkg.installed {
+		action_desc = "Uninstalling"
+		preposition = "from"
+		counter_str = ""
+	}else {
+		action_desc = "Installing"
+		preposition = "to"
+		counter_str = fmt.Sprintf("(%s of %s) " ,
+		colorize("MERGE_LIST_PROGRESS", str(pkg_count.curval)),
+			colorize("MERGE_LIST_PROGRESS", str(pkg_count.maxval)))
+	}
+
+	msg := fmt.Sprintf("%s %s%s" , action_desc, counter_str,
+		colorize(pkg_color, pkg.cpv+repoSeparator+pkg.repo))
+
+	if pkg.root_config.settings["ROOT"] != "/" {
+		msg += fmt.Sprintf(" %s %s", preposition, pkg.root)
+	}
+
+	if not p.merge.build_opts.fetchonly
+	and \
+	not
+	p.merge.build_opts.pretend
+	and \
+	not
+	p.merge.build_opts.buildpkgonly
+	{
+		p.merge.statusMessage(msg)
+	}
+
+	task := p.merge.create_install_task()
+	p._start_task(task, p._install_exit)
+}
+
+func (p *PackageMerge) _install_exit( task) {
+	p.postinst_failure = task.postinst_failure
+	p._final_exit(task)
+	p.wait()
+}
+
+func NewPackageMerge(merge , scheduler *SchedulerInterface) *PackageMerge{
+	p := &PackageMerge{}
+	p.CompositeTask = NewCompositeTask()
+	p.merge = merge
+	p.scheduler = scheduler
+	return p
+}
+
+type PackagePhase struct {
+	*CompositeTask
+
+	_shell_binary string
+
+	// slots
+	_pkg_install_mask *InstallMask
+	settings          *Config
+	fd_pipes          map[int]int
+	actionmap         Actionmap
+	logfile, _proot   string
+}
+
+func(p*PackagePhase) _start() {
+	f, err := ioutil.ReadFile(filepath.Join(p.settings.ValueDict["PORTAGE_BUILDDIR"],
+		"build-info", "PKG_INSTALL_MASK"))
+	if err != nil {
+		p._pkg_install_mask = nil
+	} else {
+		p._pkg_install_mask = NewInstallMask(string(f))
+	}
+	if p._pkg_install_mask != nil {
+		p._proot = filepath.Join(p.settings.ValueDict["T"], "packaging")
+		p._start_task(NewSpawnProcess(
+			[]string{p._shell_binary, "-e", "-c", fmt.Sprintf("rm -rf {PROOT}; "+
+			"cp -pPR $(cp --help | grep -q -- \" ^ [[: space:]]*-l, \" && echo -l)"+
+			" \"${{D}}\" {%s}",  ShellQuote(p._proot))},
+			 p.background, p.settings.environ(), nil,
+			 p.scheduler,  p.logfile),
+		p._copy_proot_exit)
+	} else {
+		p._proot = p.settings.ValueDict["D"]
+		p._start_package_phase()
+	}
+}
+
+func(p*PackagePhase) _copy_proot_exit( proc) {
+	if p._default_exit(proc) != 0 {
+		p.wait()
+	}else {
+		p._start_task(AsyncFunction(
+			target = install_mask_dir,
+			args = (filepath.Join(p._proot,
+			p.settings["EPREFIX"].lstrip(os.sep)),
+			p._pkg_install_mask)),
+		p._pkg_install_mask_exit)
+	}
+}
+
+func(p*PackagePhase) _pkg_install_mask_exit( proc) {
+	if p._default_exit(proc) != 0 {
+		p.wait()
+	}else {
+		p._start_package_phase()
+	}
+}
+
+func(p*PackagePhase) _start_package_phase() {
+	ebuild_process := NewEbuildProcess( p.actionmap, p.background, p.fd_pipes,
+		 p.logfile,"package", p.scheduler, p.settings)
+
+	if p._pkg_install_mask != nil {
+		d_orig := p.settings.ValueDict["D"]
+	//try:
+		p.settings.ValueDict["D"] = p._proot
+		p._start_task(ebuild_process, p._pkg_install_mask_cleanup)
+	//finally:
+		p.settings.ValueDict["D"] = d_orig
+	}else {
+		p._start_task(ebuild_process, p._default_final_exit)
+	}
+}
+
+func(p*PackagePhase) _pkg_install_mask_cleanup( proc) {
+	if p._default_exit(proc) != 0 {
+		p.wait()
+	} else {
+		p._start_task(NewSpawnProcess([]string{"rm", "-rf", p._proot},
+			p.background, p.settings.environ(), nil, p.scheduler, p.logfile),
+			p._default_final_exit)
+	}
+}
+
+func NewPackagePhase(actionmap Actionmap, background bool, fd_pipes map[int]int,
+	logfile string, scheduler *SchedulerInterface, settings *Config)*PackagePhase {
+	p := &PackagePhase{}
+	p.CompositeTask = NewCompositeTask()
+	p._shell_binary = BashBinary
+
+	p.actionmap = actionmap
+	p.background = background
+	p.fd_pipes = fd_pipes
+	p.logfile = logfile
+	p.scheduler = scheduler
+	p.settings = settings
+
+	return p
+}
+
+type PackageUninstall struct{
+	*CompositeTask
+
+	// slot
+	settings *Config
+	pkg *PkgStr
+	_builddir_lock *EbuildBuildDir
+	world_atom", "ldpath_mtimes", "opts",
+}
+
+func(p*PackageUninstall) _start() {
+
+	vardb := p.pkg.root_config.trees["vartree"].dbapi
+	dbdir := vardb.getpath(p.pkg.cpv)
+	if !pathExists(dbdir) {
+		i := 0
+		p.returncode = &i
+		p._async_wait()
+		return
+	}
+
+	p.settings.SetCpv(p.pkg, nil)
+	cat, pf := catsplit(p.pkg.cpv.string)[0], catsplit(p.pkg.cpv.string)[1]
+	myebuildpath := filepath.Join(dbdir, pf+".ebuild")
+
+	//try:
+	doebuild_environment(myebuildpath, "prerm",
+		nil, p.settings, false, nil, vardb)
+	//except UnsupportedAPIException:
+	//pass
+
+	p._builddir_lock = NewEbuildBuildDir(p.scheduler, p.settings)
+	p._start_task(NewAsyncTaskFuture(p._builddir_lock.async_lock()), p._start_unmerge)
+}
+
+func(p*PackageUninstall) _start_unmerge( lock_task) {
+	p._assert_current(lock_task)
+	if lock_task.cancelled {
+		p._default_final_exit(lock_task)
+		return
+	}
+
+	lock_task.future.result()
+	prepare_build_dirs(p.settings, true)
+
+	retval, pkgmap := _unmerge_display(p.pkg.root_config,
+		p.opts, "unmerge", [p.pkg.cpv], clean_delay = 0,
+		writemsg_level = p._writemsg_level)
+
+	if retval != 0 {
+		p._async_unlock_builddir(retval)
+		return
+	}
+
+	p._writemsg_level(fmt.Sprintf(">>> Unmerging %s...\n" ,p.pkg.cpv, ), -1, 0)
+	p._emergelog(fmt.Sprintf("=== Unmerging... (%s)" ,p.pkg.cpv, ))
+
+	cat, pf := catsplit(p.pkg.cpv.string)[0],catsplit(p.pkg.cpv.string)[1]
+	unmerge_task := NewMergeProcess(
+		cat, pf, p.settings, "vartree", p.pkg.root_config.trees["vartree"],
+		 p.scheduler, p.background, nil, "","","",
+		p.pkg.root_config.trees["vartree"].dbapi,
+		p.ldpath_mtimes, p.settings.get("PORTAGE_LOG_FILE"), nil, unmerge=True)
+
+	p._start_task(unmerge_task, p._unmerge_exit)
+}
+
+func(p*PackageUninstall) _unmerge_exit( unmerge_task) {
+	if p._final_exit(unmerge_task) != 0 {
+		p._emergelog(fmt.Sprintf(" !!! unmerge FAILURE: %s", p.pkg.cpv, ))
+	} else {
+		p._emergelog(fmt.Sprintf(" >>> unmerge success: %s", p.pkg.cpv, ))
+		p.world_atom(p.pkg)
+	}
+	p._async_unlock_builddir(p.returncode)
+}
+
+// nil
+func(p *PackageUninstall) _async_unlock_builddir(returncode *int) {
+	if returncode != nil {
+		p.returncode = nil
+	}
+	p._start_task(
+		NewAsyncTaskFuture(p._builddir_lock.async_unlock()),
+		functools.partial(p._unlock_builddir_exit, returncode = returncode))
+}
+
+// nil
+func(p*PackageUninstall) _unlock_builddir_exit(unlock_task, returncode *int) {
+	p._assert_current(unlock_task)
+	if unlock_task.cancelled && returncode!= nil {
+		p._default_final_exit(unlock_task)
+		return
+	}
+
+	unlock_task.future.cancelled()
+	or
+	unlock_task.future.result()
+	if returncode != nil {
+		p.returncode = returncode
+		p._async_wait()
+	}
+}
+
+func(p*PackageUninstall) _emergelog( msg string) {
+	emergelog(!p.settings.Features.Features["notitles"], msg, "")
+}
+
+// 0, 0
+func(p*PackageUninstall) _writemsg_level(msg string, level, noiselevel int) {
+
+	log_path := p.settings.ValueDict["PORTAGE_LOG_FILE"]
+	background := p.background
+
+	if log_path == "" {
+		if !(background && level < 30) {
+			WriteMsgLevel(msg, level, noiselevel)
+		}
+	}else {
+		p.scheduler.output(msg, log_path,false, level, noiselevel)
+	}
+}
+
+func NewPackageUninstall(background bool, ldpath_mtimes = ldpath_mtimes, opts=m.emerge_opts,
+	pkg *PkgStr, scheduler *SchedulerInterface, settings *Config, world_atom=world_atom)*PackageUninstall{
+	p := &PackageUninstall{}
+	p.CompositeTask = NewCompositeTask()
+	p.background = background
+	p.ldpath_mtimes=ldpath_mtimes
+	p.opts = opts
+	p.pkg=pkg
+	p.scheduler=scheduler
+	p.settings=settings
+	p.world_atom=world_atom
+	return p
+}
+
 type SpawnProcess struct {
 	*SubProcess
 	_CGROUP_CLEANUP_RETRY_MAX int
@@ -6186,6 +7151,49 @@ func NewSpawnProcess(args []string, background bool, env map[string]string, fd_p
 	s._CGROUP_CLEANUP_RETRY_MAX = 8
 	s.SubProcess = NewSubProcess()
 	return s
+}
+
+type Task struct {
+	hashKey   string
+	hashValue string
+}
+
+func (t *Task) eq(task *Task) bool {
+	return t.hashKey == task.hashKey
+}
+
+func (t *Task) ne(task *Task) bool {
+	return t.hashKey != task.hashKey
+}
+
+func (t *Task) hash() string {
+	return t.hashValue
+}
+
+func (t *Task) len() int {
+	return len(t.hashKey)
+}
+
+func (t *Task) iter(key string) int {
+	return len(t.hashKey)
+}
+
+func (t *Task) contains() int {
+	return len(t.hashKey)
+}
+
+func (t *Task) str() int {
+	return len(t.hashKey)
+}
+
+func (t *Task) repr() int {
+	return len(t.hashKey)
+}
+
+func NewTask() *Task {
+	t := &Task{}
+
+	return t
 }
 
 type ForkProcess struct {
@@ -6506,71 +7514,6 @@ logfile string, fd_pipes map[int]int) *MergeProcess {
 	m.logfile = logfile
 	m.fd_pipes = fd_pipes
 
-	return m
-}
-
-type MiscFunctionsProcess struct {
-	*AbstractEbuildProcess
-	commands []string
-	ld_preload_sandbox
-}
-
-func (m *MiscFunctionsProcess)_start() {
-	settings := m.settings
-	portage_bin_path := settings.ValueDict["PORTAGE_BIN_PATH"]
-	misc_sh_binary := filepath.Join(portage_bin_path,
-		filepath.Base(MISC_SH_BINARY))
-
-	m.args = append([]string{ShellQuote(misc_sh_binary)}, m.commands...)
-	if m.logfile == "" &&m.settings.ValueDict["PORTAGE_BACKGROUND"] != "subprocess" {
-		m.logfile = settings.ValueDict["PORTAGE_LOG_FILE"]
-	}
-
-	m.AbstractEbuildProcess._start()
-}
-
-func (m *MiscFunctionsProcess) _spawn(args []string, debug bool, free *bool, droppriv,
-	sesandbox, fakeroot, networked, ipc, mountns, pidns bool, **keywords) {
-	
-	if free == nil {
-		if m.ld_preload_sandbox == nil {
-			*free = false
-		} else {
-			*free = not m.ld_preload_sandbox
-		}
-	}
-
-	if m._dummy_pipe_fd != 0 {
-		m.settings.ValueDict["PORTAGE_PIPE_FD"] = fmt.Sprint(m._dummy_pipe_fd)
-	}
-
-	if m.settings.Features.Features["fakeroot"]{
-		fakeroot = true
-	}
-
-	phase_backup := m.settings.ValueDict["EBUILD_PHASE"]
-	delete(m.settings.ValueDict, "EBUILD_PHASE")
-
-	defer func() {
-		if phase_backup != "" {
-			m.settings.ValueDict["EBUILD_PHASE"] = phase_backup
-		}
-		delete(m.settings.ValueDict, "PORTAGE_PIPE_FD")
-	}()
-	return spawnE(strings.Join(args, " "), m.settings, debug, *free, droppriv,
-		sesandbox, fakeroot, networked, ipc, mountns, pidns, **keywords)
-}
-
-func NewMiscFunctionsProcess(background bool, commands []string, phase string, logfile string, fd_pipe map[int]int, scheduler *SchedulerInterface, settings *Config)*MiscFunctionsProcess{
-	m := &MiscFunctionsProcess{}
-	m.AbstractEbuildProcess = NewAbstractEbuildProcess(nil, background, fd_pipe, logfile, phase, scheduler, settings, )
-	m.background = background
-	m.commands = commands
-	m.phase = phase
-	m.logfile = logfile
-	m.fd_pipes = fd_pipe
-	m.scheduler = scheduler
-	m.settings = settings
 	return m
 }
 
@@ -8197,7 +9140,7 @@ func (s *Scheduler) _build_exit( build) {
 	}else if
 	build.returncode == 0 {
 		s.curval += 1
-		merge = PackageMerge(merge = build, scheduler = s._sched_iface)
+		merge = NewPackageMerge(build, s._sched_iface)
 		s._running_tasks[id(merge)] = merge
 		if not build.build_opts.buildpkgonly &&
 			build.pkg
@@ -8600,7 +9543,7 @@ func (s *Scheduler) _schedule_tasks_imp() bool{
 		task = s._task(pkg)
 
 		if pkg.installed {
-			merge := PackageMerge(merge = task, scheduler = s._sched_iface)
+			merge := NewPackageMerge(task,  s._sched_iface)
 			s._running_tasks[id(merge)] = merge
 			s._task_queues.merge.addFront(merge)
 			merge.addExitListener(s._merge_exit)
