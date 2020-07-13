@@ -6901,6 +6901,2546 @@ func NewPackageUninstall(background bool, ldpath_mtimes = ldpath_mtimes, opts=m.
 	return p
 }
 
+type PackageVirtualDbapi struct{
+	*dbapi
+}
+
+func NewPackageVirtualDbapi(settings) *PackageVirtualDbapi {
+	p := &PackageVirtualDbapi{}
+	p.dbapi = NewDbapi()
+	p.settings = settings
+	p._match_cache =
+	{
+	}
+	p._cp_map =
+	{
+	}
+	p._cpv_map =
+	{
+	}
+	return p
+}
+
+func(p*PackageVirtualDbapi) clear() {
+	if p._cpv_map:
+	p._clear_cache()
+	p._cp_map.clear()
+	p._cpv_map.clear()
+}
+
+func(p*PackageVirtualDbapi) copy() {
+	obj = PackageVirtualDbapi(p.settings)
+	obj._match_cache = p._match_cache.copy()
+	obj._cp_map = p._cp_map.copy()
+	for k, v
+	in
+	obj._cp_map.items():
+	obj._cp_map[k] = v[:]
+	obj._cpv_map = p._cpv_map.copy()
+	return obj
+}
+
+func(p*PackageVirtualDbapi) __bool__() {
+	return bool(p._cpv_map)
+}
+
+func(p*PackageVirtualDbapi) __iter__() {
+	return iter(p._cpv_map.values())
+}
+
+func(p*PackageVirtualDbapi) __contains__( item) {
+	existing = p._cpv_map.get(item.cpv)
+	if existing is
+	not
+	None
+	and \
+	existing == item:
+	return True
+	return False
+}
+
+func(p*PackageVirtualDbapi) get( item, default=None) {
+	cpv = getattr(item, "cpv", None)
+	if cpv is
+None:
+	if len(item) != 5:
+	return default
+type_name, root, cpv, operation, repo_key = item
+
+existing = p._cpv_map.get(cpv)
+if existing is not None and \
+existing == item:
+return existing
+return default
+}
+
+func(p*PackageVirtualDbapi) match_pkgs( atom) {
+	return [p._cpv_map[cpv]
+	for cpv
+	in
+	p.match(atom)]
+}
+
+func(p*PackageVirtualDbapi) _clear_cache() {
+	if p._categories is
+	not
+None:
+	p._categories = None
+	if p._match_cache:
+	p._match_cache =
+	{
+	}
+}
+
+func(p*PackageVirtualDbapi) match( origdep, use_cache=1) {
+	atom = dep_expand(origdep, mydb = p, settings = p.settings)
+	cache_key = (atom, atom.unevaluated_atom)
+	result = p._match_cache.get(cache_key)
+	if result is
+	not
+None:
+	return result[:]
+	result = list(p._iter_match(atom, p.cp_list(atom.cp)))
+	p._match_cache[cache_key] = result
+	return result[:]
+}
+
+func(p*PackageVirtualDbapi) cpv_exists( cpv, myrepo=None) {
+	return cpv
+	in
+	p._cpv_map
+}
+
+func(p*PackageVirtualDbapi) cp_list( mycp, use_cache=1) {
+	cache_key = (mycp, mycp)
+	cachelist = p._match_cache.get(cache_key)
+	if cachelist is
+	not
+None:
+	return cachelist[:]
+	cpv_list = p._cp_map.get(mycp)
+	if cpv_list is
+None:
+	cpv_list = []
+	else:
+	cpv_list = [pkg.cpv
+	for pkg
+	in
+	cpv_list]
+p._cpv_sort_ascending(cpv_list)
+p._match_cache[cache_key] = cpv_list
+return cpv_list[:]
+}
+
+func(p*PackageVirtualDbapi) cp_all( sort=False) {
+	return sorted(p._cp_map)
+	if sort
+	else
+	list(p._cp_map)
+}
+
+func(p*PackageVirtualDbapi) cpv_all() {
+	return list(p._cpv_map)
+}
+
+func(p*PackageVirtualDbapi) cpv_inject( pkg) {
+	cp_list = p._cp_map.get(pkg.cp)
+	if cp_list is
+None:
+	cp_list = []
+	p._cp_map[pkg.cp] = cp_list
+	e_pkg = p._cpv_map.get(pkg.cpv)
+	if e_pkg is
+	not
+None:
+	if e_pkg == pkg:
+	return
+	p.cpv_remove(e_pkg)
+	for e_pkg
+	in
+cp_list:
+	if e_pkg.slot_atom == pkg.slot_atom:
+	if e_pkg == pkg:
+	return
+	p.cpv_remove(e_pkg)
+	break
+	cp_list.append(pkg)
+	p._cpv_map[pkg.cpv] = pkg
+	p._clear_cache()
+}
+
+func(p*PackageVirtualDbapi) cpv_remove( pkg) {
+	old_pkg = p._cpv_map.get(pkg.cpv)
+	if old_pkg != pkg:
+	raise
+	KeyError(pkg)
+	p._cp_map[pkg.cp].remove(pkg)
+	del
+	p._cpv_map[pkg.cpv]
+	p._clear_cache()
+}
+
+func(p*PackageVirtualDbapi) aux_get( cpv, wants, myrepo=None) {
+	metadata = p._cpv_map[cpv]._metadata
+	return [metadata.get(x, "")
+	for x
+	in
+	wants]
+}
+
+func(p*PackageVirtualDbapi) aux_update(cpv, values) {
+	p._cpv_map[cpv]._metadata.update(values)
+	p._clear_cache()
+}
+
+type PipeReader struct {
+	*AbstractPollTask
+
+	// slot
+	input_files,_read_data,_use_array
+}
+
+func (p* PipeReader) _start() {
+	p._read_data = []
+
+	for f
+	in
+	p.input_files.values():
+	fd = f
+	if isinstance(f, int)
+	else
+	f.fileno()
+	fcntl.fcntl(fd, fcntl.F_SETFL,
+		fcntl.fcntl(fd, fcntl.F_GETFL)|os.O_NONBLOCK)
+
+	if sys.hexversion < 0x3040000:
+try:
+	fcntl.FD_CLOEXEC
+	except
+AttributeError:
+	pass
+	else:
+	fcntl.fcntl(fd, fcntl.F_SETFD,
+		fcntl.fcntl(fd, fcntl.F_GETFD)|fcntl.FD_CLOEXEC)
+
+	if p._use_array:
+	p.scheduler.add_reader(fd, p._array_output_handler, f)
+	else:
+	p.scheduler.add_reader(fd, p._output_handler, fd)
+
+	p._registered = True
+}
+
+func (p* PipeReader) _cancel() {
+	p._unregister()
+	if p.returncode is
+None:
+	p.returncode = p._cancelled_returncode
+}
+
+func (p* PipeReader) getvalue() {
+	return b
+	''.join(p._read_data)
+}
+
+func (p* PipeReader) close() {
+	p._read_data = None
+}
+
+func (p* PipeReader) _output_handler( fd) {
+
+	while
+True:
+	data = p._read_buf(fd)
+	if data is
+None:
+	break
+	if data:
+	p._read_data.append(data)
+	else:
+	p._unregister()
+	p.returncode = p.returncode
+	or
+	os.EX_OK
+	p._async_wait()
+	break
+}
+
+func (p* PipeReader) _array_output_handler( f) {
+
+	while
+True:
+	data = p._read_array(f)
+	if data is
+None:
+	break
+	if data:
+	p._read_data.append(data)
+	else:
+	p._unregister()
+	p.returncode = p.returncode
+	or
+	os.EX_OK
+	p._async_wait()
+	break
+
+	return True
+}
+
+func (p* PipeReader) _unregister() {
+
+	p._registered = False
+
+	if p.input_files is
+	not
+None:
+	for f
+	in
+	p.input_files.values():
+	if isinstance(f, int):
+	p.scheduler.remove_reader(f)
+	os.close(f)
+	else:
+	p.scheduler.remove_reader(f.fileno())
+	f.close()
+	p.input_files = None
+}
+
+func NewPipeReader()*PipeReader{
+	p := &PipeReader{}
+	p.AbstractPollTask = NewAbstractPollTask()
+	return p
+}
+
+
+type ProgressHandler struct {
+}
+
+func NewProgressHandler()*ProgressHandler {
+	p := &ProgressHandler{}
+	p.curval = 0
+	p.maxval = 0
+	p._last_update = 0
+	p.min_latency = 0.2
+	return p
+}
+
+func(p *ProgressHandler) onProgress( maxval, curval) {
+	p.maxval = maxval
+	p.curval = curval
+	cur_time = time.time()
+	if cur_time-p._last_update >= p.min_latency:
+	p._last_update = cur_time
+	p.display()
+}
+
+func(p *ProgressHandler) display() {
+	raise
+	NotImplementedError(p)
+}
+
+type RootConfig struct {
+	// slot
+	Mtimedb   *MtimeDB
+	root      string
+	Settings  *Config
+	trees     *Tree
+	setconfig *SetConfig
+	sets      map[string]string
+
+	pkg_tree_map, tree_pkg_map map[string]string
+}
+
+func NewRootConfig(settings *Config, trees *Tree, setconfig *SetConfig)*RootConfig {
+	r := &RootConfig{}
+	r.pkg_tree_map = map[string]string{
+		"ebuild":    "porttree",
+		"binary":    "bintree",
+		"installed": "vartree",
+	}
+	r.tree_pkg_map = map[string]string{
+		"porttree": "ebuild",
+		"bintree":  "binary",
+		"vartree":  "installed",
+	}
+	r.trees = trees
+	r.Settings = settings
+	r.root = r.Settings.ValueDict["EROOT"]
+	r.setconfig = setconfig
+	if setconfig == nil {
+		r.sets = map[string]string{}
+	} else {
+		r.sets = r.setconfig.getSets()
+	}
+	return r
+}
+
+func (r*RootConfig) Update(other *RootConfig) {
+	r.Mtimedb = other.Mtimedb
+	r.root=other.root
+	r.Settings =other.Settings
+	r.trees=other.trees
+	r.setconfig=other.setconfig
+	r.sets=other.sets
+}
+
+const FAILURE = 1
+
+type  Scheduler struct {
+	*PollScheduler
+	_loadavg_latency, _max_display_latency                           int
+	_opts_ignore_blockers, _opts_no_background, _opts_no_self_update map[string]bool
+
+	settings        *Config
+	target_root     string
+	trees           interface{}
+	myopts          interface{}
+	_spinner        interface{}
+	_mtimedb        int
+	_favorites      interface{}
+	_args_set       *InternalPackageSet
+	_build_opts     *_build_opts_class
+	_parallel_fetch bool
+	curval          int
+	_logger         *_emerge_log_class
+
+	_sigcont_time            int
+	_sigcont_delay           int
+	_job_delay_max           float64
+	_choose_pkg_return_early bool
+	edebug                   int
+	_deep_system_deps        map[string]string
+	_unsatisfied_system_deps map[string]string
+	_failed_pkgs_all         []*_failed_pkg
+	_jobs                    int
+	_pkg_count               *_pkg_count_class
+	_config_pool             map[string][]*Config
+	_failed_pkgs             []*_failed_pkg
+	_blocker_db              map[string]*BlockerDB
+	pkgsettings              map[string]*Config
+	_binpkg_opts             *_binpkg_opts_class
+	_task_queues             *_task_queues_class
+	_fetch_log               string
+	_running_portage         *Package
+	_running_root            *RootConfig
+	_previous_job_start_time int
+	_status_display          *JobStatusDisplay
+}
+
+type  _iface_class struct {
+	*SchedulerInterface
+	// slot
+	fetch, scheduleSetup,scheduleUnpack string
+}
+
+// SlotObject
+type  _fetch_iface_class struct {
+	// slot
+	log_file,schedule string
+}
+
+type _task_queues_class struct {
+	// slot
+	jobs
+	merge, ebuild_locks, fetch, unpack
+}
+
+// SlotObject
+type  _build_opts_class struct {
+	// slot
+	buildpkg,buildpkg_exclude,buildpkgonly,
+	fetch_all_uri,fetchonly,pretend string
+}
+
+// SlotObject
+type  _binpkg_opts_class struct {
+	// slot
+	fetchonly,getbinpkg,pretend string
+}
+
+// SlotObject
+type  _pkg_count_class struct {
+	// slot
+	curval, maxval int
+}
+
+// SlotObject
+type _emerge_log_class struct {
+	// slot
+	xterm_titles bool
+}
+
+func (e *_emerge_log_class) log( mystr, short_msg string) {
+	if !e.xterm_titles {
+		short_msg = ""
+	}
+	emergelog(e.xterm_titles, mystr, short_msg)
+}
+
+// SlotObject
+type  _failed_pkg struct {
+	// slot
+	build_dir,build_log,pkg, postinst_failure,returncode string
+}
+
+type  _ConfigPool struct {
+	// slot
+	_root       string
+	_allocate   func(string)
+	_deallocate func(*Config)
+}
+
+func NewConfigPool(root string, allocate func(string), deallocate func(*Config)) *_ConfigPool {
+	c := &_ConfigPool{}
+	c._root = root
+	c._allocate = allocate
+	c._deallocate = deallocate
+	return c
+}
+
+func (c *_ConfigPool) allocate() {
+	return c._allocate(c._root)
+}
+
+func(c *_ConfigPool) deallocate( settings *Config) {
+	c._deallocate(settings)
+}
+
+type  _unknown_internal_error struct {
+	*PortageException
+}
+// ""
+func New_unknown_internal_error(value string) *_unknown_internal_error {
+	u := &_unknown_internal_error{}
+	u.PortageException = &PortageException{value: value}
+	return u
+}
+
+// nil, nil, nil
+func NewScheduler(settings *Config, trees, mtimedb, myopts, spinner, mergelist, favorites, graph_config) *Scheduler {
+	s := &Scheduler{}
+
+	s._loadavg_latency = 30
+	s._max_display_latency = 3
+	s._opts_ignore_blockers = map[string]bool{"--buildpkgonly": true,
+		"--fetchonly": true, "--fetch-all-uri": true,
+		"--nodeps": true, "--pretend": true,}
+	s._opts_no_background = map[string]bool{"--pretend": true,
+		"--fetchonly": true, "--fetch-all-uri": true}
+	s._opts_no_self_update = map[string]bool{"--buildpkgonly": true,
+		"--fetchonly": true, "--fetch-all-uri": true, "--pretend": true}
+
+	s.PollScheduler = NewPollScheduler(true, nil)
+
+	s.settings = settings
+	s.target_root = settings.ValueDict["EROOT"]
+	s.trees = trees
+	s.myopts = myopts
+	s._spinner = spinner
+	s._mtimedb = mtimedb
+	s._favorites = favorites
+	s._args_set = NewInternalPackageSet(favorites, true, true)
+	s._build_opts = &_build_opts_class{}
+
+	for k
+		in
+	s._build_opts.__slots__ {
+		setattr(s._build_opts, k, myopts.get("--"+k.replace("_", "-")))
+	}
+	s._build_opts.buildpkg_exclude = NewInternalPackageSet(
+		" ".join(myopts.get("--buildpkg-exclude", [])).split(), true, true)
+	if s.settings.Features.Features["mirror"] {
+		s._build_opts.fetch_all_uri = true
+	}
+
+	s._binpkg_opts = &_binpkg_opts_class{}
+	for k
+		in
+	s._binpkg_opts.__slots__:
+	setattr(s._binpkg_opts, k, "--"+k.replace("_", "-")
+	in
+	myopts)
+
+	s.curval = 0
+	s._logger = &_emerge_log_class{}
+	s._task_queues = &_task_queues_class{}
+	for k
+		in
+	s._task_queues.allowed_keys:
+	setattr(s._task_queues, k,
+		SequentialTaskQueue())
+
+	s._merge_wait_queue = deque()
+	s._merge_wait_scheduled = []
+
+	s._deep_system_deps = map[string]string{}
+
+	s._unsatisfied_system_deps = map[string]string{}
+
+	s._status_display = NewJobStatusDisplay(false, !settings.Features.Features["notitles"])
+	s._max_load = myopts.get("--load-average")
+	max_jobs = myopts.get("--jobs")
+	if max_jobs == nil {
+		max_jobs = 1
+	}
+	s._set_max_jobs(max_jobs)
+	s._running_root = trees[trees._running_eroot]["root_config"]
+	s.edebug = 0
+	if settings.ValueDict["PORTAGE_DEBUG"] == "1" {
+		s.edebug = 1
+	}
+	s.pkgsettings = map[string]*Config{}
+	s._config_pool = map[string][]*Config{}
+	for root
+		in
+	s.trees {
+		s._config_pool[root] = []*Config{}
+	}
+
+	s._fetch_log = filepath.Join(_emerge_log_dir,
+		"emerge-fetch.log")
+	fetch_iface := &_fetch_iface_class{log_file: s._fetch_log,
+		schedule: s._schedule_fetch}
+	s._sched_iface = &_iface_class{
+		s._event_loop,
+		is_background:  s._is_background,
+		fetch:          fetch_iface,
+		scheduleSetup:  s._schedule_setup,
+		scheduleUnpack: s._schedule_unpack}
+
+	s._prefetchers = weakref.WeakValueDictionary()
+	s._pkg_queue = []
+	s._jobs = 0
+	s._running_tasks =
+	{
+	}
+	s._completed_tasks = map[string]string{}
+	s._main_exit = nil
+	s._main_loadavg_handle = nil
+	s._schedule_merge_wakeup_task = nil
+
+	s._failed_pkgs = []*_failed_pkg{}
+	s._failed_pkgs_all = []*_failed_pkg{}
+	s._failed_pkgs_die_msgs = []
+	s._post_mod_echo_msgs = []
+	s._parallel_fetch = false
+	s._init_graph(graph_config)
+	merge_count := 0
+	for x
+		in
+	s._mergelist {
+		if isinstance(x, Package) &&
+			x.operation == "merge" {
+			merge_count++
+		}
+	}
+	s._pkg_count = &_pkg_count_class{curval: 0, maxval: merge_count}
+	s._status_display.maxval = s._pkg_count.maxval
+
+	s._job_delay_max = 5
+	s._previous_job_start_time = 0
+	s._job_delay_timeout_id = nil
+
+	s._sigcont_delay = 5
+	s._sigcont_time = 0
+
+	s._choose_pkg_return_early = false
+
+	features := s.settings.Features.Features
+	if features["parallel-fetch"] &&
+		not("--pretend" in
+	s.myopts ||
+		"--fetch-all-uri"
+	in
+	s.myopts ||
+		"--fetchonly"
+	in
+	s.myopts):
+	if !features["distlocks"] {
+		WriteMsg(Red("!!!")+"\n", -1, nil)
+		WriteMsg(Red("!!!")+" parallel-fetching "+
+			"requires the distlocks feature enabled"+"\n",
+			-1, nil)
+		WriteMsg(Red("!!!")+" you have it disabled, "+
+			"thus parallel-fetching is being disabled"+"\n",
+			-1, nil)
+		WriteMsg(Red("!!!")+"\n", -1, nil)
+	} else if merge_count > 1 {
+		s._parallel_fetch = true
+	}
+
+	if s._parallel_fetch {
+		f, err := os.OpenFile(s._fetch_log, os.O_RDWR|os.O_CREATE, 0644)
+		if err != nil {
+			//except EnvironmentError:
+			//pass
+		} else {
+			f.Close()
+		}
+	}
+
+	s._running_portage = nil
+	portage_match := s._running_root.trees.VarTree().dbapi.match(
+		PORTAGE_PACKAGE_ATOM, 1)
+	if len(portage_match) > 0 {
+		cpv := portage_match[len(portage_match)-1]
+		portage_match = portage_match[:len(portage_match)-1]
+		s._running_portage = s._pkg(cpv, "installed",
+			s._running_root, true, nil, nil)
+	}
+	return s
+}
+
+func (s *Scheduler) _handle_self_update() int {
+
+	if s._opts_no_s_update.intersection(s.myopts) {
+		return 0
+	}
+
+	for x
+		in
+	s._mergelist {
+		if not isinstance(x, Package):
+		continue
+		if x.operation != "merge" {
+			continue
+		}
+		if x.root != s._running_root.root {
+			continue
+		}
+		if len( matchFromList(PORTAGE_PACKAGE_ATOM, []*PkgStr{x}))==0 {
+			continue
+		}
+		rval := _check_temp_dir(s.settings)
+		if rval != 0 {
+			return rval
+		}
+		_prepare_s_update(s.settings)
+		break
+	}
+
+	return 0
+}
+
+func (s*Scheduler)_terminate_tasks() {
+	s._status_display.quiet = true
+	for task
+		in
+	list(s._running_tasks.values()) {
+		if task.isAlive() {
+			task.cancel()
+		}else {
+			del
+			s._running_tasks[id(task)]
+		}
+	}
+
+	for q
+		in
+	s._task_queues.values() {
+		q.clear()
+	}
+}
+
+func (s*Scheduler) _init_graph( graph_config) {
+	s._set_graph_config(graph_config)
+	s._blocker_db = map[string]*BlockerDB{}
+	depgraph_params := create_depgraph_params(s.myopts, nil)
+	dynamic_deps = "dynamic_deps"
+	in
+	depgraph_params
+	ignore_built_slot_operator_deps := s.myopts.get(
+		"--ignore-built-slot-operator-deps", "n") == "y"
+	for root
+		in
+	s.trees {
+		if graph_config == nil {
+			fake_vartree := NewFakeVartree(s.trees[root]["root_config"],
+				s._pkg_cache,nil,  dynamic_deps, ignore_built_slot_operator_deps, false)
+			fake_vartree.sync(1)
+		}else {
+			fake_vartree = graph_config.trees[root]['vartree']
+		}
+		s._blocker_db[root] = NewBlockerDB(fake_vartree)
+	}
+}
+
+func (s *Scheduler) _destroy_graph() {
+	s._blocker_db = nil
+	s._set_graph_config(nil)
+	gc.collect()
+}
+
+func (s *Scheduler) _set_max_jobs( max_jobs int) {
+	s._max_jobs = max_jobs
+	s._task_queues.jobs.max_jobs = max_jobs
+	if s.settings.Features.Features["parallel-install"] {
+		s._task_queues.merge.max_jobs = max_jobs
+	}
+}
+
+func (s*Scheduler) _background_mode() bool {
+	background := (s._max_jobs
+	is
+	true ||
+		s._max_jobs > 1 ||
+		"--quiet"
+	in
+	s.myopts ||
+		s.myopts.get("--quiet-build") == "y") &&
+	not
+	bool(s._opts_no_background.intersection(s.myopts))
+
+	if background {
+		interactive_tasks := s._get_interactive_tasks()
+		if interactive_tasks{
+			background = false
+			WriteMsgLevel(">>> Sending package output to stdio due "+
+				"to interactive package(s):\n",
+				10, -1)
+			msg := []string{""}
+			for pkg
+				in
+			interactive_tasks {
+				pkg_str := "  " + colorize("INFORM", fmt.Sprint(pkg.cpv))
+				if pkg.root_config.settings.ValueDict["ROOT"] != "/" {
+					pkg_str += " for " + pkg.root
+				}
+				msg= append(msg, pkg_str)
+			}
+			msg= append(msg, "")
+			WriteMsgLevel(strings.Join(msg, "\n")+"\n", 20, -1)
+			if s._max_jobs is
+			true ||
+				s._max_jobs > 1
+			{
+				s._set_max_jobs(1)
+				WriteMsgLevel(">>> Setting --jobs=1 due "+
+					"to the above interactive package(s)\n",
+					20, -1)
+				WriteMsgLevel(">>> In order to temporarily mask "+
+					"interactive updates, you may\n"+
+					">>> specify --accept-properties=-interactive\n",
+					20, -1)
+			}
+		}
+	}
+	s._status_display.quiet =
+		not
+	background ||
+		("--quiet"
+	in
+	s.myopts&&
+		"--verbose"
+	not
+	in
+	s.myopts)
+
+	s._logger.xterm_titles = !s.settings.Features.Features["notitles"]&& s._status_display.quiet
+
+	return background
+}
+
+func (s *Scheduler) _get_interactive_tasks() {
+	interactive_tasks = []
+	for task
+		in
+	s._mergelist:
+	if not(isinstance(task, Package) &&
+		task.operation == "merge"):
+	continue
+	if 'interactive' in
+	task.properties:
+	interactive_tasks.append(task)
+	return interactive_tasks
+}
+
+func(s *Scheduler) _set_graph_config( graph_config) {
+
+	if graph_config == nil {
+		s._graph_config = nil
+		s._pkg_cache =
+		{
+		}
+		s._digraph = nil
+		s._mergelist = []
+		s._world_atoms = nil
+		s._deep_system_deps= map[string]string{}
+		return
+	}
+
+	s._graph_config = graph_config
+	s._pkg_cache = graph_config.pkg_cache
+	s._digraph = graph_config.graph
+	s._mergelist = graph_config.mergelist
+
+	s._world_atoms =
+	{
+	}
+	for pkg
+		in
+	s._mergelist:
+	if getattr(pkg, 'operation', nil) != 'merge':
+	continue
+	atom = create_world_atom(pkg, s._args_set,
+		pkg.root_config, before_install = true)
+	if atom != nil:
+	s._world_atoms[pkg] = atom
+
+	if "--nodeps" in
+	s.myopts ||
+		(s._max_jobs
+	is
+	not
+	true&&
+		s._max_jobs < 2):
+	s._digraph = nil
+	graph_config.graph = nil
+	graph_config.pkg_cache.clear()
+	s._deep_system_deps.clear()
+	for pkg
+		in
+	s._mergelist:
+	s._pkg_cache[pkg] = pkg
+	return
+
+	s._find_system_deps()
+	s._prune_digraph()
+	s._prevent_builddir_collisions()
+	if '--debug' in
+	s.myopts:
+	WriteMsg("\nscheduler digraph:\n\n",  -1, nil)
+	s._digraph.debug_print()
+	WriteMsg("\n", -1, nil)
+}
+
+func (s *Scheduler) _find_system_deps() {
+	params = create_depgraph_params(s.myopts, nil)
+	if not params["implicit_system_deps"] {
+		return
+	}
+
+	deep_system_deps = s._deep_system_deps
+	deep_system_deps.clear()
+	deep_system_deps.update(
+		_find_deep_system_runtime_deps(s._digraph))
+	deep_system_deps.difference_update([pkg
+	for pkg
+		in
+	deep_system_deps
+	if pkg.operation != "merge"])
+}
+
+func (s *Scheduler) _prune_digraph() {
+
+	graph := s._digraph
+	completed_tasks := s._completed_tasks
+	removed_nodes := map[string]bool{}
+	for {
+		for node in graph.root_nodes(){
+			if not isinstance(node, Package) ||(node.installed && node.operation == "nomerge") ||
+				node.onlydeps || node in completed_tasks{
+				removed_nodes[node] = true
+			}
+		}
+		if len(removed_nodes) > 0 {
+			graph.difference_update(removed_nodes)
+		}
+		if len(removed_nodes) == 0 {
+			break
+		}
+		removed_nodes = map[string]bool{}
+	}
+}
+
+func (s *Scheduler) _prevent_builddir_collisions() {
+	cpv_map =
+	{
+	}
+	for pkg
+		in
+	s._mergelist:
+	if not isinstance(pkg, Package):
+	continue
+	if pkg.installed:
+	continue
+	if pkg.cpv not
+	in
+cpv_map:
+	cpv_map[pkg.cpv] = [pkg]
+	continue
+	for earlier_pkg
+		in
+	cpv_map[pkg.cpv]:
+	s._digraph.add(earlier_pkg, pkg,
+		priority = NewDepPriority(true))
+	cpv_map[pkg.cpv].append(pkg)
+}
+
+type  _pkg_failure struct {
+	PortageException
+	status int
+}
+func New_pkg_failure(status *int, pargs) *_pkg_failure{
+	p := &_pkg_failure{}
+	p.status = 1
+	p.PortageException = NewPortageException(pargs)
+	if status != nil {
+		p.status = *status
+	}
+
+	return p
+}
+
+func (s *Scheduler) _schedule_fetch( fetcher) {
+	if s._max_jobs > 1 {
+		fetcher.start()
+	}else {
+		s._task_queues.fetch.addFront(fetcher)
+	}
+}
+
+func (s *Scheduler) _schedule_setup( setup_phase) {
+	if s._task_queues.merge.max_jobs > 1 && s.settings.Features.Features["ebuild-locks"] {
+		s._task_queues.ebuild_locks.add(setup_phase)
+	}else {
+		s._task_queues.merge.add(setup_phase)
+	}
+	s._schedule()
+}
+
+func (s *Scheduler) _schedule_unpack( unpack_phase) {
+	s._task_queues.unpack.add(unpack_phase)
+}
+
+func (s *Scheduler) _find_blockers( new_pkg) {
+	get_blockers:= func() {
+		return s._find_blockers_impl(new_pkg)
+	}
+	return get_blockers
+}
+
+func (s *Scheduler) _find_blockers_impl(new_pkg) {
+	if s._opts_ignore_blockers.intersection(s.myopts) {
+		return nil
+	}
+
+	blocker_db := s._blocker_db[new_pkg.root]
+
+	blocked_pkgs = []
+	for blocking_pkg
+		in
+	blocker_db.findInstalledBlockers(new_pkg) {
+		if new_pkg.slot_atom == blocking_pkg.slot_atom {
+			continue
+		}
+		if new_pkg.cpv == blocking_pkg.cpv {
+			continue
+		}
+		blocked_pkgs.append(blocking_pkg)
+	}
+
+	return blocked_pkgs
+}
+
+func (s *Scheduler) _generate_digests() int {
+
+	digest := '--digest'
+	in
+	s.myopts
+	if ! digest {
+		for _, pkgsettings := range s.pkgsettings {
+			if pkgsettings.mycpv != nil {
+				pkgsettings.reset(0)
+			}
+			if pkgsettings.Features.Features["digest"] {
+				digest = true
+				break
+			}
+		}
+	}
+
+	if ! digest {
+		return 0
+	}
+
+	for x
+		in
+	s._mergelist:
+	if not isinstance(x, Package) ||
+		x.type_name != 'ebuild' ||
+		x.operation != 'merge':
+	continue
+	pkgsettings = s.pkgsettings.ValueDict[x.root]
+	if pkgsettings.mycpv != nil:
+	pkgsettings.reset()
+	if '--digest' not
+	in
+	s.myopts&&
+		'digest'
+	not
+	in
+	pkgsettings.Features.Features:
+	continue
+	portdb = x.root_config.trees['porttree'].dbapi
+	ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
+	if ebuild_path == nil:
+	raise
+	AssertionError("ebuild not found for '%s'" % x.cpv)
+	pkgsettings.ValueDict['O'] =  filepath.Dir(ebuild_path)
+	if digestgen(nil,  pkgsettings, portdb)==0 {
+		WriteMsgLevel(fmt.Sprintf("!!! Unable to generate manifest for '%s'.\n", x.cpv), 40,-1)
+		return FAILURE
+	}
+
+	return 0
+}
+
+func (s *Scheduler) _check_manifests() int {
+	if  !s.settings.Features["strict"] ||
+		"--fetchonly"
+		in
+	s.myopts ||
+		"--fetch-all-uri"
+	in
+	s.myopts{
+		return 0
+	}
+
+	shown_verifying_msg := false
+	quiet_settings :=map[string]*Config{}
+	for myroot, pkgsettings := range s.pkgsettings{
+		quiet_config := NewConfig(pkgsettings,nil, "", nil, "","","","",true, nil, false, nil)
+		quiet_config.ValueDict["PORTAGE_QUIET"] = "1"
+		quiet_config.BackupChanges("PORTAGE_QUIET")
+		quiet_settings[myroot] = quiet_config
+		quiet_config.ValueDict = map[string]string{}
+	}
+
+	failures := 0
+
+	for x
+		in
+	s._mergelist {
+		if not isinstance(x, Package) ||
+			x.type_name != "ebuild" {
+			continue
+		}
+
+		if x.operation == "uninstall" {
+			continue
+		}
+
+		if ! shown_verifying_msg {
+			shown_verifying_msg = true
+			s._status_msg("Verifying ebuild manifests")
+		}
+
+		root_config = x.root_config
+		portdb = root_config.trees["porttree"].dbapi
+		quiet_config = quiet_settings.ValueDict[root_config.root]
+		ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
+		if ebuild_path == nil:
+		raise
+		AssertionError("ebuild not found for '%s'" % x.cpv)
+		quiet_config["O"] =  filepath.Dir(ebuild_path)
+		if not digestcheck([], quiet_config, strict = true):
+		failures |= 1
+	}
+
+
+	if failures!= 0 {
+		return FAILURE
+	}
+	return 0
+}
+
+func (s *Scheduler) _add_prefetchers() {
+
+	if not s._parallel_fetch:
+	return
+
+	if s._parallel_fetch:
+
+	prefetchers = s._prefetchers
+
+	for pkg
+		in
+	s._mergelist:
+	if not isinstance(pkg, Package) ||
+		pkg.operation == "uninstall":
+	continue
+	prefetcher = s._create_prefetcher(pkg)
+	if prefetcher != nil:
+	prefetchers[pkg] = prefetcher
+	s._task_queues.fetch.add(prefetcher)
+}
+
+func (s *Scheduler) _create_prefetcher( pkg *Package) {
+	prefetcher = nil
+
+	if pkg.type_name == "ebuild" {
+		prefetcher = NewEbuildFetcher(NewConfigPool(pkg.root, s._allocate_config,
+			s._deallocate_config), "", s._build_opts.fetch_all_uri, 1, true,
+			s._fetch_log, pkg, s._sched_iface, true)
+	} else if
+	pkg.type_name == "binary" &&
+		"--getbinpkg"
+		in
+	s.myopts &&
+		pkg.root_config.trees["bintree"].isremote(pkg.cpv)
+	{
+		prefetcher = NewBinpkgPrefetcher(true, pkg, s._sched_iface)
+	}
+
+	return prefetcher
+}
+
+func (s *Scheduler) _run_pkg_pretend()  int {
+
+	failures := 0
+	sched_iface := s._sched_iface
+
+	for x
+		in
+	s._mergelist {
+		if not isinstance(x, Package):
+		continue
+
+		if x.operation == "uninstall" {
+			continue
+		}
+
+		if Ins([]string{"0", "1", "2", "3"}, x.eapi) {
+			continue
+		}
+
+		if "pretend" not
+		in
+		x.defined_phases{
+			continue
+		}
+
+		out_str := ">>> Running pre-merge checks for " + colorize("INFORM", x.cpv) + "\n"
+		WriteMsgStdout(out_str, -1)
+
+		root_config := x.root_config
+		settings := s.pkgsettings[root_config.root]
+		settings.setcpv(x)
+
+		rval := _check_temp_dir(settings)
+		if rval != 0 {
+			return rval
+		}
+
+		fpes, _ := filepath.EvalSymlinks(settings.ValueDict["PORTAGE_TMPDIR"])
+		build_dir_path := filepath.Join(fpes, "portage", x.category, x.pf)
+		existing_builddir := pathIsDir(build_dir_path)
+		settings.ValueDict["PORTAGE_BUILDDIR"] = build_dir_path
+		build_dir := NewEbuildBuildDir(sched_iface, settings)
+		sched_iface.run_until_complete(build_dir.async_lock())
+		current_task = nil
+
+	try:
+
+		if existing_builddir {
+			if x.built {
+				tree = "bintree"
+				infloc = filepath.Join(build_dir_path, "build-info")
+				ebuild_path = filepath.Join(infloc, x.pf+".ebuild")
+			} else {
+				tree = "porttree"
+				portdb = root_config.trees["porttree"].dbapi
+				ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
+				if ebuild_path == nil {
+					raise
+					AssertionError(
+						"ebuild not found for '%s'" % x.cpv)
+				}
+			}
+			doebuild_environment(
+				ebuild_path, "clean", settings, false, nil,
+				s.trees[settings.ValueDict["EROOT"]][tree].dbapi)
+			clean_phase := NewEbuildPhase(nil, false, "clean", sched_iface, settings, nil)
+			current_task = clean_phase
+			clean_phase.start()
+			clean_phase.wait()
+		}
+
+		if x.built {
+			tree = "bintree"
+			bintree = root_config.trees["bintree"].dbapi.bintree
+			fetched = false
+
+			if bintree.isremote(x.cpv):
+			fetcher = NewBinpkgFetcher(false, "", x, nil, sched_iface)
+			fetcher.start()
+			if fetcher.wait() != 0:
+			failures += 1
+			continue
+			fetched = fetcher.pkg_path
+
+			if fetched is
+		false:
+			filename = bintree.getname(x.cpv)
+			else:
+			filename = fetched
+			verifier = NewBinpkgVerifier(false, "", x,
+				sched_iface, filename)
+			current_task = verifier
+			verifier.start()
+			if verifier.wait() != 0:
+			failures += 1
+			continue
+
+			if fetched:
+			bintree.inject(x.cpv, filename = fetched)
+
+			infloc = filepath.Join(build_dir_path, "build-info")
+			ensureDirs(infloc)
+			s._sched_iface.run_until_complete(
+				bintree.dbapi.unpack_metadata(settings, infloc))
+			ebuild_path = filepath.Join(infloc, x.pf+".ebuild")
+			settings.configDict["pkg"]["EMERGE_FROM"] = "binary"
+			settings.configDict["pkg"]["MERGE_TYPE"] = "binary"
+
+		}else {
+			tree = "porttree"
+			portdb = root_config.trees["porttree"].dbapi
+			ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
+			if ebuild_path == nil:
+			raise
+			AssertionError("ebuild not found for '%s'" % x.cpv)
+			settings.configDict["pkg"]["EMERGE_FROM"] = "ebuild"
+			if s._build_opts.buildpkgonly:
+			settings.configDict["pkg"]["MERGE_TYPE"] = "buildonly"
+			else:
+			settings.configDict["pkg"]["MERGE_TYPE"] = "source"
+		}
+
+		doebuild_environment(ebuild_path,
+			"pretend", nil, settings, false, nil,
+			s.trees[settings.ValueDict["EROOT"]][tree].dbapi)
+
+		prepare_build_dirs(root_config.root, settings, cleanup = 0)
+
+		vardb = root_config.trees['vartree'].dbapi
+		settings.ValueDict["REPLACING_VERSIONS"] = " ".join(
+			set(portage.versions.cpv_getversion(match)
+		for match
+			in
+		vardb.match(x.slot_atom) +
+			vardb.match('='+x.cpv)))
+		pretend_phase = NewEbuildPhase(nil, false, "pretend", sched_iface, settings, nil)
+
+		current_task = pretend_phase
+		pretend_phase.start()
+		ret = pretend_phase.wait()
+		if ret != 0 {
+			failures += 1
+		}
+		elog_process(x.cpv, settings, nil)
+	finally:
+
+		if current_task != nil {
+			if current_task.isAlive() {
+				current_task.cancel()
+				current_task.wait()
+			}
+			if current_task.returncode == 0 {
+				clean_phase := NewEbuildPhase(nil, false, "clean", sched_iface, settings, nil)
+				clean_phase.start()
+				clean_phase.wait()
+			}
+		}
+
+		sched_iface.run_until_complete(build_dir.async_unlock())
+	}
+
+	if failures != 0{
+		return FAILURE
+	}
+	return 0
+}
+
+func (s *Scheduler) merge() {
+	if "--resume" in
+	s.myopts:
+	WriteMsgStdout(
+		colorize("GOOD", "*** Resuming merge...\n"), -1)
+	s._logger.log(" *** Resuming merge...", "")
+
+	s._save_resume_list()
+
+try:
+	s._background = s._background_mode()
+	except
+	s._unknown_internal_error:
+	return FAILURE
+
+	rval = s._handle_self_update()
+	if rval != 0 {
+		return rval
+	}
+
+	for root
+		in
+	s.trees:
+	root_config = s.trees[root]["root_config"]
+
+	tmpdir := root_config.settings.ValueDict["PORTAGE_TMPDIR"]
+	if tmpdir == "" || !pathIsDir(tmpdir):
+	msg := []string{
+		"The directory specified in your PORTAGE_TMPDIR variable does not exist:",
+		tmpdir,
+		"Please create this directory or correct your PORTAGE_TMPDIR setting.",
+	}
+	out := NewEOutput(false)
+	for _, l:= range msg {
+		out.eerror(l)
+		return FAILURE
+	}
+
+	if s._background {
+		root_config.settings.unlock()
+		root_config.settings.ValueDict["PORTAGE_BACKGROUND"] = "1"
+		root_config.settings.backup_changes("PORTAGE_BACKGROUND")
+		root_config.settings.lock()
+	}
+
+	s.pkgsettings[root] = NewConfig(root_config.settings, nil, "", nil, "","","","",true, nil, false, nil)
+
+	keep_going = "--keep-going"
+	in
+	s.myopts
+	fetchonly = s._build_opts.fetchonly
+	mtimedb = s._mtimedb
+	failed_pkgs = s._failed_pkgs
+
+	rval = s._generate_digests()
+	if rval != 0 {
+		return rval
+	}
+
+	rval = s._check_manifests()
+	if rval != 0 &&
+		not
+		keep_going {
+		return rval
+	}
+
+	if not fetchonly:
+	rval = s._run_pkg_pretend()
+	if rval != 0 {
+		return rval
+	}
+
+	while
+true:
+
+	received_signal = []
+
+	func
+	sighandler(signum, frame):
+	signal.signal(signal.SIGINT, signal.SIG_IGN)
+	signal.signal(signal.SIGTERM, signal.SIG_IGN)
+	WriteMsg("\n\nExiting on signal %(signal)s\n" %
+	{
+		"signal":signum
+	})
+	s.terminate()
+	received_signal.append(128 + signum)
+
+	earlier_sigint_handler = signal.signal(signal.SIGINT, sighandler)
+	earlier_sigterm_handler = signal.signal(signal.SIGTERM, sighandler)
+	earlier_sigcont_handler =
+		signal.signal(signal.SIGCONT, s._sigcont_handler)
+	signal.siginterrupt(signal.SIGCONT, false)
+
+try:
+	rval = s._merge()
+finally:
+	if earlier_sigint_handler != nil:
+	signal.signal(signal.SIGINT, earlier_sigint_handler)
+	else:
+	signal.signal(signal.SIGINT, signal.SIG_DFL)
+	if earlier_sigterm_handler != nil:
+	signal.signal(signal.SIGTERM, earlier_sigterm_handler)
+	else:
+	signal.signal(signal.SIGTERM, signal.SIG_DFL)
+	if earlier_sigcont_handler != nil:
+	signal.signal(signal.SIGCONT, earlier_sigcont_handler)
+	else:
+	signal.signal(signal.SIGCONT, signal.SIG_DFL)
+
+	s._termination_check()
+	if received_signal:
+	sys.exit(received_signal[0])
+
+	if rval == 0 ||
+		fetchonly ||
+		not
+		keep_going:
+	break
+	if "resume" not
+	in
+mtimedb:
+	break
+	mergelist = s._mtimedb["resume"].get("mergelist")
+	if not mergelist:
+	break
+
+	if not failed_pkgs:
+	break
+
+	for failed_pkg
+		in
+	failed_pkgs:
+	mergelist.remove(list(failed_pkg.pkg))
+
+	s._failed_pkgs_all =append(s._failed_pkgs_all, failed_pkgs...)
+	del
+	failed_pkgs[:]
+
+	if not mergelist:
+	break
+
+	if not s._calc_resume_list():
+	break
+
+	clear_caches(s.trees)
+	if not s._mergelist:
+	break
+
+	s._save_resume_list()
+	s._pkg_count.curval = 0
+	ss := []
+
+	for x
+		in
+	s._mergelist {
+		if isinstance(x, Package) &&
+			x.operation == "merge" {
+			ss = append(ss, x)
+		}
+	}
+	s._pkg_count.maxval = len(ss)
+	s._status_display.maxval = s._pkg_count.maxval
+
+	s._cleanup()
+
+	s._logger.log(" *** Finished. Cleaning up...")
+
+	if failed_pkgs:
+	s._failed_pkgs_all.extend(failed_pkgs)
+	del
+	failed_pkgs[:]
+
+	printer = NewEOutput()
+	background = s._background
+	failure_log_shown = false
+	if background && len(s._failed_pkgs_all) == 1 &&
+		s.myopts.get('--quiet-fail', 'n') != 'y':
+	failed_pkg = s._failed_pkgs_all[-1]
+	log_file = nil
+	log_file_real = nil
+
+	log_path = s._locate_failure_log(failed_pkg)
+	if log_path != nil:
+try:
+	log_file = open(_unicode_encode(log_path,
+		encoding = _encodings['fs'], errors = 'strict'), mode = 'rb')
+	except
+IOError:
+	pass else:
+	if log_path.endswith('.gz'):
+	log_file_real = log_file
+	log_file = gzip.GzipFile(filename = '',
+		mode = 'rb', fileobj = log_file)
+
+	if log_file != nil:
+try:
+	for line
+		in
+	log_file:
+	WriteMsgLevel(line, noiselevel = -1)
+	except
+	zlib.error
+	as
+e:
+	WriteMsgLevel("%s\n"%(e, ), level = 40,
+		noiselevel = -1)
+finally:
+	log_file.close()
+	if log_file_real != nil:
+	log_file_real.close()
+	failure_log_shown = true
+
+	mod_echo_output = _flush_elog_mod_echo()
+
+	if background && not failure_log_shown &&
+		s._failed_pkgs_all &&
+		s._failed_pkgs_die_msgs &&
+		not
+mod_echo_output:
+
+	for mysettings, key, logentries
+		in
+	s._failed_pkgs_die_msgs:
+	root_msg = ""
+	if mysettings.ValueDict["ROOT"] != "/":
+	root_msg = " merged to %s" % mysettings.ValueDict["ROOT"]
+	print()
+	printer.einfo("Error messages for package %s%s:"%
+		(colorize("INFORM", key), root_msg))
+	print()
+	for phase
+		in
+	portage.
+	const.EBUILD_PHASES:
+	if phase not
+	in
+logentries:
+	continue
+	for msgtype, msgcontent
+		in
+	logentries[phase]:
+	if isinstance(msgcontent, basestring):
+	msgcontent = [msgcontent]
+	for line
+		in
+	msgcontent:
+	printer.eerror(line.strip("\n"))
+
+	if s._post_mod_echo_msgs:
+	for msg
+		in
+	s._post_mod_echo_msgs:
+	msg()
+
+	if len(s._failed_pkgs_all) > 1 ||
+		(s._failed_pkgs_all && keep_going):
+	if len(s._failed_pkgs_all) > 1:
+	msg = "The following %d packages have "%
+		len(s._failed_pkgs_all) +
+		"failed to build, install, or execute postinst:"
+	else:
+	msg = "The following package has " +
+		"failed to build, install, or execute postinst:"
+
+	printer.eerror("")
+	for line
+		in
+	SplitSubN(msg, 72):
+	printer.eerror(line)
+	printer.eerror("")
+	for failed_pkg
+		in
+	s._failed_pkgs_all:
+	msg = " %s" % (failed_pkg.pkg, )
+	if failed_pkg.postinst_failure:
+	msg += " (postinst failed)"
+	log_path = s._locate_failure_log(failed_pkg)
+	if log_path != nil:
+	msg += ", Log file:"
+	printer.eerror(msg)
+	if log_path != nil:
+	printer.eerror("  '%s'" % colorize('INFORM', log_path))
+	printer.eerror("")
+
+	if s._failed_pkgs_all {
+		return FAILURE
+	}
+	return 0
+}
+
+func (s *Scheduler) _elog_listener(mysettings *Config, key, logentries logentries map[string][][2]string, fulltext) {
+	errors := filter_loglevels(logentries, map[string]bool{"ERROR":true})
+	if len(errors) > 0 {
+		s._failed_pkgs_die_msgs = append(s._failed_pkgs_die_msgs,
+			(mysettings, key, errors))
+	}
+}
+
+func (s *Scheduler) _locate_failure_log( failed_pkg *_failed_pkg) string {
+
+	log_paths := []string{failed_pkg.build_log}
+
+	for _, log_path := range log_paths {
+		if log_path == "" {
+			continue
+		}
+		st, err := os.Stat(log_path)
+		if err != nil {
+			//except OSError:
+			continue
+		}
+		log_size := st.Size()
+
+		if log_size == 0 {
+			continue
+		}
+
+		return log_path
+	}
+
+	return ""
+}
+
+func (s *Scheduler) _add_packages() {
+	pkg_queue := s._pkg_queue
+	for pkg
+		in
+	s._mergelist {
+		if isinstance(pkg, Package):
+		pkg_queue.append(pkg)
+		else if
+		isinstance(pkg, Blocker):
+		pass
+	}
+}
+
+func (s *Scheduler) _system_merge_started(merge) {
+	graph := s._digraph
+	if graph == nil {
+		return
+	}
+	pkg = merge.merge.pkg
+
+	if pkg.root_config.settings.ValueDict["ROOT"] != "/" {
+		return
+	}
+
+	completed_tasks := s._completed_tasks
+	unsatisfied := s._unsatisfied_system_deps
+	ignore_non_runtime_or_satisfied := func(priority) {
+		if isinstance(priority, DepPriority) &&
+			not
+			priority.satisfied
+		&&
+		(priority.runtime ||
+			priority.runtime_post)
+		{
+			return false
+		}
+		return true
+	}
+
+	for child
+		in
+	graph.child_nodes(pkg,
+		ignore_priority = ignore_non_runtime_or_satisfied):
+	if not isinstance(child, Package) ||
+		child.operation == "uninstall":
+	continue
+	if child is
+pkg:
+	continue
+	if child.operation == "merge" &&
+		child
+		not
+	in
+completed_tasks:
+	unsatisfied.add(child)
+}
+
+func (s *Scheduler) _merge_wait_exit_handler( task) {
+	s._merge_wait_scheduled.remove(task)
+	s._merge_exit(task)
+}
+
+func (s *Scheduler) _merge_exit(merge) {
+	s._running_tasks.pop(id(merge), nil)
+	s._do_merge_exit(merge)
+	s._deallocate_config(merge.merge.settings)
+	if merge.returncode == 0 &&
+		not
+		merge.merge.pkg.installed {
+		s._status_display.curval += 1
+	}
+	s._status_display.merges = len(s._task_queues.merge)
+	s._schedule()
+}
+
+func (s *Scheduler) _do_merge_exit( merge) {
+	pkg = merge.merge.pkg
+	if merge.returncode != 0 {
+		settings := merge.merge.settings
+		build_dir := settings.ValueDict["PORTAGE_BUILDDIR"]
+		build_log := settings.ValueDict["PORTAGE_LOG_FILE"]
+
+		s._failed_pkgs = append(s._failed_pkgs, &_failed_pkg{
+			build_dir, build_log,
+			pkg, nil,
+			merge.returncode})
+		if ! s._terminated_tasks {
+			s._failed_pkg_msg(s._failed_pkgs[len(s._failed_pkgs)-1], "install", "to")
+			s._status_display.failed = len(s._failed_pkgs)
+		}
+		return
+	}
+
+	if merge.postinst_failure {
+		s._failed_pkgs_all = append(s._failed_pkgs_all, &_failed_pkg{
+			merge.merge.settings.ValueDict["PORTAGE_BUILDDIR"],
+			merge.merge.settings.ValueDict["PORTAGE_LOG_FILE"],
+			pkg, true, merge.returncode})
+		s._failed_pkg_msg(s._failed_pkgs_all[len(s._failed_pkgs_all)-1],
+			"execute postinst for", "for")
+	}
+
+	s._task_complete(pkg)
+	pkg_to_replace = merge.merge.pkg_to_replace
+	if pkg_to_replace != nil:
+	if s._digraph != nil&&
+		pkg_to_replace
+		in
+	s._digraph:
+try:
+	s._pkg_queue.remove(pkg_to_replace)
+	except
+ValueError:
+	pass
+	s._task_complete(pkg_to_replace)
+	else:
+	s._pkg_cache.pop(pkg_to_replace, nil)
+
+	if pkg.installed:
+	return
+
+	mtimedb = s._mtimedb
+	mtimedb["resume"]["mergelist"].remove(list(pkg))
+	if not mtimedb["resume"]["mergelist"]:
+	del
+	mtimedb["resume"]
+	mtimedb.commit()
+}
+
+func (s *Scheduler) _build_exit( build) {
+	s._running_tasks.pop(id(build), nil)
+	if build.returncode == 0 &&
+		s._terminated_tasks {
+		s.curval += 1
+		s._deallocate_config(build.settings)
+	}else if
+	build.returncode == 0 {
+		s.curval += 1
+		merge = NewPackageMerge(build, s._sched_iface)
+		s._running_tasks[id(merge)] = merge
+		if not build.build_opts.buildpkgonly &&
+			build.pkg
+		in
+		s._deep_system_deps{
+			s._merge_wait_queue.append(merge)
+			merge.addStartListener(s._system_merge_started)
+		} else {
+			s._task_queues.merge.add(merge)
+			merge.addExitListener(s._merge_exit)
+			s._status_display.merges = len(s._task_queues.merge)
+		}
+	}else{
+		settings = build.settings
+		build_dir = settings.ValueDict["PORTAGE_BUILDDIR"]
+		build_log = settings.ValueDict["PORTAGE_LOG_FILE"]
+
+		s._failed_pkgs = append(s._failed_pkgs, &_failed_pkg{
+			build_dir, build_log, build.pkg, "", build.returncode})
+		if !s._terminated_tasks {
+			s._failed_pkg_msg(s._failed_pkgs[len(s._failed_pkgs)-1], "emerge", "for")
+			s._status_display.failed = len(s._failed_pkgs)
+		}
+		s._deallocate_config(build.settings)
+	}
+	s._jobs -= 1
+	s._status_display.running = s._jobs
+	s._schedule()
+}
+
+func (s *Scheduler) _extract_exit( build) {
+	s._build_exit(build)
+}
+
+func (s *Scheduler) _task_complete(pkg) {
+	s._completed_tasks.add(pkg)
+	s._unsatisfied_system_deps.discard(pkg)
+	s._choose_pkg_return_early = false
+	blocker_db := s._blocker_db[pkg.root]
+	blocker_db.discardBlocker(pkg)
+}
+
+func (s *Scheduler) _main_loop() {
+	s._main_exit = s._event_loop.create_future()
+
+	if s._max_load != nil&&
+		s._loadavg_latency
+	!= nil&&
+		(s._max_jobs
+	is
+	true ||
+		s._max_jobs > 1):
+	s._main_loadavg_handle = s._event_loop.call_later(
+		s._loadavg_latency, s._schedule)
+
+	s._schedule()
+	s._event_loop.run_until_complete(s._main_exit)
+}
+
+func (s *Scheduler) _merge() int {
+
+	if s._opts_no_background.intersection(s.myopts) {
+		s._set_max_jobs(1)
+	}
+
+	s._add_prefetchers()
+	s._add_packages()
+	failed_pkgs := s._failed_pkgs
+	quiet := s._background
+	add_listener(s._elog_listener)
+
+
+	display_callback:=func() {
+		s._status_display.display()
+		display_callback.handle = s._event_loop.call_later(
+			s._max_display_latency, display_callback)
+	}
+	display_callback.handle = nil
+
+	if s._status_display._isatty &&
+		!s._status_display.quiet {
+		display_callback()
+	}
+	rval := 0
+
+try:
+	s._main_loop()
+finally:
+	s._main_loop_cleanup()
+	quiet = false
+	remove_listener(s._elog_listener)
+	if display_callback.handle != nil {
+		display_callback.handle.cancel()
+	}
+	if len(failed_pkgs) > 0 {
+		rval = failed_pkgs[len(failed_pkgs)-1].returncode
+	}
+
+	return rval
+}
+
+func (s *Scheduler) _main_loop_cleanup() {
+	s._pkg_queue = map[]
+	s._completed_tasks.clear()
+	s._deep_system_deps.clear()
+	s._unsatisfied_system_deps.clear()
+	s._choose_pkg_return_early = false
+	s._status_display.reset()
+	s._digraph = nil
+	s._task_queues.fetch.clear()
+	s._prefetchers.clear()
+	s._main_exit = nil
+	if s._main_loadavg_handle != nil:
+	s._main_loadavg_handle.cancel()
+	s._main_loadavg_handle = nil
+	if s._job_delay_timeout_id != nil:
+	s._job_delay_timeout_id.cancel()
+	s._job_delay_timeout_id = nil
+	if s._schedule_merge_wakeup_task != nil:
+	s._schedule_merge_wakeup_task.cancel()
+	s._schedule_merge_wakeup_task = nil
+}
+
+func (s *Scheduler) _choose_pkg() {
+
+	if s._choose_pkg_return_early {
+		return nil
+	}
+
+	if s._digraph == nil:
+	if s._is_work_scheduled() &&
+		not("--nodeps"
+		in
+	s.myopts&&
+		(s._max_jobs
+	is
+	true ||
+		s._max_jobs > 1)):
+	s._choose_pkg_return_early = true
+	return nil
+	return s._pkg_queue.pop(0)
+
+	if ! s._is_work_scheduled() {
+		return s._pkg_queue.pop(0)
+	}
+
+	s._prune_digraph()
+
+	chosen_pkg = nil
+
+	graph = s._digraph
+	for pkg
+		in
+	s._pkg_queue:
+	if pkg.operation == "uninstall" &&
+		not
+		graph.child_nodes(pkg):
+	chosen_pkg = pkg
+	break
+
+	if chosen_pkg == nil:
+	later = set(s._pkg_queue)
+	for pkg
+		in
+	s._pkg_queue:
+	later.remove(pkg)
+	if not s._dependent_on_scheduled_merges(pkg, later):
+	chosen_pkg = pkg
+	break
+
+	if chosen_pkg != nil:
+	s._pkg_queue.remove(chosen_pkg)
+
+	if chosen_pkg == nil:
+	s._choose_pkg_return_early = true
+
+	return chosen_pkg
+}
+
+func (s *Scheduler) _dependent_on_scheduled_merges( pkg, later) {
+
+	graph := s._digraph
+	completed_tasks := s._completed_tasks
+
+	dependent := false
+	traversed_nodes := map[string]bool{pkg:true}
+	direct_deps := graph.child_nodes(pkg)
+	node_stack := direct_deps
+	direct_deps := frozenset(direct_deps)
+	for len(node_stack) >  0 {
+
+		node = node_stack.pop()
+		if node in
+	traversed_nodes:
+		continue
+		traversed_nodes.add(node)
+		if not((node.installed &&
+			node.operation == "nomerge") ||
+			(node.operation == "uninstall" &&
+				node
+			not
+		in
+		direct_deps) ||
+node
+in
+completed_tasks ||
+node
+in
+later):
+dependent = true
+break
+
+if node.operation != "uninstall":
+node_stack.extend(graph.child_nodes(node))
+}
+return dependent
+}
+
+func (s *Scheduler) _allocate_config( root string) *Config {
+	var temp_settings *Config
+	if s._config_pool[root] != nil {
+		temp_settings = s._config_pool[root][len(s._config_pool[root])-1]
+		s._config_pool[root]=s._config_pool[root][:len(s._config_pool[root])-1]
+	}else {
+		temp_settings = NewConfig(s.pkgsettings[root], nil, "", nil, "", "", "", "", true, nil, false, nil)
+	}
+	temp_settings.reload()
+	temp_settings.reset(0)
+	return temp_settings
+}
+
+func (s *Scheduler) _deallocate_config(settings *Config) {
+	s._config_pool[settings.ValueDict["EROOT"]]=append(s._config_pool[settings.ValueDict["EROOT"]], settings)
+}
+
+func (s *Scheduler) _keep_scheduling() {
+	return bool(not
+	s._terminated.is_set()&&
+		s._pkg_queue&&
+		not(s._failed_pkgs&&
+			not
+	s._build_opts.fetchonly))
+}
+
+func (s *Scheduler) _is_work_scheduled() bool {
+	return bool(s._running_tasks)
+}
+
+func (s *Scheduler) _running_job_count() {
+	return s._jobs
+}
+
+func (s *Scheduler) _schedule_tasks() {
+	for {
+		state_change := 0
+
+		if (s._merge_wait_queue &&
+			not
+			s._jobs
+		&&
+		not
+		s._task_queues.merge):
+		task = s._merge_wait_queue.popleft()
+		task.scheduler = s._sched_iface
+		s._merge_wait_scheduled.append(task)
+		s._task_queues.merge.add(task)
+		task.addExitListener(s._merge_wait_exit_handler)
+		s._status_display.merges = len(s._task_queues.merge)
+		state_change += 1
+
+		if s._schedule_tasks_imp():
+		state_change += 1
+
+		s._status_display.display()
+
+		if s._failed_pkgs &&
+			not
+			s._build_opts.fetchonly
+		&&
+		not
+		s._is_work_scheduled()
+		&&
+		s._task_queues.fetch:
+		s._task_queues.fetch.clear()
+
+		if not(state_change ||
+			(s._merge_wait_queue
+		&&
+		not
+		s._jobs
+		&&
+		not
+		s._task_queues.merge)):
+		break
+	}
+
+	if !(s._is_work_scheduled() || s._keep_scheduling() || s._main_exit.done()) {
+		s._main_exit.set_result(nil)
+	}else if s._main_loadavg_handle!= nil {
+		s._main_loadavg_handle.cancel()
+		s._main_loadavg_handle = s._event_loop.call_later(
+			s._loadavg_latency, s._schedule)
+	}
+
+	if (s._task_queues.merge &&(s._schedule_merge_wakeup_task== nil || s._schedule_merge_wakeup_task.done())) {
+		s._schedule_merge_wakeup_task = asyncio.ensure_future(
+			s._task_queues.merge.wait(), loop = s._event_loop)
+		s._schedule_merge_wakeup_task.add_done_callback(
+			s._schedule_merge_wakeup)
+	}
+}
+
+func (s *Scheduler) _schedule_merge_wakeup( future) {
+	if not future.cancelled() {
+		future.result()
+		if s._main_exit != nil &&
+			not
+			s._main_exit.done() {
+			s._schedule()
+		}
+	}
+}
+
+func (s *Scheduler) _sigcont_handler( signum, frame) {
+	s._sigcont_time = time.Now().Second()
+}
+
+func (s *Scheduler) _job_delay() bool {
+
+	if s._jobs && s._max_load!= nil {
+
+		current_time := time.Now().Second()
+
+		if s._sigcont_time != nil {
+
+			elapsed_seconds := current_time - s._sigcont_time
+			if elapsed_seconds > 0 &&
+				elapsed_seconds < s._sigcont_delay {
+
+				if s._job_delay_timeout_id != nil {
+					s._job_delay_timeout_id.cancel()
+				}
+
+				s._job_delay_timeout_id = s._event_loop.call_later(
+					s._sigcont_delay-elapsed_seconds,
+					s._schedule)
+				return true
+			}
+
+			s._sigcont_time = nil
+		}
+
+		avg1, avg5, avg15, err := getloadavg()
+		if err != nil {
+			//except OSError:
+			return false
+		}
+
+		delay := s._job_delay_max * avg1 / s._max_load
+		if delay > s._job_delay_max {
+			delay = s._job_delay_max
+		}
+		elapsed_seconds := current_time - s._previous_job_start_time
+		if elapsed_seconds > 0 && elapsed_seconds < delay {
+			if s._job_delay_timeout_id != nil {
+				s._job_delay_timeout_id.cancel()
+			}
+			s._job_delay_timeout_id = s._event_loop.call_later(
+				delay-elapsed_seconds, s._schedule)
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s *Scheduler) _schedule_tasks_imp() bool{
+	state_change := 0
+
+	for {
+		if ! s._keep_scheduling(){
+			return state_change!= 0
+		}
+
+		if s._choose_pkg_return_early || s._merge_wait_scheduled || (s._jobs != 0 && len(s._unsatisfied_system_deps) > 0) || ! s._can_add_job() || s._job_delay() {
+			return state_change!= 0
+		}
+
+		pkg := s._choose_pkg()
+		if pkg == nil {
+			return state_change != 0
+		}
+
+		state_change += 1
+
+		if not pkg.installed {
+			s._pkg_count.curval += 1
+		}
+
+		task = s._task(pkg)
+
+		if pkg.installed {
+			merge := NewPackageMerge(task,  s._sched_iface)
+			s._running_tasks[id(merge)] = merge
+			s._task_queues.merge.addFront(merge)
+			merge.addExitListener(s._merge_exit)
+		} else if pkg.built{
+			s._jobs += 1
+			s._previous_job_start_time = time.Now().Second()
+			s._status_display.running = s._jobs
+			s._running_tasks[id(task)] = task
+			task.scheduler = s._sched_iface
+			s._task_queues.jobs.add(task)
+			task.addExitListener(s._extract_exit)
+		} else{
+			s._jobs += 1
+			s._previous_job_start_time = time.Now().Second()
+			s._status_display.running = s._jobs
+			s._running_tasks[id(task)] = task
+			task.scheduler = s._sched_iface
+			s._task_queues.jobs.add(task)
+			task.addExitListener(s._build_exit)
+		}
+	}
+	return state_change!= 0
+}
+
+func (s *Scheduler) _task( pkg) {
+
+	pkg_to_replace = nil
+	if pkg.operation != "uninstall"{
+		vardb := pkg.root_config.trees["vartree"].dbapi
+		previous_cpv = [x
+		for x
+			in
+		vardb.match(pkg.slot_atom)
+		if portage.cpv_getkey(x) == pkg.cp]
+if not previous_cpv && vardb.cpv_exists(pkg.cpv):
+previous_cpv = [pkg.cpv]
+if previous_cpv:
+previous_cpv = previous_cpv.pop()
+pkg_to_replace = s._pkg(previous_cpv,
+"installed", pkg.root_config, installed = true,
+operation = "uninstall")
+}
+
+try:
+prefetcher = s._prefetchers.pop(pkg, nil)
+except KeyError:
+prefetcher = nil
+if prefetcher != nil && not prefetcher.isAlive():
+try:
+s._task_queues.fetch._task_queue.remove(prefetcher)
+except ValueError:
+pass
+prefetcher = nil
+
+task = MergeListItem(args_set= s._args_set,
+background = s._background, binpkg_opts = s._binpkg_opts,
+build_opts = s._build_opts,
+config_pool = s._ConfigPool(pkg.root,
+s._allocate_config, s._deallocate_config),
+emerge_opts = s.myopts,
+find_blockers =s._find_blockers(pkg), logger = s._logger,
+mtimedb = s._mtimedb, pkg= pkg, pkg_count = s._pkg_count.copy(),
+pkg_to_replace = pkg_to_replace,
+prefetcher = prefetcher,
+scheduler = s._sched_iface,
+settings = s._allocate_config(pkg.root),
+statusMessage =s._status_msg,
+world_atom = s._world_atom)
+
+return task
+}
+
+func (s *Scheduler) _failed_pkg_msg(failed_pkg *_failed_pkg, action, preposition string) {
+	pkg = failed_pkg.pkg
+	msg := fmt.Sprintf(fmt.Sprintf("%s to %s %s",
+		bad("Failed"), action, colorize("INFORM", pkg.cpv)))
+	if pkg.root_config.settings.ValueDict["ROOT"] != "/" {
+		msg += fmt.Sprintf(fmt.Sprintf(" %s %s", preposition, pkg.root))
+	}
+
+	log_path := s._locate_failure_log(failed_pkg)
+	if log_path != "" {
+		msg += ", Log file:"
+		s._status_msg(msg)
+	}
+
+	if log_path != "" {
+		s._status_msg(fmt.Sprintf(" '%s'", colorize("INFORM", log_path), ))
+	}
+}
+
+func (s *Scheduler) _status_msg( msg string) {
+	if !s._background {
+		WriteMsgLevel("\n", 0, nil)
+	}
+	s._status_display.displayMessage(msg)
+}
+
+func (s *Scheduler) _save_resume_list() {
+	mtimedb := s._mtimedb
+
+	mtimedb["resume"] = map[string]{}
+	mtimedb["resume"]["myopts"] = s.myopts.copy()
+
+	mtimedb["resume"]["favorites"] = [str(x)
+	for x
+		in
+	s._favorites]
+mtimedb["resume"]["mergelist"] = [list(x)
+for x in s._mergelist
+if isinstance(x, Package) && x.operation == "merge"]
+
+mtimedb.commit()
+}
+
+func (s *Scheduler) _calc_resume_list() {
+	print(colorize("GOOD", "*** Resuming merge..."))
+
+	s._destroy_graph()
+
+	myparams := create_depgraph_params(s.myopts, nil)
+	success := false
+	e = nil
+try:
+	success, mydepgraph, dropped_tasks = resume_depgraph(
+		s.settings, s.trees, s._mtimedb, s.myopts,
+		myparams, s._spinner)
+	except
+	depgraph.UnsatisfiedResumeDep
+	as
+exc:
+	e = exc
+	mydepgraph = e.depgraph
+	dropped_tasks =
+	{
+	}
+
+	if e != nil:
+
+	unsatisfied_resume_dep_msg:= func(){
+		mydepgraph.display_problems()
+		out := NewEOutput(false)
+		out.eerror("One or more packages are either masked or " +
+			"have missing dependencies:")
+		out.eerror("")
+		indent := "  "
+		show_parents = map[string]string{}
+		for dep
+			in
+		e.value:
+		if dep.parent in
+	show_parents:
+		continue
+		show_parents.add(dep.parent)
+		if dep.atom == nil:
+		out.eerror(indent + "Masked package:")
+		out.eerror(2*indent + str(dep.parent))
+		out.eerror("")
+		else:
+		out.eerror(indent + str(dep.atom) + " pulled in by:")
+		out.eerror(2*indent + str(dep.parent))
+		out.eerror("")
+		msg = "The resume list contains packages " +
+			"that are either masked or have " +
+			"unsatisfied dependencies. " +
+			"Please restart/continue " +
+			"the operation manually, or use --skipfirst " +
+			"to skip the first package in the list and " +
+			"any other packages that may be " +
+			"masked or have missing dependencies."
+		for _, line:= range SplitSubN(msg, 72) {
+			out.eerror(line)
+		}
+	}
+	s._post_mod_echo_msgs.append(unsatisfied_resume_dep_msg)
+	return false
+
+	if success && s._show_list() {
+		mydepgraph.display(mydepgraph.altlist(), favorites = s._favorites)
+	}
+
+	if ! success {
+		s._post_mod_echo_msgs=append(s._post_mod_echo_msgs, mydepgraph.display_problems)
+		return false
+	}
+	mydepgraph.display_problems()
+	s._init_graph(mydepgraph.schedulerGraph())
+
+	msg_width = 75
+	for task, atoms
+		in
+	dropped_tasks.items():
+	if not(isinstance(task, Package) &&
+		task.operation == "merge"):
+	continue
+	pkg = task
+	msg = "emerge --keep-going:" +
+		" %s" % (pkg.cpv,)
+	if pkg.root_config.settings.ValueDict["ROOT"] != "/":
+	msg += " for %s" % (pkg.root,)
+	if not atoms:
+	msg += " dropped because it is masked or unavailable"
+	else:
+	msg += " dropped because it requires %s" % ", ".join(atoms)
+	for line
+		in
+	SplitSubN(msg, msg_width):
+	eerror(line, "other", pkg.cpv, "", nil)
+	settings = s.pkgsettings.ValueDict[pkg.root]
+	settings.pop("T", nil)
+	portage.elog.elog_process(pkg.cpv, settings)
+	s._failed_pkgs_all=append(s._failed_pkgs_all, &_failed_pkg{pkg: pkg})
+
+	return true
+}
+
+func (s *Scheduler) _show_list() bool {
+	myopts := s.myopts
+	if  !Inmss(myopts, "--quiet")&& Inmss(myopts, "--ask")||Inmss(myopts, "--tree")||Inmss(myopts, "--verbose") {
+		return true
+	}
+	return false
+}
+
+func (s *Scheduler) _world_atom( pkg) {
+
+	if set(("--buildpkgonly", "--fetchonly",
+		"--fetch-all-uri",
+		"--oneshot", "--onlydeps",
+		"--pretend")).intersection(s.myopts)
+	{
+		return
+	}
+
+	if pkg.root != s.target_root {
+		return
+	}
+
+	args_set := s._args_set
+	if not args_set.findAtomForPackage(pkg, nil) {
+		return
+	}
+
+	logger := s._logger
+	pkg_count := s._pkg_count
+	root_config := pkg.root_config
+	world_set := root_config.sets["selected"]
+	world_locked := false
+	atom = nil
+
+	if pkg.operation != "uninstall" {
+		atom = s._world_atoms.get(pkg)
+	}
+
+try:
+
+	if hasattr(world_set, "lock"):
+	world_set.lock()
+	world_locked = true
+
+	if hasattr(world_set, "load"):
+	world_set.load()
+
+	if pkg.operation == "uninstall":
+	if hasattr(world_set, "cleanPackage"):
+	world_set.cleanPackage(pkg.root_config.trees["vartree"].dbapi,
+		pkg.cpv)
+	if hasattr(world_set, "remove"):
+	for s
+		in
+	pkg.root_config.setconfig.active:
+	world_set.remove(SETPREFIX + s)
+	else:
+	if atom != nil:
+	if hasattr(world_set, "add"):
+	s._status_msg(("Recording %s in \"world\" " +
+		"favorites file...") % atom)
+	logger.log(" === (%s of %s) Updating world file (%s)" %
+		(pkg_count.curval, pkg_count.maxval, pkg.cpv))
+	world_set.add(atom)
+	else:
+	WriteMsgLevel("\n!!! Unable to record %s in \"world\"\n" %
+		(atom,), level = logging.WARN, noiselevel=-1)
+finally:
+	if world_locked:
+	world_set.unlock()
+}
+
+// false, nil, nil
+func (s *Scheduler) _pkg( cpv *PkgStr, type_name string, root_config *RootConfig, installed bool,
+	operation=nil, myrepo=nil) *Package {
+
+	pkg = s._pkg_cache.get(NewPackage()._gen_hash_key(cpv = cpv,
+		type_name = type_name, repo_name=myrepo, root_config = root_config,
+		installed=installed, operation = operation))
+
+	if pkg != nil {
+		return pkg
+	}
+
+	tree_type = depgraph.pkg_tree_map[type_name]
+	db = root_config.trees[tree_type].dbapi
+	db_keys = list(s.trees[root_config.root][
+		tree_type].dbapi._aux_cache_keys)
+	metadata = zip(db_keys, db.aux_get(cpv, db_keys, myrepo = myrepo))
+	pkg := NewPackage(type_name != "ebuild",
+		cpv, installed, metadata,
+		root_config, type_name)
+	s._pkg_cache[pkg] = pkg
+	return pkg
+}
+
 type SpawnProcess struct {
 	*SubProcess
 	_CGROUP_CLEANUP_RETRY_MAX int
@@ -7517,51 +10057,6 @@ logfile string, fd_pipes map[int]int) *MergeProcess {
 	return m
 }
 
-type RootConfig struct {
-	// slot
-	Mtimedb   *MtimeDB
-	root      string
-	Settings  *Config
-	trees     *Tree
-	setconfig *SetConfig
-	sets      map[string]string
-
-	pkg_tree_map, tree_pkg_map map[string]string
-}
-
-func NewRootConfig(settings *Config, trees *Tree, setconfig *SetConfig)*RootConfig {
-	r := &RootConfig{}
-	r.pkg_tree_map = map[string]string{
-		"ebuild":    "porttree",
-		"binary":    "bintree",
-		"installed": "vartree",
-	}
-	r.tree_pkg_map = map[string]string{
-		"porttree": "ebuild",
-		"bintree":  "binary",
-		"vartree":  "installed",
-	}
-	r.trees = trees
-	r.Settings = settings
-	r.root = r.Settings.ValueDict["EROOT"]
-	r.setconfig = setconfig
-	if setconfig == nil {
-		r.sets = map[string]string{}
-	} else {
-		r.sets = r.setconfig.getSets()
-	}
-	return r
-}
-
-func (r*RootConfig) Update(other *RootConfig) {
-	r.Mtimedb = other.Mtimedb
-	r.root=other.root
-	r.Settings =other.Settings
-	r.trees=other.trees
-	r.setconfig=other.setconfig
-	r.sets=other.sets
-}
-
 type PollScheduler struct {
 	_scheduling, _terminated_tasks, _background bool
 	_term_rlock                                 sync.Mutex
@@ -7697,2163 +10192,6 @@ func NewPollScheduler( main bool, event_loop=nil)*PollScheduler {
 	}
 	p._sched_iface = NewSchedulerInterface(p._event_loop, p._is_background)
 	return p
-}
-
-const FAILURE = 1
-
-type  Scheduler struct {
-	*PollScheduler
-	_loadavg_latency, _max_display_latency                           int
-	_opts_ignore_blockers, _opts_no_background, _opts_no_self_update map[string]bool
-
-	settings        *Config
-	target_root     string
-	trees           interface{}
-	myopts          interface{}
-	_spinner        interface{}
-	_mtimedb        int
-	_favorites      interface{}
-	_args_set       *InternalPackageSet
-	_build_opts     *_build_opts_class
-	_parallel_fetch bool
-	curval          int
-	_logger         *_emerge_log_class
-
-	_sigcont_time            int
-	_sigcont_delay           int
-	_job_delay_max           float64
-	_choose_pkg_return_early bool
-	edebug                   int
-	_deep_system_deps        map[string]string
-	_unsatisfied_system_deps map[string]string
-	_failed_pkgs_all         []*_failed_pkg
-	_jobs                    int
-	_pkg_count               *_pkg_count_class
-	_config_pool             map[string][]*Config
-	_failed_pkgs             []*_failed_pkg
-	_blocker_db              map[string]*BlockerDB
-	pkgsettings              map[string]*Config
-	_binpkg_opts             *_binpkg_opts_class
-	_task_queues             *_task_queues_class
-	_fetch_log               string
-	_running_portage         *Package
-	_running_root            *RootConfig
-	_previous_job_start_time int
-	_status_display          *JobStatusDisplay
-}
-
-type  _iface_class struct {
-	*SchedulerInterface
-	// slot
-	fetch, scheduleSetup,scheduleUnpack string
-}
-
-// SlotObject
-type  _fetch_iface_class struct {
-	// slot
-	log_file,schedule string
-}
-
-type _task_queues_class struct {
-	// slot
-	jobs
-	merge, ebuild_locks, fetch, unpack
-}
-
-// SlotObject
-type  _build_opts_class struct {
-	// slot
-	buildpkg,buildpkg_exclude,buildpkgonly,
-	fetch_all_uri,fetchonly,pretend string
-}
-
-// SlotObject
-type  _binpkg_opts_class struct {
-	// slot
-	fetchonly,getbinpkg,pretend string
-}
-
-// SlotObject
-type  _pkg_count_class struct {
-	// slot
-	curval, maxval int
-}
-
-// SlotObject
-type _emerge_log_class struct {
-	// slot
-	xterm_titles bool
-}
-
-func (e *_emerge_log_class) log( mystr, short_msg string) {
-	if !e.xterm_titles {
-		short_msg = ""
-	}
-	emergelog(e.xterm_titles, mystr, short_msg)
-}
-
-// SlotObject
-type  _failed_pkg struct {
-	// slot
-	build_dir,build_log,pkg, postinst_failure,returncode string
-}
-
-type  _ConfigPool struct {
-	// slot
-	_root       string
-	_allocate   func(string)
-	_deallocate func(*Config)
-}
-
-func NewConfigPool(root string, allocate func(string), deallocate func(*Config)) *_ConfigPool {
-	c := &_ConfigPool{}
-	c._root = root
-	c._allocate = allocate
-	c._deallocate = deallocate
-	return c
-}
-
-func (c *_ConfigPool) allocate() {
-	return c._allocate(c._root)
-}
-
-func(c *_ConfigPool) deallocate( settings *Config) {
-	c._deallocate(settings)
-}
-
-type  _unknown_internal_error struct {
-	*PortageException
-}
-	// ""
-func New_unknown_internal_error(value string) *_unknown_internal_error {
-	u := &_unknown_internal_error{}
-	u.PortageException = &PortageException{value: value}
-	return u
-}
-
-// nil, nil, nil
-func NewScheduler(settings *Config, trees, mtimedb, myopts, spinner, mergelist, favorites, graph_config) *Scheduler {
-	s := &Scheduler{}
-
-	s._loadavg_latency = 30
-	s._max_display_latency = 3
-	s._opts_ignore_blockers = map[string]bool{"--buildpkgonly": true,
-		"--fetchonly": true, "--fetch-all-uri": true,
-		"--nodeps": true, "--pretend": true,}
-	s._opts_no_background = map[string]bool{"--pretend": true,
-		"--fetchonly": true, "--fetch-all-uri": true}
-	s._opts_no_self_update = map[string]bool{"--buildpkgonly": true,
-		"--fetchonly": true, "--fetch-all-uri": true, "--pretend": true}
-
-	s.PollScheduler = NewPollScheduler(true, nil)
-
-	s.settings = settings
-	s.target_root = settings.ValueDict["EROOT"]
-	s.trees = trees
-	s.myopts = myopts
-	s._spinner = spinner
-	s._mtimedb = mtimedb
-	s._favorites = favorites
-	s._args_set = NewInternalPackageSet(favorites, true, true)
-	s._build_opts = &_build_opts_class{}
-
-	for k
-		in
-	s._build_opts.__slots__ {
-		setattr(s._build_opts, k, myopts.get("--"+k.replace("_", "-")))
-	}
-	s._build_opts.buildpkg_exclude = NewInternalPackageSet(
-		" ".join(myopts.get("--buildpkg-exclude", [])).split(), true, true)
-	if s.settings.Features.Features["mirror"] {
-		s._build_opts.fetch_all_uri = true
-	}
-
-	s._binpkg_opts = &_binpkg_opts_class{}
-	for k
-		in
-	s._binpkg_opts.__slots__:
-	setattr(s._binpkg_opts, k, "--"+k.replace("_", "-")
-	in
-	myopts)
-
-	s.curval = 0
-	s._logger = &_emerge_log_class{}
-	s._task_queues = &_task_queues_class{}
-	for k
-		in
-	s._task_queues.allowed_keys:
-	setattr(s._task_queues, k,
-		SequentialTaskQueue())
-
-	s._merge_wait_queue = deque()
-	s._merge_wait_scheduled = []
-
-	s._deep_system_deps = map[string]string{}
-
-	s._unsatisfied_system_deps = map[string]string{}
-
-	s._status_display = NewJobStatusDisplay(false, !settings.Features.Features["notitles"])
-	s._max_load = myopts.get("--load-average")
-	max_jobs = myopts.get("--jobs")
-	if max_jobs == nil {
-		max_jobs = 1
-	}
-	s._set_max_jobs(max_jobs)
-	s._running_root = trees[trees._running_eroot]["root_config"]
-	s.edebug = 0
-	if settings.ValueDict["PORTAGE_DEBUG"] == "1" {
-		s.edebug = 1
-	}
-	s.pkgsettings = map[string]*Config{}
-	s._config_pool = map[string][]*Config{}
-	for root
-		in
-	s.trees {
-		s._config_pool[root] = []*Config{}
-	}
-
-	s._fetch_log = filepath.Join(_emerge_log_dir,
-		"emerge-fetch.log")
-	fetch_iface := &_fetch_iface_class{log_file: s._fetch_log,
-		schedule: s._schedule_fetch}
-	s._sched_iface = &_iface_class{
-		s._event_loop,
-		is_background:  s._is_background,
-		fetch:          fetch_iface,
-		scheduleSetup:  s._schedule_setup,
-		scheduleUnpack: s._schedule_unpack}
-
-	s._prefetchers = weakref.WeakValueDictionary()
-	s._pkg_queue = []
-	s._jobs = 0
-	s._running_tasks =
-	{
-	}
-	s._completed_tasks = map[string]string{}
-	s._main_exit = nil
-	s._main_loadavg_handle = nil
-	s._schedule_merge_wakeup_task = nil
-
-	s._failed_pkgs = []*_failed_pkg{}
-	s._failed_pkgs_all = []*_failed_pkg{}
-	s._failed_pkgs_die_msgs = []
-	s._post_mod_echo_msgs = []
-	s._parallel_fetch = false
-	s._init_graph(graph_config)
-	merge_count := 0
-	for x
-		in
-	s._mergelist {
-		if isinstance(x, Package) &&
-			x.operation == "merge" {
-			merge_count++
-		}
-	}
-	s._pkg_count = &_pkg_count_class{curval: 0, maxval: merge_count}
-	s._status_display.maxval = s._pkg_count.maxval
-
-	s._job_delay_max = 5
-	s._previous_job_start_time = 0
-	s._job_delay_timeout_id = nil
-
-	s._sigcont_delay = 5
-	s._sigcont_time = 0
-
-	s._choose_pkg_return_early = false
-
-	features := s.settings.Features.Features
-	if features["parallel-fetch"] &&
-		not("--pretend" in
-	s.myopts ||
-		"--fetch-all-uri"
-	in
-	s.myopts ||
-		"--fetchonly"
-	in
-	s.myopts):
-	if !features["distlocks"] {
-		WriteMsg(Red("!!!")+"\n", -1, nil)
-		WriteMsg(Red("!!!")+" parallel-fetching "+
-			"requires the distlocks feature enabled"+"\n",
-			-1, nil)
-		WriteMsg(Red("!!!")+" you have it disabled, "+
-			"thus parallel-fetching is being disabled"+"\n",
-			-1, nil)
-		WriteMsg(Red("!!!")+"\n", -1, nil)
-	} else if merge_count > 1 {
-		s._parallel_fetch = true
-	}
-
-	if s._parallel_fetch {
-		f, err := os.OpenFile(s._fetch_log, os.O_RDWR|os.O_CREATE, 0644)
-		if err != nil {
-			//except EnvironmentError:
-			//pass
-		} else {
-			f.Close()
-		}
-	}
-
-	s._running_portage = nil
-	portage_match := s._running_root.trees.VarTree().dbapi.match(
-		PORTAGE_PACKAGE_ATOM, 1)
-	if len(portage_match) > 0 {
-		cpv := portage_match[len(portage_match)-1]
-		portage_match = portage_match[:len(portage_match)-1]
-		s._running_portage = s._pkg(cpv, "installed",
-			s._running_root, true, nil, nil)
-	}
-	return s
-}
-
-func (s *Scheduler) _handle_self_update() int {
-
-	if s._opts_no_s_update.intersection(s.myopts) {
-		return 0
-	}
-
-	for x
-	in
-	s._mergelist {
-		if not isinstance(x, Package):
-		continue
-		if x.operation != "merge" {
-			continue
-		}
-		if x.root != s._running_root.root {
-			continue
-		}
-		if len( matchFromList(PORTAGE_PACKAGE_ATOM, []*PkgStr{x}))==0 {
-			continue
-		}
-		rval := _check_temp_dir(s.settings)
-		if rval != 0 {
-			return rval
-		}
-		_prepare_s_update(s.settings)
-		break
-	}
-
-	return 0
-}
-
-func (s*Scheduler)_terminate_tasks() {
-	s._status_display.quiet = true
-	for task
-	in
-	list(s._running_tasks.values()) {
-		if task.isAlive() {
-			task.cancel()
-		}else {
-			del
-			s._running_tasks[id(task)]
-		}
-	}
-
-	for q
-	in
-	s._task_queues.values() {
-		q.clear()
-	}
-}
-
-func (s*Scheduler) _init_graph( graph_config) {
-	s._set_graph_config(graph_config)
-	s._blocker_db = map[string]*BlockerDB{}
-	depgraph_params := create_depgraph_params(s.myopts, nil)
-	dynamic_deps = "dynamic_deps"
-	in
-	depgraph_params
-	ignore_built_slot_operator_deps := s.myopts.get(
-		"--ignore-built-slot-operator-deps", "n") == "y"
-	for root
-	in
-	s.trees {
-		if graph_config == nil {
-			fake_vartree := NewFakeVartree(s.trees[root]["root_config"],
-				s._pkg_cache,nil,  dynamic_deps, ignore_built_slot_operator_deps, false)
-			fake_vartree.sync(1)
-		}else {
-			fake_vartree = graph_config.trees[root]['vartree']
-		}
-		s._blocker_db[root] = NewBlockerDB(fake_vartree)
-	}
-}
-
-func (s *Scheduler) _destroy_graph() {
-	s._blocker_db = nil
-	s._set_graph_config(nil)
-	gc.collect()
-}
-
-func (s *Scheduler) _set_max_jobs( max_jobs int) {
-	s._max_jobs = max_jobs
-	s._task_queues.jobs.max_jobs = max_jobs
-	if s.settings.Features.Features["parallel-install"] {
-		s._task_queues.merge.max_jobs = max_jobs
-	}
-}
-
-func (s*Scheduler) _background_mode() bool {
-	background := (s._max_jobs
-	is
-	true ||
-	s._max_jobs > 1 ||
-	"--quiet"
-	in
-	s.myopts ||
-	s.myopts.get("--quiet-build") == "y") && 
-	not
-	bool(s._opts_no_background.intersection(s.myopts))
-
-	if background {
-		interactive_tasks := s._get_interactive_tasks()
-		if interactive_tasks{
-			background = false
-			WriteMsgLevel(">>> Sending package output to stdio due "+
-				"to interactive package(s):\n",
-				10, -1)
-			msg := []string{""}
-			for pkg
-				in
-			interactive_tasks {
-				pkg_str := "  " + colorize("INFORM", fmt.Sprint(pkg.cpv))
-				if pkg.root_config.settings.ValueDict["ROOT"] != "/" {
-					pkg_str += " for " + pkg.root
-				}
-				msg= append(msg, pkg_str)
-			}
-			msg= append(msg, "")
-			WriteMsgLevel(strings.Join(msg, "\n")+"\n", 20, -1)
-			if s._max_jobs is
-			true ||
-				s._max_jobs > 1
-			{
-				s._set_max_jobs(1)
-				WriteMsgLevel(">>> Setting --jobs=1 due "+
-					"to the above interactive package(s)\n",
-					20, -1)
-				WriteMsgLevel(">>> In order to temporarily mask "+
-					"interactive updates, you may\n"+
-					">>> specify --accept-properties=-interactive\n",
-					20, -1)
-			}
-		}
-	}
-	s._status_display.quiet =
-	not
-	background ||
-	("--quiet"
-	in
-	s.myopts&& 
-	"--verbose"
-	not
-	in
-	s.myopts)
-
-	s._logger.xterm_titles = !s.settings.Features.Features["notitles"]&& s._status_display.quiet
-
-	return background
-}
-
-func (s *Scheduler) _get_interactive_tasks() {
-	interactive_tasks = []
-	for task
-	in
-	s._mergelist:
-	if not(isinstance(task, Package) && 
-	task.operation == "merge"):
-	continue
-	if 'interactive' in
-	task.properties:
-	interactive_tasks.append(task)
-	return interactive_tasks
-}
-
-func(s *Scheduler) _set_graph_config( graph_config) {
-
-	if graph_config == nil {
-		s._graph_config = nil
-		s._pkg_cache =
-		{
-		}
-		s._digraph = nil
-		s._mergelist = []
-		s._world_atoms = nil
-		s._deep_system_deps= map[string]string{}
-		return
-	}
-
-	s._graph_config = graph_config
-	s._pkg_cache = graph_config.pkg_cache
-	s._digraph = graph_config.graph
-	s._mergelist = graph_config.mergelist
-
-	s._world_atoms =
-	{
-	}
-	for pkg
-	in
-	s._mergelist:
-	if getattr(pkg, 'operation', nil) != 'merge':
-	continue
-	atom = create_world_atom(pkg, s._args_set,
-		pkg.root_config, before_install = true)
-	if atom != nil:
-	s._world_atoms[pkg] = atom
-
-	if "--nodeps" in
-	s.myopts ||
-	(s._max_jobs
-	is
-	not
-	true&&
-	s._max_jobs < 2):
-	s._digraph = nil
-	graph_config.graph = nil
-	graph_config.pkg_cache.clear()
-	s._deep_system_deps.clear()
-	for pkg
-	in
-	s._mergelist:
-	s._pkg_cache[pkg] = pkg
-	return
-
-	s._find_system_deps()
-	s._prune_digraph()
-	s._prevent_builddir_collisions()
-	if '--debug' in
-	s.myopts:
-	WriteMsg("\nscheduler digraph:\n\n",  -1, nil)
-	s._digraph.debug_print()
-	WriteMsg("\n", -1, nil)
-}
-
-func (s *Scheduler) _find_system_deps() {
-	params = create_depgraph_params(s.myopts, nil)
-	if not params["implicit_system_deps"] {
-		return
-	}
-
-	deep_system_deps = s._deep_system_deps
-	deep_system_deps.clear()
-	deep_system_deps.update(
-		_find_deep_system_runtime_deps(s._digraph))
-	deep_system_deps.difference_update([pkg
-	for pkg
-	in 
-	deep_system_deps
-	if pkg.operation != "merge"])
-}
-
-func (s *Scheduler) _prune_digraph() {
-
-	graph := s._digraph
-	completed_tasks := s._completed_tasks
-	removed_nodes := map[string]bool{}
-	for {
-		for node in graph.root_nodes(){
-			if not isinstance(node, Package) ||(node.installed && node.operation == "nomerge") ||
-			node.onlydeps || node in completed_tasks{
-removed_nodes[node] = true
-}
-		}
-		if len(removed_nodes) > 0 {
-			graph.difference_update(removed_nodes)
-		}
-		if len(removed_nodes) == 0 {
-			break
-		}
-		removed_nodes = map[string]bool{}
-	}
-}
-
-func (s *Scheduler) _prevent_builddir_collisions() {
-	cpv_map =
-	{
-	}
-	for pkg
-	in
-	s._mergelist:
-	if not isinstance(pkg, Package):
-	continue
-	if pkg.installed:
-	continue
-	if pkg.cpv not
-	in
-cpv_map:
-	cpv_map[pkg.cpv] = [pkg]
-	continue
-	for earlier_pkg
-	in
-	cpv_map[pkg.cpv]:
-	s._digraph.add(earlier_pkg, pkg,
-		priority = NewDepPriority(true))
-	cpv_map[pkg.cpv].append(pkg)
-}
-
-type  _pkg_failure struct {
-	PortageException
-	status int
-}
-func New_pkg_failure(status *int, pargs) *_pkg_failure{
-	p := &_pkg_failure{}
-	p.status = 1
-	p.PortageException = NewPortageException(pargs)
-	if status != nil {
-		p.status = *status
-	}
-
-	return p
-}
-
-func (s *Scheduler) _schedule_fetch( fetcher) {
-	if s._max_jobs > 1 {
-		fetcher.start()
-	}else {
-		s._task_queues.fetch.addFront(fetcher)
-	}
-}
-
-func (s *Scheduler) _schedule_setup( setup_phase) {
-	if s._task_queues.merge.max_jobs > 1 && s.settings.Features.Features["ebuild-locks"] {
-		s._task_queues.ebuild_locks.add(setup_phase)
-	}else {
-		s._task_queues.merge.add(setup_phase)
-	}
-	s._schedule()
-}
-
-func (s *Scheduler) _schedule_unpack( unpack_phase) {
-	s._task_queues.unpack.add(unpack_phase)
-}
-
-func (s *Scheduler) _find_blockers( new_pkg) {
-	get_blockers:= func() {
-		return s._find_blockers_impl(new_pkg)
-	}
-	return get_blockers
-}
-
-func (s *Scheduler) _find_blockers_impl(new_pkg) {
-	if s._opts_ignore_blockers.intersection(s.myopts) {
-		return nil
-	}
-
-	blocker_db := s._blocker_db[new_pkg.root]
-
-	blocked_pkgs = []
-	for blocking_pkg
-	in
-	blocker_db.findInstalledBlockers(new_pkg) {
-		if new_pkg.slot_atom == blocking_pkg.slot_atom {
-			continue
-		}
-		if new_pkg.cpv == blocking_pkg.cpv {
-			continue
-		}
-		blocked_pkgs.append(blocking_pkg)
-	}
-
-	return blocked_pkgs
-}
-
-func (s *Scheduler) _generate_digests() int {
-
-	digest := '--digest'
-	in
-	s.myopts
-	if ! digest {
-		for _, pkgsettings := range s.pkgsettings {
-			if pkgsettings.mycpv != nil {
-				pkgsettings.reset(0)
-			}
-			if pkgsettings.Features.Features["digest"] {
-				digest = true
-				break
-			}
-		}
-	}
-
-	if ! digest {
-		return 0
-	}
-
-	for x
-	in
-	s._mergelist:
-	if not isinstance(x, Package) ||
-	x.type_name != 'ebuild' ||
-	x.operation != 'merge':
-	continue
-	pkgsettings = s.pkgsettings.ValueDict[x.root]
-	if pkgsettings.mycpv != nil:
-	pkgsettings.reset()
-	if '--digest' not
-	in
-	s.myopts&& 
-	'digest'
-	not
-	in
-	pkgsettings.Features.Features:
-	continue
-	portdb = x.root_config.trees['porttree'].dbapi
-	ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
-	if ebuild_path == nil:
-	raise
-	AssertionError("ebuild not found for '%s'" % x.cpv)
-	pkgsettings.ValueDict['O'] =  filepath.Dir(ebuild_path)
-	if digestgen(nil,  pkgsettings, portdb)==0 {
-		WriteMsgLevel(fmt.Sprintf("!!! Unable to generate manifest for '%s'.\n", x.cpv), 40,-1)
-		return FAILURE
-	}
-
-	return 0
-}
-
-func (s *Scheduler) _check_manifests() int {
-	if  !s.settings.Features["strict"] ||
-	"--fetchonly"
-	in
-	s.myopts ||
-	"--fetch-all-uri"
-	in
-	s.myopts{
-		return 0
-	}
-
-	shown_verifying_msg := false
-	quiet_settings :=map[string]*Config{}
-	for myroot, pkgsettings := range s.pkgsettings{
-		quiet_config := NewConfig(pkgsettings,nil, "", nil, "","","","",true, nil, false, nil)
-		quiet_config.ValueDict["PORTAGE_QUIET"] = "1"
-		quiet_config.BackupChanges("PORTAGE_QUIET")
-		quiet_settings[myroot] = quiet_config
-		quiet_config.ValueDict = map[string]string{}
-	}
-
-	failures := 0
-
-	for x
-	in
-	s._mergelist {
-		if not isinstance(x, Package) ||
-			x.type_name != "ebuild" {
-			continue
-		}
-
-		if x.operation == "uninstall" {
-			continue
-		}
-
-		if ! shown_verifying_msg {
-			shown_verifying_msg = true
-			s._status_msg("Verifying ebuild manifests")
-		}
-
-		root_config = x.root_config
-		portdb = root_config.trees["porttree"].dbapi
-		quiet_config = quiet_settings.ValueDict[root_config.root]
-		ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
-		if ebuild_path == nil:
-		raise
-		AssertionError("ebuild not found for '%s'" % x.cpv)
-		quiet_config["O"] =  filepath.Dir(ebuild_path)
-		if not digestcheck([], quiet_config, strict = true):
-		failures |= 1
-	}
-
-
-	if failures!= 0 {
-		return FAILURE
-	}
-	return 0
-}
-
-func (s *Scheduler) _add_prefetchers() {
-
-	if not s._parallel_fetch:
-	return
-
-	if s._parallel_fetch:
-
-	prefetchers = s._prefetchers
-
-	for pkg
-	in
-	s._mergelist:
-	if not isinstance(pkg, Package) ||
-	pkg.operation == "uninstall":
-	continue
-	prefetcher = s._create_prefetcher(pkg)
-	if prefetcher != nil:
-	prefetchers[pkg] = prefetcher
-	s._task_queues.fetch.add(prefetcher)
-}
-
-func (s *Scheduler) _create_prefetcher( pkg *Package) {
-	prefetcher = nil
-
-	if pkg.type_name == "ebuild" {
-		prefetcher = NewEbuildFetcher(NewConfigPool(pkg.root, s._allocate_config,
-			s._deallocate_config), "", s._build_opts.fetch_all_uri, 1, true,
-			s._fetch_log, pkg, s._sched_iface, true)
-	} else if
-	pkg.type_name == "binary" &&
-		"--getbinpkg"
-		in
-	s.myopts &&
-		pkg.root_config.trees["bintree"].isremote(pkg.cpv)
-	{
-		prefetcher = NewBinpkgPrefetcher(true, pkg, s._sched_iface)
-	}
-
-	return prefetcher
-}
-
-func (s *Scheduler) _run_pkg_pretend()  int {
-
-	failures := 0
-	sched_iface := s._sched_iface
-
-	for x
-	in
-	s._mergelist {
-		if not isinstance(x, Package):
-		continue
-
-		if x.operation == "uninstall" {
-			continue
-		}
-
-		if Ins([]string{"0", "1", "2", "3"}, x.eapi) {
-			continue
-		}
-
-		if "pretend" not
-		in
-		x.defined_phases{
-			continue
-		}
-
-		out_str := ">>> Running pre-merge checks for " + colorize("INFORM", x.cpv) + "\n"
-		WriteMsgStdout(out_str, -1)
-
-		root_config := x.root_config
-		settings := s.pkgsettings[root_config.root]
-		settings.setcpv(x)
-
-		rval := _check_temp_dir(settings)
-		if rval != 0 {
-			return rval
-		}
-
-		fpes, _ := filepath.EvalSymlinks(settings.ValueDict["PORTAGE_TMPDIR"])
-		build_dir_path := filepath.Join(fpes, "portage", x.category, x.pf)
-		existing_builddir := pathIsDir(build_dir_path)
-		settings.ValueDict["PORTAGE_BUILDDIR"] = build_dir_path
-		build_dir := NewEbuildBuildDir(sched_iface, settings)
-		sched_iface.run_until_complete(build_dir.async_lock())
-		current_task = nil
-
-	try:
-
-		if existing_builddir {
-			if x.built {
-				tree = "bintree"
-				infloc = filepath.Join(build_dir_path, "build-info")
-				ebuild_path = filepath.Join(infloc, x.pf+".ebuild")
-			} else {
-				tree = "porttree"
-				portdb = root_config.trees["porttree"].dbapi
-				ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
-				if ebuild_path == nil {
-					raise
-					AssertionError(
-						"ebuild not found for '%s'" % x.cpv)
-				}
-			}
-			doebuild_environment(
-				ebuild_path, "clean", settings, false, nil,
-				s.trees[settings.ValueDict["EROOT"]][tree].dbapi)
-			clean_phase := NewEbuildPhase(nil, false, "clean", sched_iface, settings, nil)
-			current_task = clean_phase
-			clean_phase.start()
-			clean_phase.wait()
-		}
-
-		if x.built {
-			tree = "bintree"
-			bintree = root_config.trees["bintree"].dbapi.bintree
-			fetched = false
-
-			if bintree.isremote(x.cpv):
-			fetcher = NewBinpkgFetcher(false, "", x, nil, sched_iface)
-			fetcher.start()
-			if fetcher.wait() != 0:
-			failures += 1
-			continue
-			fetched = fetcher.pkg_path
-
-			if fetched is
-		false:
-			filename = bintree.getname(x.cpv)
-			else:
-			filename = fetched
-			verifier = NewBinpkgVerifier(false, "", x,
-				sched_iface, filename)
-			current_task = verifier
-			verifier.start()
-			if verifier.wait() != 0:
-			failures += 1
-			continue
-
-			if fetched:
-			bintree.inject(x.cpv, filename = fetched)
-
-			infloc = filepath.Join(build_dir_path, "build-info")
-			ensureDirs(infloc)
-			s._sched_iface.run_until_complete(
-				bintree.dbapi.unpack_metadata(settings, infloc))
-			ebuild_path = filepath.Join(infloc, x.pf+".ebuild")
-			settings.configDict["pkg"]["EMERGE_FROM"] = "binary"
-			settings.configDict["pkg"]["MERGE_TYPE"] = "binary"
-
-		}else {
-			tree = "porttree"
-			portdb = root_config.trees["porttree"].dbapi
-			ebuild_path = portdb.findname(x.cpv, myrepo = x.repo)
-			if ebuild_path == nil:
-			raise
-			AssertionError("ebuild not found for '%s'" % x.cpv)
-			settings.configDict["pkg"]["EMERGE_FROM"] = "ebuild"
-			if s._build_opts.buildpkgonly:
-			settings.configDict["pkg"]["MERGE_TYPE"] = "buildonly"
-			else:
-			settings.configDict["pkg"]["MERGE_TYPE"] = "source"
-		}
-
-		doebuild_environment(ebuild_path,
-			"pretend", nil, settings, false, nil,
-			s.trees[settings.ValueDict["EROOT"]][tree].dbapi)
-
-		prepare_build_dirs(root_config.root, settings, cleanup = 0)
-
-		vardb = root_config.trees['vartree'].dbapi
-		settings.ValueDict["REPLACING_VERSIONS"] = " ".join(
-			set(portage.versions.cpv_getversion(match)
-		for match
-			in
-		vardb.match(x.slot_atom) +
-			vardb.match('='+x.cpv)))
-		pretend_phase = NewEbuildPhase(nil, false, "pretend", sched_iface, settings, nil)
-
-		current_task = pretend_phase
-		pretend_phase.start()
-		ret = pretend_phase.wait()
-		if ret != 0 {
-			failures += 1
-		}
-		elog_process(x.cpv, settings, nil)
-	finally:
-
-		if current_task != nil {
-			if current_task.isAlive() {
-				current_task.cancel()
-				current_task.wait()
-			}
-			if current_task.returncode == 0 {
-				clean_phase := NewEbuildPhase(nil, false, "clean", sched_iface, settings, nil)
-				clean_phase.start()
-				clean_phase.wait()
-			}
-		}
-
-		sched_iface.run_until_complete(build_dir.async_unlock())
-	}
-
-	if failures != 0{
-		return FAILURE
-	}
-	return 0
-}
-
-func (s *Scheduler) merge() {
-	if "--resume" in
-	s.myopts:
-	WriteMsgStdout(
-		colorize("GOOD", "*** Resuming merge...\n"), -1)
-	s._logger.log(" *** Resuming merge...", "")
-
-	s._save_resume_list()
-
-try:
-	s._background = s._background_mode()
-	except
-	s._unknown_internal_error:
-	return FAILURE
-
-	rval = s._handle_self_update()
-	if rval != 0 {
-		return rval
-	}
-
-	for root
-		in
-	s.trees:
-	root_config = s.trees[root]["root_config"]
-
-	tmpdir := root_config.settings.ValueDict["PORTAGE_TMPDIR"]
-	if tmpdir == "" || !pathIsDir(tmpdir):
-	msg := []string{
-		"The directory specified in your PORTAGE_TMPDIR variable does not exist:",
-		tmpdir,
-		"Please create this directory or correct your PORTAGE_TMPDIR setting.",
-	}
-	out := NewEOutput(false)
-	for _, l:= range msg {
-		out.eerror(l)
-		return FAILURE
-	}
-
-	if s._background {
-		root_config.settings.unlock()
-		root_config.settings.ValueDict["PORTAGE_BACKGROUND"] = "1"
-		root_config.settings.backup_changes("PORTAGE_BACKGROUND")
-		root_config.settings.lock()
-	}
-
-	s.pkgsettings[root] = NewConfig(root_config.settings, nil, "", nil, "","","","",true, nil, false, nil)
-
-	keep_going = "--keep-going"
-	in
-	s.myopts
-	fetchonly = s._build_opts.fetchonly
-	mtimedb = s._mtimedb
-	failed_pkgs = s._failed_pkgs
-
-	rval = s._generate_digests()
-	if rval != 0 {
-		return rval
-	}
-
-	rval = s._check_manifests()
-	if rval != 0 &&
-		not
-		keep_going {
-		return rval
-	}
-
-	if not fetchonly:
-	rval = s._run_pkg_pretend()
-	if rval != 0 {
-		return rval
-	}
-
-	while
-true:
-
-	received_signal = []
-
-	func
-	sighandler(signum, frame):
-	signal.signal(signal.SIGINT, signal.SIG_IGN)
-	signal.signal(signal.SIGTERM, signal.SIG_IGN)
-	WriteMsg("\n\nExiting on signal %(signal)s\n" %
-	{
-		"signal":signum
-	})
-	s.terminate()
-	received_signal.append(128 + signum)
-
-	earlier_sigint_handler = signal.signal(signal.SIGINT, sighandler)
-	earlier_sigterm_handler = signal.signal(signal.SIGTERM, sighandler)
-	earlier_sigcont_handler =
-		signal.signal(signal.SIGCONT, s._sigcont_handler)
-	signal.siginterrupt(signal.SIGCONT, false)
-
-try:
-	rval = s._merge()
-finally:
-	if earlier_sigint_handler != nil:
-	signal.signal(signal.SIGINT, earlier_sigint_handler)
-	else:
-	signal.signal(signal.SIGINT, signal.SIG_DFL)
-	if earlier_sigterm_handler != nil:
-	signal.signal(signal.SIGTERM, earlier_sigterm_handler)
-	else:
-	signal.signal(signal.SIGTERM, signal.SIG_DFL)
-	if earlier_sigcont_handler != nil:
-	signal.signal(signal.SIGCONT, earlier_sigcont_handler)
-	else:
-	signal.signal(signal.SIGCONT, signal.SIG_DFL)
-
-	s._termination_check()
-	if received_signal:
-	sys.exit(received_signal[0])
-
-	if rval == 0 ||
-		fetchonly ||
-		not
-		keep_going:
-	break
-	if "resume" not
-	in
-mtimedb:
-	break
-	mergelist = s._mtimedb["resume"].get("mergelist")
-	if not mergelist:
-	break
-
-	if not failed_pkgs:
-	break
-
-	for failed_pkg
-		in
-	failed_pkgs:
-	mergelist.remove(list(failed_pkg.pkg))
-
-	s._failed_pkgs_all =append(s._failed_pkgs_all, failed_pkgs...)
-	del
-	failed_pkgs[:]
-
-	if not mergelist:
-	break
-
-	if not s._calc_resume_list():
-	break
-
-	clear_caches(s.trees)
-	if not s._mergelist:
-	break
-
-	s._save_resume_list()
-	s._pkg_count.curval = 0
-	ss := []
-
-	for x
-		in
-	s._mergelist {
-		if isinstance(x, Package) &&
-			x.operation == "merge" {
-			ss = append(ss, x)
-		}
-	}
-	s._pkg_count.maxval = len(ss)
-	s._status_display.maxval = s._pkg_count.maxval
-
-	s._cleanup()
-
-	s._logger.log(" *** Finished. Cleaning up...")
-
-	if failed_pkgs:
-	s._failed_pkgs_all.extend(failed_pkgs)
-	del
-	failed_pkgs[:]
-
-	printer = NewEOutput()
-	background = s._background
-	failure_log_shown = false
-	if background && len(s._failed_pkgs_all) == 1 &&
-		s.myopts.get('--quiet-fail', 'n') != 'y':
-	failed_pkg = s._failed_pkgs_all[-1]
-	log_file = nil
-	log_file_real = nil
-
-	log_path = s._locate_failure_log(failed_pkg)
-	if log_path != nil:
-try:
-	log_file = open(_unicode_encode(log_path,
-		encoding = _encodings['fs'], errors = 'strict'), mode = 'rb')
-	except
-IOError:
-	pass else:
-	if log_path.endswith('.gz'):
-	log_file_real = log_file
-	log_file = gzip.GzipFile(filename = '',
-		mode = 'rb', fileobj = log_file)
-
-	if log_file != nil:
-try:
-	for line
-	in
-log_file:
-	WriteMsgLevel(line, noiselevel = -1)
-	except
-	zlib.error
-	as
-e:
-	WriteMsgLevel("%s\n"%(e, ), level = 40,
-		noiselevel = -1)
-finally:
-	log_file.close()
-	if log_file_real != nil:
-	log_file_real.close()
-	failure_log_shown = true
-
-	mod_echo_output = _flush_elog_mod_echo()
-
-	if background && not failure_log_shown &&
-		s._failed_pkgs_all &&
-		s._failed_pkgs_die_msgs &&
-		not
-mod_echo_output:
-
-	for mysettings, key, logentries
-	in
-	s._failed_pkgs_die_msgs:
-	root_msg = ""
-	if mysettings.ValueDict["ROOT"] != "/":
-	root_msg = " merged to %s" % mysettings.ValueDict["ROOT"]
-	print()
-	printer.einfo("Error messages for package %s%s:"%
-		(colorize("INFORM", key), root_msg))
-	print()
-	for phase
-	in
-	portage.
-	const.EBUILD_PHASES:
-	if phase not
-	in
-logentries:
-	continue
-	for msgtype, msgcontent
-	in
-	logentries[phase]:
-	if isinstance(msgcontent, basestring):
-	msgcontent = [msgcontent]
-	for line
-	in
-msgcontent:
-	printer.eerror(line.strip("\n"))
-
-	if s._post_mod_echo_msgs:
-	for msg
-	in
-	s._post_mod_echo_msgs:
-	msg()
-
-	if len(s._failed_pkgs_all) > 1 ||
-		(s._failed_pkgs_all && keep_going):
-	if len(s._failed_pkgs_all) > 1:
-	msg = "The following %d packages have "%
-		len(s._failed_pkgs_all) +
-		"failed to build, install, or execute postinst:"
-	else:
-	msg = "The following package has " +
-		"failed to build, install, or execute postinst:"
-
-	printer.eerror("")
-	for line
-	in
-	SplitSubN(msg, 72):
-	printer.eerror(line)
-	printer.eerror("")
-	for failed_pkg
-	in
-	s._failed_pkgs_all:
-	msg = " %s" % (failed_pkg.pkg, )
-	if failed_pkg.postinst_failure:
-	msg += " (postinst failed)"
-	log_path = s._locate_failure_log(failed_pkg)
-	if log_path != nil:
-	msg += ", Log file:"
-	printer.eerror(msg)
-	if log_path != nil:
-	printer.eerror("  '%s'" % colorize('INFORM', log_path))
-	printer.eerror("")
-
-	if s._failed_pkgs_all {
-		return FAILURE
-	}
-	return 0
-}
-
-func (s *Scheduler) _elog_listener(mysettings *Config, key, logentries logentries map[string][][2]string, fulltext) {
-	errors := filter_loglevels(logentries, map[string]bool{"ERROR":true})
-	if len(errors) > 0 {
-		s._failed_pkgs_die_msgs = append(s._failed_pkgs_die_msgs,
-			(mysettings, key, errors))
-	}
-}
-
-func (s *Scheduler) _locate_failure_log( failed_pkg *_failed_pkg) string {
-
-	log_paths := []string{failed_pkg.build_log}
-
-	for _, log_path := range log_paths {
-		if log_path == "" {
-			continue
-		}
-		st, err := os.Stat(log_path)
-		if err != nil {
-			//except OSError:
-			continue
-		}
-		log_size := st.Size()
-
-		if log_size == 0 {
-			continue
-		}
-
-		return log_path
-	}
-
-	return ""
-}
-
-func (s *Scheduler) _add_packages() {
-	pkg_queue := s._pkg_queue
-	for pkg
-	in
-	s._mergelist {
-		if isinstance(pkg, Package):
-		pkg_queue.append(pkg)
-		else if
-		isinstance(pkg, Blocker):
-		pass
-	}
-}
-
-func (s *Scheduler) _system_merge_started(merge) {
-	graph := s._digraph
-	if graph == nil {
-		return
-	}
-	pkg = merge.merge.pkg
-
-	if pkg.root_config.settings.ValueDict["ROOT"] != "/" {
-		return
-	}
-
-	completed_tasks := s._completed_tasks
-	unsatisfied := s._unsatisfied_system_deps
-	ignore_non_runtime_or_satisfied := func(priority) {
-		if isinstance(priority, DepPriority) &&
-			not
-			priority.satisfied
-		&&
-		(priority.runtime ||
-			priority.runtime_post)
-		{
-			return false
-		}
-		return true
-	}
-
-	for child
-		in
-	graph.child_nodes(pkg,
-		ignore_priority = ignore_non_runtime_or_satisfied):
-	if not isinstance(child, Package) ||
-		child.operation == "uninstall":
-	continue
-	if child is
-pkg:
-	continue
-	if child.operation == "merge" &&
-		child
-		not
-	in
-completed_tasks:
-	unsatisfied.add(child)
-}
-
-func (s *Scheduler) _merge_wait_exit_handler( task) {
-	s._merge_wait_scheduled.remove(task)
-	s._merge_exit(task)
-}
-
-func (s *Scheduler) _merge_exit(merge) {
-	s._running_tasks.pop(id(merge), nil)
-	s._do_merge_exit(merge)
-	s._deallocate_config(merge.merge.settings)
-	if merge.returncode == 0 && 
-	not
-	merge.merge.pkg.installed {
-		s._status_display.curval += 1
-	}
-	s._status_display.merges = len(s._task_queues.merge)
-	s._schedule()
-}
-
-func (s *Scheduler) _do_merge_exit( merge) {
-	pkg = merge.merge.pkg
-	if merge.returncode != 0 {
-		settings := merge.merge.settings
-		build_dir := settings.ValueDict["PORTAGE_BUILDDIR"]
-		build_log := settings.ValueDict["PORTAGE_LOG_FILE"]
-
-		s._failed_pkgs = append(s._failed_pkgs, &_failed_pkg{
-			build_dir, build_log,
-			pkg, nil,
-			merge.returncode})
-		if ! s._terminated_tasks {
-			s._failed_pkg_msg(s._failed_pkgs[len(s._failed_pkgs)-1], "install", "to")
-			s._status_display.failed = len(s._failed_pkgs)
-		}
-		return
-	}
-
-	if merge.postinst_failure {
-		s._failed_pkgs_all = append(s._failed_pkgs_all, &_failed_pkg{
-			merge.merge.settings.ValueDict["PORTAGE_BUILDDIR"],
-			merge.merge.settings.ValueDict["PORTAGE_LOG_FILE"],
-			pkg, true, merge.returncode})
-		s._failed_pkg_msg(s._failed_pkgs_all[len(s._failed_pkgs_all)-1],
-			"execute postinst for", "for")
-	}
-
-	s._task_complete(pkg)
-	pkg_to_replace = merge.merge.pkg_to_replace
-	if pkg_to_replace != nil:
-	if s._digraph != nil&& 
-	pkg_to_replace
-	in
-	s._digraph:
-try:
-	s._pkg_queue.remove(pkg_to_replace)
-	except
-ValueError:
-	pass
-	s._task_complete(pkg_to_replace)
-	else:
-	s._pkg_cache.pop(pkg_to_replace, nil)
-
-	if pkg.installed:
-	return
-
-	mtimedb = s._mtimedb
-	mtimedb["resume"]["mergelist"].remove(list(pkg))
-	if not mtimedb["resume"]["mergelist"]:
-	del
-	mtimedb["resume"]
-	mtimedb.commit()
-}
-
-func (s *Scheduler) _build_exit( build) {
-	s._running_tasks.pop(id(build), nil)
-	if build.returncode == 0 &&
-	s._terminated_tasks {
-		s.curval += 1
-		s._deallocate_config(build.settings)
-	}else if
-	build.returncode == 0 {
-		s.curval += 1
-		merge = NewPackageMerge(build, s._sched_iface)
-		s._running_tasks[id(merge)] = merge
-		if not build.build_opts.buildpkgonly &&
-			build.pkg
-		in
-		s._deep_system_deps{
-			s._merge_wait_queue.append(merge)
-			merge.addStartListener(s._system_merge_started)
-		} else {
-			s._task_queues.merge.add(merge)
-			merge.addExitListener(s._merge_exit)
-			s._status_display.merges = len(s._task_queues.merge)
-		}
-	}else{
-		settings = build.settings
-		build_dir = settings.ValueDict["PORTAGE_BUILDDIR"]
-		build_log = settings.ValueDict["PORTAGE_LOG_FILE"]
-
-		s._failed_pkgs = append(s._failed_pkgs, &_failed_pkg{
-			build_dir, build_log, build.pkg, "", build.returncode})
-		if !s._terminated_tasks {
-			s._failed_pkg_msg(s._failed_pkgs[len(s._failed_pkgs)-1], "emerge", "for")
-			s._status_display.failed = len(s._failed_pkgs)
-		}
-		s._deallocate_config(build.settings)
-	}
-	s._jobs -= 1
-	s._status_display.running = s._jobs
-	s._schedule()
-}
-
-func (s *Scheduler) _extract_exit( build) {
-	s._build_exit(build)
-}
-
-func (s *Scheduler) _task_complete(pkg) {
-	s._completed_tasks.add(pkg)
-	s._unsatisfied_system_deps.discard(pkg)
-	s._choose_pkg_return_early = false
-	blocker_db := s._blocker_db[pkg.root]
-	blocker_db.discardBlocker(pkg)
-}
-
-func (s *Scheduler) _main_loop() {
-	s._main_exit = s._event_loop.create_future()
-
-	if s._max_load != nil&& 
-	s._loadavg_latency
-	!= nil&& 
-	(s._max_jobs
-	is
-	true ||
-	s._max_jobs > 1):
-	s._main_loadavg_handle = s._event_loop.call_later(
-		s._loadavg_latency, s._schedule)
-
-	s._schedule()
-	s._event_loop.run_until_complete(s._main_exit)
-}
-
-func (s *Scheduler) _merge() int {
-
-	if s._opts_no_background.intersection(s.myopts) {
-		s._set_max_jobs(1)
-	}
-
-	s._add_prefetchers()
-	s._add_packages()
-	failed_pkgs := s._failed_pkgs
-	quiet := s._background
-	add_listener(s._elog_listener)
-
-
-	display_callback:=func() {
-		s._status_display.display()
-		display_callback.handle = s._event_loop.call_later(
-			s._max_display_latency, display_callback)
-	}
-	display_callback.handle = nil
-
-	if s._status_display._isatty &&
-	!s._status_display.quiet {
-		display_callback()
-	}
-	rval := 0
-
-try:
-	s._main_loop()
-finally:
-	s._main_loop_cleanup()
-	quiet = false
-	remove_listener(s._elog_listener)
-	if display_callback.handle != nil {
-		display_callback.handle.cancel()
-	}
-	if len(failed_pkgs) > 0 {
-		rval = failed_pkgs[len(failed_pkgs)-1].returncode
-	}
-
-	return rval
-}
-
-func (s *Scheduler) _main_loop_cleanup() {
-	s._pkg_queue = map[]
-	s._completed_tasks.clear()
-	s._deep_system_deps.clear()
-	s._unsatisfied_system_deps.clear()
-	s._choose_pkg_return_early = false
-	s._status_display.reset()
-	s._digraph = nil
-	s._task_queues.fetch.clear()
-	s._prefetchers.clear()
-	s._main_exit = nil
-	if s._main_loadavg_handle != nil:
-	s._main_loadavg_handle.cancel()
-	s._main_loadavg_handle = nil
-	if s._job_delay_timeout_id != nil:
-	s._job_delay_timeout_id.cancel()
-	s._job_delay_timeout_id = nil
-	if s._schedule_merge_wakeup_task != nil:
-	s._schedule_merge_wakeup_task.cancel()
-	s._schedule_merge_wakeup_task = nil
-}
-
-func (s *Scheduler) _choose_pkg() {
-
-	if s._choose_pkg_return_early {
-		return nil
-	}
-
-	if s._digraph == nil:
-	if s._is_work_scheduled() && 
-	not("--nodeps"
-	in
-	s.myopts&& 
-	(s._max_jobs
-	is
-	true ||
-	s._max_jobs > 1)):
-	s._choose_pkg_return_early = true
-	return nil
-	return s._pkg_queue.pop(0)
-
-	if ! s._is_work_scheduled() {
-		return s._pkg_queue.pop(0)
-	}
-
-	s._prune_digraph()
-
-	chosen_pkg = nil
-
-	graph = s._digraph
-	for pkg
-	in
-	s._pkg_queue:
-	if pkg.operation == "uninstall" && 
-	not
-	graph.child_nodes(pkg):
-	chosen_pkg = pkg
-	break
-
-	if chosen_pkg == nil:
-	later = set(s._pkg_queue)
-	for pkg
-	in
-	s._pkg_queue:
-	later.remove(pkg)
-	if not s._dependent_on_scheduled_merges(pkg, later):
-	chosen_pkg = pkg
-	break
-
-	if chosen_pkg != nil:
-	s._pkg_queue.remove(chosen_pkg)
-
-	if chosen_pkg == nil:
-	s._choose_pkg_return_early = true
-
-	return chosen_pkg
-}
-
-func (s *Scheduler) _dependent_on_scheduled_merges( pkg, later) {
-
-	graph := s._digraph
-	completed_tasks := s._completed_tasks
-
-	dependent := false
-	traversed_nodes := map[string]bool{pkg:true}
-	direct_deps := graph.child_nodes(pkg)
-	node_stack := direct_deps
-	direct_deps := frozenset(direct_deps)
-	for len(node_stack) >  0 {
-
-		node = node_stack.pop()
-		if node in
-	traversed_nodes:
-		continue
-		traversed_nodes.add(node)
-		if not((node.installed &&
-			node.operation == "nomerge") ||
-			(node.operation == "uninstall" &&
-		node
-		not
-		in
-		direct_deps) ||
-		node
-		in
-		completed_tasks ||
-		node
-		in
-		later):
-		dependent = true
-		break
-
-		if node.operation != "uninstall":
-		node_stack.extend(graph.child_nodes(node))
-	}
-	return dependent
-}
-
-func (s *Scheduler) _allocate_config( root string) *Config {
-	var temp_settings *Config
-	if s._config_pool[root] != nil {
-		temp_settings = s._config_pool[root][len(s._config_pool[root])-1]
-		s._config_pool[root]=s._config_pool[root][:len(s._config_pool[root])-1]
-	}else {
-		temp_settings = NewConfig(s.pkgsettings[root], nil, "", nil, "", "", "", "", true, nil, false, nil)
-	}
-	temp_settings.reload()
-	temp_settings.reset(0)
-	return temp_settings
-}
-
-func (s *Scheduler) _deallocate_config(settings *Config) {
-	s._config_pool[settings.ValueDict["EROOT"]]=append(s._config_pool[settings.ValueDict["EROOT"]], settings)
-}
-
-func (s *Scheduler) _keep_scheduling() {
-	return bool(not
-	s._terminated.is_set()&&
-	s._pkg_queue&& 
-	not(s._failed_pkgs&&
-	not
-	s._build_opts.fetchonly))
-}
-
-func (s *Scheduler) _is_work_scheduled() bool {
-	return bool(s._running_tasks)
-}
-
-func (s *Scheduler) _running_job_count() {
-	return s._jobs
-}
-
-func (s *Scheduler) _schedule_tasks() {
-	for {
-		state_change := 0
-
-		if (s._merge_wait_queue &&
-			not
-			s._jobs
-		&&
-		not
-		s._task_queues.merge):
-		task = s._merge_wait_queue.popleft()
-		task.scheduler = s._sched_iface
-		s._merge_wait_scheduled.append(task)
-		s._task_queues.merge.add(task)
-		task.addExitListener(s._merge_wait_exit_handler)
-		s._status_display.merges = len(s._task_queues.merge)
-		state_change += 1
-
-		if s._schedule_tasks_imp():
-		state_change += 1
-
-		s._status_display.display()
-
-		if s._failed_pkgs &&
-			not
-			s._build_opts.fetchonly
-		&&
-		not
-		s._is_work_scheduled()
-		&&
-		s._task_queues.fetch:
-		s._task_queues.fetch.clear()
-
-		if not(state_change ||
-			(s._merge_wait_queue
-		&&
-		not
-		s._jobs
-		&&
-		not
-		s._task_queues.merge)):
-		break
-	}
-
-	if !(s._is_work_scheduled() || s._keep_scheduling() || s._main_exit.done()) {
-		s._main_exit.set_result(nil)
-	}else if s._main_loadavg_handle!= nil {
-		s._main_loadavg_handle.cancel()
-		s._main_loadavg_handle = s._event_loop.call_later(
-			s._loadavg_latency, s._schedule)
-	}
-
-	if (s._task_queues.merge &&(s._schedule_merge_wakeup_task== nil || s._schedule_merge_wakeup_task.done())) {
-		s._schedule_merge_wakeup_task = asyncio.ensure_future(
-			s._task_queues.merge.wait(), loop = s._event_loop)
-		s._schedule_merge_wakeup_task.add_done_callback(
-			s._schedule_merge_wakeup)
-	}
-}
-
-func (s *Scheduler) _schedule_merge_wakeup( future) {
-	if not future.cancelled() {
-		future.result()
-		if s._main_exit != nil &&
-			not
-			s._main_exit.done() {
-			s._schedule()
-		}
-	}
-}
-
-func (s *Scheduler) _sigcont_handler( signum, frame) {
-	s._sigcont_time = time.Now().Second()
-}
-
-func (s *Scheduler) _job_delay() bool {
-
-	if s._jobs && s._max_load!= nil {
-
-		current_time := time.Now().Second()
-
-		if s._sigcont_time != nil {
-
-			elapsed_seconds := current_time - s._sigcont_time
-			if elapsed_seconds > 0 &&
-				elapsed_seconds < s._sigcont_delay {
-
-				if s._job_delay_timeout_id != nil {
-					s._job_delay_timeout_id.cancel()
-				}
-
-				s._job_delay_timeout_id = s._event_loop.call_later(
-					s._sigcont_delay-elapsed_seconds,
-					s._schedule)
-				return true
-			}
-
-			s._sigcont_time = nil
-		}
-
-		avg1, avg5, avg15, err := getloadavg()
-		if err != nil {
-			//except OSError:
-			return false
-		}
-
-		delay := s._job_delay_max * avg1 / s._max_load
-		if delay > s._job_delay_max {
-			delay = s._job_delay_max
-		}
-		elapsed_seconds := current_time - s._previous_job_start_time
-		if elapsed_seconds > 0 && elapsed_seconds < delay {
-			if s._job_delay_timeout_id != nil {
-				s._job_delay_timeout_id.cancel()
-			}
-			s._job_delay_timeout_id = s._event_loop.call_later(
-				delay-elapsed_seconds, s._schedule)
-			return true
-		}
-	}
-
-	return false
-}
-
-func (s *Scheduler) _schedule_tasks_imp() bool{
-	state_change := 0
-
-	for {
-		if ! s._keep_scheduling(){
-			return state_change!= 0
-		}
-
-		if s._choose_pkg_return_early || s._merge_wait_scheduled || (s._jobs != 0 && len(s._unsatisfied_system_deps) > 0) || ! s._can_add_job() || s._job_delay() {
-			return state_change!= 0
-		}
-
-		pkg := s._choose_pkg()
-		if pkg == nil {
-			return state_change != 0
-		}
-
-		state_change += 1
-
-		if not pkg.installed {
-			s._pkg_count.curval += 1
-		}
-
-		task = s._task(pkg)
-
-		if pkg.installed {
-			merge := NewPackageMerge(task,  s._sched_iface)
-			s._running_tasks[id(merge)] = merge
-			s._task_queues.merge.addFront(merge)
-			merge.addExitListener(s._merge_exit)
-		} else if pkg.built{
-			s._jobs += 1
-			s._previous_job_start_time = time.Now().Second()
-			s._status_display.running = s._jobs
-			s._running_tasks[id(task)] = task
-			task.scheduler = s._sched_iface
-			s._task_queues.jobs.add(task)
-			task.addExitListener(s._extract_exit)
-		} else{
-			s._jobs += 1
-			s._previous_job_start_time = time.Now().Second()
-			s._status_display.running = s._jobs
-			s._running_tasks[id(task)] = task
-			task.scheduler = s._sched_iface
-			s._task_queues.jobs.add(task)
-			task.addExitListener(s._build_exit)
-		}
-	}
-	return state_change!= 0
-}
-
-func (s *Scheduler) _task( pkg) {
-
-	pkg_to_replace = nil
-	if pkg.operation != "uninstall"{
-		vardb := pkg.root_config.trees["vartree"].dbapi
-		previous_cpv = [x
-		for x
-			in
-		vardb.match(pkg.slot_atom)
-		if portage.cpv_getkey(x) == pkg.cp]
-		if not previous_cpv && vardb.cpv_exists(pkg.cpv):
-		previous_cpv = [pkg.cpv]
-		if previous_cpv:
-		previous_cpv = previous_cpv.pop()
-		pkg_to_replace = s._pkg(previous_cpv,
-		"installed", pkg.root_config, installed = true,
-		operation = "uninstall")
-	}
-
-try:
-prefetcher = s._prefetchers.pop(pkg, nil)
-except KeyError:
-prefetcher = nil
-if prefetcher != nil && not prefetcher.isAlive():
-try:
-s._task_queues.fetch._task_queue.remove(prefetcher)
-except ValueError:
-pass
-prefetcher = nil
-
-task = MergeListItem(args_set= s._args_set,
-background = s._background, binpkg_opts = s._binpkg_opts,
-build_opts = s._build_opts,
-config_pool = s._ConfigPool(pkg.root,
-s._allocate_config, s._deallocate_config),
-emerge_opts = s.myopts,
-find_blockers =s._find_blockers(pkg), logger = s._logger,
-mtimedb = s._mtimedb, pkg= pkg, pkg_count = s._pkg_count.copy(),
-pkg_to_replace = pkg_to_replace,
-prefetcher = prefetcher,
-scheduler = s._sched_iface,
-settings = s._allocate_config(pkg.root),
-statusMessage =s._status_msg,
-world_atom = s._world_atom)
-
-return task
-}
-
-func (s *Scheduler) _failed_pkg_msg(failed_pkg *_failed_pkg, action, preposition string) {
-	pkg = failed_pkg.pkg
-	msg := fmt.Sprintf(fmt.Sprintf("%s to %s %s",
-		bad("Failed"), action, colorize("INFORM", pkg.cpv)))
-	if pkg.root_config.settings.ValueDict["ROOT"] != "/" {
-		msg += fmt.Sprintf(fmt.Sprintf(" %s %s", preposition, pkg.root))
-	}
-
-	log_path := s._locate_failure_log(failed_pkg)
-	if log_path != "" {
-		msg += ", Log file:"
-		s._status_msg(msg)
-	}
-
-	if log_path != "" {
-		s._status_msg(fmt.Sprintf(" '%s'", colorize("INFORM", log_path), ))
-	}
-}
-
-func (s *Scheduler) _status_msg( msg string) {
-	if !s._background {
-		WriteMsgLevel("\n", 0, nil)
-	}
-	s._status_display.displayMessage(msg)
-}
-
-func (s *Scheduler) _save_resume_list() {
-	mtimedb := s._mtimedb
-
-	mtimedb["resume"] = map[string]{}
-	mtimedb["resume"]["myopts"] = s.myopts.copy()
-
-	mtimedb["resume"]["favorites"] = [str(x)
-	for x
-	in
-	s._favorites]
-mtimedb["resume"]["mergelist"] = [list(x) 
-for x in s._mergelist 
-if isinstance(x, Package) && x.operation == "merge"]
-
-mtimedb.commit()
-}
-
-func (s *Scheduler) _calc_resume_list() {
-	print(colorize("GOOD", "*** Resuming merge..."))
-
-	s._destroy_graph()
-
-	myparams := create_depgraph_params(s.myopts, nil)
-	success := false
-	e = nil
-try:
-	success, mydepgraph, dropped_tasks = resume_depgraph(
-		s.settings, s.trees, s._mtimedb, s.myopts,
-		myparams, s._spinner)
-	except
-	depgraph.UnsatisfiedResumeDep
-	as
-exc:
-	e = exc
-	mydepgraph = e.depgraph
-	dropped_tasks =
-	{
-	}
-
-	if e != nil:
-
-	unsatisfied_resume_dep_msg:= func(){
-		mydepgraph.display_problems()
-		out := NewEOutput(false)
-		out.eerror("One or more packages are either masked or " +
-			"have missing dependencies:")
-		out.eerror("")
-		indent := "  "
-		show_parents = map[string]string{}
-		for dep
-			in
-		e.value:
-		if dep.parent in
-	show_parents:
-		continue
-		show_parents.add(dep.parent)
-		if dep.atom == nil:
-		out.eerror(indent + "Masked package:")
-		out.eerror(2*indent + str(dep.parent))
-		out.eerror("")
-		else:
-		out.eerror(indent + str(dep.atom) + " pulled in by:")
-		out.eerror(2*indent + str(dep.parent))
-		out.eerror("")
-		msg = "The resume list contains packages " +
-			"that are either masked or have " +
-			"unsatisfied dependencies. " +
-			"Please restart/continue " +
-			"the operation manually, or use --skipfirst " +
-			"to skip the first package in the list and " +
-			"any other packages that may be " +
-			"masked or have missing dependencies."
-		for _, line:= range SplitSubN(msg, 72) {
-			out.eerror(line)
-		}
-	}
-	s._post_mod_echo_msgs.append(unsatisfied_resume_dep_msg)
-	return false
-
-	if success && s._show_list() {
-		mydepgraph.display(mydepgraph.altlist(), favorites = s._favorites)
-	}
-
-	if ! success {
-		s._post_mod_echo_msgs=append(s._post_mod_echo_msgs, mydepgraph.display_problems)
-		return false
-	}
-	mydepgraph.display_problems()
-	s._init_graph(mydepgraph.schedulerGraph())
-
-	msg_width = 75
-	for task, atoms
-	in
-	dropped_tasks.items():
-	if not(isinstance(task, Package) &&
-	task.operation == "merge"):
-	continue
-	pkg = task
-	msg = "emerge --keep-going:" + 
-	" %s" % (pkg.cpv,)
-	if pkg.root_config.settings.ValueDict["ROOT"] != "/":
-	msg += " for %s" % (pkg.root,)
-	if not atoms:
-	msg += " dropped because it is masked or unavailable"
-	else:
-	msg += " dropped because it requires %s" % ", ".join(atoms)
-	for line
-	in
-	SplitSubN(msg, msg_width):
-	eerror(line, "other", pkg.cpv, "", nil)
-	settings = s.pkgsettings.ValueDict[pkg.root]
-	settings.pop("T", nil)
-	portage.elog.elog_process(pkg.cpv, settings)
-	s._failed_pkgs_all=append(s._failed_pkgs_all, &_failed_pkg{pkg: pkg})
-
-	return true
-}
-
-func (s *Scheduler) _show_list() bool {
-	myopts := s.myopts
-	if  !Inmss(myopts, "--quiet")&& Inmss(myopts, "--ask")||Inmss(myopts, "--tree")||Inmss(myopts, "--verbose") {
-		return true
-	}
-	return false
-}
-
-func (s *Scheduler) _world_atom( pkg) {
-
-	if set(("--buildpkgonly", "--fetchonly",
-		"--fetch-all-uri",
-		"--oneshot", "--onlydeps",
-		"--pretend")).intersection(s.myopts)
-	{
-		return
-	}
-
-	if pkg.root != s.target_root {
-		return
-	}
-
-	args_set := s._args_set
-	if not args_set.findAtomForPackage(pkg, nil) {
-		return
-	}
-
-	logger := s._logger
-	pkg_count := s._pkg_count
-	root_config := pkg.root_config
-	world_set := root_config.sets["selected"]
-	world_locked := false
-	atom = nil
-
-	if pkg.operation != "uninstall" {
-		atom = s._world_atoms.get(pkg)
-	}
-
-try:
-
-	if hasattr(world_set, "lock"):
-	world_set.lock()
-	world_locked = true
-
-	if hasattr(world_set, "load"):
-	world_set.load()
-
-	if pkg.operation == "uninstall":
-	if hasattr(world_set, "cleanPackage"):
-	world_set.cleanPackage(pkg.root_config.trees["vartree"].dbapi,
-		pkg.cpv)
-	if hasattr(world_set, "remove"):
-	for s
-	in
-	pkg.root_config.setconfig.active:
-	world_set.remove(SETPREFIX + s)
-	else:
-	if atom != nil:
-	if hasattr(world_set, "add"):
-	s._status_msg(("Recording %s in \"world\" " + 
-	"favorites file...") % atom)
-	logger.log(" === (%s of %s) Updating world file (%s)" % 
-	(pkg_count.curval, pkg_count.maxval, pkg.cpv))
-	world_set.add(atom)
-	else:
-	WriteMsgLevel("\n!!! Unable to record %s in \"world\"\n" % 
-	(atom,), level = logging.WARN, noiselevel=-1)
-finally:
-	if world_locked:
-	world_set.unlock()
-}
-
-// false, nil, nil
-func (s *Scheduler) _pkg( cpv *PkgStr, type_name string, root_config *RootConfig, installed bool,
-operation=nil, myrepo=nil) *Package {
-
-	pkg = s._pkg_cache.get(NewPackage()._gen_hash_key(cpv = cpv,
-		type_name = type_name, repo_name=myrepo, root_config = root_config,
-		installed=installed, operation = operation))
-
-	if pkg != nil {
-		return pkg
-	}
-
-	tree_type = depgraph.pkg_tree_map[type_name]
-	db = root_config.trees[tree_type].dbapi
-	db_keys = list(s.trees[root_config.root][
-		tree_type].dbapi._aux_cache_keys)
-	metadata = zip(db_keys, db.aux_get(cpv, db_keys, myrepo = myrepo))
-	pkg := NewPackage(type_name != "ebuild",
-		cpv, installed, metadata,
-		root_config, type_name)
-	s._pkg_cache[pkg] = pkg
-	return pkg
 }
 
 type UserQuery struct{
