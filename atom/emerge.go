@@ -4543,83 +4543,6 @@ func NewEbuildMetadataPhase(cpv string, ebuild_hash, portdb portdbapi, repo_path
 	return e
 }
 
-type SubProcess struct {
-	*AbstractPollTask
-	pid, _waitpid_id int
-	_dummy_pipe_fd int
-	_files []*os.File
-	_cancel_timeout int
-}
-
-func (s *SubProcess) _poll() *int{
-	return s.returncode
-}
-
-func (s *SubProcess) _cancel() {
-	if s.isAlive() && s.pid != 0 {
-		err := syscall.Kill(s.pid, syscall.SIGTERM)
-		if err != nil {
-			//except OSError as e:
-			if err == syscall.EPERM {
-				WriteMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n", s.pid), 40, -1)
-			} else if err != syscall.ESRCH {
-				//raise
-			}
-		}
-	}
-}
-
-func (s *SubProcess) _async_wait() {
-	if s.returncode == nil {
-		//raise asyncio.InvalidStateError('Result is not ready for %s' % (s,))
-	} else {
-		s.AbstractPollTask._async_wait()
-	}
-}
-
-func (s *SubProcess) _async_waitpid() {
-	if s.returncode != nil {
-		s._async_wait()
-	} else if s._waitpid_id == 0 {
-		s._waitpid_id = s.pid
-		s.scheduler._asyncio_child_watcher.add_child_handler(s.pid, s._async_waitpid_cb)
-
-	}
-}
-
-func (s *SubProcess) _async_waitpid_cb( pid, returncode int) {
-	if pid != s.pid {
-		//raise AssertionError("expected pid %s, got %s" % (s.pid, pid))
-	}
-	s.returncode = &returncode
-	s._async_wait()
-}
-
-func (s *SubProcess) _orphan_process_warn(){
-}
-
-func (s *SubProcess) _unregister() {
-	s._registered = false
-	if s._waitpid_id != 0 {
-		s.scheduler._asyncio_child_watcher.remove_child_handler(s._waitpid_id)
-		s._waitpid_id = 0
-	}
-
-	if s._files != nil {
-		for _, f := range s._files {
-			f.Close()
-		}
-		s._files = nil
-	}
-}
-
-func NewSubProcess() *SubProcess {
-	s := &SubProcess{}
-	s._cancel_timeout = 1
-	s.AbstractPollTask = NewAbstractPollTask()
-	return s
-}
-
 type EbuildPhase struct {
 	*CompositeTask
 
@@ -9441,6 +9364,117 @@ func (s *Scheduler) _pkg( cpv *PkgStr, type_name string, root_config *RootConfig
 	return pkg
 }
 
+type SequentialTaskQueue struct{
+	max_jobs int
+	_scheduling bool
+	running_tasks, _task_queue
+}
+
+func NewSequentialTaskQueue(**kwargs)*SequentialTaskQueue {
+	s := &SequentialTaskQueue{}
+	SlotObject.__init__(s, **kwargs)
+	s._task_queue = deque()
+	s.running_tasks = set()
+	if s.max_jobs == 0 {
+		s.max_jobs = 1
+	}
+	return s
+}
+
+func(s*SequentialTaskQueue) add( task) {
+	s._task_queue.append(task)
+	s.schedule()
+}
+
+func(s*SequentialTaskQueue) addFront(task) {
+	s._task_queue.appendleft(task)
+	s.schedule()
+}
+
+func(s*SequentialTaskQueue) schedule() {
+
+	if s._scheduling {
+		return
+	}
+
+	s._scheduling = true
+try:
+	while
+	s._task_queue
+	and(s.max_jobs
+	is
+	True
+	or
+	len(s.running_tasks) < s.max_jobs):
+	task = s._task_queue.popleft()
+	cancelled = getattr(task, "cancelled", None)
+	if not cancelled:
+	s.running_tasks.add(task)
+	task.addExitListener(s._task_exit)
+	task.start()
+finally:
+	s._scheduling = false
+}
+
+func(s*SequentialTaskQueue) _task_exit( task) {
+	s.running_tasks.remove(task)
+	if s._task_queue:
+	s.schedule()
+}
+
+func(s*SequentialTaskQueue) clear() {
+	for task
+		in
+	s._task_queue:
+	task.cancel()
+	s._task_queue.clear()
+
+	for task
+		in
+	list(s.running_tasks):
+	task.cancel()
+}
+
+@coroutine
+func(s*SequentialTaskQueue) wait() {
+	while
+s:
+	task = next(iter(s.running_tasks), None)
+	if task is
+None:
+	yield
+	asyncio.sleep(0)
+	else:
+	yield
+	task.async_wait()
+}
+
+func(s*SequentialTaskQueue) __bool__() {
+	return bool(s._task_queue
+	or
+	s.running_tasks)
+}
+
+func(s*SequentialTaskQueue) __len__() int {
+	return len(s._task_queue) + len(s.running_tasks)
+}
+
+
+type SetArg struct{
+	*DependencyArg
+
+	// slot
+	name', 'pset
+}
+
+func NewSetArg( pset=None, **kwargs) *SetArg{
+	s := &SetArg{}
+	s.DependencyArg = NewDependencyArg(**kwargs)
+	s.pset = pset
+	s.name = s.arg[len(SETPREFIX):]
+	return s
+}
+
 type SpawnProcess struct {
 	*SubProcess
 	_CGROUP_CLEANUP_RETRY_MAX int
@@ -9693,6 +9727,84 @@ func NewSpawnProcess(args []string, background bool, env map[string]string, fd_p
 	return s
 }
 
+
+type SubProcess struct {
+	*AbstractPollTask
+	pid, _waitpid_id int
+	_dummy_pipe_fd int
+	_files []*os.File
+	_cancel_timeout int
+}
+
+func (s *SubProcess) _poll() *int{
+	return s.returncode
+}
+
+func (s *SubProcess) _cancel() {
+	if s.isAlive() && s.pid != 0 {
+		err := syscall.Kill(s.pid, syscall.SIGTERM)
+		if err != nil {
+			//except OSError as e:
+			if err == syscall.EPERM {
+				WriteMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n", s.pid), 40, -1)
+			} else if err != syscall.ESRCH {
+				//raise
+			}
+		}
+	}
+}
+
+func (s *SubProcess) _async_wait() {
+	if s.returncode == nil {
+		//raise asyncio.InvalidStateError('Result is not ready for %s' % (s,))
+	} else {
+		s.AbstractPollTask._async_wait()
+	}
+}
+
+func (s *SubProcess) _async_waitpid() {
+	if s.returncode != nil {
+		s._async_wait()
+	} else if s._waitpid_id == 0 {
+		s._waitpid_id = s.pid
+		s.scheduler._asyncio_child_watcher.add_child_handler(s.pid, s._async_waitpid_cb)
+
+	}
+}
+
+func (s *SubProcess) _async_waitpid_cb( pid, returncode int) {
+	if pid != s.pid {
+		//raise AssertionError("expected pid %s, got %s" % (s.pid, pid))
+	}
+	s.returncode = &returncode
+	s._async_wait()
+}
+
+func (s *SubProcess) _orphan_process_warn(){
+}
+
+func (s *SubProcess) _unregister() {
+	s._registered = false
+	if s._waitpid_id != 0 {
+		s.scheduler._asyncio_child_watcher.remove_child_handler(s._waitpid_id)
+		s._waitpid_id = 0
+	}
+
+	if s._files != nil {
+		for _, f := range s._files {
+			f.Close()
+		}
+		s._files = nil
+	}
+}
+
+func NewSubProcess() *SubProcess {
+	s := &SubProcess{}
+	s._cancel_timeout = 1
+	s.AbstractPollTask = NewAbstractPollTask()
+	return s
+}
+
 type Task struct {
 	hashKey   string
 	hashValue string
@@ -9734,6 +9846,267 @@ func NewTask() *Task {
 	t := &Task{}
 
 	return t
+}
+
+
+type TaskSequence struct{
+	*CompositeTask
+	_task_queue
+}
+
+func NewTaskSequence( **kwargs) *TaskSequence {
+	t := &TaskSequence{}
+	AsynchronousTask.__init__(t, **kwargs)
+	t._task_queue = deque()
+	return t
+}
+
+func (t *TaskSequence) add(task) {
+	t._task_queue.append(task)
+}
+
+func (t *TaskSequence) _start() {
+	t._start_next_task()
+}
+
+func (t *TaskSequence) _cancel() {
+	t._task_queue.clear()
+	t.CompositeTask._cancel()
+}
+
+func (t *TaskSequence) _start_next_task() {
+try:
+	task = t._task_queue.popleft()
+	except
+IndexError:
+	t._current_task = None
+	t.returncode = os.EX_OK
+	t.wait()
+	return
+
+	t._start_task(task, t._task_exit_handler)
+}
+
+func (t *TaskSequence) _task_exit_handler( task) {
+	if t._default_exit(task) != os.EX_OK:
+	t.wait()
+	elif
+	t._task_queue:
+	t._start_next_task()
+	else:
+	t._final_exit(task)
+	t.wait()
+}
+
+func (t *TaskSequence) __bool__() {
+	return bool(t._task_queue)
+}
+
+func (t *TaskSequence) __len__() {
+	return len(t._task_queue)
+}
+
+
+type UninstallFailure struct{
+	*PortageException
+	status int
+}
+
+func NewUninstallFailure (*pargs) *UninstallFailure {
+	u := &UninstallFailure{}
+	u.PortageException = PortageException(pargs)
+	u.status = 1
+	if pargs {
+		u.status = pargs[0]
+	}
+	return u
+}
+
+type UnmergeDepPriority struct{
+	*AbstractDepPriority
+	MAX , SOFT, MIN int
+	// slots
+	optional bool
+	ignored, , satisfied
+}
+
+func NewUnmergeDepPriority(**kwargs)*UnmergeDepPriority {
+	u := &UnmergeDepPriority{}
+
+	AbstractDepPriority.__init__(u, **kwargs)
+	u.MAX    =  0
+	u.SOFT   = -3
+	u.MIN    = -3
+
+	if u.buildtime {
+		u.optional = true
+	}
+	return u
+}
+
+func(u*UnmergeDepPriority) __int__() {
+	if u.runtime_slot_op:
+	return 0
+	if u.runtime:
+	return -1
+	if u.runtime_post:
+	return -2
+	if u.buildtime:
+	return -3
+	return -3
+}
+
+func(u*UnmergeDepPriority) __str__() {
+	if u.ignored:
+	return "ignored"
+	if u.runtime_slot_op:
+	return "hard slot op"
+	myvalue = u.__int__()
+	if myvalue > u.SOFT:
+	return "hard"
+	return "soft"
+}
+
+type UseFlagDisplay struct {
+	// slots
+	name', 'enabled', 'forced
+}
+
+func NewUseFlagDisplay( name, enabled, forced)*UseFlagDisplay {
+	u := &UseFlagDisplay{}
+
+	u.sort_combined := func (a, b){
+		return (a.name > b.name) - (a.name < b.name)
+	}
+
+	u.sort_separated := func (a, b){
+		enabled_diff = b.enabled - a.enabled
+		if enabled_diff:
+		return enabled_diff
+		return (a.name > b.name) - (a.name < b.name)
+	}
+
+	u.name = name
+	u.enabled = enabled
+	u.forced = forced
+	return u
+}
+
+func(u*UseFlagDisplay) __str__() {
+	s = u.name
+	if u.enabled:
+	s = red(s)
+	else:
+	s = '-' + s
+	s = blue(s)
+	if u.forced:
+	s = '(%s)' % s
+	return s
+}
+
+type _flag_info struct{flag, display}
+
+func pkg_use_display(pkg, opts, modified_use=None) {
+	settings = pkg.root_config.settings
+	use_expand = pkg.use.expand
+	use_expand_hidden = pkg.use.expand_hidden
+	alphabetical_use = '--alphabetical'
+	in
+	opts
+	forced_flags = set(chain(pkg.use.force,
+		pkg.use.mask))
+	if modified_use is
+None:
+	use = set(pkg.use.enabled)
+	else:
+	use = set(modified_use)
+	use.discard(settings.get('ARCH'))
+	use_expand_flags = set()
+	use_enabled =
+	{
+	}
+	use_disabled =
+	{
+	}
+	for varname
+	in
+use_expand:
+	flag_prefix = varname.lower() + "_"
+	for f
+	in
+use:
+	if f.startswith(flag_prefix):
+	use_expand_flags.add(f)
+	use_enabled.setdefault(
+		varname.upper(), []).append(
+		_flag_info(f, f[len(flag_prefix):]))
+
+	for f
+	in
+	pkg.iuse.all:
+	if f.startswith(flag_prefix):
+	use_expand_flags.add(f)
+	if f not
+	in
+use:
+	use_disabled.setdefault(
+		varname.upper(), []).append(
+		_flag_info(f, f[len(flag_prefix):]))
+
+	var_order = set(use_enabled)
+	var_order.update(use_disabled)
+	var_order = sorted(var_order)
+	var_order.insert(0, 'USE')
+	use.difference_update(use_expand_flags)
+	use_enabled['USE'] = list(_flag_info(f, f)
+	for f
+	in
+	use)
+	use_disabled['USE'] = []
+
+	for f
+	in
+	pkg.iuse.all:
+	if f not
+	in
+	use
+	and \
+	f
+	not
+	in
+use_expand_flags:
+	use_disabled['USE'].append(_flag_info(f, f))
+
+	flag_displays = []
+	for varname
+	in
+var_order:
+	if varname.lower() in
+use_expand_hidden:
+	continue
+	flags = []
+	for f
+	in
+	use_enabled.get(varname, []):
+	flags.append(UseFlagDisplay(f.display, True, f.flag
+	in
+	forced_flags))
+	for f
+	in
+	use_disabled.get(varname, []):
+	flags.append(UseFlagDisplay(f.display, False, f.flag
+	in
+	forced_flags))
+	if alphabetical_use:
+	flags.sort(key = UseFlagDisplay.sort_combined) else:
+	flags.sort(key = UseFlagDisplay.sort_separated)
+	flag_displays.append('%s="%s"'%(varname,
+		' '.join("%s"%(f, )
+	for f
+	in
+	flags)))
+
+	return ' '.join(flag_displays)
 }
 
 type ForkProcess struct {
