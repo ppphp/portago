@@ -8961,7 +8961,7 @@ func (s *Scheduler) _deallocate_config(settings *Config) {
 	s._config_pool[settings.ValueDict["EROOT"]]=append(s._config_pool[settings.ValueDict["EROOT"]], settings)
 }
 
-func (s *Scheduler) _keep_scheduling() {
+func (s *Scheduler) _keep_scheduling() bool {
 	return bool(not
 	s._terminated.is_set()&&
 		s._pkg_queue&&

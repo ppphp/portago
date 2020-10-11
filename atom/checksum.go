@@ -74,7 +74,7 @@ func init() {
 	NewGenerateHashFunction("SHA512", sha512.New(), "hashlib")
 	NewGenerateHashFunction("RMD160", ripemd160.New(), "hashlib")
 	NewGenerateHashFunction("WHIRLPOOL", whirlpool.New(), "hashlib")
-	b, _ := blake2b.New256([]byte{})
+	b, _ := blake2b.New512([]byte{})
 	NewGenerateHashFunction("BLAKE2B", b, "hashlib")
 	s, _ := blake2s.New256([]byte{})
 	NewGenerateHashFunction("BLAKE2S", s, "hashlib")
