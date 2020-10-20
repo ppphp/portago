@@ -6518,7 +6518,7 @@ func NewPackageArg(packagee=None, **kwargs)*PackageArg {
 	atom = "=" + packagee.cpv
 	if packagee.repo != Package.UNKNOWN_REPO:
 	atom += _repo_separator + packagee.repo
-	p.atom = portage.dep.Atom(atom, allow_repo = True)
+	p.atom = portage.dep.Atom(atom, allow_repo = true)
 	p.pset = NewInternalPackageSet([]*Atom{p.atom,}, true, true)
 	return p
 }
@@ -6749,7 +6749,7 @@ func(p*PackageUninstall) _start_unmerge( lock_task) {
 		cat, pf, p.settings, "vartree", p.pkg.root_config.trees["vartree"],
 		 p.scheduler, p.background, nil, "","","",
 		p.pkg.root_config.trees["vartree"].dbapi,
-		p.ldpath_mtimes, p.settings.get("PORTAGE_LOG_FILE"), nil, unmerge=True)
+		p.ldpath_mtimes, p.settings.get("PORTAGE_LOG_FILE"), nil, unmerge=true)
 
 	p._start_task(unmerge_task, p._unmerge_exit)
 }
@@ -6878,8 +6878,8 @@ func(p*PackageVirtualDbapi) __contains__( item) {
 	None
 	and \
 	existing == item:
-	return True
-	return False
+	return true
+	return false
 }
 
 func(p*PackageVirtualDbapi) get( item, default=None) {
@@ -6955,7 +6955,7 @@ p._match_cache[cache_key] = cpv_list
 return cpv_list[:]
 }
 
-func(p*PackageVirtualDbapi) cp_all( sort=False) {
+func(p*PackageVirtualDbapi) cp_all( sort=false) {
 	return sorted(p._cp_map)
 	if sort
 	else
@@ -7051,7 +7051,7 @@ AttributeError:
 	else:
 	p.scheduler.add_reader(fd, p._output_handler, fd)
 
-	p._registered = True
+	p._registered = true
 }
 
 func (p* PipeReader) _cancel() {
@@ -7073,7 +7073,7 @@ func (p* PipeReader) close() {
 func (p* PipeReader) _output_handler( fd) {
 
 	while
-True:
+true:
 	data = p._read_buf(fd)
 	if data is
 None:
@@ -7092,7 +7092,7 @@ None:
 func (p* PipeReader) _array_output_handler( f) {
 
 	while
-True:
+true:
 	data = p._read_array(f)
 	if data is
 None:
@@ -7107,12 +7107,12 @@ None:
 	p._async_wait()
 	break
 
-	return True
+	return true
 }
 
 func (p* PipeReader) _unregister() {
 
-	p._registered = False
+	p._registered = false
 
 	if p.input_files is
 	not
@@ -9403,7 +9403,7 @@ try:
 	s._task_queue
 	and(s.max_jobs
 	is
-	True
+	true
 	or
 	len(s.running_tasks) < s.max_jobs):
 	task = s._task_queue.popleft()
@@ -9969,20 +9969,22 @@ func(u*UnmergeDepPriority) __str__() {
 
 type UseFlagDisplay struct {
 	// slots
-	name', 'enabled', 'forced
+	name,forced string
+	enabled bool
 }
 
-func NewUseFlagDisplay( name, enabled, forced)*UseFlagDisplay {
+func NewUseFlagDisplay( name string, enabled bool, forced string)*UseFlagDisplay {
 	u := &UseFlagDisplay{}
 
-	u.sort_combined := func (a, b){
+	u.sort_combined = func (a, b){
 		return (a.name > b.name) - (a.name < b.name)
 	}
 
-	u.sort_separated := func (a, b){
+	u.sort_separated = func (a, b) {
 		enabled_diff = b.enabled - a.enabled
-		if enabled_diff:
-		return enabled_diff
+		if enabled_diff {
+			return enabled_diff
+		}
 		return (a.name > b.name) - (a.name < b.name)
 	}
 
@@ -9992,19 +9994,21 @@ func NewUseFlagDisplay( name, enabled, forced)*UseFlagDisplay {
 	return u
 }
 
-func(u*UseFlagDisplay) __str__() {
-	s = u.name
-	if u.enabled:
-	s = red(s)
-	else:
-	s = '-' + s
-	s = blue(s)
-	if u.forced:
-	s = '(%s)' % s
+func(u*UseFlagDisplay) __str__() string {
+	s := u.name
+	if u.enabled {
+		s = Red(s)
+	} else {
+		s = "-" + s
+		s = Blue(s)
+	}
+	if u.forced != "" {
+		s = fmt.Sprintf("(%s)", s)
+	}
 	return s
 }
 
-type _flag_info struct{flag, display}
+type _flag_info struct{flag, display string}
 
 func pkg_use_display(pkg, opts, modified_use=None) {
 	settings = pkg.root_config.settings
@@ -10039,7 +10043,7 @@ use:
 	use_expand_flags.add(f)
 	use_enabled.setdefault(
 		varname.upper(), []).append(
-		_flag_info(f, f[len(flag_prefix):]))
+		&_flag_info{f, f[len(flag_prefix):]})
 
 	for f
 	in
@@ -10051,14 +10055,14 @@ use:
 use:
 	use_disabled.setdefault(
 		varname.upper(), []).append(
-		_flag_info(f, f[len(flag_prefix):]))
+		&_flag_info{f, f[len(flag_prefix):]})
 
 	var_order = set(use_enabled)
 	var_order.update(use_disabled)
 	var_order = sorted(var_order)
 	var_order.insert(0, 'USE')
 	use.difference_update(use_expand_flags)
-	use_enabled['USE'] = list(_flag_info(f, f)
+	use_enabled['USE'] = list(&_flag_info{f, f}
 	for f
 	in
 	use)
@@ -10075,7 +10079,7 @@ use:
 	not
 	in
 use_expand_flags:
-	use_disabled['USE'].append(_flag_info(f, f))
+	use_disabled['USE'].append(&_flag_info{f, f})
 
 	flag_displays = []
 	for varname
@@ -10088,13 +10092,13 @@ use_expand_hidden:
 	for f
 	in
 	use_enabled.get(varname, []):
-	flags.append(UseFlagDisplay(f.display, True, f.flag
+	flags.append(NewUseFlagDisplay(f.display, true, f.flag
 	in
 	forced_flags))
 	for f
 	in
 	use_disabled.get(varname, []):
-	flags.append(UseFlagDisplay(f.display, False, f.flag
+	flags.append(UseFlagDisplay(f.display, false, f.flag
 	in
 	forced_flags))
 	if alphabetical_use:

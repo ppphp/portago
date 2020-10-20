@@ -6814,12 +6814,12 @@ func (b *bindbapi) unpack_metadata(pkg, dest_dir){
 	}
 }
 
-func (b *bindbapi) unpack_contents(pkg *PkgStr, dest_dir){
+func (b *bindbapi) unpack_contents(pkg *PkgStr, dest_dir string){
 
 	loop = asyncio._wrap_loop()
 	//if isinstance(pkg, _pkg_str) {
 		settings := b.settings
-		cpv = pkg
+		cpv := pkg
 	//}else {
 	//	settings = pkg
 	//	cpv = settings.mycpv
@@ -8799,15 +8799,16 @@ nil:
 }
 
 // nil, nil
-func (p *portdbapi) getFetchMap(mypkg string, useflags []string, mytree string) {
+func (p *portdbapi) getFetchMap(mypkg string, useflags []string, mytree string) []string {
 	loop = p._event_loop
 	return loop.run_until_complete(
-		p.async_fetch_map(mypkg, useflags = useflags,
-		mytree = mytree, loop=loop))
+		p.async_fetch_map(mypkg, useflags,
+		mytree, loop=loop))
 }
 
 // coroutine
-func (p *portdbapi) async_fetch_map(mypkg, useflags=nil, mytree=nil, loop=nil) {
+// nil, nil, nil
+func (p *portdbapi) async_fetch_map(mypkg, useflags []string, mytree string, loop=nil) {
 
 	loop = asyncio._wrap_loop(loop)
 	result = loop.create_future()
@@ -8881,7 +8882,7 @@ func (p *portdbapi) getfetchsizes(mypkg string, useflags []string, debug int, my
 	for myfile
 	in
 myfiles:
-	fetch_size, err := strconv.Atoi(checksums[myfile]["size"])
+	fetch_size, err := strconv.ParseInt(checksums[myfile]["size"], 10, 64)
 	if err != nil {
 		//except(KeyError, ValueError):
 		if debug {
@@ -8910,23 +8911,21 @@ myfiles:
 	}
 
 	if mystat == nil {
-	existing_size = 0
-	ro_distdirs = p.settings.ValueDict["PORTAGE_RO_DISTDIRS"]
-	if ro_distdirs is
-	not
-nil:
-	for x
-	in
-	shlex_split(ro_distdirs):
-try:
-	mystat = os.Stat(filepath.Join(x, myfile))
-	except
-OSError:
-	pass
-	else{
-			if mystat.st_size == fetch_size {
-				existing_size = fetch_size
-				break
+		existing_size := 0
+		ro_distdirs := p.settings.ValueDict["PORTAGE_RO_DISTDIRS"]
+		ss, _ := shlex.Split(strings.NewReader(ro_distdirs),false, true)
+		if ro_distdirs != "" {
+			for _, x := range ss {
+				mystat, err := os.Stat(filepath.Join(x, myfile))
+				if err != nil {
+					//except OSError:
+					//pass
+				}else{
+					if mystat.Size() == fetch_size {
+						existing_size = fetch_size
+						break
+					}
+				}
 			}
 		}
 	}else{
