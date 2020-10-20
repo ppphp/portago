@@ -10,7 +10,6 @@ type MetadataXML struct {
 func NewMetaDataXML(metadata_xml_path string, herds string) *MetadataXML {
 	m := &MetadataXML{}
 
-
 	return m
 }
 

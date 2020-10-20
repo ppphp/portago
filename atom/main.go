@@ -8,6 +8,8 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/ppphp/shlex"
+
 	"github.com/spf13/pflag"
 )
 
@@ -236,6 +238,7 @@ func _find_bad_atoms(atoms []string, less_strict bool) []string {
 	return bad_atoms
 }
 
+// true
 func ParseOpts(tmpcmdline []string, silent bool) (string, map[string]string, []string) { // false
 
 	true_y := func(s string) bool {
@@ -989,13 +992,54 @@ func EmergeMain(args []string) int { // nil
 		return 1
 	}
 	devNull, err := os.Open(os.DevNull)
+	fd_pipes := map[int]int{
+		0: int(devNull.Fd()),
+		1: int(devNull.Fd()),
+		2: int(devNull.Fd()),
+	}
+	if pids, err := spawn_bash("[[ $(< <(echo foo) ) == foo ]]", false, "", fd_pipes); err == nil || (len(pids) > 0 && pids[0] != 0) {
+		WriteMsgLevel("Failed to validate a sane '/dev'.\n"+
+			"bash process substitution doesn't work; this may be an "+
+			"indication of a broken '/dev/fd'.\n",
+			40, -1)
+		return 1
+	}
 	if devNull != nil {
 		devNull.Close()
 	}
 	syscall.Umask(022)
 
 	emergeConfig := LoadEmergeConfig(nil, nil, myAction, myFiles, myOpts)
+	for _, locale_var_name := range []string{"LANGUAGE", "LC_ALL", "LC_ADDRESS", "LC_COLLATE", "LC_CTYPE",
+		"LC_IDENTIFICATION", "LC_MEASUREMENT", "LC_MESSAGES", "LC_MONETARY",
+		"LC_NAME", "LC_NUMERIC", "LC_PAPER", "LC_TELEPHONE", "LC_TIME", "LANG"} {
+		locale_var_value := emergeConfig.runningConfig.Settings.ValueDict[locale_var_name]
+		if locale_var_value != "" {
+			if os.Getenv(locale_var_name) == "" {
+				os.Setenv(locale_var_name, locale_var_value)
+			}
+		}
+	}
+	//try:
+	//	locale.setlocale(locale.LC_ALL, "")
+	//	except locale.Error as e:
+	//	writemsg_level("setlocale: %s\n" % e, level=logging.WARN)
+	//
+	tmpcmdline := []string{}
+	if _, ok := myOpts["--ignore-default-opts"]; !ok {
+		ss, _ := shlex.Split(strings.NewReader(emergeConfig.targetConfig.Settings.ValueDict["EMERGE_DEFAULT_OPTS"]), false, true)
+		tmpcmdline = append(tmpcmdline, ss...)
+	}
+	tmpcmdline = append(tmpcmdline, args...)
+	emergeConfig.action, emergeConfig.opts, emergeConfig.args = ParseOpts(tmpcmdline, true)
 
+	//try
 	runAction(emergeConfig)
+	for _, x := range emergeConfig.Trees.Values() {
+		if x._porttree == nil {
+			continue
+		}
+		x.PortTree().dbapi.close_caches()
+	}
 	return 0
 }

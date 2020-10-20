@@ -6,6 +6,8 @@ Package Management by go can remove annoying python dependency, though it is mea
 
 Honestly, the main problem is give the package manager a static type.
 
+now portage hash c2f413d6a1b820854681847870f94ff08ac35c2a
+
 # Roadmap
 
 - ebuild sync

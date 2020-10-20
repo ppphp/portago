@@ -163,3 +163,11 @@ func (t *TaskHandler) run_tasks(tasks []task, fun, status, verbose bool, options
 	}
 	return returncodes
 }
+
+func print_results(results []string) {
+	if len(results) > 0 {
+		println()
+		println(strings.Join(results, "\n"))
+		println("\n")
+	}
+}
