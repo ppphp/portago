@@ -35,7 +35,7 @@ func dep_expandS(myDep string, myDb *dbapi, useCache int, settings *Config) *Ato
 	if myDep == "" {
 		return nil
 	}
-	if myDep[0] == "*" {
+	if myDep[0] == '*' {
 		myDep = myDep[1:]
 		origDep = myDep
 	}
@@ -3594,14 +3594,16 @@ func (d *dblink) _unmerge_protected_symlinks(others_in_slot []*dblink, infodirs_
 						parent = filepath.Dir(parent)
 					}
 				}
-				//try:
-				unlink(obj, os.Lstat(obj))
+				ls, err := os.Lstat(obj)
+				if err != nil {
+					//except(OSError, IOError) as e:
+					//if err not in ignored_unlink_errnos:
+					//raise
+					//del e
+					//show_unmerge("!!!", "", "sym", obj)
+				}
+				unlink(obj, ls)
 				show_unmerge("<<<", "", "sym", obj)
-				//except(OSError, IOError) as e:
-				//if err not in ignored_unlink_errnos:
-				//raise
-				//del e
-				//show_unmerge("!!!", "", "sym", obj)
 			}
 		}
 
@@ -3741,8 +3743,7 @@ func (d *dblink) _unmerge_dirs(dirs map[struct{s string; i [2]uint64}]bool, info
 					//except OSError:
 					//pass
 				} else {
-					if dir_stat.st_dev in
-					d._device_path_map{
+					if _, ok := d._device_path_map[dir_stat.Sys().(*syscall.Stat_t).Dev]; ok{
 						fes, _ := filepath.EvalSymlinks(obj)
 						d._merged_path(fes, dir_stat, true)
 					}
@@ -3926,7 +3927,7 @@ d.vartree.dbapi._plib_registry == nil ||
 		return map[string]bool{}
 	}
 
-	os = _os_merge
+	//os = _os_merge
 	linkmap := d.vartree.dbapi._linkmap
 	var installed_instance *dblink
 	if unmerge {
@@ -4665,7 +4666,7 @@ func (d *dblink) _elog_process(phasefilter []string) {
 	}
 }
 
-func (d *dblink) _emerge_log(msg string) {emergelog(false, msg)}
+func (d *dblink) _emerge_log(msg string) {emergelog(false, msg, "")}
 
 // 0, nil, nil, 0
 func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydbapi DBAPI, prev_mtimes=nil, counter string) int {
@@ -7244,7 +7245,7 @@ func (b *BinaryTree) _populate_local(reindex bool) *PackageIndex {
 			mypf := pkg_metadata["PF"]
 			slot := pkg_metadata["SLOT"]
 			mypkg := myfile[:len(myfile)-5]
-			if mycat =="" || mypf == "" || slot == "" {
+			if mycat == "" || mypf == "" || slot == "" {
 				WriteMsg(fmt.Sprintf("\n!!! Invalid binary package: '%s'\n", full_path), -1, nil)
 				missing_keys := []string{}
 				if !mycat {
@@ -8355,7 +8356,7 @@ func (b *_better_cache) __getitem__(catpkg string) []*RepoConfig {
 	return b._items[catpkg]
 }
 
-func (b *_better_cache) _scan_cat( cat string) {
+func (b *_better_cache) _scan_cat(cat string) {
 	for _, repo := range b._repo_list {
 		cat_dir := repo.Location + "/" + cat
 		pkg_list, err := listDir(cat_dir)
@@ -8410,20 +8411,20 @@ type portdbapi struct {
 	_pregen_auxdb, _ro_auxdb map[string]map[string]string
 	_ordered_repo_name_list  []string
 	_aux_cache_keys          map[string]bool
-	_aux_cache               map[string]string
+	_aux_cache               map[string]map[string]string
 	_broken_ebuilds          map[string]bool
 	_better_cache            *_better_cache
 	_porttrees_repos         map[string]*RepoConfig
 }
 
-func (p *portdbapi) _categories() map[string]bool{
+func (p *portdbapi) _categories() map[string]bool {
 	return p.settings.categories
 }
 
 func (p *portdbapi) _set_porttrees(porttrees []string) {
 	for _, location := range porttrees {
 		repo := p.repositories.getRepoForLocation(location)
-			p._porttrees_repos[repo.Name] = repo
+		p._porttrees_repos[repo.Name] = repo
 	}
 	p.porttrees = porttrees
 }
@@ -8438,9 +8439,9 @@ func (p *portdbapi) _event_loop() {
 
 func (p *portdbapi) _create_pregen_cache(tree string) {
 	conf := p.repositories.getRepoForLocation(tree)
-	cache := conf.get_pregenerated_cache(p._known_keys, true,false)
-	if cache!= nil {
-	//try:
+	cache := conf.get_pregenerated_cache(p._known_keys, true, false)
+	if cache != nil {
+		//try:
 		cache.ec = p.repositories.getRepoForLocation(tree).eclassDb
 		//except AttributeError:
 		//pass
@@ -8462,7 +8463,7 @@ func (p *portdbapi) close_caches() {
 	if p.auxdb == nil {
 		return
 	}
-	for x := range p.auxdb{
+	for x := range p.auxdb {
 		p.auxdb[x].sync(0)
 	}
 	p.auxdb = map[string]*VolatileDatabase{}
@@ -8755,43 +8756,41 @@ func (p *portdbapi) _aux_get_cancel(proc, future) {
 	}
 }
 
-func (p *portdbapi) _aux_get_return(future Future, mycpv, mylist, myebuild, ebuild_hash,
-	mydata, mylocation string, cache_me, proc) {
+func (p *portdbapi) _aux_get_return(future Future, mycpv, mylist, myebuild, ebuild_hash string,
+	mydata map[string]string, mylocation string, cache_me, proc) {
 	if future.cancelled() {
 		return
 	}
-	if proc is
-	not
-nil:
-	if proc.returncode != 0:
-	p._broken_ebuilds.add(myebuild)
-	future.set_exception(PortageKeyError(mycpv))
-	return
-	mydata = proc.metadata
+	if proc != nil {
+		if proc.returncode != 0 {
+			p._broken_ebuilds.add(myebuild)
+			future.set_exception(PortageKeyError(mycpv))
+			return
+		}
+		mydata = proc.metadata
+	}
 	mydata["repository"] = p.repositories.getNameForLocation(mylocation)
 	mydata["_mtime_"] = ebuild_hash.mtime
-	eapi = mydata.get("EAPI")
-	if not eapi:
-	eapi = "0"
-	mydata["EAPI"] = eapi
-	if eapi_is_supported(eapi):
-	mydata["INHERITED"] = " ".join(mydata.get("_eclasses_", []))
-
-	for x
-		in
-	mylist {
-		returnme = append(returnme, mydata.get(x, ""))
+	eapi := mydata["EAPI"]
+	if eapi == "" {
+		eapi = "0"
+		mydata["EAPI"] = eapi
 	}
+	if eapiIsSupported(eapi) {
+		mydata["INHERITED"] = " ".join(mydata["_eclasses_"])
+}
 
-	if cache_me && p.frozen:
-	aux_cache =
-	{
-	}
-	for x
-	in
-	p._aux_cache_keys:
-	aux_cache[x] = mydata.get(x, "")
-	p._aux_cache[mycpv] = aux_cache
+for _, x := range mylist {
+returnme = append(returnme, mydata.get(x, ""))
+}
+
+if cache_me && p.frozen {
+aux_cache := map[string]string{}
+for x := range p._aux_cache_keys {
+aux_cache[x] = mydata[x]
+}
+p._aux_cache[mycpv] = aux_cache
+}
 
 	future.set_result(returnme)
 
@@ -8878,9 +8877,7 @@ func (p *portdbapi) getfetchsizes(mypkg string, useflags []string, debug int, my
 	}
 	filesdict :={}
 	myfiles := p.getFetchMap(mypkg, useflags, mytree)
-	for myfile
-	in
-myfiles:
+	for _, myfile := range myfiles:
 	fetch_size, err := strconv.ParseInt(checksums[myfile]["size"], 10, 64)
 	if err != nil {
 		//except(KeyError, ValueError):
@@ -9149,20 +9146,17 @@ func (p *portdbapi) freeze() {
 
 func (p *portdbapi) melt() {
 	p.xcache = map[string]map[[2]string][]*PkgStr{}
-	p._aux_cache = map[string]string{}
+	p._aux_cache = map[string]map[string]string{}
 	p._better_cache = nil
 	p.frozen = false
 }
 
 func (p *portdbapi) xmatch(level string, origdep *Atom) []*PkgStr {
-
-	loop = p._event_loop
-	return loop.run_until_complete(
-		p.async_xmatch(level, origdep, loop=loop))
+	return p.async_xmatch(level, origdep)
 }
 
 // @coroutine
-func (p *portdbapi) async_xmatch(level string, origdep *Atom, loop=nil) []*PkgStr {
+func (p *portdbapi) async_xmatch(level string, origdep *Atom) []*PkgStr {
 	mydep := dep_expand(origdep, p, 1, p.settings)
 	mykey := mydep.cp
 
@@ -9173,14 +9167,13 @@ func (p *portdbapi) async_xmatch(level string, origdep *Atom, loop=nil) []*PkgSt
 		if ok {
 			l, ok := c[cache_key]
 			if ok {
-				coroutine_return(l)
+				return l
 			}
 		}
 		//except KeyError:
 		//pass
 	}
 
-	loop = asyncio._wrap_loop(loop)
 	var myval, mylist []*PkgStr
 	mytree := ""
 	if mydep.repo != "" {
@@ -9189,7 +9182,7 @@ func (p *portdbapi) async_xmatch(level string, origdep *Atom, loop=nil) []*PkgSt
 			if strings.HasPrefix(level, "match-") {
 				myval = []*PkgStr{}
 			} else {
-				myval = []*PkgStr{""}
+				myval = []*PkgStr{NewPkgStr("",nil, nil, "", "", "", 0, 0, "", 0, nil)}
 			}
 		}
 	}
@@ -9217,22 +9210,30 @@ func (p *portdbapi) async_xmatch(level string, origdep *Atom, loop=nil) []*PkgSt
 		ignore_profile := level == "minimum-all-ignore-profile"
 		visibility_filter := !Ins([]string{"match-all", "minimum-all", "minimum-all-ignore-profile"}, level)
 		single_match := !Ins([]string{"match-all", "match-visible"}, level)
-		myval = []
-		aux_keys = list(p._aux_cache_keys)
+		myval = []*PkgStr{}
+		aux_keys := []string{}
+		for k := range p._aux_cache_keys {
+			aux_keys = append(aux_keys, k)
+		}
+
+		iterfunc := func(a []*PkgStr) []*PkgStr { return a }
 		if level == "bestmatch-visible" {
-			iterfunc = reversed
-		} else {
-			iterfunc = iter
+			iterfunc = func(a []*PkgStr) []*PkgStr {
+				b := []*PkgStr{}
+				for _, v := range a {
+					b = append([]*PkgStr{v}, b...)
+				}
+				return b}
 		}
 
 		for _, cpv := range iterfunc(mylist) {
-		try:
-			metadata = dict(zip(aux_keys, (yield
-			p.async_aux_get(cpv,
-				aux_keys, myrepo = cpv.repo, loop = loop))))
-			except
-		KeyError:
-			continue
+			metadata := map[string]string{}
+			aag := p.async_aux_get(cpv, aux_keys, "", cpv.repo)
+			for i := range aux_keys {
+				metadata[aux_keys[i]] = aag[i]
+			}
+			//except KeyError:
+			//continue
 
 			//try:
 			pkg_str := NewPkgStr(cpv.string, metadata,
@@ -9248,7 +9249,7 @@ func (p *portdbapi) async_xmatch(level string, origdep *Atom, loop=nil) []*PkgSt
 				continue
 			}
 
-			if mydep.unevaluated_atom.use != nil && !p._match_use(mydep, pkg_str, metadata, ignore_profile) {
+			if mydep.unevaluatedAtom.Use != nil && !p._match_use(mydep, pkg_str, metadata, ignore_profile) {
 				continue
 			}
 
@@ -9259,10 +9260,10 @@ func (p *portdbapi) async_xmatch(level string, origdep *Atom, loop=nil) []*PkgSt
 		}
 
 		if single_match {
-			if myval {
-				myval = myval[0]
+			if len(myval) > 0 {
+				myval = []*PkgStr{myval[0]}
 			} else {
-				myval = ""
+				myval = []*PkgStr{NewPkgStr("", nil, nil, "", "", "", 0, 0, "", 0, nil)}
 			}
 		}
 	} else {
@@ -9275,13 +9276,13 @@ func (p *portdbapi) async_xmatch(level string, origdep *Atom, loop=nil) []*PkgSt
 		xcache_this_level := p.xcache[level]
 		if xcache_this_level != nil {
 			xcache_this_level[cache_key] = myval
-			if not isinstance(myval, _pkg_str) {
+			//if not isinstance(myval, _pkg_str) {
 				myval = myval[:]
-			}
+			//}
 		}
 	}
 
-	coroutine_return(myval)
+	return myval
 }
 
 // 1
@@ -9446,7 +9447,7 @@ func NewPortDbApi(mysettings *Config) *portdbapi {
 		"PDEPEND": true, "PROPERTIES": true, "RDEPEND": true, "repository": true,
 		"RESTRICT": true, "SLOT": true, "DEFINED_PHASES": true, "REQUIRED_USE": true}
 
-	p._aux_cache = map[string]string{}
+	p._aux_cache = map[string]map[string]string{}
 	p._better_cache = nil
 	p._broken_ebuilds = map[string]bool{}
 
@@ -9458,30 +9459,28 @@ type PortageTree struct {
 	dbapi    *portdbapi
 }
 
-func (p *PortageTree) dep_bestmatch(mydep  *Atom) string {
+func (p *PortageTree) dep_bestmatch(mydep  *Atom) *PkgStr {
 	mymatch := p.dbapi.xmatch("bestmatch-visible", mydep)
 	if mymatch == nil {
-		return ""
+		return NewPkgStr("", nil, nil, "", "", "", 0, 0, "", 0, nil)
 	}
-	return mymatch
+	return mymatch[0]
 }
 
-func (p *PortageTree) dep_match(mydep  *Atom) {
+func (p *PortageTree) dep_match(mydep  *Atom) []*PkgStr{
 	mymatch := p.dbapi.xmatch("match-visible", mydep)
 	if mymatch == nil {
-		return []
+		return []*PkgStr{}
 	}
 	return mymatch
 }
 
-func (p *PortageTree) exists_specific(cpv) int {
-
-	return p.dbapi.cpv_exists(cpv)
+func (p *PortageTree) exists_specific(cpv string) int {
+	return p.dbapi.cpv_exists(cpv, "")
 }
 
 func (p *PortageTree) getallnodes() []string {
-	return p.dbapi.cp_all()
-
+	return p.dbapi.cp_all(nil, nil, false, true)
 }
 
 func (p *PortageTree) getslot(mycatpkg *PkgStr) string {
