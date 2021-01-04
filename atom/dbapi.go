@@ -1376,8 +1376,8 @@ func (v *vardbapi) flush_cache() {
 		ensureDirs(filepath.Dir(v._aux_cache_filename), -1, -1, -1, -1, nil, true)
 		v._owners.populate()
 		valid_nodes := map[string]bool{}
-		for _, v := range v.cpv_all() {
-			valid_nodes[v] = true
+		for _, v := range v.cpv_all(1) {
+			valid_nodes[v.string] = true
 		}
 		for cpv := range v._aux_cache().packages {
 			if !valid_nodes[cpv] {
@@ -2790,11 +2790,10 @@ func (d *dblink) quickpkg(output_file, include_config, include_unmodified_config
 }
 
 // false, "", nil
-func (d *dblink) _prune_plib_registry(unmerge bool,
-	needed string, preserve_paths=nil) {
+func (d *dblink) _prune_plib_registry(unmerge bool, needed string, preserve_paths map[string]bool) {
 	if !(d._linkmap_broken || d.vartree.dbapi._linkmap == nil || d.vartree.dbapi._plib_registry == nil) {
 		d.vartree.dbapi._fs_lock()
-		plib_registry:= d.vartree.dbapi._plib_registry
+		plib_registry := d.vartree.dbapi._plib_registry
 		plib_registry.lock()
 		defer func() {
 			plib_registry.unlock()
@@ -2802,7 +2801,7 @@ func (d *dblink) _prune_plib_registry(unmerge bool,
 		}()
 		plib_registry.load()
 
-		unmerge_with_replacement := unmerge&&preserve_paths!=nil
+		unmerge_with_replacement := unmerge && preserve_paths != nil
 
 		var exclude_pkgs []*PkgStr
 		if unmerge_with_replacement {
@@ -2811,58 +2810,57 @@ func (d *dblink) _prune_plib_registry(unmerge bool,
 
 		d._linkmap_rebuild(exclude_pkgs, needed, preserve_paths)
 
-		if unmerge{
+		if unmerge {
 			unmerge_preserve := []string{}
-			if ! unmerge_with_replacement {
+			if !unmerge_with_replacement {
 				unmerge_preserve =
 					d._find_libs_to_preserve(true)
 			}
 			counter := d.vartree.dbapi.cpv_counter(d.mycpv)
-		//try:
+			//try:
 			slot := d.mycpv.slot
 			//except  AttributeError:
 			//slot = NewPkgStr(d.mycpv, slot = d.Settings.ValueDict["SLOT"]).slot
 			plib_registry.unregister(d.mycpv.string, slot, counter)
-			if len(unmerge_preserve) > 0{
-				for _, path := range sorted(unmerge_preserve){
+			if len(unmerge_preserve) > 0 {
+				for _, path := range sorted(unmerge_preserve) {
 					contents_key := d._match_contents(path)
 					if len(contents_key) > 0 {
 						continue
 					}
 					obj_type := d.getcontents()[contents_key][0]
-					d._display_merge(fmt.Sprintf(">>> needed   %s %s\n", obj_type, contents_key),0, -1)
+					d._display_merge(fmt.Sprintf(">>> needed   %s %s\n", obj_type, contents_key), 0, -1)
 				}
 				plib_registry.register(d.mycpv.string, slot, counter, unmerge_preserve)
 				d.vartree.dbapi.removeFromContents(d, unmerge_preserve, true)
 			}
 		}
 
-		unmerge_no_replacement := unmerge&& !unmerge_with_replacement
+		unmerge_no_replacement := unmerge && !unmerge_with_replacement
 		cpv_lib_map := d._find_unused_preserved_libs(unmerge_no_replacement)
 		if len(cpv_lib_map) > 0 {
 			d._remove_preserved_libs(cpv_lib_map)
 			d.vartree.dbapi.lock()
-		//try:
-			for cpv, removed:= range cpv_lib_map {
-				if ! d.vartree.dbapi.cpv_exists(cpv) {
+			//try:
+			for cpv, removed := range cpv_lib_map {
+				if !d.vartree.dbapi.cpv_exists(cpv) {
 					continue
 				}
 				d.vartree.dbapi.removeFromContents(d._quickpkg_dblink(cpv), removed)
 			}
-		//finally:
+			//finally:
 			d.vartree.dbapi.unlock()
 		}
 
 		plib_registry.store()
 	}
-
 }
 
 // nil, true, nil, nil, "", nil
 // @_slot_locked
 func (d *dblink) unmerge(pkgfiles map[string][]string, cleanup bool,
 	ldpath_mtimes=nil, others_in_slot []*dblink, needed string,
-	preserve_paths=nil) int {
+	preserve_paths map[string]bool) int {
 
 	background := false
 	log_path := d.settings.ValueDict["PORTAGE_LOG_FILE"]
@@ -3054,8 +3052,7 @@ func (d *dblink) unmerge(pkgfiles map[string][]string, cleanup bool,
 			builddir_lock.async_unlock())
 	}
 
-	if log_path != nil {
-
+	if log_path != "" {
 		if failures == 0 && !d.settings.Features.Features["unmerge-logs"] {
 			if err := syscall.Unlink(log_path); err != nil {
 				//except OSError:
@@ -3123,9 +3120,9 @@ func (d *dblink) _display_merge(msg string, level, noiselevel int){
 	}
 }
 
-func (d *dblink) _show_unmerge(zing, desc, file_type, file_name) {
-	d._display_merge(fmt.Sprintf("%s %s %s %s\n",
-		zing, desc.ljust(8), file_type, file_name), 0, 0)
+func (d *dblink) _show_unmerge(zing, desc, file_type, file_name string) {
+	d._display_merge(fmt.Sprintf("%s % -8s %s %s\n",
+		zing, desc, file_type, file_name), 0, 0)
 }
 
 func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot []*dblink) {
@@ -3450,7 +3447,7 @@ func (d *dblink) _unmerge_pkgfiles(pkgfiles map[string][]string, others_in_slot 
 				//del e
 				show_unmerge("<<<", "", file_type, obj)
 			} else if pkgfiles[objkey][0] == "fif" {
-				if !syscall.S_IFIFO&lstatobj.Mode() != 0 {
+				if syscall.S_IFIFO&lstatobj.Mode() == 0 {
 					show_unmerge("---", unmerge_desc["!fif"], file_type, obj)
 					continue
 				}
@@ -3899,7 +3896,7 @@ func (d *dblink) _match_contents(filename string) string {
 	return ""
 }
 
-func (d *dblink) _linkmap_rebuild(exclude_pkgs []*PkgStr,include_file string, preserve_paths) {
+func (d *dblink) _linkmap_rebuild(exclude_pkgs []*PkgStr,include_file string, preserve_paths map[string]bool) {
 	if d._linkmap_broken || 
 d.vartree.dbapi._linkmap == nil || 
 d.vartree.dbapi._plib_registry == nil || 
@@ -4669,8 +4666,7 @@ func (d *dblink) _elog_process(phasefilter []string) {
 func (d *dblink) _emerge_log(msg string) {emergelog(false, msg, "")}
 
 // 0, nil, nil, 0
-func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydbapi DBAPI, prev_mtimes=nil, counter string) int {
-
+func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup bool, mydbapi DBAPI, prev_mtimes=nil, counter int) int {
 	destroot := d.settings.ValueDict["ROOT"]
 
 	showMessage := d._display_merge
@@ -4921,7 +4917,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 			dsvrv = append(dsvrv, cpvGetVersion(other.mycpv.string, ""))
 		}
 		d.settings.ValueDict["REPLACING_VERSIONS"] = strings.Join(dsvrv, " ")
-		prepare_build_dirs(settings = d.settings, cleanup = cleanup)
+		prepare_build_dirs(d.settings, cleanup)
 	}
 
 	blockers := []*dblink{}
@@ -5186,7 +5182,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 		d.copyfile(inforoot + "/" + x)
 	}
 
-	if counter == nil {
+	if counter == 0 {
 		counter = d.vartree.dbapi.counter_tick()
 	}
 	ioutil.WriteFile(filepath.Join(d.dbtmpdir, "COUNTER"), []byte(fmt.Sprintf("%s", counter)), 0644)
@@ -5341,9 +5337,9 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup int, mydba
 		}()
 		plib_registry.load()
 
-		if preserve_paths {
-			plib_registry.register(d.mycpv.string, slot, counter,
-				sorted(preserve_paths))
+		if len(preserve_paths) > 0 {
+			plib_registry.register(d.mycpv.string, slot, fmt.Sprint(counter),
+				sortedmsb(preserve_paths))
 		}
 
 		plib_dict := plib_registry.getPreservedLibs()
@@ -5452,24 +5448,22 @@ func (d *dblink) _new_backup_path(p string) string {
 func (d *dblink) _merge_contents(srcroot, destroot string, cfgfiledict  map[string][]string) int {
 
 	cfgfiledict_orig := CopyMapSSS(cfgfiledict)
-
 	outfile := NewAtomic_ofstream(filepath.Join(d.dbtmpdir, "CONTENTS"), os.O_CREATE|os.O_TRUNC|os.O_RDWR, true)
-
-	mymtime = nil
+	mymtime := int64(0)
 
 	prevmask := syscall.Umask(0)
-	secondhand := map[string][]string{}
+	secondhand := []string{}
 
-	if d.mergeme(srcroot, destroot, outfile, secondhand, cfgfiledict, mymtime) != 0 {
+	if d.mergeme(srcroot, destroot, outfile, secondhand, nil, strings.TrimLeft(d.settings.ValueDict["EPREFIX"], string(os.PathSeparator)),cfgfiledict, mymtime) != 0 {
 		return 1
 	}
 
 	lastlen := 0
 	for len(secondhand) > 0 && len(secondhand) != lastlen {
 
-		thirdhand = []
+		thirdhand := []string{}
 		if d.mergeme(srcroot, destroot, outfile, thirdhand,
-			secondhand, cfgfiledict, mymtime) != 0 {
+			secondhand, "", cfgfiledict, mymtime) != 0 {
 			return 1
 		}
 
@@ -5479,8 +5473,7 @@ func (d *dblink) _merge_contents(srcroot, destroot string, cfgfiledict  map[stri
 	}
 
 	if len(secondhand) > 0 {
-		if d.mergeme(srcroot, destroot, outfile, nil,
-			secondhand, cfgfiledict, mymtime) != 0 {
+		if d.mergeme(srcroot, destroot, outfile, nil, secondhand, "", cfgfiledict, mymtime) != 0 {
 			return 1
 		}
 	}
@@ -5502,7 +5495,7 @@ func (d *dblink) _merge_contents(srcroot, destroot string, cfgfiledict  map[stri
 	return 0
 }
 
-func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secondhand, stufftomerge, cfgfiledict map[string][]string, thismtime) int {
+func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secondhand, stufftomerge []string, stufftomerge2 string, cfgfiledict map[string][]string, thismtime int64) int {
 
 	showMessage := d._display_merge
 	WriteMsg := d._display_merge
@@ -5517,12 +5510,10 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 	protect_if_modified := d.settings.Features.Features["config-protect-if-modified"] && d._installed_instance != nil
 
 	mergelist := []string{}
-	if isinstance(stufftomerge, basestring) {
-		for child
-			in
-		os.listdir(join(srcroot, stufftomerge))
-		{
-			mergelist = append(mergelist, join(stufftomerge, child))
+	if stufftomerge2 != "" {
+		cs, _ := listDir(join(srcroot, stufftomerge2))
+		for _, child := range cs {
+			mergelist = append(mergelist, join(stufftomerge2, child))
 		}
 	} else {
 		mergelist = stufftomerge[:]
@@ -5539,7 +5530,7 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 		mymd5 := ""
 		myto := ""
 
-		mymtime := mystat.ModTime().Nanosecond()
+		mymtime := int64(mystat.ModTime().Nanosecond())
 
 		if mymode&syscall.S_IFREG != 0 {
 			mymd5 = string(performMd5(mysrc, calc_prelink))
@@ -5599,7 +5590,7 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 		}
 
 		if syscall.S_IFLNK&mymode != 0 {
-			myabsto := abssymlink(mysrc, target = myto)
+			myabsto := absSymlink(mysrc, myto)
 
 			if strings.HasPrefix(myabsto, srcroot) {
 				myabsto = myabsto[len(srcroot):]
@@ -5632,9 +5623,7 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 			}
 			if moveme {
 				zing = ">>>"
-				mymtime = movefile(mysrc, mydest, newmtime = thismtime,
-					sstat = mystat, mysettings=d.settings,
-					encoding = _encodings["merge"])
+				mymtime = _movefile(mysrc, mydest, thismtime, mystat, d.settings, nil)
 			}
 
 			st, err := os.Lstat(mydest)
@@ -5645,7 +5634,7 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 				d._merged_path(mydest, st, true)
 			}
 
-			if mymtime != nil {
+			if mymtime != 0 {
 				if not(os.path.lexists(myrealto) || os.path.lexists(join(srcroot, myabsto))) {
 					d._eqawarn("preinst", []string{fmt.Sprintf("QA Notice: Symbolic link /%s points to /%s which does not exist.", relative_path, myabsto)})
 				}
@@ -5776,11 +5765,8 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 					d._hardlink_merge_map[hardlink_key] = hardlink_candidates
 				}
 
-				mymtime = movefile(mysrc, mydest, newmtime = thismtime,
-					sstat = mystat, mysettings=d.settings,
-					hardlink_candidates = hardlink_candidates,
-					encoding=_encodings['merge'])
-				if mymtime == nil {
+				mymtime = _movefile(mysrc, mydest, thismtime, mystat, d.settings, hardlink_candidates, )
+				if mymtime == 0 {
 					return 1
 				}
 				hardlink_candidates = append(hardlink_candidates, mydest)
@@ -5802,16 +5788,15 @@ func (d *dblink) mergeme(srcroot, destroot string, outfile io.WriteCloser, secon
 		} else {
 			zing = "!!!"
 			if mydmode == 0 {
-				if movefile(mysrc, mydest, newmtime = thismtime,
-					sstat = mystat, mysettings = d.settings,
-					encoding=_encodings['merge']) != nil{
+				if _movefile(mysrc, mydest, thismtime, mystat, d.settings, nil) != nil {
 					zing = ">>>"
 
-					try:
-					d._merged_path(mydest, os.Lstat(mydest))
-					except
-					OSError:
-					pass
+					ls, err := os.Lstat(mydest)
+					if err != nil {
+						//except OSError:
+						//pass
+					}
+					d._merged_path(mydest, ls, true)
 				} else {
 					return 1
 				}
@@ -5924,8 +5909,8 @@ func (d *dblink) _post_merge_sync() {
 }
 
 // nil, nil, 0,nil, nil, nil
-func (d *dblink) merge(mergeroot, inforoot , myebuild string, cleanup int,
-	mydbapi *vardbapi, prev_mtimes *MergeProcess, counter string) int {
+func (d *dblink) merge(mergeroot, inforoot , myebuild string, cleanup bool,
+	mydbapi *vardbapi, prev_mtimes *MergeProcess, counter int) int {
 
 	retval := -1
 	parallel_install := d.settings.Features.Features["parallel-install"]
@@ -6757,40 +6742,38 @@ func (b *bindbapi) aux_get(mycpv *PkgStr, wants map[string]string) []string {
 	return ret
 }
 
-func (b *bindbapi) aux_update(cpv, values) {
+func (b *bindbapi) aux_update(cpv *PkgStr, values map[string]string) {
 
-	if ! b.bintree.populated {
+	if !b.bintree.populated {
 		b.bintree.Populate(false, true, []string{})
 	}
-	build_id = nil
-try:
-	build_id = cpv.build_id
-	except AttributeError:
-	if b.bintree._multi_instance {
-		//raise
-	}else {
-		cpv = b._instance_key(cpv, true)[0]
-		build_id = cpv.build_id
-	}
+	//build_id := cpv.buildId
+	//except AttributeError:
+	//if b.bintree._multi_instance {
+	//	//raise
+	//}else {
+	//	cpv = b._instance_key(cpv, true)[0]
+	//	build_id = cpv.build_id
+	//}
 
-	tbz2path := b.bintree.getname(cpv, false)
-	if ! pathExists(tbz2path) {
+	tbz2path := b.bintree.getname(cpv.string, false)
+	if !pathExists(tbz2path) {
 		//raise KeyError(cpv)
 	}
 	mytbz2 := NewTbz2(tbz2path)
 	mydata := mytbz2.get_data()
 
-	for k, v in values.items(){
+	for k, v := range values {
 		mydata[k] = v
 	}
 
-	for k, v := range mydata{
-		if  v== "" {
+	for k, v := range mydata {
+		if v == "" {
 			delete(mydata, k)
 		}
 	}
 	mytbz2.recompose_mem(string(xpak_mem(mydata)), true)
-	b.bintree.inject(cpv, filename=tbz2path)
+	b.bintree.inject(cpv, tbz2path)
 }
 
 func (b *bindbapi) unpack_metadata(pkg, dest_dir){
@@ -6880,35 +6863,32 @@ func (b *bindbapi) cpv_all() []string {
 }
 
 func (b *bindbapi) getfetchsizes(pkg) map[string]int {
-
-	if ! b.bintree.populated {
+	if !b.bintree.populated {
 		b.bintree.Populate(false, true, []string{})
 	}
 
 	pkg = getattr(pkg, "cpv", pkg)
 
 	filesdict := map[string]int{}
-	if ! b.bintree.isremote(pkg) {
+	if !b.bintree.isremote(pkg) {
 		//pass
-	}else {
-		metadata = b.bintree._remotepkgs[b._instance_key(pkg)]
+	} else {
+		metadata := b.bintree._remotepkgs[b._instance_key(pkg, false).string]
 		sizeS, ok := metadata["SIZE"]
 		if !ok {
 			//except KeyError:
 			//raise portage.exception.MissingSignature("SIZE")
 		}
-		size ,err := strconv.Atoi(sizeS)
+		size, err := strconv.Atoi(sizeS)
 		if err != nil {
 			//except ValueError:
 			//raise portage.exception.InvalidSignature(
 			//	"SIZE: %s" % metadata["SIZE"])
-		}else {
-			filesdict[filepath.Base(b.bintree.getname(pkg))] = size
+		} else {
+			filesdict[filepath.Base(b.bintree.getname(pkg, false))] = size
 		}
 	}
-
 	return filesdict
-
 }
 
 // nil, true, false
@@ -7446,14 +7426,14 @@ func (b *BinaryTree) _populate_remote(getbinpkg_refresh bool) {
 		url := strings.TrimRight(base_url, "/") + "/Packages"
 		f = nil
 
-		if !getbinpkg_refresh && local_timestamp {
+		if !getbinpkg_refresh && local_timestamp != "" {
 			//raise UseCachedCopyOfRemoteIndex()
 		}
 
 		ttl, err := strconv.ParseFloat(pkgindex.header["TTL"], 64)
 		if err == nil {
 			if download_timestamp != 0 && ttl != 0 &&
-				download_timestamp+ttl > time.Now().Nanosecond() {
+				download_timestamp+ttl > float64(time.Now().Nanosecond()) {
 				//raise UseCachedCopyOfRemoteIndex()
 			}
 		}
@@ -8176,40 +8156,48 @@ func (b *BinaryTree) _get_digests(pkg) {
 
 try:
 	cpv = pkg.cpv
-	except AttributeError:
+	except
+AttributeError:
 	cpv = pkg
 
 	_instance_key := b.dbapi._instance_key
 	instance_key := _instance_key(cpv, false)
-	digests := {}
-	metadata = (nil if b._remotepkgs == nil else
-	b._remotepkgs.get(instance_key))
-	if metadata == nil:
-	for d in b._load_pkgindex().packages:
-	if (d["CPV"] == cpv &&
-	instance_key == _instance_key(_pkg_str(d["CPV"],
-		metadata=d, settings=b.settings))):
-	metadata = d
-	break
+	digests :=
+	{
+	}
+	var metadata map[string]string = nil
+	if b._remotepkgs != nil {
+		metadata = b._remotepkgs[instance_key.string]
+	}
+	if metadata == nil {
+		for _, d := range b.LoadPkgIndex().packages {
+			if (d["CPV"] == cpv && instance_key == _instance_key(NewPkgStr(d["CPV"], d, b.settings, "", "", "", 0, 0, "", 0, nil), false)) {
+				metadata = d
+				break
+			}
+		}
+	}
 
-	if metadata == nil:
+	if metadata == nil {
+		return digests
+	}
+
+	for k := range getValidChecksumKeys() {
+		v := metadata[k]
+		if v == "" {
+			continue
+		}
+		digests[k] = v
+	}
+
+	if Inmss(metadata,"SIZE") {
+	try:
+		digests["size"] = int(metadata["SIZE"])
+		except
+	ValueError:
+		WriteMsg(fmt.Sprintf("!!! Malformed SIZE attribute in remote metadata for '%s'\n",cpv), -1, nil)
+	}
 	return digests
-
-	for k in get_valid_checksum_keys():
-	v = metadata.get(k)
-	if not v:
-	continue
-	digests[k] = v
-
-	if "SIZE" in metadata:
-try:
-	digests["size"] = int(metadata["SIZE"])
-	except ValueError:
-	WriteMsg(_("!!! Malformed SIZE attribute in remote " 
-"metadata for '%s'\n") % cpv)
-
-	return digests
-
 }
 
 func (b *BinaryTree) getslot(mycatpkg *PkgStr) string {
@@ -8608,8 +8596,7 @@ try:
 	ebuild_hash = eclass_cache.hashed_path(ebuild_path)
 	ebuild_hash.mtime
 	except FileNotFound:
-	WriteMsg(fmt.Sprintf("!!! aux_get(): ebuild for "
-"'%s' does not exist at:\n", cpv,),-1, nil)
+	WriteMsg(fmt.Sprintf("!!! aux_get(): ebuild for '%s' does not exist at:\n", cpv,),-1, nil)
 	WriteMsg(fmt.Sprintf("!!!            %s\n" , ebuild_path),-1, nil)
 	raise PortageKeyError(cpv)
 
@@ -8757,13 +8744,13 @@ func (p *portdbapi) _aux_get_cancel(proc, future) {
 }
 
 func (p *portdbapi) _aux_get_return(future Future, mycpv, mylist, myebuild, ebuild_hash string,
-	mydata map[string]string, mylocation string, cache_me, proc) {
+	mydata map[string]string, mylocation string, cache_me bool, proc) {
 	if future.cancelled() {
 		return
 	}
 	if proc != nil {
 		if proc.returncode != 0 {
-			p._broken_ebuilds.add(myebuild)
+			p._broken_ebuilds[myebuild] = true
 			future.set_exception(PortageKeyError(mycpv))
 			return
 		}
@@ -8778,22 +8765,22 @@ func (p *portdbapi) _aux_get_return(future Future, mycpv, mylist, myebuild, ebui
 	}
 	if eapiIsSupported(eapi) {
 		mydata["INHERITED"] = " ".join(mydata["_eclasses_"])
-}
+	}
 
-for _, x := range mylist {
-returnme = append(returnme, mydata.get(x, ""))
-}
+	returnme := []string{}
+	for _, x := range mylist {
+		returnme = append(returnme, mydata[x])
+	}
 
-if cache_me && p.frozen {
-aux_cache := map[string]string{}
-for x := range p._aux_cache_keys {
-aux_cache[x] = mydata[x]
-}
-p._aux_cache[mycpv] = aux_cache
-}
+	if cache_me && p.frozen {
+		aux_cache := map[string]string{}
+		for x := range p._aux_cache_keys {
+			aux_cache[x] = mydata[x]
+		}
+		p._aux_cache[mycpv] = aux_cache
+	}
 
 	future.set_result(returnme)
-
 }
 
 // nil, nil
@@ -8859,7 +8846,7 @@ func (p *portdbapi) async_fetch_map(mypkg, useflags []string, mytree string, loo
 }
 
 // nil, 0, ""
-func (p *portdbapi) getfetchsizes(mypkg string, useflags []string, debug int, myrepo string) {
+func (p *portdbapi) getfetchsizes(mypkg string, useflags []string, debug int, myrepo string)map[string]int64 {
 	myebuild, mytree := p.findname2(mypkg, "", myrepo)
 	if myebuild == "" {
 		//raise AssertionError(_("ebuild not found for '%s'") % mypkg)
@@ -8873,81 +8860,81 @@ func (p *portdbapi) getfetchsizes(mypkg string, useflags []string, debug int, my
 		if debug != 0 {
 			WriteMsg(fmt.Sprintf("[empty/missing/bad digest]: %s\n", mypkg, ), -1, nil)
 		}
-		return {}
+		return map[string]int64{}
 	}
-	filesdict :={}
+	filesdict :=map[string]int64{}
 	myfiles := p.getFetchMap(mypkg, useflags, mytree)
-	for _, myfile := range myfiles:
-	fetch_size, err := strconv.ParseInt(checksums[myfile]["size"], 10, 64)
-	if err != nil {
-		//except(KeyError, ValueError):
-		if debug {
-			WriteMsg(fmt.Sprintf("[bad digest]: missing %s for %s\n", myfile, mypkg), 0, nil)
+	for _, myfile := range myfiles {
+		fetch_size, err := strconv.ParseInt(checksums[myfile]["size"], 10, 64)
+		if err != nil {
+			//except(KeyError, ValueError):
+			if debug != 0 {
+				WriteMsg(fmt.Sprintf("[bad digest]: missing %s for %s\n", myfile, mypkg), 0, nil)
+			}
+			continue
 		}
-		continue
-	}
-	file_path := filepath.Join(p.settings.ValueDict["DISTDIR"], myfile)
-	mystat, err := os.Stat(file_path)
-	if err != nil {
-		//except OSError:
-		//pass
-	}else {
-		if mystat.Size() != fetch_size {
-			mystat = nil
-		}
-	}
-
-	if mystat == nil {
-		var err error
-		mystat, err = os.Stat(file_path + _download_suffix)
+		file_path := filepath.Join(p.settings.ValueDict["DISTDIR"], myfile)
+		mystat, err := os.Stat(file_path)
 		if err != nil {
 			//except OSError:
 			//pass
+		} else {
+			if mystat.Size() != fetch_size {
+				mystat = nil
+			}
 		}
-	}
 
-	if mystat == nil {
-		existing_size := 0
-		ro_distdirs := p.settings.ValueDict["PORTAGE_RO_DISTDIRS"]
-		ss, _ := shlex.Split(strings.NewReader(ro_distdirs),false, true)
-		if ro_distdirs != "" {
-			for _, x := range ss {
-				mystat, err := os.Stat(filepath.Join(x, myfile))
-				if err != nil {
-					//except OSError:
-					//pass
-				}else{
-					if mystat.Size() == fetch_size {
-						existing_size = fetch_size
-						break
+		if mystat == nil {
+			var err error
+			mystat, err = os.Stat(file_path + _download_suffix)
+			if err != nil {
+				//except OSError:
+				//pass
+			}
+		}
+
+		existing_size := int64(0)
+		if mystat == nil {
+			ro_distdirs := p.settings.ValueDict["PORTAGE_RO_DISTDIRS"]
+			ss, _ := shlex.Split(strings.NewReader(ro_distdirs), false, true)
+			if ro_distdirs != "" {
+				for _, x := range ss {
+					mystat, err := os.Stat(filepath.Join(x, myfile))
+					if err != nil {
+						//except OSError:
+						//pass
+					} else {
+						if mystat.Size() == fetch_size {
+							existing_size = fetch_size
+							break
+						}
 					}
 				}
 			}
+		} else {
+			existing_size = mystat.Size()
 		}
-	}else{
-		existing_size = mystat.Size()
-	}
-	remaining_size = fetch_size - existing_size
-	if remaining_size > 0 {
-		filesdict[myfile] = remaining_size
-	}else if remaining_size < 0 {
-		filesdict[myfile], _ = strconv.Atoi(checksums[myfile]["size"])
+		remaining_size := fetch_size - existing_size
+		if remaining_size > 0 {
+			filesdict[myfile] = remaining_size
+		} else if remaining_size < 0 {
+			filesdict[myfile], _ = strconv.ParseInt(checksums[myfile]["size"], 10, 64)
+		}
 	}
 	return filesdict
 
 }
 
 // nil, nil, false, ""
-func (p *portdbapi) fetch_check(mypkg string, useflags []string, mysettings *Config, all bool, myrepo string) {
-
+func (p *portdbapi) fetch_check(mypkg string, useflags []string, mysettings *Config, all bool, myrepo string) bool {
 	if all {
 		useflags = nil
-	}else if useflags == nil {
+	} else if useflags == nil {
 		if mysettings != nil {
 			useflags = strings.Fields(mysettings.ValueDict["USE"])
 		}
 	}
-	mytree :=""
+	mytree := ""
 	if myrepo != "" {
 		mytree := p.treemap[myrepo]
 		if mytree == "" {
@@ -8957,43 +8944,37 @@ func (p *portdbapi) fetch_check(mypkg string, useflags []string, mysettings *Con
 
 	myfiles := p.getFetchMap(mypkg, useflags, mytree)
 	myebuild := p.findname(mypkg, "", myrepo)
-	if myebuild is
-nil:
-	raise
-	AssertionError(_("ebuild not found for '%s'") % mypkg)
-	pkgdir = filepath.Dir(myebuild)
-	mf = p.repositories.get_repo_for_location(
-		filepath.Dir(filepath.Dir(pkgdir)))
-	mf = mf.load_manifest(pkgdir, p.settings.ValueDict["DISTDIR"])
-	mysums = mf.getDigests()
-
-	failures =
-	{
+	if myebuild == "" {
+		//raise AssertionError(_("ebuild not found for '%s'") % mypkg)
 	}
-	for x
-	in
-myfiles:
-	if not mysums
-||	x
-	not
-	in
-mysums:
-	ok = false
-	reason = _("digest missing")
-	else:
-try:
-	ok, reason = portage.checksum.verify_all(
-		filepath.Join(p.settings.ValueDict["DISTDIR"], x), mysums[x])
-	except
-	FileNotFound
-	as
-e:
-	ok = false
-	reason = _("File Not Found: '%s'") % (e,)
-	if not ok:
-	failures[x] = reason
-	if failures:
-	return false
+	pkgdir := filepath.Dir(myebuild)
+	mf1 := p.repositories.getRepoForLocation(filepath.Dir(filepath.Dir(pkgdir)))
+	mf := mf1.load_manifest(pkgdir, p.settings.ValueDict["DISTDIR"], nil, false)
+	mysums := mf.getDigests()
+
+	failures := map[string]string{}
+	for _, x := range myfiles {
+
+		ok := false
+		reason := ""
+		if len(mysums) == 0 || !Inmsmss(mysums, x) {
+			ok = false
+			reason = "digest missing"
+		} else {
+			//try:
+			ok, reason, _, _ = verifyAll(
+				filepath.Join(p.settings.ValueDict["DISTDIR"], x), mysums[x], false, 0)
+			//except FileNotFound as e:
+			//ok = false
+			//reason = fmt.Sprintf("File Not Found: '%s'", e, )
+		}
+		if !ok {
+			failures[x] = reason
+		}
+	}
+	if len(failures) > 0 {
+		return false
+	}
 	return true
 }
 
@@ -9549,13 +9530,14 @@ func NewFetchlistDict(pkgdir string, settings *Config, mydbapi *portdbapi) *Fetc
 }
 
 // nil, nil, nil, nil
-func _async_manifest_fetchlist(portdb, repo_config, cp, cpv_list=nil,
+func _async_manifest_fetchlist(portdb *portdbapi, repo_config *RepoConfig, cp string, cpv_list []*PkgStr,
 	max_jobs=nil, max_load=nil, loop=nil) {
 	loop = asyncio._wrap_loop(loop)
 	result = loop.create_future()
-	cpv_list = (portdb.cp_list(cp, mytree = repo_config.location)
-	if cpv_list is
-	nil else cpv_list)
+
+	if cpv_list == nil {
+		cpv_list = portdb.cp_list(cp, 1, repo_config.Location)
+	}
 
 	gather_done := func(gather_result) {
 		e = nil
@@ -9629,7 +9611,7 @@ func _parse_uri_map(cpv *PkgStr, metadata map[string]string, use map[string]bool
 			if distfile == "" {
 				//raise portage.exception.InvalidDependString(
 				//	("getFetchMap(): '%s' SRC_URI has no file " + 
-//"name: '%s'") % (cpv, uri))
+				//"name: '%s'") % (cpv, uri))
 			}
 		}
 

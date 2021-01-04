@@ -1531,8 +1531,8 @@ fd_pipes map[int]int, returnpid bool) int {
 			builddir_lock := NewEbuildBuildDir(asyncio._safe_loop(), mysettings)
 			builddir_lock.scheduler.run_until_complete(builddir_lock.async_lock())
 		}
-		mystatus := prepare_build_dirs(myroot, mysettings, cleanup)
-		if mystatus {
+		mystatus := prepare_build_dirs(mysettings, cleanup)
+		if mystatus != 0 {
 			return mystatus
 		}
 		have_build_dirs = true
