@@ -2823,7 +2823,7 @@ func (d *dblink) _prune_plib_registry(unmerge bool, needed string, preserve_path
 			//slot = NewPkgStr(d.mycpv, slot = d.Settings.ValueDict["SLOT"]).slot
 			plib_registry.unregister(d.mycpv.string, slot, counter)
 			if len(unmerge_preserve) > 0 {
-				for _, path := range sorted(unmerge_preserve) {
+				for _, path := range sortedmsb(unmerge_preserve) {
 					contents_key := d._match_contents(path)
 					if len(contents_key) > 0 {
 						continue
@@ -2831,7 +2831,7 @@ func (d *dblink) _prune_plib_registry(unmerge bool, needed string, preserve_path
 					obj_type := d.getcontents()[contents_key][0]
 					d._display_merge(fmt.Sprintf(">>> needed   %s %s\n", obj_type, contents_key), 0, -1)
 				}
-				plib_registry.register(d.mycpv.string, slot, counter, unmerge_preserve)
+				plib_registry.register(d.mycpv.string, slot, fmt.Sprint(counter), unmerge_preserve)
 				d.vartree.dbapi.removeFromContents(d, unmerge_preserve, true)
 			}
 		}
@@ -3914,7 +3914,7 @@ d.vartree.dbapi._plib_registry == nil ||
 }
 
 // false
-func (d *dblink) _find_libs_to_preserve(unmerge bool) {
+func (d *dblink) _find_libs_to_preserve(unmerge bool) map[string]bool{
 
 	if d._linkmap_broken || 
 d.vartree.dbapi._linkmap == nil || 
@@ -5238,7 +5238,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup bool, mydb
 		plib_registry.unlock()
 		d.vartree.dbapi._fs_unlock()
 
-		if preserve_paths {
+		if len(preserve_paths) != 0 {
 			d._add_preserve_libs_to_contents(preserve_paths)
 		}
 	}

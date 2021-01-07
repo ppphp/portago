@@ -1553,8 +1553,8 @@ func (b *Binpkg) _async_unlock_builddir(returncode *int) {
 	elog_process(b.pkg.cpv, b.settings, nil)
 	b._start_task(
 		NewAsyncTaskFuture(b._build_dir.async_unlock()),
-	func(unlock_task) { 
-		return b._unlock_builddir_exit(unlock_task, returncode) 
+	func(unlock_task) {
+		return b._unlock_builddir_exit(unlock_task, returncode)
 	})
 }
 
@@ -3707,7 +3707,7 @@ func NewEbuildFetcher(config_pool,ebuild_path,fetchall,fetchonly, background boo
 	e.pkg=pkg
 	e.scheduler=scheduler
 	e.prefetch=prefetch
-	
+
 	return e
 
 }
@@ -3779,7 +3779,7 @@ type _EbuildFetcherProcess struct {
 
 func(e*_EbuildFetcherProcess) async_already_fetched(settings *Config) {
 	result := e.scheduler.create_future()
-	
+
 	uri_map_done:= func(uri_map_future) {
 		if uri_map_future.cancelled() {
 			result.cancel()
@@ -3801,7 +3801,7 @@ func(e*_EbuildFetcherProcess) async_already_fetched(settings *Config) {
 			result.set_result(true)
 		}
 	}
-	
+
 	uri_map_future = e._async_uri_map()
 	result.add_done_callback(lambda
 result:
@@ -4222,7 +4222,7 @@ func NewEbuildIpcDaemon(commands map[string]*QueryCommand, input_fifo, output_fi
 
 type EbuildMerge struct {
 	*CompositeTask
-	
+
 	// slot
 	settings *Config
 	tree string
@@ -6342,17 +6342,18 @@ func NewIUse(pkg string, tokens []string, iuseImplicitMatch func(string) bool, a
 
 type Package struct {
 	*Task
-	metadataKeys, buildtimeKeys, runtimeKeys, useConditionalMiscKeys                                                                                                                                            map[string]bool
-	depKeys                                                                                                                                                                                                     []string
-	UnknownRepo                                                                                                                                                                                                 string
-	built, installed                                                                                                                                                                                            bool
-	cpv                                                                                                                                                                                                         *PkgStr
-	counter, mtime                                                                                                                                                                                              int
-	metadata                                                                                                                                                                                                    *packageMetadataWrapper
-	_raw_metadata                                                                                                                                                                                               map[string]string
-	inherited                                                                                                                                                                                                   map[string]bool
-	depth, onlydeps, operation, type_name, category, cp, cpv_split, iuse, pf, root, slot, sub_slot, slot_atom, version, _invalid, _masks, _provided_cps, _provides, _requires, _use, _validated_atoms, _visible string
-	root_config                                                                                                                                                                                                 *RootConfig
+	metadataKeys, buildtimeKeys, runtimeKeys, useConditionalMiscKeys                                                                                                                                 map[string]bool
+	depKeys                                                                                                                                                                                          []string
+	UnknownRepo                                                                                                                                                                                      string
+	built, installed                                                                                                                                                                                 bool
+	cpv                                                                                                                                                                                              *PkgStr
+	counter, mtime                                                                                                                                                                                   int
+	metadata                                                                                                                                                                                         *packageMetadataWrapper
+	_raw_metadata                                                                                                                                                                                    map[string]string
+	inherited                                                                                                                                                                                        map[string]bool
+	depth, onlydeps, operation, type_name, category, cp, cpv_split, iuse, pf, root, slot, sub_slot, slot_atom, version, _invalid, _masks, _provided_cps, _requires, _use, _validated_atoms, _visible string
+	_provides                                                                                                                                                                                        map[[2]string]*sonameAtom
+	root_config                                                                                                                                                                                      *RootConfig
 }
 
 func (p *Package) eapi() string {
@@ -6517,7 +6518,7 @@ func NewPackageArg(packagee=None, **kwargs)*PackageArg {
 
 type PackageMerge struct{
 	*CompositeTask
-	
+
 	// slot
 	merge, postinst_failure
 }
