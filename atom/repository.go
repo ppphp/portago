@@ -21,7 +21,7 @@ var repoNameSubRe = regexp.MustCompile(`[^\w-]`)
 func genValidRepo(name string) string {
 	name = repoNameSubRe.ReplaceAllString(strings.TrimSpace(name), " ")
 	name = strings.Join(strings.Fields(name), "-")
-	name = strings.TrimPrefix(name, "-")
+	name = strings.TrimLeft(name, "-")
 	return name
 }
 
@@ -78,18 +78,22 @@ func (r *RepoConfig) iterPregeneratedCaches(auxdbkeys []string, readonly, force 
 		}
 		formats = []string{"md5-dict"}
 	}
+	ret := []*database{}
 	for _, fmt := range formats {
 		name := ""
+		var database func(string, string, map[string]bool, bool) *database
 		if fmt == "pms" {
 			name = "metadata/cache"
-		}else if fmt == "md5-dict" {
+			database = NewDatabase
+		} else if fmt == "md5-dict" {
 			name = "metadata/md5-cache"
+			database = md5_database
 		}
 		if name != "" {
-			yield database(r.Location, name,
-				auxdbkeys, readonly=readonly)
+			ret = append(ret, database(r.Location, name, auxdbkeys, readonly = readonly))
 		}
 	}
+	return ret
 }
 
 // true, false
@@ -99,18 +103,18 @@ func (r *RepoConfig) get_pregenerated_cache(auxdbkeys []string, readonly, force 
 }
 
 // nil, false
-func (r *RepoConfig) load_manifest( pkgdir, distdir string, fetchlist_dict *FetchlistDict, from_scratch bool) *Manifest{
+func (r *RepoConfig) load_manifest(pkgdir, distdir string, fetchlist_dict *FetchlistDict, from_scratch bool) *Manifest {
 	if r.disableManifest {
 		from_scratch = true
 	}
 	return NewManifest(pkgdir, distdir, fetchlist_dict, from_scratch,
 		r.thinManifest, r.allowMissingManifest, r.createManifest,
-		r.manifestHashes,r.manifestRequiredHashes,
-		func(s string) int {return r.findInvalidPathChar(s, 0, 0)},
+		r.manifestHashes, r.manifestRequiredHashes,
+		func(s string) int { return r.findInvalidPathChar(s, 0, 0) },
 		r.strictMiscDigests)
 }
 
-func (r *RepoConfig) update( new_repo *RepoConfig) {
+func (r *RepoConfig) update(new_repo *RepoConfig) {
 
 	r.Aliases = new_repo.Aliases
 	r.allowMissingManifest = new_repo.allowMissingManifest
@@ -192,7 +196,9 @@ func (r *RepoConfig) readValidRepoName(repoPath string) (string, bool) {
 func (r *RepoConfig) readRepoName(repoPath string) (string, bool) {
 	repoNamePath := path.Join(repoPath, RepoNameLoc)
 	f, _ := os.Open(repoNamePath)
-	defer f.Close()
+	if f != nil {
+		defer f.Close()
+	}
 	b := bufio.NewReader(f)
 	line, _, _ := b.ReadLine()
 	return string(line), false
@@ -201,8 +207,8 @@ func (r *RepoConfig) readRepoName(repoPath string) (string, bool) {
 func (r *RepoConfig) info_string() string {
 	indent := "    "
 	repo_msg := []string{}
-	repo_msg=append(repo_msg,r.Name)
-	if len(r.format)!=0 {
+	repo_msg = append(repo_msg, r.Name)
+	if len(r.format) != 0 {
 		repo_msg = append(repo_msg, indent+"format: "+r.format)
 	}
 	if len(r.Location) != 0 {
@@ -248,12 +254,12 @@ func (r *RepoConfig) info_string() string {
 		repo_msg = append(repo_msg, indent+"eclass-overrides: "+
 			strings.Join(re, " "))
 	}
-	for o, v := range r.moduleSpecificOptions{
+	for o, v := range r.moduleSpecificOptions {
 		if v != "" {
 			repo_msg = append(repo_msg, indent+o+": "+v)
 		}
 	}
-	repo_msg=append(repo_msg,"")
+	repo_msg = append(repo_msg, "")
 	return strings.Join(repo_msg, "\n")
 }
 
@@ -444,13 +450,13 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *R
 			r.disableManifest = layoutData["disable-manifest"][0] == "true"
 		}
 		if len(layoutData["manifest-hashes"]) > 0 {
-			for _, k := range layoutData["manifest-hashes"]{
-				r.manifestHashes[k]=true
+			for _, k := range layoutData["manifest-hashes"] {
+				r.manifestHashes[k] = true
 			}
 		}
 		if len(layoutData["manifest-required-hashes"]) > 0 {
-			for _, k := range layoutData["manifest-required-hashes"]{
-				r.manifestRequiredHashes[k]=true
+			for _, k := range layoutData["manifest-required-hashes"] {
+				r.manifestRequiredHashes[k] = true
 			}
 		}
 		if len(layoutData["profile-formats"]) > 0 {
