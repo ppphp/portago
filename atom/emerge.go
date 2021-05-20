@@ -965,8 +965,8 @@ func NewLockProcess(path string, scheduler *SchedulerInterface) *_LockProcess{
 type AsynchronousTask struct {
 	background                                                bool
 	scheduler                                                 *SchedulerInterface
-	_exit_listener_handles []func(*AsynchronousTask)
-	_exit_listeners, _start_listeners string
+	_start_listeners,_exit_listener_handles []func(*AsynchronousTask)
+	_exit_listeners string
 	_cancelled_returncode                                     int
 	returncode                                                *int
 	cancelled                                                 bool
@@ -1051,9 +1051,9 @@ func (a *AsynchronousTask)  _was_cancelled()bool{
 	return false
 }
 
-func (a *AsynchronousTask)  addStartListener( f){
-	if a._start_listeners == nil{
-		a._start_listeners = []
+func (a *AsynchronousTask)  addStartListener( f func(*AsynchronousTask)) {
+	if a._start_listeners == nil {
+		a._start_listeners = []func(*AsynchronousTask){}
 	}
 	a._start_listeners = append(a._start_listeners, f)
 
@@ -1068,7 +1068,7 @@ func (a *AsynchronousTask)  removeStartListener( f func(*AsynchronousTask))  {
 	}
 	sls := a._start_listeners
 	a._exit_listener_handles = []func(*AsynchronousTask){}
-	for _, sl := range sla {
+	for _, sl := range sls {
 		if sl != f {
 			a._exit_listener_handles = append(a._exit_listener_handles, f)
 		}
@@ -1392,7 +1392,7 @@ func (b *Binpkg) _unpack_metadata() {
 		ensureDirs(mydir, uint32(*portage_uid), *portage_gid, dir_mode, -1, nil,true)
 	}
 
-	portage.prepare_build_dirs(b.settings.ValueDict["ROOT"], b.settings, 1)
+	prepare_build_dirs(b.settings, true)
 	b._writemsg_level(">>> Extracting info\n",0,0)
 
 	yield b._bintree.dbapi.unpack_metadata(b.settings, infloc)
@@ -1553,8 +1553,8 @@ func (b *Binpkg) _async_unlock_builddir(returncode *int) {
 	elog_process(b.pkg.cpv, b.settings, nil)
 	b._start_task(
 		NewAsyncTaskFuture(b._build_dir.async_unlock()),
-	func(unlock_task) { 
-		return b._unlock_builddir_exit(unlock_task, returncode) 
+	func(unlock_task) {
+		return b._unlock_builddir_exit(unlock_task, returncode)
 	})
 }
 
@@ -3707,7 +3707,7 @@ func NewEbuildFetcher(config_pool,ebuild_path,fetchall,fetchonly, background boo
 	e.pkg=pkg
 	e.scheduler=scheduler
 	e.prefetch=prefetch
-	
+
 	return e
 
 }
@@ -3779,19 +3779,14 @@ type _EbuildFetcherProcess struct {
 
 func(e*_EbuildFetcherProcess) async_already_fetched(settings *Config) {
 	result := e.scheduler.create_future()
-	
+
 	uri_map_done:= func(uri_map_future) {
 		if uri_map_future.cancelled() {
 			result.cancel()
 			return
 		}
 
-		if uri_map_future.exception() is
-		not
-		None
-		or
-		result.cancelled()
-		{
+		if uri_map_future.exception() != nil || result.cancelled() {
 			if not result.cancelled() {
 				result.set_exception(uri_map_future.exception())
 			}
@@ -3806,7 +3801,7 @@ func(e*_EbuildFetcherProcess) async_already_fetched(settings *Config) {
 			result.set_result(true)
 		}
 	}
-	
+
 	uri_map_future = e._async_uri_map()
 	result.add_done_callback(lambda
 result:
@@ -4227,7 +4222,7 @@ func NewEbuildIpcDaemon(commands map[string]*QueryCommand, input_fifo, output_fi
 
 type EbuildMerge struct {
 	*CompositeTask
-	
+
 	// slot
 	settings *Config
 	tree string
@@ -5156,6 +5151,8 @@ type FakeVartree struct {
 	_dynamic_deps, _ignore_built_slot_operator_deps bool
 	settings                                        *Config
 	_db_keys                                        []string
+	_global_updates map[string][][]string
+	_portdb *portdbapi
 }
 
 // nil, nil, false, false, false
@@ -5239,47 +5236,48 @@ try:
 func(f*FakeVartree) _apply_dynamic_deps(pkg, live_metadata) {
 
 try:
-	if live_metadata is
-None:
-	raise
-	_DynamicDepsNotApplicable()
-	if not(eapiIsSupported(live_metadata["EAPI"]) and \
-	eapiIsSupported(pkg.eapi)):
-	raise
-	_DynamicDepsNotApplicable()
+	if live_metadata  ==nil {
+		raise
+		_DynamicDepsNotApplicable()
+	}
+	if !(eapiIsSupported(live_metadata["EAPI"]) && eapiIsSupported(pkg.eapi)) {
+		raise
+		_DynamicDepsNotApplicable()
+	}
 
 	built_slot_operator_atoms = None
-	if not f._ignore_built_slot_operator_deps
-	and \
-	_get_eapi_attrs(pkg.eapi).slot_operator:
-try:
-	built_slot_operator_atoms = \
-	find_built_slot_operator_atoms(pkg)
-	except
-InvalidDependString:
-	pass
+	if ! f._ignore_built_slot_operator_deps && getEapiAttrs(pkg.eapi).slot_operator {
+	try:
+		built_slot_operator_atoms = \
+		find_built_slot_operator_atoms(pkg)
+		except
+	InvalidDependString:
+		pass
+	}
 
-	if built_slot_operator_atoms:
+	if built_slot_operator_atoms{
 	live_eapi_attrs = _get_eapi_attrs(live_metadata["EAPI"])
-	if not live_eapi_attrs.slot_operator:
-	raise
-	_DynamicDepsNotApplicable()
+	if ! live_eapi_attrs.slot_operator {
+		raise
+		_DynamicDepsNotApplicable()
+	}
 	for k, v
 	in
-	built_slot_operator_atoms.items():
+	built_slot_operator_atoms.items(){
 	live_metadata[k] += (" " +
 		" ".join(_unicode(atom)
-	for atom
-	in
-	v))
+		for atom
+			in
+		v))
+	}
+	}
 
 	f.dbapi.aux_update(pkg.cpv, live_metadata)
 	except
 _DynamicDepsNotApplicable:
-	if f._global_updates is
-None:
-	f._global_updates = \
-	grab_global_updates(f._portdb)
+	if f._global_updates == nil {
+		f._global_updates = grab_global_updates(f._portdb)
+	}
 
 	aux_keys = Package._dep_keys + f.dbapi._pkg_str_aux_keys
 	aux_dict = dict(zip(aux_keys, f._aux_get(pkg.cpv, aux_keys)))
@@ -5288,13 +5286,12 @@ None:
 }
 
 func(f*FakeVartree) dynamic_deps_preload(pkg, metadata) {
-	if metadata is
-	not
-None:
-	metadata = dict((k, metadata.get(k, ''))
-	for k
-	in
-	f._portdb_keys)
+	if metadata != nil {
+		metadata = dict((k, metadata.get(k, ''))
+		for k
+			in
+		f._portdb_keys)
+	}
 	f._apply_dynamic_deps(pkg, metadata)
 	f._aux_get_history.add(pkg.cpv)
 }
@@ -5381,7 +5378,7 @@ pkg_vardb.cpv_inject(pkg)
 real_vardb.flush_cache()
 }
 
-func(f*FakeVartree) _pkg(cpv) *Package {
+func(f*FakeVartree) _pkg(cpv *PkgStr) *Package {
 	pkg := NewPackage(true,  cpv, true,
 		zip(f._db_keys, f._real_vardb.aux_get(cpv, f._db_keys)),
 		f._pkg_root_config, "installed")
@@ -5620,7 +5617,7 @@ func(j*JobStatusDisplay) _write(s string) {
 	out.Sync()
 }
 
-func(j*JobStatusDisplay) _init_term() {
+func(j*JobStatusDisplay) _init_term() bool {
 
 	term_type := strings.TrimSpace(os.Getenv("TERM"))
 	if  term_type== "" {
@@ -5982,18 +5979,22 @@ func NewMergeListItem()*MergeListItem{
 
 type MetadataRegen struct{
 	*AsyncScheduler
+
+	_portdb *portdbapi
+	_global_cleanse,_write_auxdb bool
+	_cp_iter string
 }
 
-// nil, nil, true
-func NewMetadataRegen( portdb, cp_iter=None, consumer=None,
+// "", nil, true
+func NewMetadataRegen( portdb *portdbapi, cp_iter string, consumer=None,
 write_auxdb bool, **kwargs)*MetadataRegen {
 	m := &MetadataRegen{}
 	m.AsyncScheduler =NewAsyncScheduler(**kwargs)
 	m._portdb = portdb
 	m._write_auxdb = write_auxdb
 	m._global_cleanse = false
-	if cp_iter == nil {
-		cp_iter = m._iter_every_cp()
+	if cp_iter == "" {
+		cp_iter = m._iter_every_cp()[0]
 		m._global_cleanse = true
 	}
 	m._cp_iter = cp_iter
@@ -6010,16 +6011,15 @@ func(m*MetadataRegen) _next_task() {
 	return next(m._process_iter)
 }
 
-func(m*MetadataRegen) _iter_every_cp() {
+func(m*MetadataRegen) _iter_every_cp() []string {
 	cp_all := m._portdb.cp_all
-	for category
-	in
-	sorted(m._portdb.categories):
-	for cp
-	in
-	cp_all(categories = (category,)):
-	yield
-	cp
+	cps := []string{}
+	for _, category:= range sorted(m._portdb.categories()) {
+		for _, cp := range cp_all(map[string]bool{category:true}, nil, false, true) {
+			cps = append(cps, cp)
+		}
+	}
+	return cps
 }
 
 func(m*MetadataRegen) _iter_metadata_processes() {
@@ -6029,46 +6029,38 @@ func(m*MetadataRegen) _iter_metadata_processes() {
 	consumer := m._consumer
 
 	WriteMsgStdout("Regenerating cache entries...\n", 0)
-	for cp
-	in
-	m._cp_iter:
-	if m._terminated.is_set():
-	break
-	cp_set.add(cp)
-	portage.writemsg_stdout("Processing %s\n" % cp)
-	for mytree
-	in
-	portdb.porttrees:
-	repo = portdb.repositories.get_repo_for_location(mytree)
-	cpv_list = portdb.cp_list(cp, mytree = [repo.location])
-	for cpv
-	in
-cpv_list:
-	if m._terminated.is_set():
-	break
-	valid_pkgs.add(cpv)
-	ebuild_path, repo_path = portdb.findname2(cpv, myrepo = repo.name)
-	if ebuild_path is
-None:
-	raise
-	AssertionError("ebuild not found for '%s%s%s'"%(cpv, _repo_separator, repo.name))
-	metadata, ebuild_hash = portdb._pull_valid_cache(
-		cpv, ebuild_path, repo_path)
-	if metadata is
-	not
-None:
-	if consumer is
-	not
-None:
-	consumer(cpv, repo_path, metadata, ebuild_hash, true)
-	continue
+	for _, cp := range m._cp_iter {
+		if m._terminated.is_set() {
+			break
+		}
+		cp_set.add(cp)
+		WriteMsgStdout(fmt.Sprintf("Processing %s\n", cp), 0)
+		for _, mytree := range portdb.porttrees {
+			repo := portdb.repositories.getRepoForLocation(mytree)
+			cpv_list := portdb.cp_list(cp, 1, []string{repo.location})
+			for _, cpv := range cpv_list {
+				if m._terminated.is_set() {
+					break
+				}
+				valid_pkgs.add(cpv)
+				ebuild_path, repo_path := portdb.findname2(cpv, "", repo.Name)
+				if ebuild_path == "" {
+					//raise AssertionError("ebuild not found for '%s%s%s'"%(cpv, _repo_separator, repo.name))
+				}
+				metadata, ebuild_hash := portdb._pull_valid_cache(cpv, ebuild_path, repo_path)
+				if metadata != nil {
+					if consumer != nil {
+						consumer(cpv, repo_path, metadata, ebuild_hash, true)
+					}
+					continue
+				}
 
-	yield
-	EbuildMetadataPhase(cpv = cpv,
-		ebuild_hash = ebuild_hash,
-		portdb = portdb, repo_path=repo_path,
-		settings = portdb.doebuild_settings,
-		write_auxdb=m._write_auxdb)
+				yield
+				NewEbuildMetadataPhase(cpv, ebuild_hash, portdb, repo_path, nil, portdb.doebuild_settings,
+					write_auxdb = m._write_auxdb)
+			}
+		}
+	}
 }
 
 func(m*MetadataRegen) _cleanup() {
@@ -6350,17 +6342,18 @@ func NewIUse(pkg string, tokens []string, iuseImplicitMatch func(string) bool, a
 
 type Package struct {
 	*Task
-	metadataKeys, buildtimeKeys, runtimeKeys, useConditionalMiscKeys                                                                                                                                            map[string]bool
-	depKeys                                                                                                                                                                                                     []string
-	UnknownRepo                                                                                                                                                                                                 string
-	built, installed                                                                                                                                                                                            bool
-	cpv                                                                                                                                                                                                         *PkgStr
-	counter, mtime                                                                                                                                                                                              int
-	metadata                                                                                                                                                                                                    *packageMetadataWrapper
-	_raw_metadata                                                                                                                                                                                               map[string]string
-	inherited                                                                                                                                                                                                   map[string]bool
-	depth, onlydeps, operation, type_name, category, cp, cpv_split, iuse, pf, root, slot, sub_slot, slot_atom, version, _invalid, _masks, _provided_cps, _provides, _requires, _use, _validated_atoms, _visible string
-	root_config                                                                                                                                                                                                 *RootConfig
+	metadataKeys, buildtimeKeys, runtimeKeys, useConditionalMiscKeys                                                                                                                                 map[string]bool
+	depKeys                                                                                                                                                                                          []string
+	UnknownRepo                                                                                                                                                                                      string
+	built, installed                                                                                                                                                                                 bool
+	cpv                                                                                                                                                                                              *PkgStr
+	counter, mtime                                                                                                                                                                                   int
+	metadata                                                                                                                                                                                         *packageMetadataWrapper
+	_raw_metadata                                                                                                                                                                                    map[string]string
+	inherited                                                                                                                                                                                        map[string]bool
+	depth, onlydeps, operation, type_name, category, cp, cpv_split, iuse, pf, root, slot, sub_slot, slot_atom, version, _invalid, _masks, _provided_cps, _requires, _use, _validated_atoms, _visible string
+	_provides                                                                                                                                                                                        map[[2]string]*sonameAtom
+	root_config                                                                                                                                                                                      *RootConfig
 }
 
 func (p *Package) eapi() string {
@@ -6518,14 +6511,14 @@ func NewPackageArg(packagee=None, **kwargs)*PackageArg {
 	atom = "=" + packagee.cpv
 	if packagee.repo != Package.UNKNOWN_REPO:
 	atom += _repo_separator + packagee.repo
-	p.atom = portage.dep.Atom(atom, allow_repo = True)
+	p.atom = portage.dep.Atom(atom, allow_repo = true)
 	p.pset = NewInternalPackageSet([]*Atom{p.atom,}, true, true)
 	return p
 }
 
 type PackageMerge struct{
 	*CompositeTask
-	
+
 	// slot
 	merge, postinst_failure
 }
@@ -6749,7 +6742,7 @@ func(p*PackageUninstall) _start_unmerge( lock_task) {
 		cat, pf, p.settings, "vartree", p.pkg.root_config.trees["vartree"],
 		 p.scheduler, p.background, nil, "","","",
 		p.pkg.root_config.trees["vartree"].dbapi,
-		p.ldpath_mtimes, p.settings.get("PORTAGE_LOG_FILE"), nil, unmerge=True)
+		p.ldpath_mtimes, p.settings.get("PORTAGE_LOG_FILE"), nil, unmerge=true)
 
 	p._start_task(unmerge_task, p._unmerge_exit)
 }
@@ -6878,8 +6871,8 @@ func(p*PackageVirtualDbapi) __contains__( item) {
 	None
 	and \
 	existing == item:
-	return True
-	return False
+	return true
+	return false
 }
 
 func(p*PackageVirtualDbapi) get( item, default=None) {
@@ -6955,7 +6948,7 @@ p._match_cache[cache_key] = cpv_list
 return cpv_list[:]
 }
 
-func(p*PackageVirtualDbapi) cp_all( sort=False) {
+func(p*PackageVirtualDbapi) cp_all( sort=false) {
 	return sorted(p._cp_map)
 	if sort
 	else
@@ -7051,7 +7044,7 @@ AttributeError:
 	else:
 	p.scheduler.add_reader(fd, p._output_handler, fd)
 
-	p._registered = True
+	p._registered = true
 }
 
 func (p* PipeReader) _cancel() {
@@ -7073,7 +7066,7 @@ func (p* PipeReader) close() {
 func (p* PipeReader) _output_handler( fd) {
 
 	while
-True:
+true:
 	data = p._read_buf(fd)
 	if data is
 None:
@@ -7084,7 +7077,7 @@ None:
 	p._unregister()
 	p.returncode = p.returncode
 	or
-	os.EX_OK
+	0
 	p._async_wait()
 	break
 }
@@ -7092,7 +7085,7 @@ None:
 func (p* PipeReader) _array_output_handler( f) {
 
 	while
-True:
+true:
 	data = p._read_array(f)
 	if data is
 None:
@@ -7103,16 +7096,16 @@ None:
 	p._unregister()
 	p.returncode = p.returncode
 	or
-	os.EX_OK
+	0
 	p._async_wait()
 	break
 
-	return True
+	return true
 }
 
 func (p* PipeReader) _unregister() {
 
-	p._registered = False
+	p._registered = false
 
 	if p.input_files is
 	not
@@ -7782,22 +7775,27 @@ func (s *Scheduler) _prevent_builddir_collisions() {
 	}
 	for pkg
 		in
-	s._mergelist:
-	if not isinstance(pkg, Package):
-	continue
-	if pkg.installed:
-	continue
-	if pkg.cpv not
-	in
-cpv_map:
-	cpv_map[pkg.cpv] = [pkg]
-	continue
-	for earlier_pkg
+	s._mergelist {
+		if not isinstance(pkg, Package) {
+			continue
+		}
+		if pkg.installed {
+			continue
+		}
+		if pkg.cpv not
 		in
-	cpv_map[pkg.cpv]:
-	s._digraph.add(earlier_pkg, pkg,
-		priority = NewDepPriority(true))
-	cpv_map[pkg.cpv].append(pkg)
+		cpv_map{
+			cpv_map[pkg.cpv] = [pkg]
+			continue
+		}
+		for earlier_pkg
+			in
+		cpv_map[pkg.cpv] {
+			s._digraph.add(earlier_pkg, pkg,
+				priority = NewDepPriority(true))
+		}
+		cpv_map[pkg.cpv].append(pkg)
+	}
 }
 
 type  _pkg_failure struct {
@@ -8027,8 +8025,9 @@ func (s *Scheduler) _run_pkg_pretend()  int {
 	for x
 		in
 	s._mergelist {
-		if not isinstance(x, Package):
-		continue
+		if not isinstance(x, Package) {
+			continue
+		}
 
 		if x.operation == "uninstall" {
 			continue
@@ -8145,7 +8144,7 @@ func (s *Scheduler) _run_pkg_pretend()  int {
 			"pretend", nil, settings, false, nil,
 			s.trees[settings.ValueDict["EROOT"]][tree].dbapi)
 
-		prepare_build_dirs(root_config.root, settings, cleanup = 0)
+		prepare_build_dirs(settings, false)
 
 		vardb = root_config.trees['vartree'].dbapi
 		settings.ValueDict["REPLACING_VERSIONS"] = " ".join(
@@ -9403,7 +9402,7 @@ try:
 	s._task_queue
 	and(s.max_jobs
 	is
-	True
+	true
 	or
 	len(s.running_tasks) < s.max_jobs):
 	task = s._task_queue.popleft()
@@ -9880,7 +9879,7 @@ try:
 	except
 IndexError:
 	t._current_task = None
-	t.returncode = os.EX_OK
+	t.returncode = 0
 	t.wait()
 	return
 
@@ -9888,7 +9887,7 @@ IndexError:
 }
 
 func (t *TaskSequence) _task_exit_handler( task) {
-	if t._default_exit(task) != os.EX_OK:
+	if t._default_exit(task) != 0:
 	t.wait()
 	elif
 	t._task_queue:
@@ -9969,20 +9968,22 @@ func(u*UnmergeDepPriority) __str__() {
 
 type UseFlagDisplay struct {
 	// slots
-	name', 'enabled', 'forced
+	name,forced string
+	enabled bool
 }
 
-func NewUseFlagDisplay( name, enabled, forced)*UseFlagDisplay {
+func NewUseFlagDisplay( name string, enabled bool, forced string)*UseFlagDisplay {
 	u := &UseFlagDisplay{}
 
-	u.sort_combined := func (a, b){
+	u.sort_combined = func (a, b){
 		return (a.name > b.name) - (a.name < b.name)
 	}
 
-	u.sort_separated := func (a, b){
+	u.sort_separated = func (a, b) {
 		enabled_diff = b.enabled - a.enabled
-		if enabled_diff:
-		return enabled_diff
+		if enabled_diff {
+			return enabled_diff
+		}
 		return (a.name > b.name) - (a.name < b.name)
 	}
 
@@ -9992,19 +9993,21 @@ func NewUseFlagDisplay( name, enabled, forced)*UseFlagDisplay {
 	return u
 }
 
-func(u*UseFlagDisplay) __str__() {
-	s = u.name
-	if u.enabled:
-	s = red(s)
-	else:
-	s = '-' + s
-	s = blue(s)
-	if u.forced:
-	s = '(%s)' % s
+func(u*UseFlagDisplay) __str__() string {
+	s := u.name
+	if u.enabled {
+		s = Red(s)
+	} else {
+		s = "-" + s
+		s = Blue(s)
+	}
+	if u.forced != "" {
+		s = fmt.Sprintf("(%s)", s)
+	}
 	return s
 }
 
-type _flag_info struct{flag, display}
+type _flag_info struct{flag, display string}
 
 func pkg_use_display(pkg, opts, modified_use=None) {
 	settings = pkg.root_config.settings
@@ -10039,7 +10042,7 @@ use:
 	use_expand_flags.add(f)
 	use_enabled.setdefault(
 		varname.upper(), []).append(
-		_flag_info(f, f[len(flag_prefix):]))
+		&_flag_info{f, f[len(flag_prefix):]})
 
 	for f
 	in
@@ -10051,14 +10054,14 @@ use:
 use:
 	use_disabled.setdefault(
 		varname.upper(), []).append(
-		_flag_info(f, f[len(flag_prefix):]))
+		&_flag_info{f, f[len(flag_prefix):]})
 
 	var_order = set(use_enabled)
 	var_order.update(use_disabled)
 	var_order = sorted(var_order)
 	var_order.insert(0, 'USE')
 	use.difference_update(use_expand_flags)
-	use_enabled['USE'] = list(_flag_info(f, f)
+	use_enabled['USE'] = list(&_flag_info{f, f}
 	for f
 	in
 	use)
@@ -10075,7 +10078,7 @@ use:
 	not
 	in
 use_expand_flags:
-	use_disabled['USE'].append(_flag_info(f, f))
+	use_disabled['USE'].append(&_flag_info{f, f})
 
 	flag_displays = []
 	for varname
@@ -10088,13 +10091,13 @@ use_expand_hidden:
 	for f
 	in
 	use_enabled.get(varname, []):
-	flags.append(UseFlagDisplay(f.display, True, f.flag
+	flags.append(NewUseFlagDisplay(f.display, true, f.flag
 	in
 	forced_flags))
 	for f
 	in
 	use_disabled.get(varname, []):
-	flags.append(UseFlagDisplay(f.display, False, f.flag
+	flags.append(UseFlagDisplay(f.display, false, f.flag
 	in
 	forced_flags))
 	if alphabetical_use:
@@ -10358,7 +10361,7 @@ try:
 		}
 	} else {
 		rval = mylink.merge(m.pkgloc, m.infloc,
-			m.myebuild, 0, m.mydbapi,
+			m.myebuild, false, m.mydbapi,
 			m.prev_mtimes, counter)
 	}
 	except
@@ -10769,7 +10772,7 @@ func NewAsyncTaskFuture(future Future)*AsyncTaskFuture{
 	return a
 }
 
-func getloadavg() (float64,float64,float646,error) {
+func getloadavg() (float64,float64,float64,error) {
 	f, err := ioutil.ReadFile("/proc/loadavg")
 	if err != nil {
 		return 0, 0, 0, err

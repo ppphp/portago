@@ -5,7 +5,8 @@ import "os"
 var disable = true
 var _emerge_log_dir = "/var/log"
 
-func emergelog(xterm_titles bool, mystr string, short_msg string) { // ""
+// ""
+func emergelog(xterm_titles bool, mystr string, short_msg string) {
 	if disable {
 		return
 	}

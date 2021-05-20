@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"strings"
 )
 
 const (
@@ -49,6 +50,13 @@ const (
 	E_MIPS_ABI_O64    = 0x00002000
 	E_MIPS_ABI_EABI32 = 0x00003000
 	E_MIPS_ABI_EABI64 = 0x00004000
+
+	EF_RISCV_RVC              = 0x0001
+	EF_RISCV_FLOAT_ABI        = 0x0006
+	EF_RISCV_FLOAT_ABI_SOFT   = 0x0000
+	EF_RISCV_FLOAT_ABI_SINGLE = 0x0002
+	EF_RISCV_FLOAT_ABI_DOUBLE = 0x0004
+	EF_RISCV_FLOAT_ABI_QUAD   = 0x0006
 )
 
 var (
@@ -80,6 +88,103 @@ var (
 	}
 )
 
+func _compute_suffix_mips(elf_header ELFHeader) string {
+	mipsAbi := elf_header.EFlags & EF_MIPS_ABI
+	name := ""
+	if mipsAbi != 0 {
+		name = _mips_abi_map[mipsAbi]
+	} else if elf_header.EFlags&EF_MIPS_ABI2 != 0 {
+		name = "n32"
+	} else if elf_header.EiClass == ELFCLASS64 {
+		name = "n64"
+	}
+	return name
+}
+
+func _compute_suffix_riscv(elf_header ELFHeader) string {
+	name := ""
+	if elf_header.EiClass == ELFCLASS64 {
+		if elf_header.EFlags == EF_RISCV_RVC {
+			name = "lp64"
+		}else if elf_header.EFlags == EF_RISCV_RVC|EF_RISCV_FLOAT_ABI_DOUBLE {
+			name = "lp64d"
+		}
+	}else if elf_header.EiClass == ELFCLASS32 {
+		if elf_header.EFlags == EF_RISCV_RVC {
+			name = "ilp32"
+		}else if elf_header.EFlags == EF_RISCV_RVC|EF_RISCV_FLOAT_ABI_DOUBLE {
+			name = "ilp32d"
+		}
+	}
+
+	return name
+}
+
+var _specialized_funcs = map[string]func(header ELFHeader)string{
+	"mips":  _compute_suffix_mips,
+	"riscv": _compute_suffix_riscv,
+}
+
+func compute_multilib_category(elf_header ELFHeader) string {
+	category := ""
+	if elf_header.EMachine != 0 {
+		prefix := _machine_prefix_map[elf_header.EMachine]
+		specialized_func := _specialized_funcs[prefix]
+		suffix := ""
+
+		if specialized_func != nil {
+			suffix = specialized_func(elf_header)
+		} else if elf_header.EiClass == ELFCLASS64 {
+			suffix = "64"
+		} else if elf_header.EiClass == ELFCLASS32 {
+			if elf_header.EMachine == EM_X86_64 {
+				suffix = "x32"
+			} else {
+				suffix = "32"
+			}
+		}
+
+		if prefix == "" || suffix == "" {
+			category = ""
+		} else {
+			category = fmt.Sprintf("%s_%s", prefix, suffix)
+		}
+	}
+
+	return category
+}
+
+func parse_soname_deps(s string) []*sonameAtom {
+	ret := []*sonameAtom{}
+	categories := map[string]bool{}
+	category := ""
+	previous_soname := ""
+	for _, soname := range strings.Fields(s) {
+		if strings.HasSuffix(soname, ":") {
+			if category != "" && previous_soname == "" {
+				//raise InvalidData(_error_empty_category % category)
+			}
+
+			category = soname[:len(soname)-1]
+			previous_soname = ""
+			if categories[category] {
+				//raise InvalidData(_error_duplicate_category % category)
+			}
+			categories[category] = true
+		} else if category == "" {
+			//raise InvalidData(_error_missing_category % soname)
+		} else {
+			previous_soname = soname
+			ret = append(ret, NewSonameAtom(category, soname)) // yield
+		}
+	}
+
+	if category != "" && previous_soname == "" {
+		//raise InvalidData(_error_empty_category % category)
+	}
+	return ret
+}
+
 type ELFHeader struct {
 	EiClass int
 	EiData  int
@@ -106,7 +211,17 @@ func ReadELFHeader(f *os.File) ELFHeader {
 		width = 64
 	}
 
-	if width == 0 || (eiData != ELFDATA2LSB && eiData != ELFDATA2MSB) {
+	var uint16 func([]byte) uint16
+	var uint32 func([]byte) uint32
+	if eiData == ELFDATA2LSB {
+		uint16 = binary.LittleEndian.Uint16
+		uint32 = binary.LittleEndian.Uint32
+	} else if eiData == ELFDATA2MSB {
+		uint16 = binary.BigEndian.Uint16
+		uint32 = binary.BigEndian.Uint32
+	}
+
+	if width == 0 || uint16 == nil {
 		return elfHeader
 	}
 	twoByte1 := make([]byte, 2)
@@ -120,71 +235,24 @@ func ReadELFHeader(f *os.File) ELFHeader {
 	f.Seek(int64(e_flags_offset), 0)
 	f.Read(fourByte)
 
-	if eiData == ELFDATA2LSB {
-		elfHeader.EType = binary.LittleEndian.Uint16(twoByte1)
-		elfHeader.EMachine = binary.LittleEndian.Uint16(twoByte2)
-		elfHeader.EFlags = binary.LittleEndian.Uint32(fourByte)
-	} else if eiData == ELFDATA2MSB {
-		elfHeader.EType = binary.BigEndian.Uint16(twoByte1)
-		elfHeader.EMachine = binary.BigEndian.Uint16(twoByte2)
-		elfHeader.EFlags = binary.BigEndian.Uint32(fourByte)
-	}
+	elfHeader.EType = uint16(twoByte1)
+	elfHeader.EMachine = uint16(twoByte2)
+	elfHeader.EFlags = uint32(fourByte)
 	return elfHeader
 }
 
-func _compute_suffix_mips(elf_header ELFHeader) string {
-	mipsAbi := elf_header.EFlags & EF_MIPS_ABI
-	name := ""
-	if mipsAbi != 0 {
-		name = _mips_abi_map[mipsAbi]
-	} else if elf_header.EFlags&EF_MIPS_ABI2 != 0 {
-		name = "n32"
-	} else if elf_header.EiClass == ELFCLASS64 {
-		name = "n64"
-	}
-	return name
-}
-func compute_multilib_category(elf_header ELFHeader) string {
-
-	category := ""
-	if elf_header.EMachine != 0 {
-
-		prefix := _machine_prefix_map[elf_header.EMachine]
-		suffix := ""
-
-		if prefix == "mips" {
-			suffix = _compute_suffix_mips(elf_header)
-		} else if elf_header.EiClass == ELFCLASS64 {
-
-			suffix = "64"
-		} else if elf_header.EiClass == ELFCLASS32 {
-
-			if elf_header.EMachine == EM_X86_64 {
-
-				suffix = "x32"
-			} else {
-
-				suffix = "32"
-			}
-		}
-
-		if prefix == "" || suffix == "" {
-
-		} else {
-			category = fmt.Sprintf("%s_%s", prefix, suffix)
-		}
-	}
-
-	return category
-}
-
 type sonameAtom struct {
-	multilib_category, soname string
 	packagee                  bool
+
+	multilib_category, soname string
+}
+
+func (s *sonameAtom) eq(sa *sonameAtom) bool {
+	return s.multilib_category == sa.multilib_category && s.soname == sa.soname
 }
 
 func (s *sonameAtom) match(pkg *Package) bool {
-	return pkg._provides != ""
+	return pkg._provides != nil && pkg._provides[[2]string{s.multilib_category, s.soname}] == s
 }
 
 func NewSonameAtom(multilibCategory, soname string) *sonameAtom {

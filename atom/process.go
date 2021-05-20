@@ -14,24 +14,16 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func FindBinary(binary string) string {
-	paths := strings.Split(os.Getenv("PATH"), ":")
-	for _, p := range paths {
-		fname := path.Join(p, binary)
-		s, _ := os.Stat(fname)
-		if (s.Mode()&unix.X_OK != 0) && (!s.IsDir()) {
-			return fname
-		}
-	}
-	return ""
-}
-
 var max_fd_limit uint64
 
 func init() {
 	var rLimit syscall.Rlimit
-	syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
-	max_fd_limit = rLimit.Max
+	err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit)
+	if err == nil {
+		max_fd_limit = rLimit.Max
+	} else {
+		max_fd_limit = 256
+	}
 }
 
 var _fd_dir string
@@ -63,7 +55,7 @@ func init() {
 			}
 			return r
 		}
-	} else if st, _ := os.Stat(fmt.Sprintf("/proc/%v/fd", os.Getpid())); st.IsDir() {
+	} else if pathIsDir(fmt.Sprintf("/proc/%v/fd", os.Getpid())) {
 		get_open_fds = func() []int {
 			m, _ := filepath.Glob(fmt.Sprintf("/proc/%v/fd/*", os.Getpid()))
 			r := []int{}
@@ -99,6 +91,57 @@ func SanitizeFds() { // all file descriptors in golang are not inheritable witho
 	return
 }
 
+// false, "", nil
+func spawn_bash(mycommand string, debug bool, opt_name string, fd_pipes map[int]int, **keywords) ([]int,error){
+
+	args := []string{BashBinary}
+	if opt_name == "" {
+		opt_name = filepath.Base(strings.Fields(mycommand)[0])
+	}
+	if debug {
+		args=append(args,"-x")
+	}
+	args=append(args, "-c")
+	args=append(args, mycommand)
+	return spawn(args,nil, opt_name, fd_pipes, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "" , **keywords)
+}
+
+// ""
+func spawn_sandbox(mycommand, opt_name string, **keywords) ([]int,error){
+	if !sandbox_capable {
+		return spawn_bash(mycommand, false, opt_name, **keywords)
+	}
+	args := []string{SandboxBinary}
+	if opt_name == "" {
+		opt_name = filepath.Base(strings.Fields(mycommand)[0])
+	}
+	args = append(args, mycommand)
+	return spawn(args, nil, opt_name, nil,  false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "" ,**keywords)
+}
+
+// "", ""
+func spawn_fakeroot(mycommand, fakeroot_state , opt_name string, **keywords)([]int,error) {
+	args := []string{FakerootBinary}
+	if opt_name == "" {
+		opt_name = filepath.Base(strings.Fields(mycommand)[0])
+	}
+	if fakeroot_state != "" {
+		f, err := os.OpenFile(fakeroot_state, os.O_APPEND, 0644)
+		if err == nil {
+			f.Close()
+		}
+		args=append(args,"-s")
+		args=append(args,fakeroot_state)
+		args=append(args,"-i")
+		args=append(args,fakeroot_state)
+	}
+	args=append(args,"--")
+	args=append(args, BashBinary)
+	args=append(args,"-c")
+	args=append(args,mycommand)
+	return spawn(args, nil, opt_name,nil,false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "" , **keywords)
+}
+
 var _exithandlers []func()
 
 func atexit_register(f func()) {
@@ -119,7 +162,7 @@ func run_exitfuncs() {
 }
 
 func init() {
-	//atexit_register(run_exitfuncs)
+	atexit_register(run_exitfuncs)
 }
 
 // nil, "", nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, ""
@@ -337,4 +380,16 @@ func _setup_pipes(fd_pipes map[uintptr]uintptr, close_fds bool) {
 			}
 		}
 	}
+}
+
+func FindBinary(binary string) string {
+	paths := strings.Split(os.Getenv("PATH"), ":")
+	for _, p := range paths {
+		fname := path.Join(p, binary)
+		s, _ := os.Stat(fname)
+		if (s.Mode()&unix.X_OK != 0) && (!s.IsDir()) {
+			return fname
+		}
+	}
+	return ""
 }

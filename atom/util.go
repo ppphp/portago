@@ -1773,8 +1773,7 @@ func New_LibGraphNode( key *_ObjectKey) *_LibGraphNode{
 }
 
 // nil, "", nil
-func (o*linkageMapELF) rebuild(exclude_pkgs []*PkgStr, include_file string,
-preserve_paths=None) {
+func (o*linkageMapELF) rebuild(exclude_pkgs []*PkgStr, include_file string, preserve_paths map[string]bool) {
 
 	root := o._root
 	root_len := len(root) - 1
@@ -1832,9 +1831,7 @@ preserve_paths=None) {
 
 	plibs := map[string]*PkgStr{}
 	if preserve_paths != nil{
-		for x
-			in
-		preserve_paths {
+		for x := range preserve_paths {
 			plibs[x] = nil
 		}
 	}

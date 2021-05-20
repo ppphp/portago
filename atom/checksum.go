@@ -121,7 +121,7 @@ func init() {
 	}
 }
 
-func isPrelinkElf(fname string) bool {
+func isPrelinkableElf(fname string) bool {
 	f := openFile(fname)
 	defer f.Close()
 	magic := make([]byte, 17)
@@ -293,21 +293,33 @@ func verifyAll(fname string, mydict map[string]string, calcPrelink bool, strict 
 	return fileIsOk, "", "", ""
 }
 
+// "MD5", 0
 func performChecksum(fname, hashname string, calcPrelink bool) ([]byte, int) {
 	prelinkTmpFile := ""
 	myFileName := fname
-	if calcPrelink && prelinkCapable && isPrelinkElf(fname) {
-		tmpFileFd, err := ioutil.TempFile("", "*")
+	var err error
+	if calcPrelink && prelinkCapable && isPrelinkableElf(fname) {
+		var tmpFileFd *os.File
+		tmpFileFd, err = ioutil.TempFile("", "*")
+		var retval []int
+		if err == nil {
+			prelinkTmpFile = tmpFileFd.Name()
+			retval, err = spawn([]string{PrelinkBinary, "--verify", fname}, nil, "", map[int]uintptr{1: tmpFileFd.Fd()}, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
+		}
+		if err == nil {
+			tmpFileFd.Close()
+			if retval[0] == 0 {
+				myFileName = prelinkTmpFile
+			}
+		}
 		if err != nil {
-			defer tmpFileFd.Close()
+			//except portage.exception.CommandNotFound:
+			prelinkCapable = false
 		}
-		prelinkTmpFile = tmpFileFd.Name()
-		cmd := exec.Command(PrelinkBinary, "--verify", fname)
-		cmd.Stdout = tmpFileFd
-		if err := cmd.Run(); err != nil {
-			myFileName = prelinkTmpFile
-		}
-		tmpFileFd.Close()
+	}
+	if !hashFuncKeys[hashname] {
+	//	raise portage.exception.DigestException(hashname + \
+	//	" hash function not available (needs dev-python/pycrypto)")
 	}
 	return hashFuncMap[hashname].checksumFile(myFileName)
 }
@@ -318,6 +330,7 @@ func performMultipleChecksums(fname string, hashes []string, calcPrelink bool) m
 
 	for _, x := range hashes {
 		if !hashFuncKeys[x] {
+			//raise portage.exception.DigestException(x+" hash function not available (needs dev-python/pycrypto or >=dev-lang/python-2.5)")
 			return rVal
 		}
 		y, _ := performChecksum(fname, x, false)
@@ -329,6 +342,8 @@ func performMultipleChecksums(fname string, hashes []string, calcPrelink bool) m
 
 func checksumStr(data, hashname string) []byte {
 	if !hashFuncKeys[hashname] {
+		//raise portage.exception.DigestException(hashname + \
+		//" hash function not available (needs dev-python/pycrypto)")
 		return []byte{}
 	}
 	return hashFuncMap[hashname].checksumStr(data)
