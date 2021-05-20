@@ -294,8 +294,8 @@ var compat_functions_colors = []string{
 	"brown", "darkyellow", "red", "darkred",
 }
 
-func NewCreateColorFunc(colorKey string) func(text string)string {
-	return func(text string)string{ return colorize(colorKey, text)}
+func NewCreateColorFunc(colorKey string) func(text string) string {
+	return func(text string) string { return colorize(colorKey, text) }
 }
 
 var Bold = func(text string) string { return colorize("bold", text) }
@@ -683,7 +683,7 @@ func (a *AbstractFormatter) PopStyle(s string) {
 type StyleWriter struct {
 	File          *os.File
 	StyleListener []string
-	maxcol int
+	maxcol        int
 }
 
 func (d *StyleWriter) Flush() {

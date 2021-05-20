@@ -11,7 +11,7 @@ import (
 func init() {
 	signalHandler := func() {
 		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		signal.Notify(sigChan, unix. syscall.SIGINT, syscall.SIGTERM)
 		for {
 			select {
 			case sig := <-sigChan:
