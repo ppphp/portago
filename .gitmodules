@@ -1,0 +1,6 @@
+[submodule "portage"]
+	path = portage
+	url = https://github.com/gentoo/portage
+[submodule "gentoolkit"]
+	path = gentoolkit
+	url = https://github.com/gentoo/gentoolkit
