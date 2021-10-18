@@ -15,6 +15,10 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
+const (
+	escSeq = "\x1b["
+)
+
 var (
 	HaveColor = 1
 	doTitles  = 1
@@ -44,8 +48,7 @@ var (
 		"PROMPT_CHOICE_DEFAULT":   {"green"},
 		"PROMPT_CHOICE_OTHER":     {"red"},
 	}
-	escSeq = "\x1b["
-	codes  = map[string]string{
+	codes = map[string]string{
 		"normal": escSeq + "0m", "reset": escSeq + "39;49;00m",
 		"bold": escSeq + "01m", "faint": escSeq + "02m",
 		"standout": escSeq + "03m", "underline": escSeq + "04m",
@@ -60,13 +63,16 @@ var (
 		"bg_teal": escSeq + "46m", "bg_lightgray": escSeq + "47m",
 		"bg_default": escSeq + "49m", "bg_darkyellow": escSeq + "43m",
 	}
-	ansiCodes = []string{}
+	ansiCodes = []string{"30m", "30;01m", "31m", "31;01m",
+		"32m", "32;01m", "33m", "33;01m", "34m", "34;01m",
+		"35m", "35;01m", "36m", "36;01m", "37m", "37;01m"}
 
 	rgb_ansi_colors = []string{"0x000000", "0x555555", "0xAA0000", "0xFF5555", "0x00AA00",
 		"0x55FF55", "0xAA5500", "0xFFFF55", "0x0000AA", "0x5555FF", "0xAA00AA",
 		"0xFF55FF", "0x00AAAA", "0x55FFFF", "0xAAAAAA", "0xFFFFFF"}
 )
 
+// "default", []string{"normal"}
 func color(fg, bg string, attr []string) string {
 	myStr := codes[fg]
 	for _, x := range append([]string{bg}, attr...) {
@@ -75,7 +81,43 @@ func color(fg, bg string, attr []string) string {
 	return myStr
 }
 
-func parseColorMap(configRoot string, onerror func(error) error) error { // /n
+func init() {
+
+	for x := range rgb_ansi_colors {
+		codes[rgb_ansi_colors[x]] = escSeq + ansiCodes[x]
+	}
+
+	codes["black"] = codes["0x000000"]
+	codes["darkgray"] = codes["0x555555"]
+
+	codes["red"] = codes["0xFF5555"]
+	codes["darkred"] = codes["0xAA0000"]
+
+	codes["green"] = codes["0x55FF55"]
+	codes["darkgreen"] = codes["0x00AA00"]
+
+	codes["yellow"] = codes["0xFFFF55"]
+	codes["brown"] = codes["0xAA5500"]
+
+	codes["blue"] = codes["0x5555FF"]
+	codes["darkblue"] = codes["0x0000AA"]
+
+	codes["fuchsia"] = codes["0xFF55FF"]
+	codes["purple"] = codes["0xAA00AA"]
+
+	codes["turquoise"] = codes["0x55FFFF"]
+	codes["teal"] = codes["0x00AAAA"]
+
+	codes["white"] = codes["0xFFFFFF"]
+	codes["lightgray"] = codes["0xAAAAAA"]
+
+	codes["darkteal"] = codes["turquoise"]
+	codes["0xAAAA00"] = codes["brown"]
+	codes["darkyellow"] = codes["0xAAAA00"]
+}
+
+// "/", nil
+func parseColorMap(configRoot string, onerror func(error) error) error {
 	myfile := path.Join(configRoot, ColorMapFile)
 	ansiCodePattern := regexp.MustCompile("^[0-9;]*m$")
 	quotes := "'\""
@@ -87,11 +129,7 @@ func parseColorMap(configRoot string, onerror func(error) error) error { // /n
 		return token
 	}
 
-	f, err := os.Open(myfile)
-	if err != nil {
-		return err
-	}
-	fl, err := ioutil.ReadAll(f)
+	fl, err := ioutil.ReadFile(myfile)
 	if err != nil {
 		return err
 	}
@@ -181,7 +219,8 @@ var (
 	_max_xtermTitle_len       = 253
 )
 
-func XtermTitle(mystr string, raw bool) { // false
+// false
+func XtermTitle(mystr string, raw bool) {
 	if _disable_xtermTitle == nil {
 		_disable_xtermTitle = new(bool)
 		ts, tb := os.LookupEnv("TERM")
@@ -197,6 +236,7 @@ func XtermTitle(mystr string, raw bool) { // false
 		}
 		f := os.Stderr
 		f.WriteString(mystr)
+		f.Sync()
 	}
 }
 
@@ -211,8 +251,8 @@ func xtermTitleReset() {
 			ts, tb := os.LookupEnv("TERM")
 			if doTitles != 0 && tb && _legal_terms_re.MatchString(ts) && terminal.IsTerminal(int(os.Stderr.Fd())) {
 				shell := os.Getenv("SHELL")
-				st, _ := os.Stat(shell)
-				if shell == "" || st.Mode()&syscall.O_EXCL != 0 {
+				st, err := os.Stat(shell)
+				if shell == "" || (err !=nil && st.Mode()&syscall.O_EXCL != 0) {
 					shell = FindBinary("sh")
 				}
 				if shell != "" {
@@ -310,26 +350,69 @@ var Green = func(text string) string { return colorize("green", text) }
 var Red = func(text string) string { return colorize("red", text) }
 
 type consoleStyleFile struct {
-	_file, write_listener io.Writer
-	_styles               string
+	_file io.WriteCloser
+	write_listener io.Writer
+	_styles               []string
 }
 
-func NewConsoleStylefile(f io.Writer) *consoleStyleFile {
+func NewConsoleStylefile(f io.WriteCloser) *consoleStyleFile {
 	c := &consoleStyleFile{_file: f}
 	return c
 }
 
-func (c *consoleStyleFile) new_styles() {}
+func (c *consoleStyleFile) new_styles(styles []string) {
+	c._styles = styles
+}
 
-func (c *consoleStyleFile) write() {}
+func (c *consoleStyleFile) write(s string) {
+	if HaveColor!=0 && len(c._styles)>0 {
+		styled_s := []string{}
+		for _, style := range c._styles {
+			styled_s=append(styled_s, styleToAnsiCode(style))
+		}
+		styled_s=append(styled_s, s)
+		styled_s=append(styled_s, codes["reset"])
+		c._write(c._file,strings.Join(styled_s,""))
+	}else {
+		c._write(c._file, s)
+	}
+	if c.write_listener!= nil {
+		c._write(c.write_listener, s)
+	}
+}
 
-func (c *consoleStyleFile) _write() {}
+func (c *consoleStyleFile) _write(f io.Writer, s string) {
+	f.Write([]byte(s))
+}
 
-func (c *consoleStyleFile) writelines() {}
+func (c *consoleStyleFile) writelines(lines []string) {
+	for _, l := range lines {
+		c.write(l)
+	}
+}
 
-func (c *consoleStyleFile) flush() {}
+func (c *consoleStyleFile) flush() {
+}
 
 func (c *consoleStyleFile) close() {}
+
+type StyleWriter struct {
+	File          *os.File
+	StyleListener []string
+	maxcol        int
+}
+
+func (d *StyleWriter) Flush() {
+}
+func (d *StyleWriter) SendLineBreak() {
+	d.File.Write([]byte("\n"))
+}
+func (d *StyleWriter) SendLiteralData(s string) {
+	d.File.Write([]byte(s))
+}
+func (d *StyleWriter) NewStyles(s string) {
+	d.File.Write([]byte(s))
+}
 
 // 0
 func get_term_size(fd int) (int, int, error) {
@@ -678,24 +761,6 @@ func (a *AbstractFormatter) PushStyle(ss []string) {
 }
 func (a *AbstractFormatter) PopStyle(s string) {
 	a.Writer.Write([]byte(s))
-}
-
-type StyleWriter struct {
-	File          *os.File
-	StyleListener []string
-	maxcol        int
-}
-
-func (d *StyleWriter) Flush() {
-}
-func (d *StyleWriter) SendLineBreak() {
-	d.File.Write([]byte("\n"))
-}
-func (d *StyleWriter) SendLiteralData(s string) {
-	d.File.Write([]byte(s))
-}
-func (d *StyleWriter) NewStyles(s string) {
-	d.File.Write([]byte(s))
 }
 
 var _color_map_loaded = false

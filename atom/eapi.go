@@ -22,6 +22,11 @@ func eapiHasSrcUriArrows(eapi string) bool {
 	return !map[string]bool{"0": true, "1": true}[eapi]
 }
 
+func eapiHasSelectiveSrcUriRestriction(eapi string) bool {
+	return !map[string]bool{"0": true, "1": true, "2": true, "3": true, "4": true, "4-python": true, "4-slot-abi": true,
+		"5": true, "5-progress": true, "6": true, "7": true}[eapi]
+}
+
 func eapiHasUseDeps(eapi string) bool {
 	return !map[string]bool{"0": true, "1": true}[eapi]
 }
@@ -126,10 +131,6 @@ func eapiHasAutomaticUnpackDependencies(eapi string) bool {
 	return map[string]bool{"5-progress": true}[eapi]
 }
 
-func eapiHasHdepend(eapi string) bool {
-	return map[string]bool{"5-hdepend": true}[eapi]
-}
-
 func eapiAllowsPackageProvided(eapi string) bool {
 	return map[string]bool{"0": true, "1": true, "2": true, "3": true, "4": true, "4-python": true, "4-slot-abi": true, "5": true, "5-progress": true, "6": true}[eapi]
 }
@@ -138,8 +139,8 @@ func eapiHasBdepend(eapi string) bool {
 	return !map[string]bool{"0": true, "1": true, "2": true, "3": true, "4": true, "4-python": true, "4-slot-abi": true, "5": true, "5-progress": true, "6": true}[eapi]
 }
 
-func eapiHasTargetroot(eapi string) bool {
-	return map[string]bool{"5-hdepend": true}[eapi]
+func eapiHasIdepend(eapi string) bool {
+	return !map[string]bool{"0": true, "1": true, "2": true, "3": true, "4": true, "4-python": true, "4-slot-abi": true, "5": true, "5-progress": true, "6": true, "7": true}[eapi]
 }
 
 func eapiEmptyGroupsAlwaysTrue(eapi string) bool {
@@ -175,12 +176,13 @@ func eapiIsSupported(eapi string) bool {
 
 type eapiAttrs struct {
 	allowsPackageProvided, bdepend, broot, DotsInPn, dotsInUseFlags,
-	emptyGroupsAlwaysTrue, exportsEbuildPhaseFunc, exportsPortdir,
-	exportsEclassdir, featureFlagTest, featureFlagTargetroot, hdepend,
-	iuseDefaults, iuseEffective, pathVariablesEndWithTrailingSlash,
-	posixishLocale, repoDeps, requiredUse, requiredUseAtMostOneOf,
-	slotDeps, SlotOperator, srcUriArrows, strongBlocks, sysroot,
-	useDeps, useDepDefaults bool
+	emptyGroupsAlwaysTrue, exportsAa, exportsEbuildPhaseFunc,
+	exportsEclassdir, exportsKv, exportsMergeType, exportsPortdir,
+	exportsReplaceVars, featureFlagTest, idepend, iuseDefaults,
+	iuseEffective, posixishLocale, pathVariablesEndWithTrailingSlash,
+	prefix, repoDeps, requiredUse, requiredUseAtMostOneOf,
+	selectiveSrcUriRestriction, slotOperator, slotDeps, srcUriArrows,
+	strongBlocks, useDeps, useDepDefaults, sysroot bool
 }
 
 var eapiAttrsCache = map[string]eapiAttrs{}
@@ -195,32 +197,37 @@ func getEapiAttrs(eapi string) eapiAttrs {
 		return e
 	}
 	e := eapiAttrs{
-		eapiAllowsPackageProvided(eapi),
-		eapiHasBdepend(eapi),
-		eapiHasBroot(eapi),
-		eapiAllowsDotsInPn(eapi),
-		eapiAllowsDotsInUseFlags(eapi),
-		eapiEmptyGroupsAlwaysTrue(eapi),
-		eapiExportsEbuildPhaseFunc(eapi),
-		eapiExportsPortdir(eapi),
-		eapiExportsEclassdir(eapi),
+		eapi == "" || eapiAllowsPackageProvided(eapi),
+		eapi != "" && eapiHasBdepend(eapi),
+		eapi == "" || eapiHasBroot(eapi),
+		eapi == "" || eapiAllowsDotsInPn(eapi),
+		eapi == "" || eapiAllowsDotsInUseFlags(eapi),
+		eapi != "" && eapiHasUseDepDefaults(eapi),
+		eapi != "" && eapiEmptyGroupsAlwaysTrue(eapi),
+		eapi == "" || eapiExportsEbuildPhaseFunc(eapi),
+		eapi != "" && eapiExportsEclassdir(eapi),
+		eapi != "" && eapiExportsKv(eapi),
+		eapi == "" || eapiExportsMergeType(eapi),
+		eapi == "" || eapiExportsPortdir(eapi),
+		eapi == "" || eapiExportsReplaceVars(eapi),
 		false,
-		eapiHasTargetroot(eapi),
-		eapiHasHdepend(eapi),
-		eapiHasIuseDefaults(eapi),
-		eapiHasIuseEffective(eapi),
-		eapiPathVariablesEndWithTrailingSlash(eapi),
-		eapiRequiresPosixishLocale(eapi),
-		EapiHasRepoDeps(eapi),
-		eapiHasRequiredUse(eapi),
-		eapiHasRequiredUse(eapi),
-		eapiHasSlotDeps(eapi),
-		eapiHasSlotOperator(eapi),
-		eapiHasSrcUriArrows(eapi),
-		eapiHasStrongBlocks(eapi),
-		eapiHasSysroot(eapi),
-		eapiHasUseDeps(eapi),
-		eapiHasUseDepDefaults(eapi),
+		eapi != "" && eapiHasIdepend(eapi),
+		eapi == "" || eapiHasIuseDefaults(eapi),
+		eapi != "" && eapiHasIuseEffective(eapi),
+		eapi != "" && eapiRequiresPosixishLocale(eapi),
+		eapi != "" && eapiPathVariablesEndWithTrailingSlash(eapi),
+		eapi == "" || eapiSupportsPrefix(eapi),
+		eapi == "" || EapiHasRepoDeps(eapi),
+		eapi == "" || eapiHasRequiredUse(eapi),
+		eapi == "" || eapiHasRequiredUseAtMostOneOf(eapi),
+		eapi == "" || eapiHasSelectiveSrcUriRestriction(eapi),
+		eapi == "" || eapiHasSlotOperator(eapi),
+		eapi == "" || eapiHasSlotDeps(eapi),
+		eapi == "" || eapiHasSrcUriArrows(eapi),
+		eapi == "" || eapiHasStrongBlocks(eapi),
+		eapi == "" || eapiHasUseDeps(eapi),
+		eapi == "" || eapiHasUseDepDefaults(eapi),
+		eapi == "" || eapiHasSysroot(eapi),
 	}
 	eapiAttrsCache[eapi] = e
 	return e

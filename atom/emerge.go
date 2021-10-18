@@ -5246,7 +5246,7 @@ try:
 	}
 
 	built_slot_operator_atoms = None
-	if ! f._ignore_built_slot_operator_deps && getEapiAttrs(pkg.eapi).slot_operator {
+	if ! f._ignore_built_slot_operator_deps && getEapiAttrs(pkg.eapi).slotOperator {
 	try:
 		built_slot_operator_atoms = \
 		find_built_slot_operator_atoms(pkg)
