@@ -7,20 +7,20 @@ import (
 	"time"
 )
 
-type ProgressHandler struct {
+type ProgressHandler1 struct {
 	curval, maxval      int64
 	last_update         time.Time
 	min_display_latency time.Duration
 }
 
-func (p *ProgressHandler) Reset() {
+func (p *ProgressHandler1) Reset() {
 	p.curval = 0
 	p.maxval = 0
 	p.last_update = time.Unix(0, 0)
 	p.min_display_latency = 200 * time.Millisecond
 }
 
-func (p *ProgressHandler) onProgress(maxval, curval int64) {
+func (p *ProgressHandler1) onProgress(maxval, curval int64) {
 	p.maxval = maxval
 	p.curval = curval
 	cur_time := time.Now()
@@ -30,18 +30,18 @@ func (p *ProgressHandler) onProgress(maxval, curval int64) {
 	}
 }
 
-func (p *ProgressHandler) display() {
+func (p *ProgressHandler1) display() {
 	panic("not implemented")
 }
 
-func NewProgressHandler() *ProgressHandler {
-	p := &ProgressHandler{}
+func NewProgressHandler1() *ProgressHandler1 {
+	p := &ProgressHandler1{}
 	p.Reset()
 	return p
 }
 
 type ProgressBar2 struct {
-	*ProgressHandler
+	*ProgressHandler1
 	isatty          bool
 	fd              *os.File
 	title           string
@@ -62,7 +62,7 @@ func NewProgressBar2(isatty bool, fd *os.File, title string, maxval int, label s
 	p.label = label
 	p.max_desc_length = max_desc_length
 
-	p.ProgressHandler = NewProgressHandler()
+	p.ProgressHandler1 = NewProgressHandler1()
 	p.progressBar = nil
 	return p
 }

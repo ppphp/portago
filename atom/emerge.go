@@ -28,12 +28,17 @@ type Starter interface {
 	start()
 }
 
-type Future interface{
-	done()
-	cancel()
+type IFuture interface{
+	done() bool
+	cancel() bool
 	add_done_callback()
-	cancelled()
+	cancelled() bool
 	exception()
+	result()
+}
+
+type ITask interface{
+	start()
 }
 
 // ------------------emerge begins
@@ -266,7 +271,7 @@ func (a *AbstractEbuildProcess)_start() {
 }
 
 // nil, false
-func (a *AbstractEbuildProcess)_start_post_builddir_lock( lock_future , start_ipc_daemon bool) {
+func (a *AbstractEbuildProcess)_start_post_builddir_lock( lock_future IFuture , start_ipc_daemon bool) {
 	if lock_future != nil {
 		//if lock_future is not a._start_future{
 		//raise AssertionError("lock_future is not a._start_future")
@@ -537,8 +542,8 @@ func (a *AbstractEbuildProcess)_async_unlock_builddir( returncode *int) {
 	}
 	a._build_dir_unlock = a._build_dir.async_unlock()
 	a._build_dir = nil
-	a._build_dir_unlock.add_done_callback( func() {
-		return a._unlock_builddir_exit(, returncode)
+	a._build_dir_unlock.add_done_callback( func(t) {
+		return a._unlock_builddir_exit(t, returncode)
 	})
 }
 
@@ -628,7 +633,7 @@ func (a *AbstractPollTask)  _unregister() {
 }
 
 // nil
-func (a *AbstractPollTask) _wait_loop(timeout=nil) {
+func (a *AbstractPollTask) _wait_loop(timeout) {
 	loop := a.scheduler
 	tasks := []{a.async_wait()}
 	if timeout != nil {
@@ -656,12 +661,13 @@ type AsynchronousLock struct {
 	*AsynchronousTask
 	_use_process_by_default bool
 	// slot
-	path, _imp,_force_async,_force_dummy,_force_process,_force_thread,_unlock_future string
+	_imp *LockFileS
+	path, ,_force_async,_force_dummy,_force_process,_force_thread,_unlock_future string
 }
 
 func(a *AsynchronousLock) _start() {
 
-	if not a._force_async {
+	if ! a._force_async {
 		var err error
 		a._imp, err = Lockfile(a.path, true, false, "", syscall.O_NONBLOCK)
 		if err != nil {
@@ -675,13 +681,8 @@ func(a *AsynchronousLock) _start() {
 		}
 	}
 
-	if a._force_process or
-	(not
-	a._force_thread
-	and
-	(a._use_process_by_default
-	or
-	threading
+	if a._force_process || (!a._force_thread &&
+	(a._use_process_by_default ||threading
 	is
 	dummy_threading)){
 	a._imp = NewLockProcess( a.path, a.scheduler)
@@ -722,10 +723,11 @@ func(a *AsynchronousLock) async_unlock() {
 	}
 	if isinstance(a._imp, (_LockProcess, _LockThread)){
 		unlock_future = a._imp.async_unlock()
-	}else:
-	unlockfile(a._imp)
-	unlock_future = a.scheduler.create_future()
-	a.scheduler.call_soon(unlock_future.set_result, nil)
+	}else{
+		Unlockfile(a._imp)
+		unlock_future = a.scheduler.create_future()
+		a.scheduler.call_soon(unlock_future.set_result, nil)
+	}
 	a._imp = nil
 	a._unlock_future = unlock_future
 	return unlock_future
@@ -749,9 +751,10 @@ type _LockThread struct {
 
 func(l *_LockThread) _start() {
 	l._registered = true
-	threading_mod = threading
-	if l._force_dummy:
-	threading_mod = dummy_threading
+	threading_mod := threading
+	if l._force_dummy {
+		threading_mod = dummy_threading
+	}
 	l._thread = threading_mod.Thread(target = l._run_lock)
 	l._thread.daemon = true
 	l._thread.start()
@@ -907,9 +910,10 @@ func(l *_LockProcess) _cancel() {
 	}
 }
 
-func(l *_LockProcess) _poll() {
-	if l._proc != nil:
-	l._proc.poll()
+func(l *_LockProcess) _poll() *int {
+	if l._proc != nil {
+		l._proc.poll()
+	}
 	return l.returncode
 }
 
@@ -1251,7 +1255,8 @@ func (b *Binpkg)_prefetch_exit(prefetcher){
 	}
 }
 
-func (b *Binpkg) _start_fetcher( lock_task=nil) {
+// nil
+func (b *Binpkg) _start_fetcher( lock_task) {
 	if lock_task != nil {
 		b._assert_current(lock_task)
 		if lock_task.cancelled {
@@ -1347,10 +1352,12 @@ func (b *Binpkg) _verifier_exit(verifier func(*int)) {
 	b._pkg_path = pkg_path
 
 	logfile := b.settings.ValueDict["PORTAGE_LOG_FILE"]
-	if logfile != ""&& os.path.isfile(logfile) {
-		if err := syscall.Unlink(logfile); err != nil {
-			//except OSError:
-			//pass
+		st, err := os.Stat(logfile)
+		if err == nil && !st.IsDir() {
+			if err := syscall.Unlink(logfile); err != nil {
+				//except OSError:
+				//pass
+			}
 		}
 	}
 
@@ -1389,7 +1396,7 @@ func (b *Binpkg) _clean_exit( clean_phase) {
 }
 
 @coroutine
-func (b *Binpkg) _unpack_metadata() Future {
+func (b *Binpkg) _unpack_metadata() IFuture {
 
 	dir_path := b.settings.ValueDict["PORTAGE_BUILDDIR"]
 
@@ -2198,7 +2205,7 @@ digests{
 		}
 	}
 
-	b._start_task(FileDigester(file_path = b._pkg_path,
+	b._start_task(NewFileDigester(file_path = b._pkg_path,
 		hash_names = (k
 	for k
 	in
@@ -2642,7 +2649,7 @@ type CompositeTask struct {
 	*AsynchronousTask
 
 	// slot
-	_current_task *SpawnProcess
+	_current_task ITask
 
 	_TASK_QUEUED int
 }
@@ -2712,7 +2719,7 @@ func(c*CompositeTask) _default_final_exit( task) {
 	return c.wait()
 }
 
-func(c*CompositeTask) _start_task(task *SpawnProcess, exit_handler func(*int)) {
+func(c*CompositeTask) _start_task(task ITask, exit_handler func(*int)) {
 	//try{
 	//task.scheduler = c.scheduler
 	//except AttributeError{
@@ -2727,7 +2734,7 @@ func(c*CompositeTask) _task_queued(task *EbuildPhase) {
 	c._current_task = c._TASK_QUEUED
 }
 
-func(c*CompositeTask) _task_queued_start_handler( task) {
+func(c*CompositeTask) _task_queued_start_handler( task ITask) {
 	c._current_task = task
 }
 
@@ -2924,14 +2931,16 @@ func NewEbuildBinpkg(background bool, pkg *PkgStr, scheduler *SchedulerInterface
 type EbuildBuild struct {
 	*CompositeTask
 	settings            *Config
+
+	// slot
 	_tree, _ebuild_path string
 	pkg                 *PkgStr
 	_build_dir          *EbuildBuildDir
-	_buildpkg bool
+	_buildpkg,_issyspkg bool
 	args_set, config_pool, find_blockers,
 	ldpath_mtimes, logger, opts, pkg, pkg_count,
 	prefetcher, world_atom,
-	_issyspkg
+
 }
 
 func(e *EbuildBuild) _start() {
@@ -2974,7 +2983,7 @@ func(e *EbuildBuild) _start_with_metadata( aux_get_task) {
 		settings.configDict["pkg"]["MERGE_TYPE"] = "source"
 	}
 	ebuild_path := portdb.findname(pkg.cpv, myrepo = pkg.repo)
-	if ebuild_path is None{
+	if ebuild_path == ""{
 		//raise AssertionError("ebuild not found for '%s'" % pkg.cpv)
 	}
 	e._ebuild_path = ebuild_path
@@ -2993,8 +3002,7 @@ func(e *EbuildBuild) _start_with_metadata( aux_get_task) {
 		//pass
 	}else if prefetcher.isAlive() && prefetcher.poll() == nil {
 		if !e.background {
-			fetch_log := filepath.Join(
-				_emerge.emergelog._emerge_log_dir, "emerge-fetch.log")
+			fetch_log := filepath.Join(_emerge_log_dir, "emerge-fetch.log")
 			msg := []string{
 				"Fetching files in the background.",
 				"To view fetch progress, run in another terminal:",
@@ -3015,7 +3023,7 @@ func(e *EbuildBuild) _start_with_metadata( aux_get_task) {
 }
 
 func(e *EbuildBuild) _check_manifest() bool {
-	success := true
+	success := 1
 
 	settings := e.settings
 	if settings.Features.Features["strict"] && !settings.Features.Features["digest"] {
@@ -3032,7 +3040,7 @@ func(e *EbuildBuild) _check_manifest() bool {
 		}
 	}
 
-	return success
+	return success != 0
 }
 
 func(e *EbuildBuild) _prefetch_exit( prefetcher) {
@@ -3051,7 +3059,7 @@ func(e *EbuildBuild) _prefetch_exit( prefetcher) {
 			fetcher := NewEbuildFetchonly(opts.fetch_all_uri, pkg,opts.pretend, settings)
 			retval := fetcher.execute()
 			if retval == 0 {
-				e._current_task = None
+				e._current_task = nil
 				i := 0
 				e.returncode = &i
 				e._async_wait()
@@ -3139,7 +3147,7 @@ func(e *EbuildBuild) _pre_clean_exit( pre_clean_phase) {
 
 	e._start_task(NewAsyncTaskFuture(
 		fetcher.async_already_fetched(e.settings)),
-	functools.partial(e._start_fetch, fetcher))
+		func(t) {e._start_fetch(fetcher, t)})
 }
 
 func(e *EbuildBuild) _start_fetch( fetcher, already_fetched_task) {
@@ -3194,12 +3202,7 @@ func(e *EbuildBuild) _fetch_exit( fetcher) {
 
 	e._issyspkg = features["buildsyspkg"] && system_set.findAtomForPackage(pkg) && !features["buildpkg"] && opts.buildpkg != "n"
 
-	if (features["buildpkg"] ||
-		e._issyspkg) \
-	and
-	not
-	e.opts.buildpkg_exclude.findAtomForPackage(pkg)
-	{
+	if (features["buildpkg"] || e._issyspkg) && !e.opts.buildpkg_exclude.findAtomForPackage(pkg) {
 
 		e._buildpkg = true
 
@@ -3225,7 +3228,7 @@ func(e *EbuildBuild) _fetch_failed() {
 	if 'fetch' not
 	in
 	e.pkg.restrict
-	and \
+	&&
 	'nofetch'
 	not
 	in
@@ -3259,16 +3262,17 @@ func(e *EbuildBuild) _async_unlock_builddir( returncode *int) {
 	})
 }
 
-func(e *EbuildBuild) _unlock_builddir_exit( unlock_task, returncode=None) {
+// nil
+func(e *EbuildBuild) _unlock_builddir_exit( unlock_task, returncode *int) {
 	e._assert_current(unlock_task)
 	if unlock_task.cancelled && returncode!= nil {
 		e._default_final_exit(unlock_task)
 		return
 	}
 
-	unlock_task.future.cancelled()
-	or
-	unlock_task.future.result()
+	if !unlock_task.future.cancelled() {
+		unlock_task.future.result()
+	}
 	if returncode != nil {
 		e.returncode = returncode
 		e._async_wait()
@@ -3295,7 +3299,7 @@ func(e *EbuildBuild) _build_exit( build) {
 		e.scheduler.output(msg, e.settings.ValueDict["PORTAGE_LOG_FILE"], false, 0, -1)
 	}
 
-	binpkg_tasks := TaskSequence()
+	binpkg_tasks := NewTaskSequence()
 	t, ok :=e.settings.ValueDict["PORTAGE_BINPKG_FORMAT"]
 	if !ok {
 		t = "tar"
@@ -3438,7 +3442,15 @@ func (r *EbuildBuild) _install_exit( task) {
 	return result
 }
 
-func NewEbuildBuild()*EbuildBuild{
+//
+func NewEbuildBuild(args_set = args_set,
+	background = m.background,
+	config_pool=m.config_pool,
+	find_blockers = find_blockers,
+	ldpath_mtimes=ldpath_mtimes, logger = logger,
+	opts=build_opts, pkg = pkg, pkg_count=pkg_count,
+	prefetcher = m.prefetcher, scheduler=scheduler,
+	settings = settings, world_atom=world_atom)*EbuildBuild{
 	e := &EbuildBuild{}
 	e.CompositeTask=NewCompositeTask()
 	return e
@@ -3703,7 +3715,7 @@ type EbuildFetcher struct {
 	pkg, _fetcher_proc
 }
 
-func NewEbuildFetcher(config_pool,ebuild_path,fetchall,fetchonly, background bool,logfile string,pkg,scheduler *SchedulerInterface,prefetch bool, **kwargs) {
+func NewEbuildFetcher(config_pool,ebuild_path,fetchall,fetchonly, background bool,logfile string,pkg,scheduler *SchedulerInterface,prefetch bool, **kwargs) *EbuildFetcher {
 	e := &EbuildFetcher{}
 	e.CompositeTask = NewCompositeTask(**kwargs)
 	e._fetcher_proc = NewEbuildFetcherProcess(**kwargs)
@@ -4822,9 +4834,8 @@ func (e *EbuildPhase) _ebuild_exit_unlocked( ebuild_process, unlock_task=nil) {
 			syscall.Close(fd)
 		}
 		post_phase := NewPostPhaseCommands(e.background,
-			commands = post_phase_cmds, e._elog, fd_pipes = e.fd_pipes,
-			logfile=logfile, phase = e.phase, scheduler=e.scheduler,
-			settings = settings)
+			post_phase_cmds, e._elog,  e.fd_pipes,
+			logfile,  e.phase, e.scheduler, settings)
 		e._start_task(post_phase, e._post_phase_exit)
 		return
 	}
@@ -5027,9 +5038,9 @@ func(p*_PostPhaseCommands) _commands_exit( task) {
 
 		if p.settings.Features.Features["qa-unresolved-soname-deps"] {
 
-			future = p._soname_deps_qa()
+			future := p._soname_deps_qa()
 
-			future.add_done_callback(func(future) {
+			future.add_done_callback(func(future IFuture) {
 				return future.cancelled() || future.result()
 			})
 			p._start_task(NewAsyncTaskFuture(future), p._default_final_exit)
@@ -5042,7 +5053,7 @@ func(p*_PostPhaseCommands) _commands_exit( task) {
 }
 
 @coroutine
-func(p*_PostPhaseCommands) _soname_deps_qa() {
+func(p*_PostPhaseCommands) _soname_deps_qa() IFuture{
 
 	vardb := NewQueryCommand(nil, "").get_db().Values()[p.settings.ValueDict["EROOT"]].VarTree().dbapi
 
@@ -5064,9 +5075,11 @@ func(p*_PostPhaseCommands) _soname_deps_qa() {
 	}
 }
 
+
+// post_phase_cmds, nil, nil, logfile, e.phase, e.scheduler, nil
 func NewPostPhaseCommands(background bool,
-	commands = post_phase_cmds, elog func(string,[]string,bool), fd_pipes map[int]int,
-	logfile=logfile, phase = e.phase, scheduler=e.scheduler,
+	commands = , elog func(string,[]string,bool), fd_pipes map[int]int,
+	logfile string, phase = e.phase, scheduler *SchedulerInterface,
 	settings *Config)*_PostPhaseCommands {
 	p := &_PostPhaseCommands{}
 	p.CompositeTask = NewCompositeTask()
@@ -5190,7 +5203,7 @@ dynamic_deps, ignore_built_slot_operator_deps, soname_deps bool)*FakeVartree{
 	}
 	f._db_keys = mykeys
 	f._pkg_cache = pkg_cache
-	f.dbapi = PackageVirtualDbapi(real_vartree.settings)
+	f.dbapi = NewPackageVirtualDbapi(real_vartree.settings)
 	if soname_deps {
 		f.dbapi = PackageDbapiProvidesIndex(f.dbapi)
 	}
@@ -5224,8 +5237,9 @@ func(f*FakeVartree) _match_wrapper(cpv, use_cache=1) {
 
 func(f*FakeVartree) _aux_get_wrapper( cpv, wants, myrepo=None) {
 	if cpv in
-	f._aux_get_history:
-	return f._aux_get(cpv, wants)
+	f._aux_get_history{
+		return f._aux_get(cpv, wants)
+	}
 	f._aux_get_history.add(cpv)
 
 	pkg = f.dbapi._cpv_map[cpv]
@@ -5306,85 +5320,94 @@ func(f*FakeVartree) dynamic_deps_preload(pkg, metadata) {
 }
 
 func(f*FakeVartree) cpv_discard( pkg) {
-	old_pkg = f.dbapi.get(pkg)
-	if old_pkg is
-	not
-None:
-	f.dbapi.cpv_remove(old_pkg)
-	f._pkg_cache.pop(old_pkg, None)
-	f._aux_get_history.discard(old_pkg.cpv)
+	old_pkg := f.dbapi.get(pkg)
+	if old_pkg != nil {
+		f.dbapi.cpv_remove(old_pkg)
+		f._pkg_cache.pop(old_pkg, None)
+		f._aux_get_history.discard(old_pkg.cpv)
+	}
 }
 
 // 1
 func(f*FakeVartree) sync(acquire_lock int) {
-	locked = false
-try:
-	if acquire_lock and
-	os.access(f._real_vardb._dbroot, os.W_OK):
-	f._real_vardb.lock()
-	locked = true
+	locked := false
+//try:
+	if acquire_lock && osAccess(f._real_vardb._dbroot, os.O_RDONLY) {
+		f._real_vardb.lock()
+		locked = true
+	}
 	f._sync()
-finally:
-	if locked:
-	f._real_vardb.unlock()
+//finally:
+	if locked {
+		f._real_vardb.unlock()
+	}
 
-try:
+//try:
 	f.dbapi.aux_get = f._aux_get
 	f.settings._populate_treeVirtuals_if_needed(f)
-finally:
-	if f._dynamic_deps:
-	f.dbapi.aux_get = f._aux_get_wrapper
+//finally:
+	if f._dynamic_deps {
+		f.dbapi.aux_get = f._aux_get_wrapper
+	}
 }
 
 func(f*FakeVartree) _sync() {
 
-	real_vardb = f._root_config.trees["vartree"].dbapi
-	current_cpv_set = frozenset(real_vardb.cpv_all())
-	pkg_vardb = f.dbapi
+	real_vardb := f._root_config.trees["vartree"].dbapi
+	current_cpv_set := frozenset(real_vardb.cpv_all())
+	pkg_vardb := f.dbapi
 
 	for pkg
-	in
-	list(pkg_vardb):
-	if pkg.cpv not
-	in
-current_cpv_set:
-	f.cpv_discard(pkg)
+		in
+	list(pkg_vardb) {
+		if pkg.cpv not
+		in
+		current_cpv_set{
+			f.cpv_discard(pkg)
+		}
+	}
 
-	slot_counters =
+	slot_counters :=
 	{
 	}
-	root_config = f._pkg_root_config
-	validation_keys = ["COUNTER", "_mtime_"]
-for cpv in current_cpv_set:
+	root_config := f._pkg_root_config
+	validation_keys := []string{"COUNTER", "_mtime_"}
+	for cpv := range current_cpv_set {
 
-pkg_hash_key = Package._gen_hash_key(cpv = cpv,
-installed = true, root_config = root_config,
-type_name = "installed")
-pkg = pkg_vardb.get(pkg_hash_key)
-if pkg is not None:
-counter, mtime = real_vardb.aux_get(cpv, validation_keys)
-try:
-counter = long(counter)
-except ValueError:
-counter = 0
+		pkg_hash_key := &Package{}._gen_hash_key(cpv = cpv,
+			installed = true, root_config = root_config,
+			type_name = "installed")
+		pkg = pkg_vardb.get(pkg_hash_key)
+		if pkg != nil {
+			counter, mtime = real_vardb.aux_get(cpv, validation_keys)
+		try:
+			counter = long(counter)
+			except
+		ValueError:
+			counter = 0
 
-if counter != pkg.counter or \
-mtime != pkg.mtime:
-f.cpv_discard(pkg)
-pkg = None
+			if counter != pkg.counter || mtime != pkg.mtime {
+				f.cpv_discard(pkg)
+				pkg = nil
+			}
+		}
 
-if pkg is None:
-pkg = f._pkg(cpv)
+		if pkg == nil {
+			pkg = f._pkg(cpv)
+		}
 
-other_counter = slot_counters.get(pkg.slot_atom)
-if other_counter is not None:
-if other_counter > pkg.counter:
-continue
+		other_counter := slot_counters.get(pkg.slot_atom)
+		if other_counter != nil {
+			if other_counter > pkg.counter {
+				continue
+			}
+		}
 
-slot_counters[pkg.slot_atom] = pkg.counter
-pkg_vardb.cpv_inject(pkg)
+		slot_counters[pkg.slot_atom] = pkg.counter
+		pkg_vardb.cpv_inject(pkg)
+	}
 
-real_vardb.flush_cache()
+	real_vardb.flush_cache()
 }
 
 func(f*FakeVartree) _pkg(cpv *PkgStr) *Package {
@@ -5434,7 +5457,7 @@ func perform_global_updates(mycpv string, aux_dict map[string]string, mydb DBAPI
 	//except InvalidData:
 	//return
 	aux_dict2 := map[string]string{}
-	for _, k := range NewPackage()._dep_keys {
+	for _, k := range NewPackage().depKeys {
 		aux_dict2[k] = aux_dict[k]
 	}
 	aux_dict = aux_dict2
@@ -5470,22 +5493,7 @@ func (f *FifoIpcDaemon) _start() {
 
 	f._files.pipe_in, _ = syscall.Open(f.input_fifo, os.O_RDONLY|syscall.O_NONBLOCK, 0644)
 
-	if sys.hexversion < 0x3040000 and
-	fcntl
-	!= nil:
-try:
-	fcntl.FD_CLOEXEC
-	except
-AttributeError:
-	pass
-	else:
-	fcntl.fcntl(f._files.pipe_in, fcntl.F_SETFD,
-		fcntl.fcntl(f._files.pipe_in,
-			fcntl.F_GETFD)|fcntl.FD_CLOEXEC)
-
-	f.scheduler.add_reader(
-		f._files.pipe_in,
-		f._input_handler)
+	f.scheduler.add_reader(f._files.pipe_in, f._input_handler)
 
 	f._registered = true
 }
@@ -5493,25 +5501,10 @@ AttributeError:
 func (f *FifoIpcDaemon) _reopen_input() {
 	f.scheduler.remove_reader(f._files.pipe_in)
 	syscall.Close(f._files.pipe_in)
-	f._files.pipe_in =
-		os.open(f.input_fifo, os.O_RDONLY|os.O_NONBLOCK)
+	f._files.pipe_in, _ =
+		syscall.Open(f.input_fifo, os.O_RDONLY|syscall.O_NONBLOCK, 0644)
 
-	if sys.hexversion < 0x3040000 and
-	fcntl
-	!= nil:
-try:
-	fcntl.FD_CLOEXEC
-	except
-AttributeError:
-	pass
-	else:
-	fcntl.fcntl(f._files.pipe_in, fcntl.F_SETFD,
-		fcntl.fcntl(f._files.pipe_in,
-			fcntl.F_GETFD)|fcntl.FD_CLOEXEC)
-
-	f.scheduler.add_reader(
-		f._files.pipe_in,
-		f._input_handler)
+	f.scheduler.add_reader(f._files.pipe_in, f._input_handler)
 }
 
 func (f *FifoIpcDaemon) _cancel() {
@@ -5531,13 +5524,15 @@ func (f *FifoIpcDaemon) _unregister() {
 
 	f._registered = false
 
-	if f._files != nil:
-	for f
-		in
-	f._files.values():
-	f.scheduler.remove_reader(f)
-	syscall.Close(f)
-	f._files = nil
+	if f._files != nil {
+		for f1
+			in
+		f._files.values() {
+			f.scheduler.remove_reader(f1)
+			syscall.Close(f1)
+		}
+		f._files = nil
+	}
 }
 
 func NewFifoIpcDaemon()*FifoIpcDaemon{
@@ -5859,7 +5854,7 @@ func(j*JobStatusDisplay) _display_status() {
 		if hostname != "" {
 			title_str = fmt.Sprintf("%s: %s", hostname, title_str)
 		}
-		xtermTitle(title_str)
+		XtermTitle(title_str, false)
 	}
 }
 
@@ -6083,94 +6078,97 @@ func(m*MetadataRegen) _cleanup() {
 	{
 	}
 
-	if m._terminated.is_set():
-	portdb.flush_cache()
-	return
+	if m._terminated.is_set() {
+		portdb.flush_cache()
+		return
+	}
 
-	if m._global_cleanse:
-	for mytree
-	in
-	portdb.porttrees:
-try:
-	dead_nodes[mytree] = set(portdb.auxdb[mytree])
-	except
-	CacheError
-	as
-e:
-	portage.writemsg("Error listing cache entries for " + \
-	"'%s': %s, continuing...\n" % (mytree, e),
-	noiselevel = -1)
-	del
-	e
-	dead_nodes = None
-	break
-	else:
-	cp_set = m._cp_set
-	cpv_getkey = portage.cpv_getkey
-	for mytree
-	in
-	portdb.porttrees:
-try:
-	dead_nodes[mytree] = set(cpv
-	for cpv
-	in \
-	portdb.auxdb[mytree] \
-	if cpv_getkey(cpv) in
-	cp_set)
-	except
-	CacheError
-	as
-e:
-	portage.writemsg("Error listing cache entries for " + \
-	"'%s': %s, continuing...\n" % (mytree, e),
-	noiselevel = -1)
-	del
-	e
-	dead_nodes = None
-	break
+	if m._global_cleanse {
+		for _, mytree:= range portdb.porttrees {
+		try:
+			dead_nodes[mytree] = set(portdb.auxdb[mytree])
+			except
+			CacheError
+			as
+		e:
+			WriteMsg(fmt.Sprintf("Error listing cache entries for " +
+			"'%s': %s, continuing...\n" ,mytree, e), -1, nil)
+			del
+			e
+			dead_nodes = nil
+			break
+		}
+	}else {
+		cp_set = m._cp_set
+		cpv_getkey = portage.cpv_getkey
+		for mytree
+			in
+		portdb.porttrees:
+	try:
+		dead_nodes[mytree] = set(cpv
+		for cpv
+		in \
+		portdb.auxdb[mytree] \
+		if cpv_getkey(cpv) in
+		cp_set)
+		except
+		CacheError
+		as
+	e:
+		WriteMsg(fmt.Sprintf("Error listing cache entries for "+
+			"'%s': %s, continuing...\n", mytree, e), -1, nil)
+		del
+		e
+		dead_nodes = None
+		break
+	}
 
-	if dead_nodes:
-	for y
-	in
-	m._valid_pkgs:
-	for mytree
-	in
-	portdb.porttrees:
-	if portdb.findname2(y, mytree = mytree)[0]:
-	dead_nodes[mytree].discard(y)
+	if dead_nodes {
+		for y
+			in
+		m._valid_pkgs {
+			for _, mytree := range portdb.porttrees {
+				if s, _ := portdb.findname2(y, mytree, ""); s != "" {
+					dead_nodes[mytree].discard(y)
+				}
+			}
+		}
 
-	for mytree, nodes
-	in
-	dead_nodes.items():
-	auxdb = portdb.auxdb[mytree]
-	for y
-	in
-nodes:
-try:
-	del
-	auxdb[y]
-	except(KeyError, CacheError):
-	pass
+		for mytree, nodes
+			in
+		dead_nodes.items() {
+			auxdb = portdb.auxdb[mytree]
+			for y
+				in
+			nodes {
+			try:
+				del
+				auxdb[y]
+				except(KeyError, CacheError):
+				pass
+			}
+		}
+	}
 
 	portdb.flush_cache()
 }
 
 func(m*MetadataRegen) _task_exit(metadata_process) {
 
-	if metadata_process.returncode != 0:
-	m._valid_pkgs.discard(metadata_process.cpv)
-	if not m._terminated_tasks:
-	portage.writemsg("Error processing %s, continuing...\n" % \
-	(metadata_process.cpv,), noiselevel = -1)
+	if metadata_process.returncode != 0 {
+		m._valid_pkgs.discard(metadata_process.cpv)
+		if not m._terminated_tasks {
+			WriteMsg(fmt.Sprintf("Error processing %s, continuing...\n", metadata_process.cpv, ), -1, nil)
+		}
+	}
 
-	if m._consumer is
-	not
-None:
-	m._consumer(metadata_process.cpv,
-		metadata_process.repo_path,
-		metadata_process.metadata,
-		metadata_process.ebuild_hash,
-		metadata_process.eapi_supported)
+	if m._consumer != nil {
+		m._consumer(metadata_process.cpv,
+			metadata_process.repo_path,
+			metadata_process.metadata,
+			metadata_process.ebuild_hash,
+			metadata_process.eapi_supported)
+	}
 
 	m.AsyncScheduler._task_exit(metadata_process)
 }
@@ -7026,123 +7024,118 @@ type PipeReader struct {
 	*AbstractPollTask
 
 	// slot
-	input_files,_read_data,_use_array
+	input_files map[string]int
+	_read_data []string
+	_use_array
 }
 
 func (p* PipeReader) _start() {
-	p._read_data = []
+	p._read_data = []string{}
 
-	for f
-	in
-	p.input_files.values():
-	fd = f
-	if isinstance(f, int)
-	else
-	f.fileno()
-	fcntl.fcntl(fd, fcntl.F_SETFL,
-		fcntl.fcntl(fd, fcntl.F_GETFL)|os.O_NONBLOCK)
+	for _, f := range p.input_files {
+		fd := uintptr(f)
+		//if isinstance(f, int)
+		//else
+		//f.fileno()
+		ff, _ := unix.FcntlInt(fd, unix.F_GETFL, 0)
+		unix.FcntlInt(fd, unix.F_SETFL,
+			ff|unix.O_NONBLOCK)
 
-	if sys.hexversion < 0x3040000:
-try:
-	fcntl.FD_CLOEXEC
-	except
-AttributeError:
-	pass
-	else:
-	fcntl.fcntl(fd, fcntl.F_SETFD,
-		fcntl.fcntl(fd, fcntl.F_GETFD)|fcntl.FD_CLOEXEC)
-
-	if p._use_array:
-	p.scheduler.add_reader(fd, p._array_output_handler, f)
-	else:
-	p.scheduler.add_reader(fd, p._output_handler, fd)
+		if p._use_array {
+			p.scheduler.add_reader(fd, func() bool {
+				return p._array_output_handler(f)
+			})
+		} else {
+			p.scheduler.add_reader(fd, func() bool {
+				return p._output_handler(fd)
+			})
+		}
+	}
 
 	p._registered = true
 }
 
 func (p* PipeReader) _cancel() {
 	p._unregister()
-	if p.returncode is
-None:
-	p.returncode = p._cancelled_returncode
+	if p.returncode == nil {
+		p.returncode = &p._cancelled_returncode
+	}
 }
 
-func (p* PipeReader) getvalue() {
-	return b
-	''.join(p._read_data)
+func (p* PipeReader) getvalue() string {
+	return strings.Join(p._read_data, "")
 }
 
 func (p* PipeReader) close() {
-	p._read_data = None
+	p._read_data = nil
 }
 
-func (p* PipeReader) _output_handler( fd) {
-
-	while
-true:
-	data = p._read_buf(fd)
-	if data is
-None:
-	break
-	if data:
-	p._read_data.append(data)
-	else:
-	p._unregister()
-	p.returncode = p.returncode
-	or
-	0
-	p._async_wait()
-	break
+func (p* PipeReader) _output_handler( fd int)bool {
+	for {
+		data := p._read_buf(fd)
+		if data == nil {
+			break
+		}
+		if len(data) > 0 {
+			p._read_data = append(p._read_data, string(data))
+		} else {
+			p._unregister()
+			//p.returncode = p.returncode ||0
+			p._async_wait()
+			break
+		}
+	}
+	return true // add
 }
 
-func (p* PipeReader) _array_output_handler( f) {
-
-	while
-true:
-	data = p._read_array(f)
-	if data is
-None:
-	break
-	if data:
-	p._read_data.append(data)
-	else:
-	p._unregister()
-	p.returncode = p.returncode
-	or
-	0
-	p._async_wait()
-	break
+func (p* PipeReader) _array_output_handler( f int) bool {
+	for {
+		data := p._read_array(f)
+		if data == "" {
+			break
+		}
+		if len(data) > 0 {
+			p._read_data = append(p._read_data, data)
+		} else {
+			p._unregister()
+			//p.returncode = p.returncode ||0
+			p._async_wait()
+			break
+		}
+	}
 
 	return true
 }
 
 func (p* PipeReader) _unregister() {
-
 	p._registered = false
-
-	if p.input_files is
-	not
-None:
-	for f
-	in
-	p.input_files.values():
-	if isinstance(f, int):
-	p.scheduler.remove_reader(f)
-	os.close(f)
-	else:
-	p.scheduler.remove_reader(f.fileno())
-	f.close()
-	p.input_files = None
+	if p.input_files != nil {
+		for _, f := range p.input_files {
+			//if isinstance(f, int):
+			p.scheduler.remove_reader(f)
+			syscall.Close(f)
+			//else:
+			//p.scheduler.remove_reader(f.fileno())
+			//f.close()
+		}
+		p.input_files = nil
+	}
 }
 
-func NewPipeReader()*PipeReader{
+func NewPipeReader(input_files map[string]int, scheduler *SchedulerInterface)*PipeReader {
 	p := &PipeReader{}
 	p.AbstractPollTask = NewAbstractPollTask()
+
+	p.input_files = input_files
+	p.scheduler = scheduler
+
 	return p
 }
 
 
 type ProgressHandler struct {
+	curval, maxval int
+	min_latency,_last_update float64
 }
 
 func NewProgressHandler()*ProgressHandler {
@@ -7154,18 +7147,18 @@ func NewProgressHandler()*ProgressHandler {
 	return p
 }
 
-func(p *ProgressHandler) onProgress( maxval, curval) {
+func(p *ProgressHandler) onProgress( maxval, curval int) {
 	p.maxval = maxval
 	p.curval = curval
-	cur_time = time.time()
-	if cur_time-p._last_update >= p.min_latency:
-	p._last_update = cur_time
-	p.display()
+	cur_time := float64(time.Now().UnixMilli()) / 1000
+	if cur_time-p._last_update >= p.min_latency {
+		p._last_update = cur_time
+		p.display()
+	}
 }
 
 func(p *ProgressHandler) display() {
-	raise
-	NotImplementedError(p)
+	//raise NotImplementedError(p)
 }
 
 type RootConfig struct {
@@ -7671,13 +7664,14 @@ func (s*Scheduler) _background_mode() bool {
 }
 
 func (s *Scheduler) _get_interactive_tasks() {
-	interactive_tasks = []
+	interactive_tasks := []{}
 	for task
 		in
 	s._mergelist:
 	if not(isinstance(task, Package) &&
-		task.operation == "merge"):
-	continue
+		task.operation == "merge"){
+		continue
+	}
 	if 'interactive' in
 	task.properties:
 	interactive_tasks.append(task)
@@ -7744,13 +7738,13 @@ func(s *Scheduler) _set_graph_config( graph_config) {
 }
 
 func (s *Scheduler) _find_system_deps() {
-	params = create_depgraph_params(s.myopts, nil)
+	params := create_depgraph_params(s.myopts, nil)
 	if not params["implicit_system_deps"] {
 		return
 	}
 
-	deep_system_deps = s._deep_system_deps
-	deep_system_deps.clear()
+	deep_system_deps := s._deep_system_deps
+	deep_system_deps = map[string]string{}
 	deep_system_deps.update(
 		_find_deep_system_runtime_deps(s._digraph))
 	deep_system_deps.difference_update([pkg
@@ -8065,7 +8059,7 @@ func (s *Scheduler) _run_pkg_pretend()  int {
 
 		root_config := x.root_config
 		settings := s.pkgsettings[root_config.root]
-		settings.setcpv(x)
+		settings.SetCpv(x, nil)
 
 		rval := _check_temp_dir(settings)
 		if rval != 0 {
@@ -8082,6 +8076,7 @@ func (s *Scheduler) _run_pkg_pretend()  int {
 
 	try:
 
+		var tree, infloc, ebuild_path string
 		if existing_builddir {
 			if x.built {
 				tree = "bintree"
@@ -8202,59 +8197,60 @@ func (s *Scheduler) _run_pkg_pretend()  int {
 	return 0
 }
 
-func (s *Scheduler) merge() {
+func (s *Scheduler) merge() int {
 	if "--resume" in
-	s.myopts:
-	WriteMsgStdout(
-		colorize("GOOD", "*** Resuming merge...\n"), -1)
-	s._logger.log(" *** Resuming merge...", "")
+	s.myopts{
+		WriteMsgStdout(
+			colorize("GOOD", "*** Resuming merge...\n"), -1)
+		s._logger.log(" *** Resuming merge...", "")
+	}
 
 	s._save_resume_list()
 
-try:
+//try:
 	s._background = s._background_mode()
-	except
-	s._unknown_internal_error:
-	return FAILURE
+	//except s._unknown_internal_error:
+	//return FAILURE
 
-	rval = s._handle_self_update()
+	rval := s._handle_self_update()
 	if rval != 0 {
 		return rval
 	}
 
 	for root
 		in
-	s.trees:
-	root_config = s.trees[root]["root_config"]
+	s.trees {
+		root_config = s.trees[root]["root_config"]
 
-	tmpdir := root_config.settings.ValueDict["PORTAGE_TMPDIR"]
-	if tmpdir == "" || !pathIsDir(tmpdir):
-	msg := []string{
-		"The directory specified in your PORTAGE_TMPDIR variable does not exist:",
-		tmpdir,
-		"Please create this directory or correct your PORTAGE_TMPDIR setting.",
+		tmpdir := root_config.settings.ValueDict["PORTAGE_TMPDIR"]
+		if tmpdir == "" || !pathIsDir(tmpdir):
+		msg := []string{
+			"The directory specified in your PORTAGE_TMPDIR variable does not exist:",
+			tmpdir,
+			"Please create this directory or correct your PORTAGE_TMPDIR setting.",
+		}
+		out := NewEOutput(false)
+		for _, l := range msg {
+			out.eerror(l)
+			return FAILURE
+		}
+
+		if s._background {
+			root_config.settings.unlock()
+			root_config.settings.ValueDict["PORTAGE_BACKGROUND"] = "1"
+			root_config.settings.backup_changes("PORTAGE_BACKGROUND")
+			root_config.settings.lock()
+		}
+
+		s.pkgsettings[root] = NewConfig(root_config.settings, nil, "", nil, "", "", "", "", true, nil, false, nil)
 	}
-	out := NewEOutput(false)
-	for _, l:= range msg {
-		out.eerror(l)
-		return FAILURE
-	}
 
-	if s._background {
-		root_config.settings.unlock()
-		root_config.settings.ValueDict["PORTAGE_BACKGROUND"] = "1"
-		root_config.settings.backup_changes("PORTAGE_BACKGROUND")
-		root_config.settings.lock()
-	}
-
-	s.pkgsettings[root] = NewConfig(root_config.settings, nil, "", nil, "","","","",true, nil, false, nil)
-
-	keep_going = "--keep-going"
+	keep_going := "--keep-going"
 	in
 	s.myopts
-	fetchonly = s._build_opts.fetchonly
-	mtimedb = s._mtimedb
-	failed_pkgs = s._failed_pkgs
+	fetchonly := s._build_opts.fetchonly
+	mtimedb := s._mtimedb
+	failed_pkgs := s._failed_pkgs
 
 	rval = s._generate_digests()
 	if rval != 0 {
@@ -8262,9 +8258,7 @@ try:
 	}
 
 	rval = s._check_manifests()
-	if rval != 0 &&
-		not
-		keep_going {
+	if rval != 0 && !keep_going {
 		return rval
 	}
 
@@ -8274,220 +8268,221 @@ try:
 		return rval
 	}
 
-	while
-true:
+	for {
+		received_signal := []int{}
 
-	received_signal = []
-
-	func
-	sighandler(signum, frame):
-	signal.signal(signal.SIGINT, signal.SIG_IGN)
-	signal.signal(signal.SIGTERM, signal.SIG_IGN)
-	WriteMsg("\n\nExiting on signal %(signal)s\n" %
-	{
-		"signal":signum
-	})
-	s.terminate()
-	received_signal.append(128 + signum)
-
-	earlier_sigint_handler = signal.signal(signal.SIGINT, sighandler)
-	earlier_sigterm_handler = signal.signal(signal.SIGTERM, sighandler)
-	earlier_sigcont_handler =
-		signal.signal(signal.SIGCONT, s._sigcont_handler)
-	signal.siginterrupt(signal.SIGCONT, false)
-
-try:
-	rval = s._merge()
-finally:
-	if earlier_sigint_handler != nil:
-	signal.signal(signal.SIGINT, earlier_sigint_handler)
-	else:
-	signal.signal(signal.SIGINT, signal.SIG_DFL)
-	if earlier_sigterm_handler != nil:
-	signal.signal(signal.SIGTERM, earlier_sigterm_handler)
-	else:
-	signal.signal(signal.SIGTERM, signal.SIG_DFL)
-	if earlier_sigcont_handler != nil:
-	signal.signal(signal.SIGCONT, earlier_sigcont_handler)
-	else:
-	signal.signal(signal.SIGCONT, signal.SIG_DFL)
-
-	s._termination_check()
-	if received_signal:
-	sys.exit(received_signal[0])
-
-	if rval == 0 ||
-		fetchonly ||
-		not
-		keep_going:
-	break
-	if "resume" not
-	in
-mtimedb:
-	break
-	mergelist = s._mtimedb["resume"].get("mergelist")
-	if not mergelist:
-	break
-
-	if not failed_pkgs:
-	break
-
-	for failed_pkg
-		in
-	failed_pkgs:
-	mergelist.remove(list(failed_pkg.pkg))
-
-	s._failed_pkgs_all =append(s._failed_pkgs_all, failed_pkgs...)
-	del
-	failed_pkgs[:]
-
-	if not mergelist:
-	break
-
-	if not s._calc_resume_list():
-	break
-
-	clear_caches(s.trees)
-	if not s._mergelist:
-	break
-
-	s._save_resume_list()
-	s._pkg_count.curval = 0
-	ss := []
-
-	for x
-		in
-	s._mergelist {
-		if isinstance(x, Package) &&
-			x.operation == "merge" {
-			ss = append(ss, x)
+		sighandler := func(signum int, frame) {
+			signal.signal(signal.SIGINT, signal.SIG_IGN)
+			signal.signal(signal.SIGTERM, signal.SIG_IGN)
+			WriteMsg(fmt.Sprintf("\n\nExiting on signal %s\n", signum))
+			s.terminate()
+			received_signal = append(received_signal, 128+signum)
 		}
+
+		earlier_sigint_handler = signal.signal(signal.SIGINT, sighandler)
+		earlier_sigterm_handler = signal.signal(signal.SIGTERM, sighandler)
+		earlier_sigcont_handler = signal.signal(signal.SIGCONT, s._sigcont_handler)
+		signal.siginterrupt(signal.SIGCONT, false)
+
+	try:
+		rval = s._merge()
+	finally:
+		if earlier_sigint_handler != nil:
+		signal.signal(signal.SIGINT, earlier_sigint_handler) else:
+		signal.signal(signal.SIGINT, signal.SIG_DFL)
+		if earlier_sigterm_handler != nil:
+		signal.signal(signal.SIGTERM, earlier_sigterm_handler) else:
+		signal.signal(signal.SIGTERM, signal.SIG_DFL)
+		if earlier_sigcont_handler != nil:
+		signal.signal(signal.SIGCONT, earlier_sigcont_handler) else:
+		signal.signal(signal.SIGCONT, signal.SIG_DFL)
+
+		s._termination_check()
+		if received_signal {
+			sys.exit(received_signal[0])
+		}
+
+		if rval == 0 || fetchonly || !keep_going {
+			break
+		}
+		if "resume" not
+		in
+		mtimedb{
+			break
+		}
+		mergelist = s._mtimedb["resume"].get("mergelist")
+		if not mergelist {
+			break
+		}
+
+		if not failed_pkgs:
+		break
+
+		for failed_pkg
+			in
+		failed_pkgs:
+		mergelist.remove(list(failed_pkg.pkg))
+
+		s._failed_pkgs_all = append(s._failed_pkgs_all, failed_pkgs...)
+		del
+		failed_pkgs[:]
+
+		if not mergelist:
+		break
+
+		if not s._calc_resume_list():
+		break
+
+		clear_caches(s.trees)
+		if not s._mergelist:
+		break
+
+		s._save_resume_list()
+		s._pkg_count.curval = 0
+
+		s._pkg_count.maxval = 0
+		for x
+			in
+		s._mergelist {
+			if isinstance(x, Package) &&
+				x.operation == "merge" {
+				s._pkg_count.maxval += 1
+			}
+		}
+		s._status_display.maxval = s._pkg_count.maxval
 	}
-	s._pkg_count.maxval = len(ss)
-	s._status_display.maxval = s._pkg_count.maxval
 
 	s._cleanup()
 
 	s._logger.log(" *** Finished. Cleaning up...")
 
-	if failed_pkgs:
-	s._failed_pkgs_all.extend(failed_pkgs)
-	del
-	failed_pkgs[:]
+	if failed_pkgs {
+		s._failed_pkgs_all.extend(failed_pkgs)
+		del
+		failed_pkgs[:]
+	}
 
-	printer = NewEOutput()
-	background = s._background
-	failure_log_shown = false
+	printer := NewEOutput(false)
+	background := s._background
+	failure_log_shown := false
 	if background && len(s._failed_pkgs_all) == 1 &&
-		s.myopts.get('--quiet-fail', 'n') != 'y':
-	failed_pkg = s._failed_pkgs_all[-1]
-	log_file = nil
-	log_file_real = nil
+		s.myopts.get('--quiet-fail', 'n') != 'y' {
+		failed_pkg := s._failed_pkgs_all[len(s._failed_pkgs_all)-1]
+		log_file := nil
+		log_file_real := nil
 
-	log_path = s._locate_failure_log(failed_pkg)
-	if log_path != nil:
-try:
-	log_file = open(_unicode_encode(log_path,
-		encoding = _encodings['fs'], errors = 'strict'), mode = 'rb')
-	except
-IOError:
-	pass else:
-	if log_path.endswith('.gz'):
-	log_file_real = log_file
-	log_file = gzip.GzipFile(filename = '',
-		mode = 'rb', fileobj = log_file)
+		log_path := s._locate_failure_log(failed_pkg)
+		if log_path != nil:
+	try:
+		log_file = open(_unicode_encode(log_path,
+			encoding = _encodings['fs'], errors = 'strict'), mode = 'rb')
+		except
+	IOError:
+		pass else:
+		if log_path.endswith('.gz'):
+		log_file_real = log_file
+		log_file = gzip.GzipFile(filename = '',
+			mode = 'rb', fileobj = log_file)
 
-	if log_file != nil:
-try:
-	for line
-		in
-	log_file:
-	WriteMsgLevel(line, noiselevel = -1)
-	except
-	zlib.error
-	as
-e:
-	WriteMsgLevel("%s\n"%(e, ), level = 40,
-		noiselevel = -1)
-finally:
-	log_file.close()
-	if log_file_real != nil:
-	log_file_real.close()
-	failure_log_shown = true
+		if log_file != nil:
+	try:
+		for line
+			in
+		log_file:
+		WriteMsgLevel(line, -1, 0)
+		except
+		zlib.error
+		as
+	e:
+		WriteMsgLevel("%s\n"%(e, ), level = 40,
+			noiselevel = -1)
+	finally:
+		log_file.close()
+		if log_file_real != nil:
+		log_file_real.close()
+		failure_log_shown = true
+	}
 
 	mod_echo_output = _flush_elog_mod_echo()
 
-	if background && not failure_log_shown &&
+	if background && ! failure_log_shown &&
 		s._failed_pkgs_all &&
 		s._failed_pkgs_die_msgs &&
-		not
-mod_echo_output:
+		!mod_echo_output {
 
-	for mysettings, key, logentries
-		in
-	s._failed_pkgs_die_msgs:
-	root_msg = ""
-	if mysettings.ValueDict["ROOT"] != "/":
-	root_msg = " merged to %s" % mysettings.ValueDict["ROOT"]
-	print()
-	printer.einfo("Error messages for package %s%s:"%
-		(colorize("INFORM", key), root_msg))
-	print()
-	for phase
-		in
-	portage.
-	const.EBUILD_PHASES:
-	if phase not
-	in
-logentries:
-	continue
-	for msgtype, msgcontent
-		in
-	logentries[phase]:
-	if isinstance(msgcontent, basestring):
-	msgcontent = [msgcontent]
-	for line
-		in
-	msgcontent:
-	printer.eerror(line.strip("\n"))
+		for mysettings, key, logentries
+			in
+		s._failed_pkgs_die_msgs {
+			root_msg := ""
+			if mysettings.ValueDict["ROOT"] != "/" {
+				root_msg = fmt.Sprintf(" merged to %s", mysettings.ValueDict["ROOT"])
+			}
+			print()
+			printer.einfo("Error messages for package %s%s:"%
+				(colorize("INFORM", key), root_msg))
+			print()
+			for phase := range EBUILD_PHASES{
+				if phase not
+				in
+				logentries{
+				continue
+			}
+				for msgtype, msgcontent
+				in
+				logentries[phase]{
+				if isinstance(msgcontent, basestring){
+				msgcontent = []string{msgcontent}
+			}
+				for _, line := range msgcontent{
+				printer.eerror(strings.Trim(line, "\n"))
+			}
+			}
+			}
+		}
+	}
 
-	if s._post_mod_echo_msgs:
-	for msg
-		in
-	s._post_mod_echo_msgs:
-	msg()
+	if len(s._post_mod_echo_msgs) > 0 {
+		for msg
+			in
+		s._post_mod_echo_msgs {
+			msg()
+		}
+	}
 
-	if len(s._failed_pkgs_all) > 1 ||
-		(s._failed_pkgs_all && keep_going):
-	if len(s._failed_pkgs_all) > 1:
-	msg = "The following %d packages have "%
-		len(s._failed_pkgs_all) +
-		"failed to build, install, or execute postinst:"
-	else:
-	msg = "The following package has " +
-		"failed to build, install, or execute postinst:"
+	if len(s._failed_pkgs_all) > 1 || (len(s._failed_pkgs_all) > 0 && keep_going) {
+		msg := ""
+		if len(s._failed_pkgs_all) > 1 {
+			msg = fmt.Sprintf("The following %d packages have ",
+				len(s._failed_pkgs_all)) +
+				"failed to build, install, or execute postinst:"
+		} else {
+			msg = "The following package has " +
+				"failed to build, install, or execute postinst:"
+		}
 
-	printer.eerror("")
-	for line
-		in
-	SplitSubN(msg, 72):
-	printer.eerror(line)
-	printer.eerror("")
-	for failed_pkg
-		in
-	s._failed_pkgs_all:
-	msg = " %s" % (failed_pkg.pkg, )
-	if failed_pkg.postinst_failure:
-	msg += " (postinst failed)"
-	log_path = s._locate_failure_log(failed_pkg)
-	if log_path != nil:
-	msg += ", Log file:"
-	printer.eerror(msg)
-	if log_path != nil:
-	printer.eerror("  '%s'" % colorize('INFORM', log_path))
-	printer.eerror("")
+		printer.eerror("")
+		for _, line := range SplitSubN(msg, 72) {
+			printer.eerror(line)
+		}
+		printer.eerror("")
+		for _, failed_pkg := range s._failed_pkgs_all {
+			msg = fmt.Sprintf(" %s", failed_pkg.pkg, )
+			if failed_pkg.postinst_failure != "" {
+				msg += " (postinst failed)"
+			}
+			log_path := s._locate_failure_log(failed_pkg)
+			if log_path != nil {
+				msg += ", Log file:"
+			}
+			printer.eerror(msg)
+			if log_path != nil {
+				printer.eerror(fmt.Sprintf("  '%s'", colorize("INFORM", log_path)))
+			}
+		}
+		printer.eerror("")
+	}
 
-	if s._failed_pkgs_all {
+	if len(s._failed_pkgs_all) > 0 {
 		return FAILURE
 	}
 	return 0
@@ -9880,7 +9875,7 @@ func NewTaskSequence( **kwargs) *TaskSequence {
 }
 
 func (t *TaskSequence) add(task) {
-	t._task_queue.append(task)
+	t._task_queue = append(t._task_queue, task)
 }
 
 func (t *TaskSequence) _start() {
@@ -9893,16 +9888,15 @@ func (t *TaskSequence) _cancel() {
 }
 
 func (t *TaskSequence) _start_next_task() {
-	if len(t._task_queue) > 0 {
-		task = t._task_queue[0]
-		t._task_queue= t._task_queue[1:]
-	} else {
+	if len(t._task_queue) == 0 {
 		t._current_task = nil
 		i := 0
 		t.returncode = &i
 		t.wait()
 		return
 	}
+	task := t._task_queue[0]
+	t._task_queue = t._task_queue[1:]
 
 	t._start_task(task, t._task_exit_handler)
 }
@@ -9947,7 +9941,7 @@ type UnmergeDepPriority struct{
 	MAX , SOFT, MIN int
 	// slots
 	optional bool
-	ignored, , satisfied
+	ignored, satisfied
 }
 
 func NewUnmergeDepPriority(**kwargs)*UnmergeDepPriority {
@@ -10671,10 +10665,10 @@ type  SchedulerInterface struct {
 	add_reader func(int, func() bool)
 	add_writer func()
 	remove_reader func(int)
+	call_soon func()
 	call_at,
 	call_exception_handler,
 	call_later,
-	call_soon,
 	call_soon_threadsafe,
 	close,
 	create_future,
@@ -10729,8 +10723,9 @@ func NewSchedulerInterface(event_loop, is_background func()bool, **kwargs)*Sched
 	s._is_background = is_background
 	for kfilter_loglevels
 	in
-	s._event_loop_attrs:
-	setattr(s, k, getattr(event_loop, k))
+	s._event_loop_attrs {
+		setattr(s, k, getattr(event_loop, k))
+	}
 	return s
 }
 
@@ -10777,7 +10772,7 @@ func (s *SchedulerInterface) output( msg , log_path string, background bool, lev
 type AsyncTaskFuture struct {
 	*AsynchronousTask
 	// slot
-	future Future
+	future IFuture
 }
 
 func (a* AsyncTaskFuture) _start() {
@@ -10790,7 +10785,7 @@ func (a* AsyncTaskFuture) _cancel() {
 	}
 }
 
-func (a* AsyncTaskFuture) _done_callback(future Future) {
+func (a* AsyncTaskFuture) _done_callback(future IFuture) {
 	if future.cancelled() {
 		a.cancelled = true
 		i := -int(unix.SIGINT)
@@ -10805,7 +10800,7 @@ func (a* AsyncTaskFuture) _done_callback(future Future) {
 	a._async_wait()
 }
 
-func NewAsyncTaskFuture(future Future)*AsyncTaskFuture{
+func NewAsyncTaskFuture(future IFuture)*AsyncTaskFuture{
 	a := &AsyncTaskFuture{}
 	a.AsynchronousTask = NewAsynchronousTask()
 	a.future = future
@@ -10842,27 +10837,28 @@ type AsyncScheduler struct {
 	*AsynchronousTask
 	*PollScheduler
 	_remaining_tasks bool
+	_running_tasks map[]bool
 	_error_count     int
 }
 
 // 0, 0
-func NewAsyncScheduler(max_jobs int, max_load float64, event_loop) *AsyncScheduler{
+func NewAsyncScheduler(max_jobs int, max_load float64, event_loop) *AsyncScheduler {
 	a := &AsyncScheduler{}
-	a.AsynchronousTask= NewAsynchronousTask()
-	a.PollScheduler=NewPollScheduler(false, event_loop)
-	if max_jobs == 0{
+	a.AsynchronousTask = NewAsynchronousTask()
+	a.PollScheduler = NewPollScheduler(false, event_loop)
+	if max_jobs == 0 {
 		max_jobs = 1
 	}
 	a._max_jobs = max_jobs
 	if max_load != 0 {
 		a._max_load = 0
-	}else{
+	} else {
 		a._max_load = max_load
 	}
 	a._error_count = 0
-	a._running_tasks = set()
+	a._running_tasks = map[]bool{}
 	a._remaining_tasks = true
-	a._loadavg_check_id = None
+	a._loadavg_check_id = nil
 	return a
 }
 
@@ -10890,10 +10886,9 @@ func(a*AsyncScheduler) _cancel() {
 }
 
 func(a*AsyncScheduler) _terminate_tasks() {
-	for task
-	in
-	list(a._running_tasks):
-	task.cancel()
+	for task := range a._running_tasks {
+		task.cancel()
+	}
 }
 
 func(a*AsyncScheduler) _next_task() {
@@ -10912,7 +10907,7 @@ func(a*AsyncScheduler) _running_job_count() int {
 func(a*AsyncScheduler) _schedule_tasks() {
 	for a._keep_scheduling()&& a._can_add_job() {
 	try:
-		task = a._next_task()
+		task := a._next_task()
 		except
 	StopIteration:
 		a._remaining_tasks = false
@@ -10923,9 +10918,7 @@ func(a*AsyncScheduler) _schedule_tasks() {
 		task.start()
 	}
 
-	if a._loadavg_check_id is
-	not
-None{
+	if a._loadavg_check_id != nil{
 	a._loadavg_check_id.cancel()
 	a._loadavg_check_id = a._event_loop.call_later(
 	a._loadavg_latency, a._schedule)
@@ -10934,7 +10927,7 @@ None{
 }
 
 func(a*AsyncScheduler) _task_exit( task) {
-	a._running_tasks.discard(task)
+	delete(a._running_tasks, task)
 	if task.returncode != 0 {
 		a._error_count += 1
 	}
@@ -10942,37 +10935,115 @@ func(a*AsyncScheduler) _task_exit( task) {
 }
 
 func(a*AsyncScheduler) _start() {
-	if a._max_load is
-	not
-	None
-	&&
-	a._loadavg_latency
-	is
-	not
-	None
-	&&
-	(a._max_jobs
-	is
-	true
-	||
-	a._max_jobs > 1){
-a._loadavg_check_id = a._event_loop.call_later(
-a._loadavg_latency, a._schedule)
-}
+	if a._max_load != nil && a._loadavg_latency != nil &&
+		(a._max_jobs != 0 || a._max_jobs > 1) {
+		a._loadavg_check_id = a._event_loop.call_later(
+			a._loadavg_latency, a._schedule)
+	}
 	a._schedule()
 }
 
 func(a*AsyncScheduler) _cleanup() {
 	a.PollScheduler._cleanup()
-	if a._loadavg_check_id is
-	not
-None{
-	a._loadavg_check_id.cancel()
-	a._loadavg_check_id = None
-}
+	if a._loadavg_check_id != nil {
+		a._loadavg_check_id.cancel()
+		a._loadavg_check_id = nil
+	}
 }
 
 func(a*AsyncScheduler) _async_wait() {
 	a._cleanup()
 	a.AsynchronousTask._async_wait()
 }
+
+type FileDigester struct {
+	*ForkProcess
+
+	// slot
+	hash_names []string
+	file_path
+	digests
+	_digest_pipe_reader
+	_digest_pw
+}
+
+func (f*FileDigester) _start() {
+	p2 := make([]int, 2)
+	syscall.Pipe(p2)
+	pr, pw := p2[0], p2[1]
+	f.fd_pipes = map[int]int{}
+	f.fd_pipes[pw] = pw
+	f._digest_pw = pw
+	f._digest_pipe_reader = NewPipeReader(
+		input_files = {
+		"input": pr
+	}, scheduler = f.scheduler
+	)
+	f._digest_pipe_reader.addExitListener(f._digest_pipe_reader_exit)
+	f._digest_pipe_reader.start()
+	f.ForkProcess._start()
+	syscall.Close(pw)
+}
+
+func (f*FileDigester) _run() {
+	digests := performMultipleChecksums(f.file_path, f.hash_names, false)
+
+	buf = "".join("%s=%s\n" % item
+	for item
+	in
+	digests.items()).encode("utf_8")
+
+	while
+buf:
+	buf = buf[os.write(self._digest_pw, buf):]
+
+	return os.EX_OK
+}
+
+func (f*FileDigester) _parse_digests( data) {
+	digests =
+	{
+	}
+	for line
+	in
+	data.decode("utf_8").splitlines():
+	parts = line.split("=", 1)
+	if len(parts) == 2:
+	digests[parts[0]] = parts[1]
+
+	self.digests = digests
+
+	def
+	_async_waitpid(self):
+	if self._digest_pipe_reader is
+None:
+	ForkProcess._async_waitpid(self)
+}
+
+func (f*FileDigester) _digest_pipe_reader_exit( pipe_reader) {
+	f._parse_digests(pipe_reader.getvalue())
+	f._digest_pipe_reader = None
+	if self.pid is
+None:
+	self._unregister()
+	self._async_wait()
+	else:
+	self._async_waitpid()
+}
+
+func (f*FileDigester) _unregister() {
+	f.ForkProcess._unregister()
+
+	pipe_reader = f._digest_pipe_reader
+	if pipe_reader != nil {
+		f._digest_pipe_reader = nil
+		pipe_reader.removeExitListener(f._digest_pipe_reader_exit)
+		pipe_reader.cancel()
+	}
+}
+
+func NewFileDigester(file_path , hash_names , background , logfile, scheduler ) *FileDigester {
+	f := &FileDigester{}
+	return f
+}
+

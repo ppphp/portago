@@ -8743,7 +8743,7 @@ func (p *portdbapi) _aux_get_cancel(proc, future) {
 	}
 }
 
-func (p *portdbapi) _aux_get_return(future Future, mycpv, mylist, myebuild, ebuild_hash string,
+func (p *portdbapi) _aux_get_return(future IFuture, mycpv, mylist, myebuild, ebuild_hash string,
 	mydata map[string]string, mylocation string, cache_me bool, proc) {
 	if future.cancelled() {
 		return

@@ -42,12 +42,13 @@ func WriteMsg(myStr string, noiseLevel int, fd *os.File) {
 	}
 }
 
-//0
+// 0
 func WriteMsgStdout(myStr string, noiseLevel int) {
 	WriteMsg(myStr, noiseLevel, os.Stdout)
 }
 
-func WriteMsgLevel(msg string, level, noiseLevel int) { //00
+// 0, 0
+func WriteMsgLevel(msg string, level, noiseLevel int) {
 	var fd *os.File
 	if level >= 30 {
 		fd = os.Stderr

@@ -382,6 +382,7 @@ func (c *Config) reset(keeping_pkg int) {
 	c.regenerate(0)
 }
 
+// nil
 func (c *Config) SetCpv(mycpv *PkgStr, mydb *vardbapi) {
 	if c.setCpvActive {
 		//AssertionError('setcpv recursion detected')
@@ -436,7 +437,7 @@ func (c *Config) SetCpv(mycpv *PkgStr, mydb *vardbapi) {
 		for v := range ak {
 			aks = append(aks, v)
 		}
-		ag := mydb.auxGet(c.mycpv, aks, "")
+		ag := mydb.AuxGet(c.mycpv, aks, "")
 
 		for i := range aks {
 			k := aks[i]

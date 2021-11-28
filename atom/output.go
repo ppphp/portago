@@ -181,7 +181,8 @@ var (
 	_max_xtermTitle_len       = 253
 )
 
-func XtermTitle(mystr string, raw bool) { // false
+// false
+func XtermTitle(mystr string, raw bool) {
 	if _disable_xtermTitle == nil {
 		_disable_xtermTitle = new(bool)
 		ts, tb := os.LookupEnv("TERM")

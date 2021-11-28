@@ -365,7 +365,7 @@ func NewPackageSet(allow_wildcard, allow_repo bool) *PackageSet{
 	p._allow_repo = allow_repo
 }
 
-func (p*PackageSet) __contains__(atom) {
+func (p*PackageSet) __contains__(atom) bool {
 	p._load()
 	return atom
 	in

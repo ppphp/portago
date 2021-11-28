@@ -7,11 +7,9 @@ import (
 	"fmt"
 	"github.com/ppphp/shlex"
 	"golang.org/x/sys/unix"
-	"golang.org/x/text/unicode/rangetable"
 	"io"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -490,7 +488,7 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *portdbapi) 
 }
 
 // false, nil, nil
-func digestcheck(myfiles []string, mysettings *Config, strict bool, mf *Manifest) {
+func digestcheck(myfiles []string, mysettings *Config, strict bool, mf *Manifest) int {
 
 	if mysettings.ValueDict["EBUILD_SKIP_MANIFEST"] == "1" {
 		return 1
@@ -545,8 +543,8 @@ try:
 	as
 e:
 	eout.eend(1, "")
-	WriteMsg(_("\n!!! A file listed in the Manifest could not be found: %s\n")%str(e),
-		noiselevel = -1)
+	WriteMsg(fmt.Sprintf("\n!!! A file listed in the Manifest could not be found: %s\n", e),
+		 -1, nil)
 	return 0
 	except
 	DigestException
@@ -940,7 +938,7 @@ debug bool, use_cache=None, db DBAPI) {
 	mysettings.ValueDict["BUILD_PREFIX"] = mysettings.ValueDict["PORTAGE_TMPDIR"] + "/portage"
 	mysettings.ValueDict["PKG_TMPDIR"] = mysettings.ValueDict["BUILD_PREFIX"] + "/._unmerge_"
 
-	if  ins([]string{"unmerge", "prerm", "postrm", "cleanrm"},mydo) {
+	if Ins([]string{"unmerge", "prerm", "postrm", "cleanrm"},mydo) {
 		mysettings.ValueDict["PORTAGE_BUILDDIR"] = filepath.Join(
 			mysettings.ValueDict["PKG_TMPDIR"],
 			mysettings.ValueDict["CATEGORY"], mysettings.ValueDict["PF"])
@@ -2644,8 +2642,6 @@ func _postinst_bsdflags(mysettings *Config) {
 
 func _post_src_install_uid_fix(mysettings *Config, out){
 
-os = _os_merge
-
 inst_uid, _ := strconv.Atoi(mysettings.ValueDict["PORTAGE_INST_UID"])
 inst_gid, _ := strconv.Atoi(mysettings.ValueDict["PORTAGE_INST_GID"])
 
@@ -2655,7 +2651,7 @@ destdir := mysettings.ValueDict["D"]
 ed_len := len(mysettings.ValueDict["ED"])
 unicode_errors := []string{}
 desktop_file_validate := FindBinary("desktop-file-validate") != ""
-xdg_dirs := strings.Split(mysettings.ValueDict["XDG_DATA_DIRS"]),":")
+xdg_dirs := strings.Split(mysettings.ValueDict["XDG_DATA_DIRS"],":")
 if len(xdg_dirs) == 0 {
 	xdg_dirs = []string{"/usr/share"}
 }
@@ -3412,13 +3408,15 @@ func _prepare_workdir(mysettings *Config) {
 	if *secpass >= 2 {
 		uid = uint32(*portage_uid)
 	}else {
-		uid = -1
+		uid = 0
+		uid -= 1
 	}
 	var gid uint32
 	if *secpass >= 1 {
 		 gid = *portage_gid
 	}else {
-		gid = -1
+		gid = 0
+		gid -= 1
 	}
 
 	ensureDirs(mysettings.ValueDict["PORTAGE_BUILDDIR"], uid,gid, md, -1 ,nil, true)
@@ -3432,7 +3430,7 @@ func _prepare_workdir(mysettings *Config) {
 		modified := ensureDirs(mysettings.ValueDict["PORTAGE_LOGDIR"],-1,-1,-1,-1,nil,true)
 		if modified {
 			apply_secpass_permissions(mysettings.ValueDict["PORTAGE_LOGDIR"],
-				uid = portage_uid, gid = portage_gid, mode = 0o2770)
+				uint32(*portage_uid), *portage_gid, 0o2770, -1, nil, true)
 		}
 		//except PortageException as e:
 		//writemsg("!!! %s\n"%str(e), noiselevel = -1)
