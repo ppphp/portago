@@ -38,47 +38,59 @@ type Future interface{
 
 // ------------------emerge begins
 
-// SlotObject
+type DepPriorityInterface interface{
+	__int__() int
+}
+
 type AbstractDepPriority struct {
 	// slot
 	buildtime bool
 	buildtime_slot_op,runtime,runtime_post,runtime_slot_op string
 }
 
-func(a *AbstractDepPriority) __lt__( other *AbstractDepPriority) {
+func(a *AbstractDepPriority) __int__() int{
+	return 0
+}
+
+func(a *AbstractDepPriority) __lt__( other DepPriorityInterface) bool {
 	return a.__int__() < other.__int__()
 }
 
-func(a *AbstractDepPriority) __le__(other *AbstractDepPriority) {
+func(a *AbstractDepPriority) __le__(other DepPriorityInterface) bool{
 	return a.__int__() <= other.__int__()
 }
 
-func(a *AbstractDepPriority) __eq__(other *AbstractDepPriority) {
+func(a *AbstractDepPriority) __eq__(other DepPriorityInterface) bool{
 	return a.__int__() == other.__int__()
 }
 
-func(a *AbstractDepPriority) __ne__(other *AbstractDepPriority) {
+func(a *AbstractDepPriority) __ne__(other DepPriorityInterface) bool{
 	return a.__int__() != other.__int__()
 }
 
-func(a *AbstractDepPriority) __gt__(other *AbstractDepPriority) {
+func(a *AbstractDepPriority) __gt__(other DepPriorityInterface) bool{
 	return a.__int__() > other.__int__()
 }
 
-func(a *AbstractDepPriority) __ge__(other *AbstractDepPriority) {
+func(a *AbstractDepPriority) __ge__(other DepPriorityInterface) bool{
 	return a.__int__() >= other.__int__()
 }
 
-func(a *AbstractDepPriority) copy() {
-	return copy.copy(a)
+func(a *AbstractDepPriority) copy()DepPriorityInterface {
+	b := *a
+	return &b
+}
+
+func NewAbstractDepPriority() *AbstractDepPriority{
+	a := &AbstractDepPriority{}
+	return a
 }
 
 type AbstractEbuildProcess struct {
 	*SpawnProcess
 	// slot
 	settings *Config
-	phase, _build_dir_unlock,
-	_exit_command, _exit_timeout_id, _start_future string
+	phase, _build_dir_unlock, _exit_command, _exit_timeout_id, _start_future string
 	_build_dir *EbuildBuildDir
 	_ipc_daemon *EbuildIpcDaemon
 
@@ -1171,8 +1183,7 @@ func (b *Binpkg) _start() {
 	settings.SetCpv(pkg)
 	b._tree = "bintree"
 	b._bintree = b.pkg.root_config.trees[b._tree]
-	b._verify = not
-	b.opts.pretend
+	b._verify = !b.opts.pretend
 
 	ss, _ := filepath.EvalSymlinks(settings.ValueDict["PORTAGE_TMPDIR"])
 	dir_path := filepath.Join(ss, "portage", pkg.category, pkg.pf)
@@ -1231,8 +1242,7 @@ func (b *Binpkg)_prefetch_exit(prefetcher){
 		return
 	}
 
-	if not(b.opts.pretend ||
-	b.opts.fetchonly){
+	if !(b.opts.pretend || b.opts.fetchonly){
 		b._start_task(
 			NewAsyncTaskFuture(b._build_dir.async_lock()),
 		b._start_fetcher)
@@ -1250,7 +1260,7 @@ func (b *Binpkg) _start_fetcher( lock_task=nil) {
 		}
 
 		lock_task.future.result()
-		portage.prepare_build_dirs(b.settings.ValueDict["ROOT"], b.settings, 1)
+		prepare_build_dirs(b.settings, true)
 		b._build_dir.clean_log()
 	}
 
@@ -1313,7 +1323,7 @@ func (b *Binpkg) _fetcher_exit( fetcher) {
 	b._verifier_exit(verifier)
 }
 
-func (b *Binpkg) _verifier_exit(verifier) {
+func (b *Binpkg) _verifier_exit(verifier func(*int)) {
 	if verifier != nil&& b._default_exit(verifier) != 0{
 		b._async_unlock_builddir( b.returncode)
 		return
@@ -1379,7 +1389,7 @@ func (b *Binpkg) _clean_exit( clean_phase) {
 }
 
 @coroutine
-func (b *Binpkg) _unpack_metadata() {
+func (b *Binpkg) _unpack_metadata() Future {
 
 	dir_path := b.settings.ValueDict["PORTAGE_BUILDDIR"]
 
@@ -1411,27 +1421,21 @@ func (b *Binpkg) _unpack_metadata() {
 			continue
 		}
 
-		f = io.open(_unicode_encode(filepath.Join(infloc, k),
-			encoding = _encodings['fs'], errors = 'strict'),
-		mode = 'w', encoding=_encodings['content'],
-			errors = 'backslashreplace')
-	try:
-		f.write(_unicode_decode(v + "\n"))
-	finally:
-		f.close()
+		f, _ := os.OpenFile(filepath.Join(infloc, k), os.O_RDWR|os.O_CREATE, 0644)
+		f.Write(v)
+		f.Write([]byte("\n"))
+		f.Close()
 	}
 
 	if pkg_path != nil {
-		md5sum, = b._bintree.dbapi.aux_get(b.pkg.cpv, ["MD5"])
+		md5sum, = b._bintree.dbapi.aux_get(b.pkg.cpv, map[string]string{"MD5":""})[0]
 		if not md5sum {
 			md5sum = performMd5(pkg_path, false)
 		}
-		with
-		io.open(_unicode_encode(filepath.Join(infloc, "BINPKGMD5"),
-			encoding = _encodings['fs'], errors = 'strict'),
-		mode = 'w', encoding=_encodings['content'], errors = 'strict') as
-	f:
-		f.write(_unicode_decode("{}\n".format(md5sum)))
+		f, _ := os.OpenFile(filepath.Join(infloc, "BINPKGMD5"), os.O_RDWR|os.O_CREATE, 0644)
+		f.Write(md5sum)
+		f.Write([]byte("\n"))
+		f.Close()
 	}
 
 	env_extractor := NewBinpkgEnvExtractor( b.background,
@@ -1447,7 +1451,7 @@ func (b *Binpkg) _unpack_metadata() {
 func (b *Binpkg) _unpack_metadata_exit( unpack_metadata) {
 	if b._default_exit(unpack_metadata) != 0 {
 		unpack_metadata.future.result()
-		b._async_unlock_builddir(returncode = b.returncode)
+		b._async_unlock_builddir(b.returncode)
 		return
 	}
 
@@ -1559,7 +1563,7 @@ func (b *Binpkg) _async_unlock_builddir(returncode *int) {
 }
 
 // nil
-func (b *Binpkg) _unlock_builddir_exit(unlock_task, returncode=nil) {
+func (b *Binpkg) _unlock_builddir_exit(unlock_task, returncode *int) {
 	b._assert_current(unlock_task)
 	if unlock_task.cancelled && returncode!= nil{
 		b._default_final_exit(unlock_task)
@@ -1598,8 +1602,13 @@ func (b *Binpkg) _install_exit(task) {
 	return result
 }
 
-func NewBinpkg()*Binpkg{
-	b :=&Binpkg{}
+func NewBinpkg(background , find_blockers , ldpath_mtimes, logger,
+	opts, pkg, pkg_count, prefetcher , settings, scheduler ,
+	world_atom)*Binpkg{
+	b :=&Binpkg{background: background,find_blockers:find_blockers ,
+		ldpath_mtimes:ldpath_mtimes, logger:logger, opts:opts, pkg:pkg,
+		pkg_count:pkg_count, prefetcher:prefetcher , settings:settings,
+		scheduler :scheduler, world_atom:world_atom}
 	b.CompositeTask = NewCompositeTask()
 	return b
 }
@@ -1677,10 +1686,10 @@ type BinpkgExtractorAsync struct {
 	_shell_binary string
 
 	// slot
-	features map[string]bool
-	pkg *PkgStr
-	pkg_path string
-	image_dir                         string
+	features  map[string]bool
+	pkg       *PkgStr
+	pkg_path  string
+	image_dir string
 }
 
 func(b *BinpkgExtractorAsync) _start() {
@@ -2703,7 +2712,7 @@ func(c*CompositeTask) _default_final_exit( task) {
 	return c.wait()
 }
 
-func(c*CompositeTask) _start_task(task *SpawnProcess, exit_handler) {
+func(c*CompositeTask) _start_task(task *SpawnProcess, exit_handler func(*int)) {
 	//try{
 	//task.scheduler = c.scheduler
 	//except AttributeError{
@@ -2722,7 +2731,7 @@ func(c*CompositeTask) _task_queued_start_handler( task) {
 	c._current_task = task
 }
 
-func(c*CompositeTask) _task_queued_wait() {
+func(c*CompositeTask) _task_queued_wait() bool {
 	return c._current_task != c._TASK_QUEUED ||
 		c.cancelled || c.returncode != nil
 }
@@ -5854,8 +5863,10 @@ func(j*JobStatusDisplay) _display_status() {
 	}
 }
 
-type MergeListItem struct{
+type MergeListItem struct {
 	*CompositeTask
+
+	//slots
 	args_set,
 	binpkg_opts, build_opts, config_pool, emerge_opts,
 	find_blockers, logger, mtimedb, pkg,
@@ -5869,7 +5880,8 @@ func(m *MergeListItem) _start() {
 	build_opts := m.build_opts
 
 	if pkg.installed {
-		m.returncode = 0
+		i := 0
+		m.returncode = &i
 		m._async_wait()
 		return
 	}
@@ -5906,7 +5918,7 @@ func(m *MergeListItem) _start() {
 		msg += " %s %s" % (preposition, pkg.root)
 	}
 
-	if not build_opts.pretend {
+	if ! build_opts.pretend {
 		m.statusMessage(msg)
 		logger.log(fmt.Sprintf(" >>> emerge (%s of %s) %s to %s" ,
 		pkg_count.curval, pkg_count.maxval, pkg.cpv, pkg.root))
@@ -5952,7 +5964,7 @@ func(m *MergeListItem) create_install_task() {
 	ldpath_mtimes = mtimedb["ldpath"]
 
 	if pkg.installed {
-		if not(build_opts.buildpkgonly || build_opts.fetchonly || build_opts.pretend) {
+		if !(build_opts.buildpkgonly || build_opts.fetchonly || build_opts.pretend) {
 
 			task = NewPackageUninstall(background = m.background,
 				ldpath_mtimes = ldpath_mtimes, opts=m.emerge_opts,
@@ -6502,16 +6514,22 @@ func NewPackageMetadataWrapper(pkg *Package, metadata map[string]string) *packag
 
 type PackageArg struct {
 	*DependencyArg
+
+	atom *Atom
+	pset *InternalPackageSet
 }
 
-func NewPackageArg(packagee=None, **kwargs)*PackageArg {
+// nil
+func NewPackageArg(packagee=None, arg string, root_config *RootConfig, **kwargs)*PackaeArg {
 	p := &PackageArg{}
-	p.DependencyArg = NewDependencyArg(**kwargs)
+	p.DependencyArg = NewDependencyArg(arg, false, false, true, root_config,**kwargs)
 	p.packagee = packagee
-	atom = "=" + packagee.cpv
-	if packagee.repo != Package.UNKNOWN_REPO:
-	atom += _repo_separator + packagee.repo
-	p.atom = portage.dep.Atom(atom, allow_repo = true)
+	atom := "=" + packagee.cpv
+	if packagee.repo != Package.UNKNOWN_REPO {
+		atom += _repo_separator + packagee.repo
+	}
+	allow_repo := true
+	p.atom, _ = NewAtom(atom, nil, false, &allow_repo, nil, "", nil, nil)
 	p.pset = NewInternalPackageSet([]*Atom{p.atom,}, true, true)
 	return p
 }
@@ -6537,29 +6555,24 @@ func (p *PackageMerge) _start() {
 		action_desc = "Uninstalling"
 		preposition = "from"
 		counter_str = ""
-	}else {
+	} else {
 		action_desc = "Installing"
 		preposition = "to"
-		counter_str = fmt.Sprintf("(%s of %s) " ,
-		colorize("MERGE_LIST_PROGRESS", str(pkg_count.curval)),
+		counter_str = fmt.Sprintf("(%s of %s) ",
+			colorize("MERGE_LIST_PROGRESS", str(pkg_count.curval)),
 			colorize("MERGE_LIST_PROGRESS", str(pkg_count.maxval)))
 	}
 
-	msg := fmt.Sprintf("%s %s%s" , action_desc, counter_str,
+	msg := fmt.Sprintf("%s %s%s", action_desc, counter_str,
 		colorize(pkg_color, pkg.cpv+repoSeparator+pkg.repo))
 
 	if pkg.root_config.settings["ROOT"] != "/" {
 		msg += fmt.Sprintf(" %s %s", preposition, pkg.root)
 	}
 
-	if not p.merge.build_opts.fetchonly
-	and \
-	not
-	p.merge.build_opts.pretend
-	and \
-	not
-	p.merge.build_opts.buildpkgonly
-	{
+	if !p.merge.build_opts.fetchonly && !
+		p.merge.build_opts.pretend && !
+		p.merge.build_opts.buildpkgonly {
 		p.merge.statusMessage(msg)
 	}
 
@@ -6764,7 +6777,7 @@ func(p *PackageUninstall) _async_unlock_builddir(returncode *int) {
 	}
 	p._start_task(
 		NewAsyncTaskFuture(p._builddir_lock.async_unlock()),
-		functools.partial(p._unlock_builddir_exit, returncode = returncode))
+		func(t *int){p._unlock_builddir_exit(t, returncode)})
 }
 
 // nil
@@ -7978,23 +7991,27 @@ func (s *Scheduler) _check_manifests() int {
 
 func (s *Scheduler) _add_prefetchers() {
 
-	if not s._parallel_fetch:
-	return
+	if ! s._parallel_fetch {
+		return
+	}
 
-	if s._parallel_fetch:
+	if s._parallel_fetch {
+		prefetchers := s._prefetchers
 
-	prefetchers = s._prefetchers
-
-	for pkg
-		in
-	s._mergelist:
-	if not isinstance(pkg, Package) ||
-		pkg.operation == "uninstall":
-	continue
-	prefetcher = s._create_prefetcher(pkg)
-	if prefetcher != nil:
-	prefetchers[pkg] = prefetcher
-	s._task_queues.fetch.add(prefetcher)
+		for pkg
+			in
+		s._mergelist {
+			if not isinstance(pkg, Package) ||
+				pkg.operation == "uninstall" {
+				continue
+			}
+			prefetcher = s._create_prefetcher(pkg)
+			if prefetcher != nil {
+				prefetchers[pkg] = prefetcher
+				s._task_queues.fetch.add(prefetcher)
+			}
+		}
+	}
 }
 
 func (s *Scheduler) _create_prefetcher( pkg *Package) {
@@ -8514,11 +8531,12 @@ func (s *Scheduler) _add_packages() {
 	for pkg
 		in
 	s._mergelist {
-		if isinstance(pkg, Package):
-		pkg_queue.append(pkg)
-		else if
-		isinstance(pkg, Blocker):
-		pass
+		if isinstance(pkg, Package) {
+			pkg_queue.append(pkg)
+		}else if
+		isinstance(pkg, Blocker) {
+			//pass
+		}
 	}
 }
 
@@ -9448,10 +9466,8 @@ None:
 	task.async_wait()
 }
 
-func(s*SequentialTaskQueue) __bool__() {
-	return bool(s._task_queue
-	or
-	s.running_tasks)
+func(s*SequentialTaskQueue) __bool__() bool {
+	return bool(len(s._task_queue) != 0 || len(s.running_tasks) != 0)
 }
 
 func(s*SequentialTaskQueue) __len__() int {
@@ -9463,10 +9479,12 @@ type SetArg struct{
 	*DependencyArg
 
 	// slot
-	name', 'pset
+	name string
+	pset
 }
 
-func NewSetArg( pset=None, **kwargs) *SetArg{
+// nil
+func NewSetArg( pset, **kwargs) *SetArg{
 	s := &SetArg{}
 	s.DependencyArg = NewDependencyArg(**kwargs)
 	s.pset = pset
@@ -9850,12 +9868,13 @@ func NewTask() *Task {
 
 type TaskSequence struct{
 	*CompositeTask
-	_task_queue
+	_task_queue []
 }
 
 func NewTaskSequence( **kwargs) *TaskSequence {
 	t := &TaskSequence{}
-	AsynchronousTask.__init__(t, **kwargs)
+
+	t.AsynchronousTask = NewAsynchronousTask(**kwargs)
 	t._task_queue = deque()
 	return t
 }
@@ -9869,39 +9888,41 @@ func (t *TaskSequence) _start() {
 }
 
 func (t *TaskSequence) _cancel() {
-	t._task_queue.clear()
+	t._task_queue = []{}
 	t.CompositeTask._cancel()
 }
 
 func (t *TaskSequence) _start_next_task() {
-try:
-	task = t._task_queue.popleft()
-	except
-IndexError:
-	t._current_task = None
-	t.returncode = 0
-	t.wait()
-	return
+	if len(t._task_queue) > 0 {
+		task = t._task_queue[0]
+		t._task_queue= t._task_queue[1:]
+	} else {
+		t._current_task = nil
+		i := 0
+		t.returncode = &i
+		t.wait()
+		return
+	}
 
 	t._start_task(task, t._task_exit_handler)
 }
 
 func (t *TaskSequence) _task_exit_handler( task) {
-	if t._default_exit(task) != 0:
-	t.wait()
-	elif
-	t._task_queue:
-	t._start_next_task()
-	else:
-	t._final_exit(task)
-	t.wait()
+	if t._default_exit(task) != 0 {
+		t.wait()
+	}else if len(t._task_queue) > 0 {
+		t._start_next_task()
+	}else {
+		t._final_exit(task)
+		t.wait()
+	}
 }
 
-func (t *TaskSequence) __bool__() {
-	return bool(t._task_queue)
+func (t *TaskSequence) __bool__() bool {
+	return len(t._task_queue) > 0
 }
 
-func (t *TaskSequence) __len__() {
+func (t *TaskSequence) __len__() int {
 	return len(t._task_queue)
 }
 
@@ -9915,7 +9936,7 @@ func NewUninstallFailure (*pargs) *UninstallFailure {
 	u := &UninstallFailure{}
 	u.PortageException = PortageException(pargs)
 	u.status = 1
-	if pargs {
+	if len(pargs) > 0 {
 		u.status = pargs[0]
 	}
 	return u
@@ -9932,7 +9953,7 @@ type UnmergeDepPriority struct{
 func NewUnmergeDepPriority(**kwargs)*UnmergeDepPriority {
 	u := &UnmergeDepPriority{}
 
-	AbstractDepPriority.__init__(u, **kwargs)
+	u.AbstractDepPriority = NewAbstractDepPriority(**kwargs)
 	u.MAX    =  0
 	u.SOFT   = -3
 	u.MIN    = -3
@@ -9943,26 +9964,33 @@ func NewUnmergeDepPriority(**kwargs)*UnmergeDepPriority {
 	return u
 }
 
-func(u*UnmergeDepPriority) __int__() {
-	if u.runtime_slot_op:
-	return 0
-	if u.runtime:
-	return -1
-	if u.runtime_post:
-	return -2
-	if u.buildtime:
-	return -3
+func(u*UnmergeDepPriority) __int__() int {
+	if u.runtime_slot_op {
+		return 0
+	}
+	if u.runtime {
+		return -1
+	}
+	if u.runtime_post {
+		return -2
+	}
+	if u.buildtime {
+		return -3
+	}
 	return -3
 }
 
-func(u*UnmergeDepPriority) __str__() {
-	if u.ignored:
-	return "ignored"
-	if u.runtime_slot_op:
-	return "hard slot op"
-	myvalue = u.__int__()
-	if myvalue > u.SOFT:
-	return "hard"
+func(u*UnmergeDepPriority) __str__() string {
+	if u.ignored {
+		return "ignored"
+	}
+	if u.runtime_slot_op {
+		return "hard slot op"
+	}
+	myvalue := u.__int__()
+	if myvalue > u.SOFT {
+		return "hard"
+	}
 	return "soft"
 }
 
@@ -9970,6 +9998,9 @@ type UseFlagDisplay struct {
 	// slots
 	name,forced string
 	enabled bool
+
+	sort_combined func()
+	sort_separated func()
 }
 
 func NewUseFlagDisplay( name string, enabled bool, forced string)*UseFlagDisplay {
@@ -9980,7 +10011,7 @@ func NewUseFlagDisplay( name string, enabled bool, forced string)*UseFlagDisplay
 	}
 
 	u.sort_separated = func (a, b) {
-		enabled_diff = b.enabled - a.enabled
+		enabled_diff := b.enabled - a.enabled
 		if enabled_diff {
 			return enabled_diff
 		}
@@ -10009,26 +10040,25 @@ func(u*UseFlagDisplay) __str__() string {
 
 type _flag_info struct{flag, display string}
 
-func pkg_use_display(pkg, opts, modified_use=None) {
-	settings = pkg.root_config.settings
-	use_expand = pkg.use.expand
-	use_expand_hidden = pkg.use.expand_hidden
-	alphabetical_use = '--alphabetical'
-	in
-	opts
+// nil
+func pkg_use_display(pkg, opts map[string]string, modified_use=None) {
+	settings := pkg.root_config.settings
+	use_expand := pkg.use.expand
+	use_expand_hidden := pkg.use.expand_hidden
+	_, alphabetical_use :=opts["--alphabetical"]
 	forced_flags = set(chain(pkg.use.force,
 		pkg.use.mask))
-	if modified_use is
-None:
-	use = set(pkg.use.enabled)
-	else:
-	use = set(modified_use)
+	if modified_use == nil {
+		use = set(pkg.use.enabled)
+	}else {
+		use = set(modified_use)
+	}
 	use.discard(settings.get('ARCH'))
-	use_expand_flags = set()
-	use_enabled =
+	use_expand_flags := set()
+	use_enabled :=
 	{
 	}
-	use_disabled =
+	use_disabled :=
 	{
 	}
 	for varname
@@ -10037,24 +10067,25 @@ use_expand:
 	flag_prefix = varname.lower() + "_"
 	for f
 	in
-use:
-	if f.startswith(flag_prefix):
-	use_expand_flags.add(f)
-	use_enabled.setdefault(
-		varname.upper(), []).append(
-		&_flag_info{f, f[len(flag_prefix):]})
+use {
+		if f.startswith(flag_prefix):
+		use_expand_flags.add(f)
+		use_enabled.setdefault(
+			varname.upper(),[]).append(
+			&_flag_info{f, f[len(flag_prefix):]})
 
-	for f
-	in
-	pkg.iuse.all:
-	if f.startswith(flag_prefix):
-	use_expand_flags.add(f)
-	if f not
-	in
-use:
-	use_disabled.setdefault(
-		varname.upper(), []).append(
-		&_flag_info{f, f[len(flag_prefix):]})
+		for f
+			in
+		pkg.iuse.all:
+		if f.startswith(flag_prefix):
+		use_expand_flags.add(f)
+		if f not
+		in
+	use:
+		use_disabled.setdefault(
+			varname.upper(),[]).append(
+			&_flag_info{f, f[len(flag_prefix):]})
+	}
 
 	var_order = set(use_enabled)
 	var_order.update(use_disabled)
@@ -10069,54 +10100,63 @@ use:
 
 	for f
 	in
-	pkg.iuse.all:
-	if f not
-	in
-	use
-	and \
-	f
-	not
-	in
-use_expand_flags:
-	use_disabled['USE'].append(&_flag_info{f, f})
+	pkg.iuse.all{
+if f not
+in
+use
+&&
+f
+not
+in
+use_expand_flags{
+use_disabled['USE'].append(&_flag_info{f, f})
+}
+}
 
 	flag_displays = []
 	for varname
 	in
-var_order:
-	if varname.lower() in
-use_expand_hidden:
-	continue
-	flags = []
-	for f
-	in
-	use_enabled.get(varname, []):
-	flags.append(NewUseFlagDisplay(f.display, true, f.flag
-	in
-	forced_flags))
-	for f
-	in
-	use_disabled.get(varname, []):
-	flags.append(UseFlagDisplay(f.display, false, f.flag
-	in
-	forced_flags))
-	if alphabetical_use:
-	flags.sort(key = UseFlagDisplay.sort_combined) else:
-	flags.sort(key = UseFlagDisplay.sort_separated)
-	flag_displays.append('%s="%s"'%(varname,
-		' '.join("%s"%(f, )
-	for f
-	in
-	flags)))
+var_order{
+if varname.lower() in
+use_expand_hidden{
+continue
+}
+flags = []
+for f
+in
+use_enabled.get(varname, []){
+flags.append(NewUseFlagDisplay(f.display, true, f.flag
+in
+forced_flags))
+}
+for f
+in
+use_disabled.get(varname, []){
+flags.append(UseFlagDisplay(f.display, false, f.flag
+in
+forced_flags))
+}
+if alphabetical_use{
+flags.sort(key = UseFlagDisplay.sort_combined)
+}else{
+flags.sort(key = UseFlagDisplay.sort_separated)
+}
+flag_displays.append('%s="%s"'%(varname,
+' '.join("%s"%(f, )
+for f
+in
+flags)))
+}
 
-	return ' '.join(flag_displays)
+	return strings.Join(flag_displays, " ")
 }
 
 type ForkProcess struct {
 	*SpawnProcess
 }
 
-func(f *ForkProcess) _spawn( args, fd_pipes=nil, **kwargs){
+// nil
+func(f *ForkProcess) _spawn(args, fd_pipes=nil, **kwargs){
 	parent_pid := os.Getpid()
 	pid = nil
 try:
@@ -10511,7 +10551,7 @@ func(p*PollScheduler)  _schedule() bool {
 }
 
 func(p*PollScheduler)  _is_work_scheduled() bool {
-	return p._running_job_count()==0
+	return p._running_job_count() != 0
 }
 
 func(p*PollScheduler)  _running_job_count() int {
@@ -10571,11 +10611,11 @@ func NewPollScheduler( main bool, event_loop=nil)*PollScheduler {
 }
 
 type UserQuery struct{
-	myopts
+	myopts map[string]string
 }
 
 // nil, nil
-func(u*UserQuery) query(prompt string, enter_invalid bool, responses []string, colours []func(string)string) string {
+func(u*UserQuery) query(prompt string, enterInvalid bool, responses []string, colours []func(string)string) string {
 	if responses == nil {
 		responses = []string{"Yes", "No"}
 		colours = []func(string) string{
@@ -10590,7 +10630,7 @@ func(u*UserQuery) query(prompt string, enter_invalid bool, responses []string, c
 		cs = append(cs, colours[i%len(colours)])
 	}
 	colours = cs
-	if "--alert" in u.myopts{
+	if _, ok := u.myopts["--alert"]; ok {
 		prompt = "\a" + prompt
 	}
 	print(Bold(prompt) + " ")
@@ -10609,7 +10649,7 @@ func(u*UserQuery) query(prompt string, enter_invalid bool, responses []string, c
 			print("Interrupted.")
 			syscall.Exit(128 + int(unix.SIGINT))
 		}
-		if len(response) > 0 || !enter_invalid {
+		if len(response) > 0 || !enterInvalid {
 			for _, key := range responses {
 				if strings.ToUpper(response) == strings.ToUpper(key[:len(response)]) {
 					return key
@@ -10621,8 +10661,8 @@ func(u*UserQuery) query(prompt string, enter_invalid bool, responses []string, c
 	return ""
 }
 
-func NewUserQuery(myopts)*UserQuery{
-	u := &UserQuery{}
+func NewUserQuery(myopts map[string]string)*UserQuery{
+	u := &UserQuery{myopts:myopts}
 	return u
 }
 

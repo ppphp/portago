@@ -271,11 +271,11 @@ func (t *tbz2) decompose(datadir string, cleanup int) int {
 
 // 0
 func (t *tbz2) compose(datadir string, cleanup int) {
-	t.recompose(datadir, cleanup, true)
+	t.Recompose(datadir, cleanup, true)
 }
 
 // 0, true
-func (t *tbz2) recompose(datadir string, cleanup int, break_hardlinks bool) {
+func (t *tbz2) Recompose(datadir string, cleanup int, break_hardlinks bool) {
 	xpdata := xpak(datadir, "")
 	t.recompose_mem(string(xpdata), break_hardlinks)
 	if cleanup != 0 {

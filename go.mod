@@ -1,7 +1,6 @@
 module github.com/ppphp/portago
 
 require (
-	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/google/shlex v0.0.0-20181106134648-c34317bd91bf
 	github.com/jzelinskie/whirlpool v0.0.0-20170603002051-c19460b8caa6
 	github.com/martinlindhe/gogost v0.0.0-20170914195721-31862914ae20
