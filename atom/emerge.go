@@ -31,10 +31,12 @@ type Starter interface {
 type IFuture interface{
 	done() bool
 	cancel() bool
-	add_done_callback()
+	add_done_callback(func(IFuture, error))
 	cancelled() bool
-	exception()
+	exception() error
+	set_exception(error)
 	result()
+	set_result(interface{}) bool
 }
 
 type ITask interface{
@@ -548,8 +550,8 @@ func (a *AbstractEbuildProcess)_async_unlock_builddir( returncode *int) {
 }
 
 // nil
-func (a *AbstractEbuildProcess)_unlock_builddir_exit( unlock_future, returncode *int) {
-	unlock_future.cancelled() || unlock_future.result()
+func (a *AbstractEbuildProcess)_unlock_builddir_exit( unlock_future IFuture, returncode *int) {
+	//unlock_future.cancelled() || unlock_future.result()
 	if returncode != nil {
 		if unlock_future.cancelled() {
 			a.cancelled = true
@@ -662,7 +664,8 @@ type AsynchronousLock struct {
 	_use_process_by_default bool
 	// slot
 	_imp *LockFileS
-	path, ,_force_async,_force_dummy,_force_process,_force_thread,_unlock_future string
+	_unlock_future IFuture
+	path,_force_async,_force_dummy,_force_process,_force_thread string
 }
 
 func(a *AsynchronousLock) _start() {
@@ -712,7 +715,7 @@ func(a *AsynchronousLock) _poll() *int {
 	return a.returncode
 }
 
-func(a *AsynchronousLock) async_unlock() {
+func(a *AsynchronousLock) async_unlock() IFuture {
 	if a._imp == nil {
 		raise
 		AssertionError('not locked')
@@ -721,12 +724,14 @@ func(a *AsynchronousLock) async_unlock() {
 		raise
 		AssertionError("already unlocked")
 	}
+
+	var unlock_future IFuture
 	if isinstance(a._imp, (_LockProcess, _LockThread)){
 		unlock_future = a._imp.async_unlock()
 	}else{
 		Unlockfile(a._imp)
 		unlock_future = a.scheduler.create_future()
-		a.scheduler.call_soon(unlock_future.set_result, nil)
+		a.scheduler.call_soon(func(){unlock_future.set_result(nil)})
 	}
 	a._imp = nil
 	a._unlock_future = unlock_future
@@ -997,7 +1002,7 @@ func (a *AsynchronousTask)  async_wait() {
 	waiter := a.scheduler.create_future()
 	exit_listener := func(a *AsynchronousTask) { return waiter.cancelled() || waiter.set_result(a.returncode) }
 	a.addExitListener(exit_listener)
-	waiter.add_done_callback(func(waiter) {
+	waiter.add_done_callback(func(waiter)  {
 		if waiter.cancelled() {
 			return a.removeExitListener(exit_listener)
 		} else {
@@ -1091,15 +1096,15 @@ func (a *AsynchronousTask)  removeStartListener( f func(*AsynchronousTask))  {
 	}
 }
 
-func (a *AsynchronousTask)  _start_hook(){
-if a._start_listeners != nil {
-	start_listeners := a._start_listeners
-	a._start_listeners = nil
+func (a *AsynchronousTask)  _start_hook() {
+	if a._start_listeners != nil {
+		start_listeners := a._start_listeners
+		a._start_listeners = nil
 
-	for _, f := range start_listeners {
-		a.scheduler.call_soon(f, a)
+		for _, f := range start_listeners {
+			a.scheduler.call_soon(func() { f(a) })
+		}
 	}
-}
 }
 
 func (a *AsynchronousTask)  addExitListener( f) {
@@ -3431,11 +3436,12 @@ func (r *EbuildBuild) create_install_task() *EbuildMerge {
 	return task
 }
 
-func (r *EbuildBuild) _install_exit( task) {
+func (r *EbuildBuild) _install_exit(task) IFuture {
 	r._async_unlock_builddir(nil)
+	var result IFuture
 	if r._current_task == nil {
 		result = r.scheduler.create_future()
-		r.scheduler.call_soon(result.set_result, 0)
+		r.scheduler.call_soon(func() {result.set_result(0)})
 	}else {
 		result = r._current_task.async_wait()
 	}
@@ -3467,18 +3473,20 @@ type EbuildBuildDir struct {
 
 func NewEbuildBuildDir(scheduler *SchedulerInterface, settings *Config **kwargs)*EbuildBuildDir {
 	e := &EbuildBuildDir{}
-	e.locked = false
 	e.scheduler = scheduler
 	e.settings = settings
+	e.locked = false
 
 	return e
 }
 
-func (e*EbuildBuildDir) _assert_lock( async_lock *AsynchronousLock) {
-	if async_lock.returncode==nil ||*async_lock.returncode != 0 {
+func (e*EbuildBuildDir) _assert_lock( async_lock *AsynchronousLock) error {
+	if async_lock.returncode == nil || *async_lock.returncode != 0 {
 		//raise AssertionError("AsynchronousLock failed with returncode %s"
 		//% (async_lock.returncode,))
+		return errors.New("")
 	}
+	return nil
 }
 
 func (e*EbuildBuildDir) clean_log() {
@@ -3487,15 +3495,18 @@ func (e*EbuildBuildDir) clean_log() {
 		return
 	}
 	log_file := settings.ValueDict["PORTAGE_LOG_FILE"]
-	if log_file != "" &&os.path.isfile(log_file) {
-		if err :=syscall.Unlink(log_file); err != nil {
-			//except OSError:
-			//pass
+	if log_file != "" {
+		st, err := os.Stat(log_file)
+		if err != nil && !st.IsDir() {
+			if err := syscall.Unlink(log_file); err != nil {
+				//except OSError:
+				//pass
+			}
 		}
 	}
 }
 
-func (e*EbuildBuildDir) async_lock() {
+func (e*EbuildBuildDir) async_lock() IFuture {
 	if e._lock_obj != nil {
 		//raise
 		//e.AlreadyLocked((e._lock_obj, ))
@@ -3512,18 +3523,42 @@ func (e*EbuildBuildDir) async_lock() {
 	builddir_lock := NewAsynchronousLock(dir_path, e.scheduler)
 	result := e.scheduler.create_future()
 
-	catdir_locked := func(catdir_lock) {
-	try:
-		e._assert_lock(catdir_lock)
-		except
-		AssertionError
-		as
-	e:
-		result.set_exception(e)
-		return
+	// nil
+	catdir_unlocked := func(future IFuture, exception error) {
+		if !(exception == nil && future.exception() == nil) {
+			if exception != nil {
+				result.set_exception(exception)
+			} else {
+				result.set_exception(future.exception())
+			}
+		} else {
+			result.set_result(nil)
+		}
+	}
+
+	builddir_locked := func(builddir_lock *AsynchronousLock) {
+		if err := e._assert_lock(builddir_lock); err != nil {
+			//except AssertionError as e:
+			catdir_lock.async_unlock().add_done_callback(
+				catdir_unlocked) // exception = e
+			return
+		}
+
+		e._lock_obj = builddir_lock
+		e.locked = true
+		e.settings.ValueDict["PORTAGE_BUILDDIR_LOCKED"] = "1"
+		catdir_lock.async_unlock().add_done_callback(catdir_unlocked)
+	}
+
+	catdir_locked := func(catdir_lock*AsynchronousLock) {
+		if err:=e._assert_lock(catdir_lock); err!= nil {
+			//except AssertionError as e:
+			result.set_exception(err)
+			return
+		}
 
 		//try:
-		ensureDirs(catdir, -1, *portage_gid, 070, 0, nil, nil)
+		ensureDirs(catdir, -1, *portage_gid, 070, 0, nil, true)
 		//except PortageException as e:
 		//if ! filepath.Dir(catdir) {
 		//	result.set_exception(e)
@@ -3534,30 +3569,8 @@ func (e*EbuildBuildDir) async_lock() {
 		builddir_lock.start()
 	}
 
-	builddir_locked := func(builddir_lock *AsynchronousLock) {
 	//try:
-		e._assert_lock(builddir_lock)
-		//except AssertionError as e:
-		//catdir_lock.async_unlock.add_done_callback(
-		//	functools.partial(catdir_unlocked, exception = e))
-		//return
-
-		e._lock_obj = builddir_lock
-		e.locked = true
-		e.settings.ValueDict["PORTAGE_BUILDDIR_LOCKED"] = "1"
-		catdir_lock.async_unlock().add_done_callback(catdir_unlocked)
-	}
-
-	catdir_unlocked := func(future, exception = nil) {
-		if !(exception == nil && future.exception()== nil) {
-			result.set_exception(exception || future.exception())
-		}else {
-			result.set_result(nil)
-		}
-	}
-
-	//try:
-	ensureDirs(filepath.Dir(catdir), -1, *portage_gid, 070, 0, nil, nil)
+	ensureDirs(filepath.Dir(catdir), -1, *portage_gid, 070, 0, nil, true)
 	//except PortageException:
 	//if not filepath.Dir(filepath.Dir(catdir)):
 	//raise
@@ -3567,10 +3580,32 @@ func (e*EbuildBuildDir) async_lock() {
 	return result
 }
 
-func (e*EbuildBuildDir) async_unlock() {
+func (e*EbuildBuildDir) async_unlock() IFuture {
 	result := e.scheduler.create_future()
 
-	builddir_unlocked := func(future) {
+	catdir_unlocked := func(future IFuture) {
+		if future.exception() == nil {
+			result.set_result(nil)
+		} else {
+			result.set_exception(future.exception())
+		}
+	}
+
+	catdir_locked := func(catdir_lock *AsynchronousLock) {
+		if catdir_lock.wait() != 0 {
+			result.set_result(nil)
+		} else {
+			if err := os.RemoveAll(e._catdir); err != nil {
+				//except OSError:
+				//pass
+			}
+			catdir_lock.async_unlock().add_done_callback(func(future IFuture, err error) {
+				catdir_unlocked(future)
+			})
+		}
+	}
+
+	builddir_unlocked := func(future IFuture) {
 		if future.exception() != nil {
 			result.set_exception(future.exception())
 		} else {
@@ -3583,30 +3618,12 @@ func (e*EbuildBuildDir) async_unlock() {
 		}
 	}
 
-	catdir_locked := func(catdir_lock) {
-		if catdir_lock.wait() != 0 {
-			result.set_result(nil)
-		} else {
-			if err := os.RemoveAll(e._catdir); err != nil {
-				//except OSError:
-				//pass
-			}
-			catdir_lock.async_unlock().add_done_callback(catdir_unlocked)
-		}
-	}
-
-	catdir_unlocked := func(future) {
-		if future.exception() == nil {
-			result.set_result(nil)
-		} else {
-			result.set_exception(future.exception())
-		}
-	}
-
 	if e._lock_obj == nil {
-		e.scheduler.call_soon(result.set_result, nil)
+		e.scheduler.call_soon(func() { result.set_result(nil) })
 	} else {
-		e._lock_obj.async_unlock().add_done_callback(builddir_unlocked)
+		e._lock_obj.async_unlock().add_done_callback(func(future IFuture, err error) {
+			builddir_unlocked(future)
+		})
 	}
 	return result
 }
@@ -3634,7 +3651,7 @@ func (e*EbuildExecuter)_start() {
 	if eapiExportsReplaceVars(settings.ValueDict["EAPI"]) {
 		vardb = pkg.root_config.trees['vartree'].dbapi
 		settings["REPLACING_VERSIONS"] = " ".join(
-			set(portage.versions.cpv_getversion(match) \
+			set(cpvGetVersion(match, "") \
 		for match
 			in
 		vardb.match(pkg.slot_atom) + \
@@ -5040,7 +5057,7 @@ func(p*_PostPhaseCommands) _commands_exit( task) {
 
 			future := p._soname_deps_qa()
 
-			future.add_done_callback(func(future IFuture) {
+			future.add_done_callback(func(future IFuture, err error) {
 				return future.cancelled() || future.result()
 			})
 			p._start_task(NewAsyncTaskFuture(future), p._default_final_exit)
@@ -8937,16 +8954,16 @@ func (s *Scheduler) _schedule_tasks() {
 		s._status_display.display()
 
 		if s._failed_pkgs &&
-			not
+			!
 			s._build_opts.fetchonly
 		&&
-		not
+		!
 		s._is_work_scheduled()
 		&&
 		s._task_queues.fetch:
 		s._task_queues.fetch.clear()
 
-		if not(state_change ||
+		if !(state_change ||
 			(s._merge_wait_queue
 		&&
 		not
@@ -9060,7 +9077,7 @@ func (s *Scheduler) _schedule_tasks_imp() bool{
 			s._pkg_count.curval += 1
 		}
 
-		task = s._task(pkg)
+		task := s._task(pkg)
 
 		if pkg.installed {
 			merge := NewPackageMerge(task,  s._sched_iface)
@@ -9090,7 +9107,7 @@ func (s *Scheduler) _schedule_tasks_imp() bool{
 
 func (s *Scheduler) _task( pkg) {
 
-	pkg_to_replace = nil
+	var pkg_to_replace = nil
 	if pkg.operation != "uninstall"{
 		vardb := pkg.root_config.trees["vartree"].dbapi
 		previous_cpv = [x
@@ -9137,7 +9154,7 @@ return task
 }
 
 func (s *Scheduler) _failed_pkg_msg(failed_pkg *_failed_pkg, action, preposition string) {
-	pkg = failed_pkg.pkg
+	pkg := failed_pkg.pkg
 	msg := fmt.Sprintf(fmt.Sprintf("%s to %s %s",
 		bad("Failed"), action, colorize("INFORM", pkg.cpv)))
 	if pkg.root_config.settings.ValueDict["ROOT"] != "/" {
@@ -9168,15 +9185,24 @@ func (s *Scheduler) _save_resume_list() {
 	mtimedb["resume"] = map[string]{}
 	mtimedb["resume"]["myopts"] = s.myopts.copy()
 
-	mtimedb["resume"]["favorites"] = [str(x)
+	rf := []string{}
 	for x
 		in
-	s._favorites]
-mtimedb["resume"]["mergelist"] = [list(x)
-for x in s._mergelist
-if isinstance(x, Package) && x.operation == "merge"]
+	s._favorites {
+		rf = append(rf, string(x))
+	}
+	mtimedb["resume"]["favorites"] = rf
+	rm := []string{}
+	for x
+	in
+	s._mergelist{
+		if isinstance(x, Package) && x.operation == "merge"{
+		rm = append(rm, list(x))
+	}
+	}
+	mtimedb["resume"]["mergelist"] = rm
 
-mtimedb.commit()
+	mtimedb.commit()
 }
 
 func (s *Scheduler) _calc_resume_list() {
@@ -10665,13 +10691,13 @@ type  SchedulerInterface struct {
 	add_reader func(int, func() bool)
 	add_writer func()
 	remove_reader func(int)
-	call_soon func()
+	call_soon func(func())
+	create_future func() IFuture
 	call_at,
 	call_exception_handler,
 	call_later,
 	call_soon_threadsafe,
 	close,
-	create_future,
 	default_exception_handler,
 	get_debug,
 	is_closed,

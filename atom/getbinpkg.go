@@ -31,12 +31,12 @@ type PackageIndex struct {
 
 // true
 func (p *PackageIndex) _readpkgindex(pkgfile io.Reader, pkg_entry bool) map[string]string {
-	//var allowed_keys []string = nil
+	var allowed_keys []string = nil
 	d := map[string]string{}
 	if p._pkg_slot_dict == nil || !pkg_entry {
 	} else {
 		d = p._pkg_slot_dict()
-		//allowed_keys = []
+		allowed_keys = []string{}
 	}
 
 	b, _ := ioutil.ReadAll(pkgfile)
@@ -56,17 +56,9 @@ func (p *PackageIndex) _readpkgindex(pkgfile io.Reader, pkg_entry bool) map[stri
 		if v, ok := p._read_translation_map[k]; ok {
 			k = v
 		}
-		// TODO: allowed keys logic
-		//in := false
-		//for _, v := range allowed_keys{
-		//	if v == k {
-		//		in = true
-		//		break
-		//	}
-		//}
-		//if allowed_keys != nil && !in {
-		//	continue
-		//}
+		if allowed_keys!= nil && !Ins(allowed_keys, k){
+			continue
+		}
 		d[k] = v
 	}
 	return d
