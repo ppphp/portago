@@ -6797,7 +6797,7 @@ func (b *bindbapi) unpack_metadata(pkg, dest_dir){
 	}
 }
 
-func (b *bindbapi) unpack_contents(pkg *PkgStr, dest_dir string){
+func (b *bindbapi) unpack_contents(pkg *PkgStr, dest_dir string)IFuture{
 
 	loop = asyncio._wrap_loop()
 	//if isinstance(pkg, _pkg_str) {

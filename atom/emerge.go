@@ -828,9 +828,10 @@ type _LockProcess struct {
 	*AbstractPollTask
 	//slot
 	_proc *SpawnProcess
-	path,_kill_test,_unlock_future string
+	path,_kill_test string
 	_acquired bool
 	_files map[string]int
+	_unlock_future IFuture
 }
 
 func(l *_LockProcess) _start() {
@@ -1173,16 +1174,16 @@ type Binpkg struct {
 	logger    *_emerge_log_class
 	opts      *_binpkg_opts_class
 	pkg_count *_pkg_count_class
-	find_blockers,
-	ldpath_mtimes,
-	prefetcher,
-	_fetched_pkg,
 	world_atom func()
 	_build_prefix, _ebuild_path, _image_dir, _infloc, _pkg_path, _tree, _verify string
 	settings                                                                    *Config
 	pkg                                                                         *PkgStr
 	_build_dir                                                                  *EbuildBuildDir
 	_bintree                                                                    *BinaryTree
+	find_blockers,
+	ldpath_mtimes,
+	prefetcher,
+	_fetched_pkg
 }
 
 // 0, 0
@@ -1194,7 +1195,7 @@ func (b *Binpkg) _start() {
 
 	pkg := b.pkg
 	settings := b.settings
-	settings.SetCpv(pkg)
+	settings.SetCpv(pkg, nil)
 	b._tree = "bintree"
 	b._bintree = b.pkg.root_config.trees[b._tree]
 	b._verify = !b.opts.pretend
@@ -1217,7 +1218,7 @@ func (b *Binpkg) _start() {
 	if eapiExportsReplaceVars(settings.ValueDict["EAPI"]) {
 		vardb := b.pkg.root_config.trees["vartree"].dbapi
 		settings.ValueDict["REPLACING_VERSIONS"] = " ".join(
-			set(portage.versions.cpv_getversion(x)
+			set(cpvGetVersion(x, "")
 		for x
 			in
 		vardb.match(b.pkg.slot_atom) +
@@ -1229,7 +1230,7 @@ func (b *Binpkg) _start() {
 		//pass
 	} else if prefetcher.isAlive() && prefetcher.poll() != nil {
 		if !b.background {
-			fetch_log := filepath.Join(_emerge.emergelog._emerge_log_dir, "emerge-fetch.log")
+			fetch_log := filepath.Join(_emerge_log_dir, "emerge-fetch.log")
 			msg := []string{
 				"Fetching in the background:",
 				prefetcher.pkg_path,
@@ -1292,7 +1293,7 @@ func (b *Binpkg) _start_fetcher( lock_task) {
 			fetcher.pkg_path)
 		short_msg := fmt.Sprintf("emerge: (%s of %s) %s Fetch",
 			pkg_count.curval, pkg_count.maxval, pkg.cpv)
-		b.logger.log(msg, short_msg = short_msg)
+		b.logger.log(msg, short_msg)
 
 		fetcher.addExitListener(b._fetcher_exit)
 		b._task_queued(fetcher)
@@ -1323,6 +1324,7 @@ func (b *Binpkg) _fetcher_exit( fetcher) {
 
 	var verifier *BinpkgVerifier
 	if b._verify {
+		path := ""
 		if b._fetched_pkg {
 			path = b._fetched_pkg
 		} else {
@@ -1339,8 +1341,8 @@ func (b *Binpkg) _fetcher_exit( fetcher) {
 }
 
 func (b *Binpkg) _verifier_exit(verifier func(*int)) {
-	if verifier != nil&& b._default_exit(verifier) != 0{
-		b._async_unlock_builddir( b.returncode)
+	if verifier != nil && b._default_exit(verifier) != 0 {
+		b._async_unlock_builddir(b.returncode)
 		return
 	}
 
@@ -1351,7 +1353,7 @@ func (b *Binpkg) _verifier_exit(verifier func(*int)) {
 	pkg_path := ""
 	if b._fetched_pkg {
 		pkg_path = b._bintree.getname(b._bintree.inject(pkg.cpv, b._fetched_pkg), false)
-	}else {
+	} else {
 		pkg_path = b.pkg.root_config.trees["bintree"].getname(
 			b.pkg.cpv)
 	}
@@ -1362,34 +1364,32 @@ func (b *Binpkg) _verifier_exit(verifier func(*int)) {
 	b._pkg_path = pkg_path
 
 	logfile := b.settings.ValueDict["PORTAGE_LOG_FILE"]
-		st, err := os.Stat(logfile)
-		if err == nil && !st.IsDir() {
-			if err := syscall.Unlink(logfile); err != nil {
-				//except OSError:
-				//pass
-			}
+	st, err := os.Stat(logfile)
+	if err == nil && !st.IsDir() {
+		if err := syscall.Unlink(logfile); err != nil {
+			//except OSError:
+			//pass
 		}
 	}
 
-	if b.opts.fetchonly {
+	if b.opts.fetchonly != "" {
 		b._current_task = nil
-		i:=0
+		i := 0
 		b.returncode = &i
 		b.wait()
 		return
 	}
 
-	msg := fmt.Sprintf(" === (%s of %s) Merging Binary (%s::%s)" ,
-	pkg_count.curval, pkg_count.maxval, pkg.cpv, pkg_path)
-	short_msg := fmt.Sprintf("emerge: (%s of %s) %s Merge Binary" ,
-	pkg_count.curval, pkg_count.maxval, pkg.cpv)
-	logger.log(msg, short_msg = short_msg)
+	msg := fmt.Sprintf(" === (%s of %s) Merging Binary (%s::%s)",
+		pkg_count.curval, pkg_count.maxval, pkg.cpv, pkg_path)
+	short_msg := fmt.Sprintf("emerge: (%s of %s) %s Merge Binary",
+		pkg_count.curval, pkg_count.maxval, pkg.cpv)
+	logger.log(msg, short_msg)
 
 	phase := "clean"
 	settings := b.settings
-	ebuild_phase := NewEbuildPhase(nil,  b.background,
-		phase,b.scheduler,
-		 settings, nil)
+	ebuild_phase := NewEbuildPhase(nil, b.background,
+		phase, b.scheduler, settings, nil)
 
 	b._start_task(ebuild_phase, b._clean_exit)
 }
@@ -1415,26 +1415,27 @@ func (b *Binpkg) _unpack_metadata() IFuture {
 	pkg_path := b._pkg_path
 
 	dir_mode := os.FileMode(0755)
-	for _, mydir:=range []string{dir_path, b._image_dir, infloc}{
-		ensureDirs(mydir, uint32(*portage_uid), *portage_gid, dir_mode, -1, nil,true)
+	for _, mydir := range []string{dir_path, b._image_dir, infloc} {
+		ensureDirs(mydir, uint32(*portage_uid), *portage_gid, dir_mode, -1, nil, true)
 	}
 
 	prepare_build_dirs(b.settings, true)
-	b._writemsg_level(">>> Extracting info\n",0,0)
+	b._writemsg_level(">>> Extracting info\n", 0, 0)
 
-	yield b._bintree.dbapi.unpack_metadata(b.settings, infloc)
+	yield
+	b._bintree.dbapi.unpack_metadata(b.settings, infloc)
 	check_missing_metadata := []string{"CATEGORY", "PF"}
 	for k, v
-	in
+		in
 	zip(check_missing_metadata,
-		b._bintree.dbapi.aux_get(b.pkg.cpv, check_missing_metadata)){
+		b._bintree.dbapi.aux_get(b.pkg.cpv, check_missing_metadata)) {
 		if v {
 			continue
-		}else if k == "CATEGORY" {
+		} else if k == "CATEGORY" {
 			v = pkg.category
-		}else if k == "PF" {
+		} else if k == "PF" {
 			v = pkg.pf
-		}else {
+		} else {
 			continue
 		}
 
@@ -1444,22 +1445,23 @@ func (b *Binpkg) _unpack_metadata() IFuture {
 		f.Close()
 	}
 
-	if pkg_path != nil {
-		md5sum, = b._bintree.dbapi.aux_get(b.pkg.cpv, map[string]string{"MD5":""})[0]
+	if pkg_path != "" {
+		md5sum := b._bintree.dbapi.aux_get(b.pkg.cpv, map[string]string{"MD5": ""})[0]
 		if len(md5sum) == 0 {
-			md5sum = performMd5(pkg_path, false)
+			md5sum = string(performMd5(pkg_path, false))
 		}
 		f, _ := os.OpenFile(filepath.Join(infloc, "BINPKGMD5"), os.O_RDWR|os.O_CREATE, 0644)
-		f.Write(md5sum)
+		f.Write([]byte(md5sum))
 		f.Write([]byte("\n"))
 		f.Close()
 	}
 
-	env_extractor := NewBinpkgEnvExtractor( b.background,
-		 b.scheduler, b.settings)
+	env_extractor := NewBinpkgEnvExtractor(b.background,
+		b.scheduler, b.settings)
 	env_extractor.start()
-	yield env_extractor.async_wait()
-	if env_extractor.returncode != 0 {
+	yield
+	env_extractor.async_wait()
+	if env_extractor.returncode != nil && *env_extractor.returncode != 0 {
 		raise
 		portage.exception.PortageException("failed to extract environment for {}".format(b.pkg.cpv))
 	}
@@ -1506,11 +1508,11 @@ func (b *Binpkg) _unpack_contents_exit( unpack_contents) {
 		//except IOError:
 		b._build_prefix = ""
 	} else {
-		b._build_prefix = strings.TrimRight(string(f),"\n")
+		b._build_prefix = strings.TrimRight(string(f), "\n")
 	}
 
 	if b._build_prefix == b.settings.ValueDict["EPREFIX"] {
-		ensureDirs(b.settings.ValueDict["ED"],-1,-1,-1,-1,nil,true)
+		ensureDirs(b.settings.ValueDict["ED"], -1, -1, -1, -1, nil, true)
 		b._current_task = nil
 		i := 0
 		b.returncode = &i
@@ -1521,16 +1523,16 @@ func (b *Binpkg) _unpack_contents_exit( unpack_contents) {
 	env := b.settings.environ()
 	env["PYTHONPATH"] = b.settings.ValueDict["PORTAGE_PYTHONPATH"]
 	chpathtool := NewSpawnProcess(
-		 []string{portage._python_interpreter,
-		filepath.Join(b.settings.ValueDict["PORTAGE_BIN_PATH"], "chpathtool.py"),
-		b.settings.ValueDict["D"], b._build_prefix, b.settings.ValueDict["EPREFIX"]},
- b.background, env, nil, b.scheduler, b.settings.ValueDict["PORTAGE_LOG_FILE"])
-b._writemsg_level(fmt.Sprintf(">>> Adjusting Prefix to %s\n" , b.settings.ValueDict["EPREFIX"]), 0,0)
-b._start_task(chpathtool, b._chpathtool_exit)
+		[]string{"python", // portage._python_interpreter,
+			filepath.Join(b.settings.ValueDict["PORTAGE_BIN_PATH"], "chpathtool.py"),
+			b.settings.ValueDict["D"], b._build_prefix, b.settings.ValueDict["EPREFIX"]},
+		b.background, env, nil, b.scheduler, b.settings.ValueDict["PORTAGE_LOG_FILE"])
+	b._writemsg_level(fmt.Sprintf(">>> Adjusting Prefix to %s\n", b.settings.ValueDict["EPREFIX"]), 0, 0)
+	b._start_task(chpathtool, b._chpathtool_exit)
 }
 
 func (b *Binpkg) _chpathtool_exit( chpathtool) {
-	if i := b._final_exit(chpathtool); i!= nil &&*i != 0 {
+	if i := b._final_exit(chpathtool); i != nil && *i != 0 {
 		b._writemsg_level(fmt.Sprintf("!!! Error Adjusting Prefix to %s\n",
 			b.settings.ValueDict["EPREFIX"], ),
 			-1, 40)
@@ -1561,7 +1563,7 @@ func (b *Binpkg) _chpathtool_exit( chpathtool) {
 
 // nil
 func (b *Binpkg) _async_unlock_builddir(returncode *int) {
-	if b.opts.pretend || b.opts.fetchonly {
+	if b.opts.pretend != "" || b.opts.fetchonly != "" {
 		if returncode != nil {
 			b.returncode = returncode
 			b._async_wait()
@@ -1571,7 +1573,7 @@ func (b *Binpkg) _async_unlock_builddir(returncode *int) {
 	if returncode != nil {
 		b.returncode = nil
 	}
-	elog_process(b.pkg.cpv, b.settings, nil)
+	elog_process(b.pkg.cpv.string, b.settings, nil)
 	b._start_task(
 		NewAsyncTaskFuture(b._build_dir.async_unlock()),
 	func(unlock_task) {
@@ -1610,9 +1612,10 @@ func (b *Binpkg) _install_exit(task) {
 		}
 	}
 	b._async_unlock_builddir(nil)
+	var result IFuture
 	if b._current_task == nil {
 		result = b.scheduler.create_future()
-		b.scheduler.call_soon(result.set_result, 0)
+		b.scheduler.call_soon(func(){result.set_result(0)})
 	}else {
 		result = b._current_task.async_wait()
 	}
@@ -3177,25 +3180,23 @@ func(e *EbuildBuild) _start_fetch( fetcher, already_fetched_task) {
 		return
 	}
 
-try:
-	already_fetched = already_fetched_task.future.result()
-	except
-	portage.exception.InvalidDependString
-	as
-e:
-	msg_lines = []
-	msg = "Fetch failed for '%s' due to invalid SRC_URI: %s" % \
-	(e.pkg.cpv, e)
-	msg_lines.append(msg)
-	fetcher._eerror(msg_lines)
-	portage.elog.elog_process(e.pkg.cpv, e.settings)
-	e._async_unlock_builddir(returncode = 1)
-	return
+//try:
+	already_fetched := already_fetched_task.future.result()
+	//except portage.exception.InvalidDependString as e:
+	//msg_lines = []string{}
+	//msg = "Fetch failed for '%s' due to invalid SRC_URI: %s" % \
+	//(e.pkg.cpv, e)
+	//msg_lines.append(msg)
+	//fetcher._eerror(msg_lines)
+	//portage.elog.elog_process(e.pkg.cpv, e.settings)
+	//e._async_unlock_builddir(returncode = 1)
+	//return
 
-	if already_fetched:
-	fetcher = None
-	e._fetch_exit(fetcher)
-	return
+	if already_fetched {
+		fetcher = nil
+		e._fetch_exit(fetcher)
+		return
+	}
 
 	fetcher.addExitListener(e._fetch_exit)
 	e._task_queued(fetcher)
@@ -3650,7 +3651,7 @@ type AlreadyLocked struct {
 type EbuildExecuter struct {
 	*CompositeTask
 	// slot
-	pkg
+	pkg *PkgStr
 	settings *Config
 }
 
@@ -3726,7 +3727,7 @@ phases {
 	e._start_task(ebuild_phases, e._default_final_exit)
 }
 
-func NewEbuildExecuter(background bool, pkg, scheduler *SchedulerInterface, settings *Config)*EbuildExecuter{
+func NewEbuildExecuter(background bool, pkg *PkgStr, scheduler *SchedulerInterface, settings *Config)*EbuildExecuter{
 	e := &EbuildExecuter{}
 	e.CompositeTask = NewCompositeTask()
 	e.background = background
@@ -3743,23 +3744,26 @@ type EbuildFetcher struct {
 	prefetch bool
 	logfile string
 	_fetcher_proc *_EbuildFetcherProcess
-	config_pool, ebuild_path, fetchonly, fetchall,
+	config_pool*_ConfigPool
+	ebuild_path string
+	fetchonly, fetchall,
 	pkg, _fetcher_proc
 }
 
-func NewEbuildFetcher(config_pool,ebuild_path,fetchall,fetchonly, background bool,logfile string,pkg,scheduler *SchedulerInterface,prefetch bool, **kwargs) *EbuildFetcher {
+func NewEbuildFetcher(config_pool *_ConfigPool,ebuild_path string,
+	fetchall,fetchonly, background bool,logfile string,pkg,scheduler *SchedulerInterface,prefetch bool, **kwargs) *EbuildFetcher {
 	e := &EbuildFetcher{}
 	e.CompositeTask = NewCompositeTask(**kwargs)
 	e._fetcher_proc = NewEbuildFetcherProcess(**kwargs)
-	e.config_pool=config_pool
-	e.ebuild_path=ebuild_path
-	e.fetchall=fetchall
-	e.fetchonly=fetchonly
-	e.background=background
-	e.logfile=logfile
-	e.pkg=pkg
-	e.scheduler=scheduler
-	e.prefetch=prefetch
+	e.config_pool = config_pool
+	e.ebuild_path = ebuild_path
+	e.fetchall = fetchall
+	e.fetchonly = fetchonly
+	e.background = background
+	e.logfile = logfile
+	e.pkg = pkg
+	e.scheduler = scheduler
+	e.prefetch = prefetch
 
 	return e
 
@@ -3788,7 +3792,7 @@ try:
 	portage.exception.InvalidDependString
 	as
 e:
-	msg_lines = []
+	msg_lines := []string{}
 	msg = "Fetch failed for '%s' due to invalid SRC_URI: %s" % \
 	(e.pkg.cpv, e)
 	msg_lines.append(msg)
@@ -3825,8 +3829,11 @@ type _EbuildFetcherProcess struct {
 	_manifest *Manifest
 	_digests map[string]map[string]string
 	_settings *Config
-	config_pool, fetchonly, fetchall,
-	pkg, prefetch, src_uri,
+	config_pool *_ConfigPool
+	src_uri string
+	pkg *PkgStr
+	fetchonly, fetchall,
+	 prefetch,
 	_uri_map
 }
 
@@ -3940,48 +3947,53 @@ finally:
 
 func(e*_EbuildFetcherProcess) _start() {
 
-	root_config = e.pkg.root_config
-	portdb = root_config.trees["porttree"].dbapi
-	ebuild_path = e._get_ebuild_path()
-		uri_map = e._uri_map
+	root_config := e.pkg.root_config
+	portdb := root_config.trees["porttree"].dbapi
+	ebuild_path := e._get_ebuild_path()
+		uri_map := e._uri_map
 
-	if not uri_map:
-		e.returncode = 0
-	e._async_wait()
-	return
+	if not uri_map {
+		i := 0
+		e.returncode = &i
+		e._async_wait()
+		return
+	}
 
-	settings = e.config_pool.allocate()
-	settings.setcpv(e.pkg)
-	settings.configdict["pkg"]["SRC_URI"] = e.src_uri
-	portage.doebuild_environment(ebuild_path, 'fetch',
-		settings = settings, db = portdb)
+	settings := e.config_pool.allocate()
+	settings.SetCpv(e.pkg, nil)
+	settings.configDict["pkg"]["SRC_URI"] = e.src_uri
+	doebuild_environment(ebuild_path, "fetch", nil,
+		settings , false, nil,  portdb)
 
-	if e.prefetch and \
-	e._prefetch_size_ok(uri_map, settings, ebuild_path):
-	e.config_pool.deallocate(settings)
-	e.returncode = 0
-	e._async_wait()
-	return
+	if e.prefetch && e._prefetch_size_ok(uri_map, settings, ebuild_path) {
+		e.config_pool.deallocate(settings)
+		i := 0
+		e.returncode = &i
+		e._async_wait()
+		return
+	}
 
-	nocolor = settings.get("NOCOLOR")
+	nocolor := &settings.ValueDict["NOCOLOR"]
 
-	if e.prefetch:
-	settings["PORTAGE_PARALLEL_FETCHONLY"] = "1"
+	if e.prefetch {
+		settings.ValueDict["PORTAGE_PARALLEL_FETCHONLY"] = "1"
+	}
 
-	if e.background:
-	nocolor = "true"
+	if e.background {
+		 i := 1
+		nocolor = &i
+	}
 
-	if nocolor is
-	not
-None:
-	settings["NOCOLOR"] = nocolor
+	if nocolor != nil {
+		settings.ValueDict["NOCOLOR"] = fmt.Sprint(nocolor)
+	}
 
 	e._settings = settings
 	e.ForkProcess._start()
 
 	e.config_pool.deallocate(settings)
-	settings = None
-	e._settings = None
+	settings = nil
+	e._settings = nil
 }
 
 func(e*_EbuildFetcherProcess) _run() {
@@ -4033,9 +4045,9 @@ func(e*_EbuildFetcherProcess) _get_digests() map[string]map[string]string{
 	return e._digests
 }
 
-func(e*_EbuildFetcherProcess) _async_uri_map() {
+func(e*_EbuildFetcherProcess) _async_uri_map() IFuture{
 	if e._uri_map != nil {
-		result = e.scheduler.create_future()
+		result := e.scheduler.create_future()
 		result.set_result(e._uri_map)
 		return result
 	}
@@ -4043,81 +4055,78 @@ func(e*_EbuildFetcherProcess) _async_uri_map() {
 	pkgdir := filepath.Dir(e._get_ebuild_path())
 	mytree := filepath.Dir(filepath.Dir(pkgdir))
 	use := None
-	if ! e.fetchall:
-	use = e.pkg.use.enabled
+	if ! e.fetchall {
+		use = e.pkg.use.enabled
+	}
 	portdb = e.pkg.root_config.trees["porttree"].dbapi
 
-	def
-	cache_result(result):
-try:
-	e._uri_map = result.result()
-	except
-Exception:
-	pass
 
-	result = portdb.async_fetch_map(e.pkg.cpv,
+	cache_result:= func(result) {
+	try:
+		e._uri_map = result.result()
+		except
+	Exception:
+		pass
+	}
+
+	result := portdb.async_fetch_map(e.pkg.cpv,
 		useflags = use, mytree = mytree, loop=e.scheduler)
 	result.add_done_callback(cache_result)
 	return result
 }
 
-func(e*_EbuildFetcherProcess) _prefetch_size_ok(uri_map, settings, ebuild_path) {
-	distdir := settings["DISTDIR"]
+func(e*_EbuildFetcherProcess) _prefetch_size_ok(uri_map, settings *Config, ebuild_path string) bool{
+	distdir := settings.ValueDict["DISTDIR"]
 
-	sizes :=
-	{
+	sizes :=map[string]int64{}
+	for filename
+	in
+uri_map {
+		st, err := os.Stat(filepath.Join(distdir, filename))
+		if err != nil {
+			//except OSError:
+			return false
+		}
+		if st.Size() == 0 {
+			return false
+		}
+		sizes[filename] = st.Size()
 	}
-	for filename
-	in
-uri_map:
-try:
-	st = os.stat(filepath.Join(distdir, filename))
-	except
-OSError:
-	return false
-	if st.st_size == 0:
-	return false
-	sizes[filename] = st.st_size
 
-	digests = e._get_digests()
-	for filename, actual_size
-	in
-	sizes.items():
-	size = digests.get(filename,
-	{
-	}).get('size')
-	if size is
-None:
-	continue
-	if size != actual_size:
-	return false
+	digests := e._get_digests()
+	for filename, actual_size:= range sizes {
+		size,ok := digests[filename]["size"]
+		if !ok {
+			continue
+		}
+		if size != fmt.Sprint(actual_size) {
+			return false
+		}
+	}
 
-	if e.logfile is
-	not
-None:
-	f = io.open(_unicode_encode(e.logfile,
-		encoding = _encodings['fs'], errors = 'strict'),
-	mode = 'a', encoding=_encodings['content'],
-		errors = 'backslashreplace')
-	for filename
-	in
-uri_map:
-	f.write(_unicode_decode((' * %s size ;-) ...' % \
-	filename).ljust(73) + '[ ok ]\n'))
-	f.close()
+	if e.logfile != "" {
+		f, _ := os.OpenFile(e.logfile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		for filename
+			in
+		uri_map {
+			f.Write(_unicode_decode((' * %s size ;-) ...' % \
+			filename).ljust(73) + '[ ok ]\n'))
+		}
+		f.Close()
+	}
 
 	return true
 }
 
 func(e*_EbuildFetcherProcess) _pipe(fd_pipes) {
-	if e.background or
-	not
-	sys.stdout.isatty():
-	return os.pipe()
+	if e.background ||!sys.stdout.isatty() {
+		return os.pipe()
+	}
 	stdout_pipe = None
-	if not e.background:
-	stdout_pipe = fd_pipes.get(1)
-	got_pty, master_fd, slave_fd = \
+	if ! e.background {
+		stdout_pipe = fd_pipes.get(1)
+	}
+	got_pty, master_fd, slave_fd :=
 	_create_pty_or_pipe(copy_term_size = stdout_pipe)
 	return (master_fd, slave_fd)
 }
@@ -4125,7 +4134,7 @@ func(e*_EbuildFetcherProcess) _pipe(fd_pipes) {
 func(e*_EbuildFetcherProcess) _eerror( lines []string) {
 	out := &bytes.Buffer{}
 	for _, line:= range lines {
-		eerror(line, "unpack", e.pkg.cpv, out)
+		eerror(line, "unpack", e.pkg.cpv.string, out)
 	}
 	msg := out.String()
 	if msg!= "" {
@@ -4133,23 +4142,19 @@ func(e*_EbuildFetcherProcess) _eerror( lines []string) {
 	}
 }
 
-func(e*_EbuildFetcherProcess) _async_waitpid_cb( *args, **kwargs) {
-	ForkProcess._async_waitpid_cb(e, *args, **kwargs)
-	if not e.prefetch
-	and
-	e.returncode != 0:
-	msg_lines = []
-	msg = "Fetch failed for '%s'" % (e.pkg.cpv,)
-	if e.logfile is
-	not
-None:
-	msg += ", Log file:"
-	msg_lines.append(msg)
-	if e.logfile is
-	not
-None:
-	msg_lines.append(" '%s'" % (e.logfile, ))
-	e._eerror(msg_lines)
+func(e*_EbuildFetcherProcess) _proc_join_done( proc, future IFuture) {
+	if !e.prefetch && !future.cancelled() && proc.exitcode != 0 {
+		msg_lines := []string{}
+		msg := fmt.Sprintf("Fetch failed for '%s'", e.pkg.cpv, )
+		if e.logfile != "" {
+			msg += ", Log file:"
+		}
+		msg_lines = append(msg_lines, msg)
+		if e.logfile != "" {
+			msg_lines = append(msg_lines, fmt.Sprintf(" '%s'", e.logfile, ))
+		}
+		e._eerror(msg_lines)
+	}
 }
 
 func NewEbuildFetcherProcess()*_EbuildFetcherProcess{
@@ -4160,7 +4165,9 @@ func NewEbuildFetcherProcess()*_EbuildFetcherProcess{
 
 type EbuildFetchonly struct {
 	settings *Config
-	fetch_all, pkg, pretend
+	pretend int
+	pkg *PkgStr
+	fetch_all,
 }
 
 func (e *EbuildFetchonly) execute() int {
@@ -4177,16 +4184,20 @@ func (e *EbuildFetchonly) execute() int {
 	rval := doebuild(ebuild_path, "fetch", settings, debug, e.pretend,
 		1, 0, 1, e.fetch_all,"porttree", portdb, nil, nil, nil, false )
 
-	if rval != 1 && ! not e.pretend{
+	if rval != 1 && e.pretend == 0{
 		msg := fmt.Sprintf("Fetch failed for '%s'" ,pkg.cpv, )
-		eerror(msg, "unpack", pkg.cpv, nil)
+		eerror(msg, "unpack", pkg.cpv.string, nil)
 	}
 	return rval
 }
 
-func NewEbuildFetchonly(fetch_all , pkg, pretend, settings *Config)*EbuildFetchonly{
+func NewEbuildFetchonly(fetch_all , pkg *PkgStr, pretend int, settings *Config)*EbuildFetchonly {
 	e := &EbuildFetchonly{}
 	e.settings = settings
+
+	e.fetch_all = fetch_all
+	e.pkg = pkg
+	e.pretend = pretend
 
 	return e
 }
@@ -4279,9 +4290,13 @@ type EbuildMerge struct {
 	// slot
 	settings *Config
 	tree string
-	exit_hook, find_blockers, logger, ldpath_mtimes,
-	pkg, pkg_count, pkg_path, postinst_failure, pretend,
-	 world_atom
+	exit_hook func()
+	logger*_emerge_log_class
+	pkg_count *_pkg_count_class
+	pkg_path string
+	world_atom func()
+	 find_blockers,  ldpath_mtimes,
+	pkg, postinst_failure, pretend
 }
 
 func (e*EbuildMerge) _start() {
@@ -4329,21 +4344,23 @@ func (e*EbuildMerge) _merge_exit( merge_task) {
 	e._start_exit_hook(e.returncode)
 }
 
-func (e*EbuildMerge) _start_exit_hook(returncode) {
+func (e*EbuildMerge) _start_exit_hook(returncode *int) {
 	e.returncode = nil
 	e._start_task(
 		NewAsyncTaskFuture(e.exit_hook(e)),
-	functools.partial(e._exit_hook_exit, returncode))
+		func(task) { e._exit_hook_exit(returncode, task) })
 }
 
-func (e*EbuildMerge) _exit_hook_exit(returncode, task) {
+func (e*EbuildMerge) _exit_hook_exit(returncode *int, task) {
 	e._assert_current(task)
 	e.returncode = returncode
 	e._async_wait()
 }
 
-func NewEbuildMerge(exit_hook, find_blockers , ldpath_mtimes, logger , pkg,
-	pkg_count, pkg_path, scheduler , settings, tree , world_atom)*EbuildMerge {
+func NewEbuildMerge(exit_hook func(), find_blockers , ldpath_mtimes,
+	logger *_emerge_log_class, pkg, pkg_count *_pkg_count_class,
+	pkg_path string, scheduler *SchedulerInterface,
+	settings *Config, tree string, world_atom func())*EbuildMerge {
 	e := &EbuildMerge{}
 	e.CompositeTask = NewCompositeTask()
 	e.exit_hook = exit_hook
@@ -4861,9 +4878,8 @@ func (e *EbuildPhase) _ebuild_exit_unlocked( ebuild_process, unlock_task=nil) {
 
 	post_phase_cmds := _post_phase_cmds.get(e.phase)
 	if post_phase_cmds != nil {
-		if logfile != nil && e.phase =="install" {
-			fd, logfile = tempfile.mkstemp()
-			syscall.Close(fd)
+		if logfile != "" && e.phase =="install" {
+			logfile , _ = os.MkdirTemp("","")
 		}
 		post_phase := NewPostPhaseCommands(e.background,
 			post_phase_cmds, e._elog,  e.fd_pipes,
@@ -5020,37 +5036,50 @@ type _PostPhaseCommands struct {
 	*CompositeTask
 
 	// slots
-	elog                     func(string, []string, bool)
-	fd_pipes                 map[int]int
-	commands, logfile, phase string
-	settings                 *Config
+	elog           func(string, []string, bool)
+	fd_pipes       map[int]int
+	logfile, phase string
+	commands       []struct{ a map[string]string; b []string}
+	settings       *Config
 }
 
-func(p*_PostPhaseCommands) _start(){
-	if isinstance(p.commands, list){
-		cmds = [({}, p.commands)]
-}else{
-cmds = list(p.commands)
-}
+func(p*_PostPhaseCommands) _start() {
+	//if isinstance(p.commands, list){
+	//	cmds = []struct({}, p.commands)
+	//}else{
+	//cmds = list(p.commands)
+	//}
+	cmds := p.commands
 
-if ! p.settings.Features.Features["selinux"]{
-cmds = [(kwargs, commands) for kwargs, commands in
-cmds if not kwargs.get('selinux_only'
-})]
-}
+	if !p.settings.Features.Features["selinux"] {
+		cmds1 := []struct {
+			a map[string]string;
+			b []string
+		}{}
+		for _, c := range cmds {
+			if c.a["selinux_only"] == "" {
+				cmds1 = append(cmds1, c)
+			}
+		}
+		cmds = cmds1
+	}
 
-tasks = TaskSequence()
-for kwargs, commands in cmds{
+	tasks := NewTaskSequence(nil)
+	for _, v := range cmds {
+		kwargs, commands := v.a, v.b
 
-kwargs = dict((k, v) for k, v in kwargs.items()
-if k in ('ld_preload_sandbox', ))
-tasks.add(NewMiscFunctionsProcess(background = p.background,
-commands = commands, fd_pipes = p.fd_pipes,
-logfile = p.logfile, phase = p.phase,
-scheduler = p.scheduler, settings= p.settings, **kwargs))
+		kwargs1 := map[string]string{}
+		for k, v:= range kwargs{
+			if k == "ld_preload_sandbox" {
+				kwargs1[k] = v
+			}
+		}
+		tasks.add(NewMiscFunctionsProcess(p.background,
+			commands, p.phase, p.logfile, p.fd_pipes,
+			p.scheduler, p.settings, **kwargs))
 
-p._start_task(tasks, p._commands_exit)
-}
+		p._start_task(tasks, p._commands_exit)
+	}
 }
 
 func(p*_PostPhaseCommands) _commands_exit( task) {
@@ -5073,7 +5102,8 @@ func(p*_PostPhaseCommands) _commands_exit( task) {
 			future := p._soname_deps_qa()
 
 			future.add_done_callback(func(future IFuture, err error) {
-				return future.cancelled() || future.result()
+				//return
+				//future.cancelled() || future.result()
 			})
 			p._start_task(NewAsyncTaskFuture(future), p._default_final_exit)
 		} else {
@@ -9942,7 +9972,7 @@ func NewTask() *Task {
 
 type TaskSequence struct{
 	*CompositeTask
-	_task_queue []
+	_task_queue [] *MiscFunctionsProcess
 }
 
 // nil
@@ -9950,11 +9980,11 @@ func NewTaskSequence(scheduler *SchedulerInterface) *TaskSequence {
 	t := &TaskSequence{}
 
 	t.AsynchronousTask = NewAsynchronousTask(scheduler)
-	t._task_queue = deque()
+	t._task_queue = []*MiscFunctionsProcess{}
 	return t
 }
 
-func (t *TaskSequence) add(task) {
+func (t *TaskSequence) add(task *MiscFunctionsProcess) {
 	t._task_queue = append(t._task_queue, task)
 }
 
@@ -9963,7 +9993,7 @@ func (t *TaskSequence) _start() {
 }
 
 func (t *TaskSequence) _cancel() {
-	t._task_queue = []{}
+	t._task_queue = []*MiscFunctionsProcess{}
 	t.CompositeTask._cancel()
 }
 
