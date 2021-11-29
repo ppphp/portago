@@ -62,6 +62,15 @@ func Inmss(a map[string]string, b string) bool {
 	return false
 }
 
+func Inmsi(a map[string]interface{}, b string) bool {
+	for v := range a {
+		if b == v {
+			return true
+		}
+	}
+	return false
+}
+
 func Inmsmss(a map[string]map[string]string, b string) bool {
 	for v := range a {
 		if b == v {

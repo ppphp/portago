@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"errors"
 	"fmt"
+	ogórek "github.com/kisielk/og-rek"
 	"github.com/ppphp/shlex"
 	"golang.org/x/crypto/ssh/terminal"
 	"golang.org/x/sys/unix"
@@ -1159,8 +1160,9 @@ func (a *AsynchronousTask)  _exit_listener_cb( listener func(*AsynchronousTask))
 	listener(a)
 }
 
-func NewAsynchronousTask() *AsynchronousTask{
+func NewAsynchronousTask(scheduler*SchedulerInterface) *AsynchronousTask {
 	a := &AsynchronousTask{}
+	a.scheduler = scheduler
 	a._cancelled_returncode = int(-syscall.SIGINT)
 	return a
 }
@@ -1168,16 +1170,19 @@ func NewAsynchronousTask() *AsynchronousTask{
 type Binpkg struct {
 	*CompositeTask
 	//slot
+	logger    *_emerge_log_class
+	opts      *_binpkg_opts_class
+	pkg_count *_pkg_count_class
 	find_blockers,
-	ldpath_mtimes, logger, opts,
-	 pkg_count, prefetcher, world_atom,
-	 _build_prefix,
-	_ebuild_path, _fetched_pkg,
-	_image_dir, _infloc, _pkg_path, _tree, _verify string
-	settings *Config
-	pkg *PkgStr
-	_build_dir*EbuildBuildDir
-	_bintree *BinaryTree
+	ldpath_mtimes,
+	prefetcher,
+	_fetched_pkg,
+	world_atom func()
+	_build_prefix, _ebuild_path, _image_dir, _infloc, _pkg_path, _tree, _verify string
+	settings                                                                    *Config
+	pkg                                                                         *PkgStr
+	_build_dir                                                                  *EbuildBuildDir
+	_bintree                                                                    *BinaryTree
 }
 
 // 0, 0
@@ -1441,7 +1446,7 @@ func (b *Binpkg) _unpack_metadata() IFuture {
 
 	if pkg_path != nil {
 		md5sum, = b._bintree.dbapi.aux_get(b.pkg.cpv, map[string]string{"MD5":""})[0]
-		if not md5sum {
+		if len(md5sum) == 0 {
 			md5sum = performMd5(pkg_path, false)
 		}
 		f, _ := os.OpenFile(filepath.Join(infloc, "BINPKGMD5"), os.O_RDWR|os.O_CREATE, 0644)
@@ -1614,14 +1619,23 @@ func (b *Binpkg) _install_exit(task) {
 	return result
 }
 
-func NewBinpkg(background , find_blockers , ldpath_mtimes, logger,
-	opts, pkg, pkg_count, prefetcher , settings, scheduler ,
-	world_atom)*Binpkg{
-	b :=&Binpkg{background: background,find_blockers:find_blockers ,
-		ldpath_mtimes:ldpath_mtimes, logger:logger, opts:opts, pkg:pkg,
-		pkg_count:pkg_count, prefetcher:prefetcher , settings:settings,
-		scheduler :scheduler, world_atom:world_atom}
+func NewBinpkg(background bool, find_blockers , ldpath_mtimes, logger*_emerge_log_class,
+	opts *_binpkg_opts_class, pkg *PkgStr, pkg_count*_pkg_count_class, prefetcher ,
+	settings *Config, scheduler *SchedulerInterface,
+	world_atom func())*Binpkg {
+	b := &Binpkg{}
 	b.CompositeTask = NewCompositeTask()
+	b.background = background
+	b.find_blockers = find_blockers
+	b.ldpath_mtimes = ldpath_mtimes
+	b.logger = logger
+	b.opts = opts
+	b.pkg = pkg
+	b.pkg_count = pkg_count
+	b.prefetcher = prefetcher
+	b.settings = settings
+	b.scheduler = scheduler
+	b.world_atom = world_atom
 	return b
 }
 
@@ -2210,15 +2224,15 @@ digests{
 		}
 	}
 
-	b._start_task(NewFileDigester(file_path = b._pkg_path,
-		hash_names = (k
+	ds := []string{}
 	for k
-	in
-	digests
-	if k != "size"),
-	background = b.background, logfile=b.logfile,
-		scheduler = b.scheduler),
-	b._digester_exit)
+		in
+	digests {
+		if k != "size" {
+			ds = append(ds, k)
+		}
+	}
+	b._start_task(NewFileDigester(b._pkg_path,ds, b.background, b.logfile, b.scheduler), b._digester_exit)
 }
 
 func (b *BinpkgVerifier) _digester_exit(digester) {
@@ -2278,7 +2292,7 @@ func (b *BinpkgVerifier) _display_success() {
 	os.Stderr = stderr_orig
 	HaveColor = global_havecolor
 
-	b.scheduler.output(out.getvalue(),  b.logfile, b.background, 0, -1)
+	b.scheduler.output(out.String(),  b.logfile, b.background, 0, -1)
 }
 
 func (b *BinpkgVerifier) _digest_exception( name, value, expected string) {
@@ -2471,13 +2485,13 @@ try:
 	b._modified= map[string]bool{}
 }
 
-func (b *BlockerCache)  __setitem__( cpv, blocker_data) {
+func (b *BlockerCache)  __setitem__( cpv string, blocker_data) {
 	b._cache_data["blockers"][cpv] = (blocker_data.counter,
 		tuple(_unicode(x)
 	for x
 		in
 	blocker_data.atoms))
-	b._modified.add(cpv)
+	b._modified[cpv] = true
 }
 
 func (b *BlockerCache)  __iter__() []{
@@ -2679,7 +2693,7 @@ func (c*CompositeTask)_cancel() {
 func(c*CompositeTask) _poll() *int {
 	prev = nil
 	for true {
-		task = c._current_task
+		task := c._current_task
 		if task == nil ||
 			task
 			is
@@ -2719,7 +2733,7 @@ func(c*CompositeTask) _final_exit( task) *int{
 	return c.returncode
 }
 
-func(c*CompositeTask) _default_final_exit( task) {
+func(c*CompositeTask) _default_final_exit( task) int {
 	c._final_exit(task)
 	return c.wait()
 }
@@ -2769,13 +2783,14 @@ func NewDependency()*Dependency{
 	d := &Dependency{}
 	SlotObject.__init__(d, **kwargs)
 	if d.priority ==nil {
-		d.priority = NewDepPriority()
+		d.priority = NewDepPriority(false)
 	}
 	if d.depth == 0 {
 		d.depth = 0
 	}
-	if d.collapsed_parent is None:
-	d.collapsed_parent = d.parent
+	if d.collapsed_parent == nil {
+		d.collapsed_parent = d.parent
+	}
 	if d.collapsed_priority == nil {
 		d.collapsed_priority = d.priority
 	}
@@ -3304,7 +3319,7 @@ func(e *EbuildBuild) _build_exit( build) {
 		e.scheduler.output(msg, e.settings.ValueDict["PORTAGE_LOG_FILE"], false, 0, -1)
 	}
 
-	binpkg_tasks := NewTaskSequence()
+	binpkg_tasks := NewTaskSequence(nil)
 	t, ok :=e.settings.ValueDict["PORTAGE_BINPKG_FORMAT"]
 	if !ok {
 		t = "tar"
@@ -3649,8 +3664,8 @@ func (e*EbuildExecuter)_start() {
 	prepare_build_dirs(settings, cleanup!=0)
 
 	if eapiExportsReplaceVars(settings.ValueDict["EAPI"]) {
-		vardb = pkg.root_config.trees['vartree'].dbapi
-		settings["REPLACING_VERSIONS"] = " ".join(
+		vardb := pkg.root_config.trees['vartree'].dbapi
+		settings.ValueDict["REPLACING_VERSIONS"] = " ".join(
 			set(cpvGetVersion(match, "") \
 		for match
 			in
@@ -3693,7 +3708,7 @@ func (e*EbuildExecuter) _unpack_exit( unpack_phase) {
 		return
 	}
 
-	ebuild_phases = TaskSequence(scheduler = e.scheduler)
+	ebuild_phases := NewTaskSequence(e.scheduler)
 
 	pkg = e.pkg
 	phases := e._phases
@@ -5096,7 +5111,7 @@ func(p*_PostPhaseCommands) _soname_deps_qa() IFuture{
 // post_phase_cmds, nil, nil, logfile, e.phase, e.scheduler, nil
 func NewPostPhaseCommands(background bool,
 	commands = , elog func(string,[]string,bool), fd_pipes map[int]int,
-	logfile string, phase = e.phase, scheduler *SchedulerInterface,
+	logfile string, phase string, scheduler *SchedulerInterface,
 	settings *Config)*_PostPhaseCommands {
 	p := &_PostPhaseCommands{}
 	p.CompositeTask = NewCompositeTask()
@@ -5189,9 +5204,11 @@ type FakeVartree struct {
 	*vartree
 	_dynamic_deps, _ignore_built_slot_operator_deps bool
 	settings                                        *Config
-	_db_keys                                        []string
-	_global_updates map[string][][]string
-	_portdb *portdbapi
+	_db_keys, _portdb_keys                          []string
+	_global_updates                                 map[string][][]string
+	_portdb                                         *portdbapi
+	dbapi                                           *PackageVirtualDbapi
+	_match                                          func(*Atom, int)
 }
 
 // nil, nil, false, false, false
@@ -5215,8 +5232,8 @@ dynamic_deps, ignore_built_slot_operator_deps, soname_deps bool)*FakeVartree{
 	portdb := root_config.trees["porttree"].dbapi
 	f.settings = real_vartree.settings
 	mykeys := list(real_vartree.dbapi._aux_cache_keys)
-	if "_mtime_" not in mykeys{
-		mykeys.append("_mtime_")
+	if  !　Ins(mykeys, "_mtime_"){
+		mykeys=append(mykeys, "_mtime_")
 	}
 	f._db_keys = mykeys
 	f._pkg_cache = pkg_cache
@@ -5241,8 +5258,9 @@ dynamic_deps, ignore_built_slot_operator_deps, soname_deps bool)*FakeVartree{
 	return f
 }
 
-func(f*FakeVartree) _match_wrapper(cpv, use_cache=1) {
-	matches = f._match(cpv, use_cache = use_cache)
+// 1
+func(f*FakeVartree) _match_wrapper(cpv, use_cache int) {
+	matches = f._match(cpv, use_cache)
 	for cpv in matches{
 		if cpv in f._aux_get_history{
 		continue
@@ -5879,11 +5897,18 @@ type MergeListItem struct {
 	*CompositeTask
 
 	//slots
-	args_set,
-	binpkg_opts, build_opts, config_pool, emerge_opts,
-	find_blockers, logger, mtimedb, pkg,
-	pkg_count, pkg_to_replace, prefetcher,
-	settings, statusMessage, world_atom, _install_task
+	_install_task *EbuildBuild
+	args_set      *InternalPackageSet
+	binpkg_opts   *_binpkg_opts_class
+	build_opts    *_build_opts_class
+	config_pool   *_ConfigPool
+	logger        *_emerge_log_class
+	pkg_count     *_pkg_count_class
+	settings      *Config
+	statusMessage func(string)
+	world_atom    func()
+	emerge_opts, find_blockers, mtimedb, pkg,
+	pkg_to_replace, prefetcher
 }
 
 func(m *MergeListItem) _start() {
@@ -5920,44 +5945,36 @@ func(m *MergeListItem) _start() {
 		action_desc = "Fetching"
 	}
 
-	msg := fmt.Sprintf("%s (%s of %s) %s" ,
-	action_desc,
+	msg := fmt.Sprintf("%s (%s of %s) %s",
+		action_desc,
 		colorize("MERGE_LIST_PROGRESS", str(pkg_count.curval)),
 		colorize("MERGE_LIST_PROGRESS", str(pkg_count.maxval)),
 		colorize(pkg_color, pkg.cpv+repoSeparator+pkg.repo))
 
 	if pkg.root_config.settings["ROOT"] != "/" {
-		msg += " %s %s" % (preposition, pkg.root)
+		msg += fmt.Sprintf(" %s %s", preposition, pkg.root)
 	}
 
-	if ! build_opts.pretend {
+	if build_opts.pretend == "" {
 		m.statusMessage(msg)
-		logger.log(fmt.Sprintf(" >>> emerge (%s of %s) %s to %s" ,
-		pkg_count.curval, pkg_count.maxval, pkg.cpv, pkg.root))
+		logger.log(fmt.Sprintf(" >>> emerge (%s of %s) %s to %s",
+			pkg_count.curval, pkg_count.maxval, pkg.cpv, pkg.root))
 	}
 
 	if pkg.type_name == "ebuild" {
 
-		build := NewEbuildBuild(args_set = args_set,
-			background = m.background,
-			config_pool=m.config_pool,
-			find_blockers = find_blockers,
-			ldpath_mtimes=ldpath_mtimes, logger = logger,
-			opts=build_opts, pkg = pkg, pkg_count=pkg_count,
-			prefetcher = m.prefetcher, scheduler=scheduler,
-			settings = settings, world_atom=world_atom)
+		build := NewEbuildBuild(args_set, m.background, m.config_pool,
+			find_blockers, ldpath_mtimes, logger, build_opts, pkg,
+			pkg_count, m.prefetcher, scheduler, settings, world_atom)
 
 		m._install_task = build
 		m._start_task(build, m._default_final_exit)
 		return
-	}else if pkg.type_name == "binary" {
+	} else if pkg.type_name == "binary" {
 
-		binpkg := NewBinpkg(background = m.background,
-			find_blockers = find_blockers,
-			ldpath_mtimes=ldpath_mtimes, logger = logger,
-			opts=m.binpkg_opts, pkg = pkg, pkg_count=pkg_count,
-			prefetcher = m.prefetcher, settings=settings,
-			scheduler = scheduler, world_atom=world_atom)
+		binpkg := NewBinpkg(m.background, find_blockers,
+			ldpath_mtimes, logger, m.binpkg_opts, pkg, pkg_count,
+			m.prefetcher, settings, scheduler, world_atom)
 
 		m._install_task = binpkg
 		m._start_task(binpkg, m._default_final_exit)
@@ -5967,21 +5984,19 @@ func(m *MergeListItem) _start() {
 
 func(m *MergeListItem) create_install_task() {
 
-	pkg = m.pkg
-	build_opts = m.build_opts
-	mtimedb = m.mtimedb
-	scheduler = m.scheduler
-	settings = m.settings
-	world_atom = m.world_atom
-	ldpath_mtimes = mtimedb["ldpath"]
+	pkg := m.pkg
+	build_opts := m.build_opts
+	mtimedb := m.mtimedb
+	scheduler := m.scheduler
+	settings := m.settings
+	world_atom := m.world_atom
+	ldpath_mtimes := mtimedb["ldpath"]
 
 	if pkg.installed {
 		if !(build_opts.buildpkgonly || build_opts.fetchonly || build_opts.pretend) {
 
-			task = NewPackageUninstall(background = m.background,
-				ldpath_mtimes = ldpath_mtimes, opts=m.emerge_opts,
-				pkg = pkg, scheduler=scheduler, settings = settings,
-				world_atom=world_atom)
+			task = NewPackageUninstall(m.background, ldpath_mtimes,
+				m.emerge_opts, pkg, scheduler, settings, world_atom)
 		}else {
 			task = NewAsynchronousTask()
 		}
@@ -5995,9 +6010,32 @@ func(m *MergeListItem) create_install_task() {
 	return task
 }
 
-func NewMergeListItem()*MergeListItem{
+func NewMergeListItem(args_set *InternalPackageSet, background bool,
+	binpkg_opts *_binpkg_opts_class, build_opts *_build_opts_class,
+	config_pool *_ConfigPool, emerge_opts , find_blockers ,
+	logger *_emerge_log_class,
+mtimedb , pkg, pkg_count *_pkg_count_class, pkg_to_replace,
+prefetcher , scheduler *SchedulerInterface,
+settings *Config, statusMessage func(string) , world_atom func() )*MergeListItem {
 	m := &MergeListItem{}
 	m.CompositeTask = NewCompositeTask()
+	m.args_set = args_set
+	m.background = background
+	m.binpkg_opts = binpkg_opts
+	m.build_opts = build_opts
+	m.config_pool = config_pool
+	m.emerge_opts = emerge_opts
+	m.find_blockers = find_blockers
+	m.logger = logger
+	m.mtimedb = logger
+	m.pkg = pkg
+	m.pkg_count = pkg_count
+	m.pkg_to_replace = pkg_to_replace
+	m.prefetcher = prefetcher
+	m.scheduler = scheduler
+	m.settings = settings
+	m.statusMessage = settings
+	m.world_atom = world_atom
 	return m
 }
 
@@ -6649,10 +6687,10 @@ func(p*PackagePhase) _copy_proot_exit( proc) {
 	if p._default_exit(proc) != 0 {
 		p.wait()
 	}else {
-		p._start_task(AsyncFunction(
-			target = install_mask_dir,
-			args = (filepath.Join(p._proot,
-			p.settings["EPREFIX"].lstrip(os.sep)),
+		p._start_task(NewAsyncFunction(
+			install_mask_dir,
+			 (filepath.Join(p._proot,
+			strings.TrimLeft(p.settings.ValueDict["EPREFIX"],string(filepath.Separator))),
 			p._pkg_install_mask)),
 		p._pkg_install_mask_exit)
 	}
@@ -6715,7 +6753,9 @@ type PackageUninstall struct{
 	settings *Config
 	pkg *PkgStr
 	_builddir_lock *EbuildBuildDir
-	world_atom", "ldpath_mtimes", "opts",
+	world_atom
+	ldpath_mtimes
+	opts
 }
 
 func(p*PackageUninstall) _start() {
@@ -6803,9 +6843,7 @@ func(p*PackageUninstall) _unlock_builddir_exit(unlock_task, returncode *int) {
 		return
 	}
 
-	unlock_task.future.cancelled()
-	or
-	unlock_task.future.result()
+	//unlock_task.future.cancelled() || unlock_task.future.result()
 	if returncode != nil {
 		p.returncode = returncode
 		p._async_wait()
@@ -6866,20 +6904,22 @@ func NewPackageVirtualDbapi(settings) *PackageVirtualDbapi {
 }
 
 func(p*PackageVirtualDbapi) clear() {
-	if p._cpv_map:
-	p._clear_cache()
-	p._cp_map.clear()
-	p._cpv_map.clear()
+	if len(p._cpv_map) > 0 {
+		p._clear_cache()
+		p._cp_map.clear()
+		p._cpv_map.clear()
+	}
 }
 
 func(p*PackageVirtualDbapi) copy() {
-	obj = PackageVirtualDbapi(p.settings)
+	obj := NewPackageVirtualDbapi(p.settings)
 	obj._match_cache = p._match_cache.copy()
 	obj._cp_map = p._cp_map.copy()
 	for k, v
 	in
-	obj._cp_map.items():
-	obj._cp_map[k] = v[:]
+	obj._cp_map.items() {
+		obj._cp_map[k] = v[:]
+	}
 	obj._cpv_map = p._cpv_map.copy()
 	return obj
 }
@@ -6892,30 +6932,30 @@ func(p*PackageVirtualDbapi) __iter__() {
 	return iter(p._cpv_map.values())
 }
 
-func(p*PackageVirtualDbapi) __contains__( item) {
+func(p*PackageVirtualDbapi) __contains__( item) bool {
 	existing = p._cpv_map.get(item.cpv)
-	if existing is
-	not
-	None
-	and \
-	existing == item:
-	return true
+	if existing != nil && existing == item {
+		return true
+	}
 	return false
 }
 
-func(p*PackageVirtualDbapi) get( item, default=None) {
+// nil
+func(p*PackageVirtualDbapi) get( item, default1=None) {
 	cpv = getattr(item, "cpv", None)
-	if cpv is
-None:
-	if len(item) != 5:
-	return default
-type_name, root, cpv, operation, repo_key = item
+	if cpv == nil {
+		if len(item) != 5 {
+			return default1
+		}
+	}
+	type_name, root, cpv, operation, repo_key = item
 
-existing = p._cpv_map.get(cpv)
-if existing is not None and \
-existing == item:
-return existing
-return default
+	existing := p._cpv_map.get(cpv)
+	if existing != nil &&
+		existing == item {
+		return existing
+	}
+	return default1
 }
 
 func(p*PackageVirtualDbapi) match_pkgs( atom) {
@@ -6926,61 +6966,66 @@ func(p*PackageVirtualDbapi) match_pkgs( atom) {
 }
 
 func(p*PackageVirtualDbapi) _clear_cache() {
-	if p._categories is
-	not
-None:
-	p._categories = None
-	if p._match_cache:
-	p._match_cache =
-	{
+	if p._categories != nil {
+		p._categories = nil
+	}
+	if len(p._match_cache) > 0 {
+		p._match_cache =
+		{
+		}
 	}
 }
 
-func(p*PackageVirtualDbapi) match( origdep, use_cache=1) {
-	atom = dep_expand(origdep, mydb = p, settings = p.settings)
-	cache_key = (atom, atom.unevaluated_atom)
-	result = p._match_cache.get(cache_key)
-	if result is
-	not
-None:
-	return result[:]
-	result = list(p._iter_match(atom, p.cp_list(atom.cp)))
+// 1
+func(p*PackageVirtualDbapi) match( origdep *Atom, use_cache int) {
+	atom := dep_expand(origdep, p, 1, p.settings)
+	cache_key := [2]*Atom{atom, atom.unevaluatedAtom}
+	result := p._match_cache[cache_key]
+	if result != nil {
+		return result[:]
+	}
+	result = list(p._iter_match(atom, p.cp_list(atom.cp, 1)))
 	p._match_cache[cache_key] = result
 	return result[:]
 }
 
-func(p*PackageVirtualDbapi) cpv_exists( cpv, myrepo=None) {
+// nil
+func(p*PackageVirtualDbapi) cpv_exists( cpv, myrepo=None) int {
 	return cpv
 	in
 	p._cpv_map
 }
 
-func(p*PackageVirtualDbapi) cp_list( mycp, use_cache=1) {
-	cache_key = (mycp, mycp)
-	cachelist = p._match_cache.get(cache_key)
-	if cachelist is
-	not
-None:
-	return cachelist[:]
-	cpv_list = p._cp_map.get(mycp)
-	if cpv_list is
-None:
-	cpv_list = []
-	else:
-	cpv_list = [pkg.cpv
-	for pkg
-	in
-	cpv_list]
-p._cpv_sort_ascending(cpv_list)
-p._match_cache[cache_key] = cpv_list
-return cpv_list[:]
+// 1
+func(p*PackageVirtualDbapi) cp_list( mycp string, use_cache int) {
+	cache_key := (mycp, mycp)
+	cachelist := p._match_cache.get(cache_key)
+	if cachelist != nil {
+		return cachelist[:]
+	}
+	cpv_list := p._cp_map.get(mycp)
+	if cpv_list == nil {
+		cpv_list = []string{}
+	} else {
+		cpv_list = []string{}
+		for pkg
+			in
+		cpv_list {
+			cpv_list = append(pkg.cpv)
+		}
+	}
+	p._cpv_sort_ascending(cpv_list)
+	p._match_cache[cache_key] = cpv_list
+	return cpv_list[:]
 }
 
-func(p*PackageVirtualDbapi) cp_all( sort=false) {
-	return sorted(p._cp_map)
-	if sort
-	else
-	list(p._cp_map)
+// false
+func(p*PackageVirtualDbapi) cp_all( sort bool) {
+	if sort {
+		return sorted(p._cp_map)
+	}else {
+		return list(p._cp_map)
+	}
 }
 
 func(p*PackageVirtualDbapi) cpv_all() {
@@ -6988,44 +7033,49 @@ func(p*PackageVirtualDbapi) cpv_all() {
 }
 
 func(p*PackageVirtualDbapi) cpv_inject( pkg) {
-	cp_list = p._cp_map.get(pkg.cp)
-	if cp_list is
-None:
-	cp_list = []
-	p._cp_map[pkg.cp] = cp_list
-	e_pkg = p._cpv_map.get(pkg.cpv)
-	if e_pkg is
-	not
-None:
-	if e_pkg == pkg:
-	return
+	cp_list := p._cp_map.get(pkg.cp)
+	if cp_list == nil {
+		cp_list = []string{}
+		p._cp_map[pkg.cp] = cp_list
+	}
+	e_pkg := p._cpv_map.get(pkg.cpv)
+	if e_pkg != nil {
+		if e_pkg == pkg {
+			return
+		}
+	}
 	p.cpv_remove(e_pkg)
 	for e_pkg
-	in
-cp_list:
-	if e_pkg.slot_atom == pkg.slot_atom:
-	if e_pkg == pkg:
-	return
-	p.cpv_remove(e_pkg)
-	break
-	cp_list.append(pkg)
+		in
+	cp_list {
+		if e_pkg.slot_atom == pkg.slot_atom {
+			if e_pkg == pkg {
+				return
+			}
+			p.cpv_remove(e_pkg)
+			break
+		}
+	}
+	cp_list = append(cp_list, pkg)
 	p._cpv_map[pkg.cpv] = pkg
 	p._clear_cache()
 }
 
 func(p*PackageVirtualDbapi) cpv_remove( pkg) {
-	old_pkg = p._cpv_map.get(pkg.cpv)
-	if old_pkg != pkg:
-	raise
-	KeyError(pkg)
+	old_pkg := p._cpv_map.get(pkg.cpv)
+	if old_pkg != pkg {
+		raise
+		KeyError(pkg)
+	}
 	p._cp_map[pkg.cp].remove(pkg)
 	del
 	p._cpv_map[pkg.cpv]
 	p._clear_cache()
 }
 
+// nil
 func(p*PackageVirtualDbapi) aux_get( cpv, wants, myrepo=None) {
-	metadata = p._cpv_map[cpv]._metadata
+	metadata := p._cpv_map[cpv]._metadata
 	return [metadata.get(x, "")
 	for x
 	in
@@ -7059,12 +7109,12 @@ func (p* PipeReader) _start() {
 			ff|unix.O_NONBLOCK)
 
 		if p._use_array {
-			p.scheduler.add_reader(fd, func() bool {
+			p.scheduler.add_reader(f, func() bool {
 				return p._array_output_handler(f)
 			})
 		} else {
-			p.scheduler.add_reader(fd, func() bool {
-				return p._output_handler(fd)
+			p.scheduler.add_reader(f, func() bool {
+				return p._output_handler(f)
 			})
 		}
 	}
@@ -7280,8 +7330,7 @@ type  _fetch_iface_class struct {
 
 type _task_queues_class struct {
 	// slot
-	jobs
-	merge, ebuild_locks, fetch, unpack
+	merge, jobs, ebuild_locks, fetch, unpack *SequentialTaskQueue
 }
 
 // SlotObject
@@ -7325,11 +7374,11 @@ type  _failed_pkg struct {
 type  _ConfigPool struct {
 	// slot
 	_root       string
-	_allocate   func(string)
+	_allocate   func(string)*Config
 	_deallocate func(*Config)
 }
 
-func NewConfigPool(root string, allocate func(string), deallocate func(*Config)) *_ConfigPool {
+func NewConfigPool(root string, allocate func(string)*Config, deallocate func(*Config)) *_ConfigPool {
 	c := &_ConfigPool{}
 	c._root = root
 	c._allocate = allocate
@@ -7337,7 +7386,7 @@ func NewConfigPool(root string, allocate func(string), deallocate func(*Config))
 	return c
 }
 
-func (c *_ConfigPool) allocate() {
+func (c *_ConfigPool) allocate() *Config {
 	return c._allocate(c._root)
 }
 
@@ -7403,14 +7452,14 @@ func NewScheduler(settings *Config, trees, mtimedb, myopts, spinner, mergelist, 
 	s.curval = 0
 	s._logger = &_emerge_log_class{}
 	s._task_queues = &_task_queues_class{}
-	for k
-		in
-	s._task_queues.allowed_keys:
-	setattr(s._task_queues, k,
-		SequentialTaskQueue())
+	s._task_queues.merge=NewSequentialTaskQueue()
+	s._task_queues.jobs=NewSequentialTaskQueue()
+	s._task_queues.ebuild_locks=NewSequentialTaskQueue()
+	s._task_queues.fetch=NewSequentialTaskQueue()
+	s._task_queues.unpack=NewSequentialTaskQueue()
 
 	s._merge_wait_queue = deque()
-	s._merge_wait_scheduled = []
+	s._merge_wait_scheduled = []string{}
 
 	s._deep_system_deps = map[string]string{}
 
@@ -7418,7 +7467,7 @@ func NewScheduler(settings *Config, trees, mtimedb, myopts, spinner, mergelist, 
 
 	s._status_display = NewJobStatusDisplay(false, !settings.Features.Features["notitles"])
 	s._max_load = myopts.get("--load-average")
-	max_jobs = myopts.get("--jobs")
+	max_jobs := myopts.get("--jobs")
 	if max_jobs == nil {
 		max_jobs = 1
 	}
@@ -7448,7 +7497,7 @@ func NewScheduler(settings *Config, trees, mtimedb, myopts, spinner, mergelist, 
 		scheduleUnpack: s._schedule_unpack}
 
 	s._prefetchers = weakref.WeakValueDictionary()
-	s._pkg_queue = []
+	s._pkg_queue = []string{}
 	s._jobs = 0
 	s._running_tasks =
 	{
@@ -7460,8 +7509,8 @@ func NewScheduler(settings *Config, trees, mtimedb, myopts, spinner, mergelist, 
 
 	s._failed_pkgs = []*_failed_pkg{}
 	s._failed_pkgs_all = []*_failed_pkg{}
-	s._failed_pkgs_die_msgs = []
-	s._post_mod_echo_msgs = []
+	s._failed_pkgs_die_msgs = []string{}
+	s._post_mod_echo_msgs = []string{}
 	s._parallel_fetch = false
 	s._init_graph(graph_config)
 	merge_count := 0
@@ -7584,10 +7633,9 @@ func (s*Scheduler)_terminate_tasks() {
 func (s*Scheduler) _init_graph( graph_config) {
 	s._set_graph_config(graph_config)
 	s._blocker_db = map[string]*BlockerDB{}
-	depgraph_params := create_depgraph_params(s.myopts, nil)
-	dynamic_deps = "dynamic_deps"
-	in
-	depgraph_params
+	depgraph_params := create_depgraph_params(s.myopts, "")
+	dynamic_deps:= Inmss(depgraph_params, "dynamic_deps")
+
 	ignore_built_slot_operator_deps := s.myopts.get(
 		"--ignore-built-slot-operator-deps", "n") == "y"
 	for root
@@ -7755,7 +7803,7 @@ func(s *Scheduler) _set_graph_config( graph_config) {
 }
 
 func (s *Scheduler) _find_system_deps() {
-	params := create_depgraph_params(s.myopts, nil)
+	params := create_depgraph_params(s.myopts, "")
 	if not params["implicit_system_deps"] {
 		return
 	}
@@ -7794,7 +7842,7 @@ func (s *Scheduler) _prune_digraph() {
 }
 
 func (s *Scheduler) _prevent_builddir_collisions() {
-	cpv_map =
+	cpv_map :=
 	{
 	}
 	for pkg
@@ -7872,7 +7920,7 @@ func (s *Scheduler) _find_blockers_impl(new_pkg) {
 
 	blocker_db := s._blocker_db[new_pkg.root]
 
-	blocked_pkgs = []
+	blocked_pkgs := []{}
 	for blocking_pkg
 		in
 	blocker_db.findInstalledBlockers(new_pkg) {
@@ -8291,7 +8339,7 @@ func (s *Scheduler) merge() int {
 		sighandler := func(signum int, frame) {
 			signal.signal(signal.SIGINT, signal.SIG_IGN)
 			signal.signal(signal.SIGTERM, signal.SIG_IGN)
-			WriteMsg(fmt.Sprintf("\n\nExiting on signal %s\n", signum))
+			WriteMsg(fmt.Sprintf("\n\nExiting on signal %s\n", signum), 0, nil)
 			s.terminate()
 			received_signal = append(received_signal, 128+signum)
 		}
@@ -8314,9 +8362,9 @@ func (s *Scheduler) merge() int {
 		signal.signal(signal.SIGCONT, earlier_sigcont_handler) else:
 		signal.signal(signal.SIGCONT, signal.SIG_DFL)
 
-		s._termination_check()
-		if received_signal {
-			sys.exit(received_signal[0])
+		s._termination_check(false)
+		if len(received_signal) > 0 {
+			os.Exit(received_signal[0])
 		}
 
 		if rval == 0 || fetchonly || !keep_going {
@@ -8990,8 +9038,8 @@ func (s *Scheduler) _schedule_tasks() {
 	}
 }
 
-func (s *Scheduler) _schedule_merge_wakeup( future) {
-	if not future.cancelled() {
+func (s *Scheduler) _schedule_merge_wakeup( future IFuture) {
+	if !future.cancelled() {
 		future.result()
 		if s._main_exit != nil &&
 			not
@@ -9105,52 +9153,57 @@ func (s *Scheduler) _schedule_tasks_imp() bool{
 	return state_change!= 0
 }
 
+func (s *Scheduler) _get_prefetcher(pkg) {
+//try:
+	prefetcher := s._prefetchers.pop(pkg, None)
+	//except KeyError:
+	prefetcher = nil
+	if prefetcher != nil&&!prefetcher.isAlive() {
+	//try:
+		s._task_queues.fetch._task_queue.remove(prefetcher)
+		//except ValueError:
+		//pass
+		prefetcher = nil
+	}
+	return prefetcher
+}
+
 func (s *Scheduler) _task( pkg) {
 
 	var pkg_to_replace = nil
-	if pkg.operation != "uninstall"{
+	if pkg.operation != "uninstall" {
 		vardb := pkg.root_config.trees["vartree"].dbapi
-		previous_cpv = [x
+		previous_cpv := []*PkgStr{}
 		for x
 			in
-		vardb.match(pkg.slot_atom)
-		if portage.cpv_getkey(x) == pkg.cp]
-if not previous_cpv && vardb.cpv_exists(pkg.cpv):
-previous_cpv = [pkg.cpv]
-if previous_cpv:
-previous_cpv = previous_cpv.pop()
-pkg_to_replace = s._pkg(previous_cpv,
-"installed", pkg.root_config, installed = true,
-operation = "uninstall")
-}
+		vardb.match(pkg.slot_atom) {
+			if cpvGetKey(x, "") == pkg.cp {
+				previous_cpv = append(previous_cpv, x)
+			}
+		}
+		if len(previous_cpv) == 0 && vardb.cpv_exists(pkg.cpv) {
+			previous_cpv = []*PkgStr{pkg.cpv}
+		}
+		if len(previous_cpv) != 0 {
+			pc := previous_cpv[len(previous_cpv)-1]
+			previous_cpv = previous_cpv[:len(previous_cpv)-1]
+			pkg_to_replace = s._pkg(pc,
+				"installed", pkg.root_config, true,
+				"uninstall")
+		}
+	}
 
-try:
-prefetcher = s._prefetchers.pop(pkg, nil)
-except KeyError:
-prefetcher = nil
-if prefetcher != nil && not prefetcher.isAlive():
-try:
-s._task_queues.fetch._task_queue.remove(prefetcher)
-except ValueError:
-pass
-prefetcher = nil
+	prefetcher := s._get_prefetcher(pkg)
 
-task = MergeListItem(args_set= s._args_set,
-background = s._background, binpkg_opts = s._binpkg_opts,
-build_opts = s._build_opts,
-config_pool = s._ConfigPool(pkg.root,
-s._allocate_config, s._deallocate_config),
-emerge_opts = s.myopts,
-find_blockers =s._find_blockers(pkg), logger = s._logger,
-mtimedb = s._mtimedb, pkg= pkg, pkg_count = s._pkg_count.copy(),
-pkg_to_replace = pkg_to_replace,
-prefetcher = prefetcher,
-scheduler = s._sched_iface,
-settings = s._allocate_config(pkg.root),
-statusMessage =s._status_msg,
-world_atom = s._world_atom)
+	pc := *s._pkg_count
+	task := NewMergeListItem(s._args_set, s._background, s._binpkg_opts,
+		s._build_opts, NewConfigPool(pkg.root, s._allocate_config,
+			s._deallocate_config), s.myopts, s._find_blockers(pkg),
+		s._logger, s._mtimedb, pkg, &pc, pkg_to_replace,
+		prefetcher, s._sched_iface, s._allocate_config(pkg.root),
+		s._status_msg, s._world_atom)
 
-return task
+	return task
 }
 
 func (s *Scheduler) _failed_pkg_msg(failed_pkg *_failed_pkg, action, preposition string) {
@@ -9378,9 +9431,9 @@ finally:
 	world_set.unlock()
 }
 
-// false, nil, nil
+// false, "", nil
 func (s *Scheduler) _pkg( cpv *PkgStr, type_name string, root_config *RootConfig, installed bool,
-	operation=nil, myrepo=nil) *Package {
+	operation string, myrepo=nil) *Package {
 
 	pkg = s._pkg_cache.get(NewPackage()._gen_hash_key(cpv = cpv,
 		type_name = type_name, repo_name=myrepo, root_config = root_config,
@@ -9892,10 +9945,11 @@ type TaskSequence struct{
 	_task_queue []
 }
 
-func NewTaskSequence( **kwargs) *TaskSequence {
+// nil
+func NewTaskSequence(scheduler *SchedulerInterface) *TaskSequence {
 	t := &TaskSequence{}
 
-	t.AsynchronousTask = NewAsynchronousTask(**kwargs)
+	t.AsynchronousTask = NewAsynchronousTask(scheduler)
 	t._task_queue = deque()
 	return t
 }
@@ -10811,7 +10865,7 @@ func (a* AsyncTaskFuture) _cancel() {
 	}
 }
 
-func (a* AsyncTaskFuture) _done_callback(future IFuture) {
+func (a* AsyncTaskFuture) _done_callback(future IFuture, err error) {
 	if future.cancelled() {
 		a.cancelled = true
 		i := -int(unix.SIGINT)
@@ -10931,7 +10985,7 @@ func(a*AsyncScheduler) _running_job_count() int {
 }
 
 func(a*AsyncScheduler) _schedule_tasks() {
-	for a._keep_scheduling()&& a._can_add_job() {
+	for a._keep_scheduling() && a._can_add_job() {
 	try:
 		task := a._next_task()
 		except
@@ -10944,11 +10998,11 @@ func(a*AsyncScheduler) _schedule_tasks() {
 		task.start()
 	}
 
-	if a._loadavg_check_id != nil{
-	a._loadavg_check_id.cancel()
-	a._loadavg_check_id = a._event_loop.call_later(
-	a._loadavg_latency, a._schedule)
-}
+	if a._loadavg_check_id != nil {
+		a._loadavg_check_id.cancel()
+		a._loadavg_check_id = a._event_loop.call_later(
+			a._loadavg_latency, a._schedule)
+	}
 	a.poll()
 }
 
@@ -10987,10 +11041,10 @@ type FileDigester struct {
 
 	// slot
 	hash_names []string
-	file_path
-	digests
-	_digest_pipe_reader
-	_digest_pw
+	file_path string
+	digests map[string]string
+	_digest_pw int
+	_digest_pipe_reader *PipeReader
 }
 
 func (f*FileDigester) _start() {
@@ -11000,67 +11054,65 @@ func (f*FileDigester) _start() {
 	f.fd_pipes = map[int]int{}
 	f.fd_pipes[pw] = pw
 	f._digest_pw = pw
-	f._digest_pipe_reader = NewPipeReader(
-		input_files = {
-		"input": pr
-	}, scheduler = f.scheduler
-	)
+	f._digest_pipe_reader = NewPipeReader(map[string]int {"input": pr}, f.scheduler)
 	f._digest_pipe_reader.addExitListener(f._digest_pipe_reader_exit)
 	f._digest_pipe_reader.start()
 	f.ForkProcess._start()
 	syscall.Close(pw)
 }
 
-func (f*FileDigester) _run() {
+func (f*FileDigester) _run() int {
 	digests := performMultipleChecksums(f.file_path, f.hash_names, false)
 
-	buf = "".join("%s=%s\n" % item
-	for item
-	in
-	digests.items()).encode("utf_8")
+	bs := []string{}
+	for k,v := range digests {
+		bs =append(bs, fmt.Sprintf("%s=%s\n", k,string(v)))
+	}
+	buf := strings.Join(bs, "")
 
-	while
-buf:
-	buf = buf[os.write(self._digest_pw, buf):]
+	for len(buf) > 0 {
+		n, _ :=syscall.Write(f._digest_pw, []byte(buf))
+		buf = buf[n:]
+	}
 
-	return os.EX_OK
+	return 0
 }
 
 func (f*FileDigester) _parse_digests( data) {
-	digests =
-	{
-	}
+	digests :=map[string]string{}
 	for line
-	in
-	data.decode("utf_8").splitlines():
-	parts = line.split("=", 1)
-	if len(parts) == 2:
-	digests[parts[0]] = parts[1]
+		in
+	data.decode("utf_8").splitlines() {
+		parts := line.split("=", 1)
+		if len(parts) == 2 {
+			digests[parts[0]] = parts[1]
+		}
+	}
 
-	self.digests = digests
+	f.digests = digests
+}
 
-	def
-	_async_waitpid(self):
-	if self._digest_pipe_reader is
-None:
-	ForkProcess._async_waitpid(self)
+func (f*FileDigester)_async_waitpid(){
+	if f._digest_pipe_reader == nil {
+		f.ForkProcess._async_waitpid()
+	}
 }
 
 func (f*FileDigester) _digest_pipe_reader_exit( pipe_reader) {
 	f._parse_digests(pipe_reader.getvalue())
-	f._digest_pipe_reader = None
-	if self.pid is
-None:
-	self._unregister()
-	self._async_wait()
-	else:
-	self._async_waitpid()
+	f._digest_pipe_reader = nil
+	if f.pid ==nil {
+		f._unregister()
+		f._async_wait()
+	}else {
+		f._async_waitpid()
+	}
 }
 
 func (f*FileDigester) _unregister() {
 	f.ForkProcess._unregister()
 
-	pipe_reader = f._digest_pipe_reader
+	pipe_reader := f._digest_pipe_reader
 	if pipe_reader != nil {
 		f._digest_pipe_reader = nil
 		pipe_reader.removeExitListener(f._digest_pipe_reader_exit)
@@ -11068,8 +11120,87 @@ func (f*FileDigester) _unregister() {
 	}
 }
 
-func NewFileDigester(file_path , hash_names , background , logfile, scheduler ) *FileDigester {
+func NewFileDigester(file_path string, hash_names []string, background bool, logfile string, scheduler *SchedulerInterface) *FileDigester {
 	f := &FileDigester{}
+	f.file_path = file_path
+	f.hash_names = hash_names
+	f.background = background
+	f.logfile = logfile
+	f.scheduler = scheduler
 	return f
 }
 
+
+type AsyncFunction struct{
+	*ForkProcess
+
+	// slot
+	_async_func_reader *PipeReader
+	_async_func_reader_pw int
+	fun func() interface{}
+	result interface{}
+}
+
+func (a*AsyncFunction) _start() {
+	p2 := make([]int, 2)
+	syscall.Pipe(p2)
+	pr, pw := p2[0], p2[1]
+	if a.fd_pipes ==nil{
+		a.fd_pipes =map[int]int{}
+	}
+	a.fd_pipes[pw] = pw
+	a._async_func_reader_pw = pw
+	a._async_func_reader = NewPipeReader(map[string] int{"input": pr},  a.scheduler)
+	a._async_func_reader.addExitListener(a._async_func_reader_exit)
+	a._async_func_reader.start()
+	a.ForkProcess._start()
+	syscall.Close(pw)
+}
+
+func (a*AsyncFunction) _run() int {
+//try:
+	result := a.fun()
+	ogórek.NewEncoder(os.NewFile(uintptr(a._async_func_reader_pw), "")).Encode(result)
+	//except Exception:
+	//traceback.print_exc()
+	//return 1
+
+	return 0
+}
+
+func (a*AsyncFunction) _async_waitpid() {
+	if a._async_func_reader ==nil {
+		a.ForkProcess._async_waitpid()
+	}
+}
+
+func (a*AsyncFunction)_async_func_reader_exit( pipe_reader io.Reader){
+//try:
+	a.result, _ = ogórek.NewDecoder(pipe_reader).Decode()
+	//except Exception:
+	//pass
+	a._async_func_reader = nil
+	if a.returncode ==nil {
+		a._async_waitpid()
+	}else {
+		a._unregister()
+		a._async_wait()
+	}
+}
+
+func (a*AsyncFunction) _unregister() {
+	a.ForkProcess._unregister()
+
+	pipe_reader := a._async_func_reader
+	if pipe_reader != nil {
+		a._async_func_reader = nil
+		pipe_reader.removeExitListener(a._async_func_reader_exit)
+		pipe_reader.cancel()
+	}
+}
+
+func NewAsyncFunction(fun func() interface{})*AsyncFunction{
+	a:=&AsyncFunction{}
+	a.fun = fun
+	return a
+}
