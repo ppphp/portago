@@ -622,60 +622,35 @@ func get_mirror_url(mirror_url, filename, mysettings, cache_path string) string 
 	}
 }
 
+// 0,0,".locks", 1,1,nil, true, false
+func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
+	fetchonly int, locks_in_subdir string, use_locks, try_mirrors int,
+	digests map[string]map[string]bool, allow_missing_digests, force bool, ) {
 
-func fetch(
-myuris,
-mysettings,
-listonly=0,
-fetchonly=0,
-locks_in_subdir=".locks",
-use_locks=1,
-try_mirrors=1,
-digests=None,
-allow_missing_digests=True,
-force=False,
-) {
+	if force &&len(digests) > 0 {
+		//raise PortageException(
+		//	_("fetch: force=True is not allowed when digests are provided")
+		//)
+	}
 
-	if force and
-digests:
-	raise
-	PortageException(
-		_("fetch: force=True is not allowed when digests are provided")
-	)
+	if len( myuris)==0 {
+		return 1
+	}
 
-	if not myuris:
-	return 1
+	features := mysettings.Features
+	restrict := strings.Fields(mysettings.ValueDict["PORTAGE_RESTRICT"])
+	userfetch := *secpass >= 2&& features.Features["userfetch"]
 
-	features = mysettings.features
-	restrict = mysettings.get("PORTAGE_RESTRICT", "").split()
-	userfetch = portage.data.secpass >= 2
-	and
-	"userfetch"
-	in
-	features
+	restrict_mirror := Ins(restrict,"mirror")||Ins(restrict,"nomirror")
+	if restrict_mirror {
+		if features.Features["mirror"] &&!features.Features["lmirror"] {
+			print(					">>> \"mirror\" mode desired and \"mirror\" restriction found; skipping fetch.")
+			return 1
+		}
+	}
 
-	restrict_mirror = "mirror"
-	in
-	restrict
-	or
-	"nomirror"
-	in
-	restrict
-	if restrict_mirror:
-	if ("mirror" in
-	features) and("lmirror"
-	not
-	in
-	features):
-	print(
-		_(
-			'>>> "mirror" mode desired and "mirror" restriction found; skipping fetch.'
-		)
-	)
-	return 1
-
-	checksum_failure_max_tries = 5
-	v = checksum_failure_max_tries
+	checksum_failure_max_tries := 5
+	v := checksum_failure_max_tries
 try:
 	v = int(
 		mysettings.get(
