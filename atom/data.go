@@ -36,7 +36,8 @@ func portageGroupWarining() {
 	WriteMsg("\n", -1, nil)
 }
 
-var userpriv_groups, _portage_grpname, _portage_username *string
+var userpriv_groups []int
+var _portage_grpname, _portage_username *string
 var portage_gid *uint32
 var portage_uid, secpass *int
 var uid = os.Geteuid()

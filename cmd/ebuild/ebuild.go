@@ -214,7 +214,7 @@ func main() {
 	}
 	tmpsettings = atom.NewConfig(tmpsettings, nil, "", nil, "", "", "", "", true, nil, false, nil)
 	//try{
-	var mydbapi atom.DBAPI
+	var mydbapi atom.IDbApi
 	if mytree == "porttree" {
 		mydbapi = atom.Db().Values()[atom.Settings().ValueDict["EROOT"]].PortTree().dbapi
 	} else if mytree == "vartree" {

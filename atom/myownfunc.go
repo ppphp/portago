@@ -213,6 +213,15 @@ func sortedmsb(a map[string]bool) []string {
 	return b
 }
 
+func sortedmss(a map[string]string) []string {
+	b := []string{}
+	for k := range a {
+		b = append(b, k)
+	}
+	sort.Strings(b)
+	return b
+}
+
 func getNamedRegexp(re *regexp.Regexp, target, name string) string {
 	match := re.FindStringSubmatch(target)
 	for i, n := range re.SubexpNames() {

@@ -2121,7 +2121,7 @@ trees TreesDict, use_mask, use_force int, **kwargs){
 
 newsplit := []string{}
 mytrees := trees.valueDict[myroot]
-var portdb DBAPI = mytrees.PortTree().dbapi
+var portdb IDbApi = mytrees.PortTree().dbapi
 pkg_use_enabled := mytrees.get("pkg_use_enabled")
 atom_graph := mytrees.get("atom_graph")
 parent := mytrees.get("parent")

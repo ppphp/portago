@@ -912,6 +912,7 @@ var (
 	varexpandUnexpectedEofMsg = "unexpected EOF while looking for matching `}'"
 )
 
+// nil, nil
 func varExpand(myString string, myDict map[string]string, errorLeader func() string) string {
 	if myDict == nil {
 		myDict = map[string]string{}

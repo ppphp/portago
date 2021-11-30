@@ -346,7 +346,7 @@ func metadata(argv []string) int {
 	trees := atom.Db()
 	repo := atom.DepGetrepo(pkgspec)
 	pkgspec = atom.RemoveSlot(pkgspec)
-	var mydbapi atom.DBAPI
+	var mydbapi atom.IDbApi
 	switch type_map[pkgtype] {
 	case "porttree":
 		mydbapi = trees.Values()[eroot].PortTree().dbapi
@@ -603,7 +603,7 @@ func bestVisible(argv []string) int {
 	}
 
 	eroot := argv[0]
-	var db atom.DBAPI
+	var db atom.IDbApi
 	switch type_map[pkgtype] {
 	case "porttree":
 		db = atom.Db().Values()[eroot].PortTree().dbapi

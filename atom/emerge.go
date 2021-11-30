@@ -12,6 +12,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -1000,11 +1001,11 @@ func (a *AsynchronousTask) start() {
 	a._start()
 }
 
-func (a *AsynchronousTask)  async_wait() {
+func (a *AsynchronousTask)  async_wait() IFuture {
 	waiter := a.scheduler.create_future()
-	exit_listener := func(a *AsynchronousTask) { return waiter.cancelled() || waiter.set_result(a.returncode) }
+	exit_listener := func(a *AsynchronousTask) bool { return waiter.cancelled() || waiter.set_result(a.returncode) }
 	a.addExitListener(exit_listener)
-	waiter.add_done_callback(func(waiter)  {
+	waiter.add_done_callback(func(waiter IFuture, err error)  {
 		if waiter.cancelled() {
 			return a.removeExitListener(exit_listener)
 		} else {
@@ -1940,14 +1941,17 @@ func (b *_BinpkgFetcherProcess) _start() {
 	pkg_path := b.pkg_path
 
 	exists := pathExists(pkg_path)
-	resume := exists&&filepath.Base(pkg_path) in bintree.invalids
-	if !(pretend || resume){
-		if err := syscall.Unlink(pkg_path); err!= nil {
+	resume := exists && filepath.Base(pkg_path)
+	in
+	bintree.invalids
+	if !(pretend || resume) {
+		if err := syscall.Unlink(pkg_path); err != nil {
 			//except OSError:
 			//pass
 		}
 	}
 
+	uri := strings.TrimRight(settings.ValueDict["PORTAGE_BINHOST"], "/") + "/" + pkg.pf + ".tbz2"
 	if bintree._remote_has_index {
 		instance_key := bintree.dbapi._instance_key(pkg.cpv)
 		rel_uri := bintree._remotepkgs[instance_key].get("PATH")
@@ -1956,79 +1960,76 @@ func (b *_BinpkgFetcherProcess) _start() {
 		}
 		remote_base_uri := bintree._remotepkgs[
 			instance_key]["BASE_URI"]
-		uri = remote_base_uri.rstrip("/") + "/" + rel_uri.lstrip("/")
-	}else {
-		uri = settings["PORTAGE_BINHOST"].rstrip("/") + \
-		"/" + pkg.pf + ".tbz2"
+		uri = strings.TrimRight(remote_base_uri, "/") + "/" + strings.TrimLeft(rel_uri, "/")
 	}
+
 	if pretend {
-		WriteMsgStdout(fmt.Sprintf("\n%s\n",uri), -1)
+		WriteMsgStdout(fmt.Sprintf("\n%s\n", uri), -1)
 		i := 0
 		b.returncode = &i
 		b._async_wait()
 		return
 	}
 
-	protocol := urllib_parse_urlparse(uri)[0]
+	u, _ := url.Parse(uri)
+	protocol := u.Scheme
 	fcmd_prefix := "FETCHCOMMAND"
 	if resume {
 		fcmd_prefix = "RESUMECOMMAND"
 	}
-	fcmd := settings.get(fcmd_prefix + "_" + protocol.upper())
-	if not fcmd {
-		fcmd = settings.get(fcmd_prefix)
+	fcmd := settings.ValueDict[fcmd_prefix+"_"+strings.ToUpper(protocol)]
+	if fcmd == "" {
+		fcmd = settings.ValueDict[fcmd_prefix]
 	}
 
 	fcmd_vars := map[string]string{
-		"DISTDIR" : filepath.Dir(pkg_path),
-		"URI"     : uri,
-		"FILE"    : filepath.Base(pkg_path),
+		"DISTDIR": filepath.Dir(pkg_path),
+		"URI":     uri,
+		"FILE":    filepath.Base(pkg_path),
 	}
 
-	for k
-	in("PORTAGE_SSH_OPTS", )
-	{
-		v = settings.get(k)
-		if v is
-		not
-		None{
-			fcmd_vars[k] = v
-		}
+	v, ok := settings.ValueDict["PORTAGE_SSH_OPTS"]
+	if ok {
+		fcmd_vars["PORTAGE_SSH_OPTS"] = v
 	}
 
-	fetch_env = dict(settings.items())
-	fetch_args = [portage.util.varexpand(x, mydict = fcmd_vars) \
-	for x
-	in
-	portage.util.shlex_split(fcmd)]
+	fetch_env := dict(settings.items())
+	fetch_args := []string{}
+	ss, _ := shlex.Split(strings.NewReader(fcmd), false, true)
+	for _, x := range ss {
+		fetch_args = append(fetch_args, varExpand(x, fcmd_vars, nil))
+	}
 
-if b.fd_pipes is None{
-b.fd_pipes = {}
+	if b.fd_pipes == nil {
+		b.fd_pipes =map[int]int{}
+	}
+	fd_pipes := b.fd_pipes
+
+	if _, ok := fd_pipes[0]; !ok {
+		fd_pipes[0] = int(getStdin().Fd())
+	}
+	if _, ok := fd_pipes[0]; !ok {
+		fd_pipes[0] = int(os.Stdout.Fd())
+	}
+	if _, ok := fd_pipes[0]; !ok {
+		fd_pipes[0] = int(os.Stdout.Fd())
+	}
+
+	b.args = fetch_args
+	b.env = fetch_env
+	if settings.selinux_enabled() {
+		b._selinux_type = settings["PORTAGE_FETCH_T"]
+	}
+	b.SpawnProcess._start()
 }
-fd_pipes = b.fd_pipes
 
-fd_pipes.setdefault(0, portage._get_stdin().fileno())
-fd_pipes.setdefault(1, sys.__stdout__.fileno())
-fd_pipes.setdefault(2, sys.__stdout__.fileno())
-
-b.args = fetch_args
-b.env = fetch_env
-if settings.selinux_enabled(){
-b._selinux_type = settings["PORTAGE_FETCH_T"]
-}
-SpawnProcess._start(b)
-}
-
-func (b *_BinpkgFetcherProcess) _pipe( fd_pipes) {
-	if b.background or
-	not
-	sys.__stdout__.isatty()
-	{
+func (b *_BinpkgFetcherProcess) _pipe( fd_pipes map[int]int) []int {
+	if b.background || !terminal.IsTerminal(syscall.Stdout){
 		return os.pipe()
 	}
 	stdout_pipe = None
 	if ! b.background {
-		stdout_pipe = fd_pipes.get(1)
+		stdout_pipe = fd_pipes[1]
 	}
 	got_pty, master_fd, slave_fd =
 		_create_pty_or_pipe(copy_term_size = stdout_pipe)
@@ -2036,36 +2037,29 @@ func (b *_BinpkgFetcherProcess) _pipe( fd_pipes) {
 }
 
 func (b *_BinpkgFetcherProcess) sync_timestamp() {
-	bintree = b.pkg.root_config.trees["bintree"]
+	bintree := b.pkg.root_config.trees["bintree"]
 	if bintree._remote_has_index {
-		remote_mtime = bintree._remotepkgs[
+		remote_mtime := bintree._remotepkgs[
 			bintree.dbapi._instance_key(
 				b.pkg.cpv)].get("_mtime_")
-		if remote_mtime is
-		not
-		None{
-			try:
-			remote_mtime = long(remote_mtime)
-			except
-			ValueError:
-			pass else:
-			try:
-			local_mtime = os.stat(b.pkg_path)[stat.ST_MTIME]
-			except
-			OSError:
-			pass else:
-			if remote_mtime != local_mtime:
-			try:
-			os.utime(b.pkg_path,
-		(remote_mtime, remote_mtime))
-			except
-			OSError:
-			pass
+		if remote_mtime != nil {
+			remote_mtimeI, err := strconv.Atoi(remote_mtime)
+			if err == nil {
+				st, err := os.Stat(b.pkg_path)
+				if err == nil {
+					local_mtime := st.ModTime().Unix()
+					if remote_mtimeI != int(local_mtime) {
+						err := syscall.Utime(b.pkg_path, &syscall.Utimbuf{Actime: remote_mtime, Modtime: remote_mtime})
+						if err != nil {
+						}
+					}
+				}
+			}
 		}
 	}
 }
 
-func (b *_BinpkgFetcherProcess) async_lock() {
+func (b *_BinpkgFetcherProcess) async_lock() IFuture {
 	if b._lock_obj != nil{
 		//raise b.AlreadyLocked((b._lock_obj, ))
 	}
@@ -2075,7 +2069,7 @@ func (b *_BinpkgFetcherProcess) async_lock() {
 	acquired_lock := func(async_lock) {
 		if async_lock.wait() == 0 {
 			b.locked = true
-			result.set_result(None)
+			result.set_result(nil)
 		} else {
 			result.set_exception(AssertionError(
 				"AsynchronousLock failed with returncode %s"
@@ -2093,7 +2087,7 @@ type AlreadyLocked struct {
 	*PortageException
 }
 
-func (b *_BinpkgFetcherProcess) async_unlock() {
+func (b *_BinpkgFetcherProcess) async_unlock()IFuture {
 	if b._lock_obj == nil{
 		//raise AssertionError('already unlocked')
 	}
@@ -2107,15 +2101,15 @@ func NewBinpkgFetcherProcess(background bool,
 	logfile string, pkg *PkgStr, pkg_path string,
 	pretend interface{}, scheduler *SchedulerInterface)*_BinpkgFetcherProcess {
 	b := &_BinpkgFetcherProcess{}
-	b.SpawnProcess = NewSpawnProcess(nil, background,nil, nil, scheduler,
+	b.SpawnProcess = NewSpawnProcess(nil, background, nil, nil, scheduler,
 		logfile)
 
-	b.background=background
-	b.logfile=logfile
-	b.pkg=pkg
-	b.pkg_path=pkg_path
-	b.pretend=pretend
-	b.scheduler=scheduler
+	b.background = background
+	b.logfile = logfile
+	b.pkg = pkg
+	b.pkg_path = pkg_path
+	b.pretend = pretend
+	b.scheduler = scheduler
 
 	return b
 }
@@ -2381,110 +2375,109 @@ func NewBlockerCache(myroot string, vardb *vardbapi)*BlockerCache {
 func (b *BlockerCache) _load() {
 	//try:
 	f, err := os.Open(b._cache_filename)
-	mypickle = pickle.Unpickler(f)
-try:
-	mypickle.find_global = nil
-	except
-AttributeError:
-	pass
-	b._cache_data = mypickle.load()
-	f.close()
-	del
-	f
-	except(SystemExit, KeyboardInterrupt):
-	raise
-	except
-	Exception
-	as
-e:
-	if isinstance(e, EnvironmentError) &&
-		getattr(e, 'errno', nil)
-		in(errno.ENOENT, errno.EACCES):
-	pass
-	else:
-	WriteMsg("!!! Error loading '%s': %s\n" %
-		(b._cache_filename, str(e)), noiselevel = -1)
-	del
-	e
+	mypickle :=ogórek.NewDecoder(f)
+//try:
+//	mypickle.find_global = nil
+//	except AttributeError:
+//	pass
+	b._cache_data, _ = mypickle.Decode()
+	f.Close()
+	//except(SystemExit, KeyboardInterrupt):
+	//raise
+	//except Exception as e:
+	//if isinstance(e, EnvironmentError) &&
+	//	getattr(e, 'errno', nil)
+	//	in(errno.ENOENT, errno.EACCES):
+	//pass
+	//else:
+	//WriteMsg("!!! Error loading '%s': %s\n" %
+	//	(b._cache_filename, str(e)), noiselevel = -1)
+	//del e
 
-	cache_valid = b._cache_data&&
+	cache_valid := b._cache_data&&
 		isinstance(b._cache_data, dict)&&
 		b._cache_data.get("version") == b._cache_version&&
 		isinstance(b._cache_data.get("blockers"), dict)
-	if cache_valid:
-	invalid_items = set()
-	for k, v
-		in
-	b._cache_data["blockers"].items():
-	if not isinstance(k, basestring):
-	invalid_items.add(k)
-	continue
-try:
-	if portage.catpkgsplit(k) == nil:
-	invalid_items.add(k)
-	continue
-	except
-	portage.exception.InvalidData:
-	invalid_items.add(k)
-	continue
-	if not isinstance(v, tuple)
-	or
-	len(v) != 2:
-	invalid_items.add(k)
-	continue
-	counter, atoms = v
-	if not isinstance(counter, (int, long)):
-	invalid_items.add(k)
-	continue
-	if not isinstance(atoms, (list, tuple)):
-	invalid_items.add(k)
-	continue
-	invalid_atom = false
-	for atom
-		in
-	atoms:
-	if not isinstance(atom, basestring):
-	invalid_atom = true
-	break
-	if atom[:1] != "!" or
-	not
-	portage.isvalidatom(
-		atom, allow_blockers = true):
-	invalid_atom = true
-	break
-	if invalid_atom:
-	invalid_items.add(k)
-	continue
+	if cache_valid {
+		invalid_items := map[string]bool{}
+		for k, v
+			in
+		b._cache_data["blockers"].items() {
+			//if not isinstance(k, basestring):
+			//invalid_items.add(k)
+			//continue
+		//try:
+			if CatPkgSplit(k,1, "") == [4]string{} {
+				invalid_items[k] = true
+				continue
+			}
+			//except portage.exception.InvalidData:
+			//invalid_items.add(k)
+			//continue
+			//if not isinstance(v, tuple) || len(v) != 2 {
+			//	invalid_items[k] = true
+			//	continue
+			//}
+			counter, atoms = v
+			if not isinstance(counter, (int, long)){
+				invalid_items[k] = true
+				continue
+			}
+			if not isinstance(atoms, (list, tuple)){
+				invalid_items[k] = true
+				continue
+			}
+			invalid_atom := false
+			for atom
+				in
+			atoms {
+				if not isinstance(atom, basestring) {
+					invalid_atom = true
+					break
+				}
+				if atom[:1] != "!" ||!isValidAtom(
+					atom, allow_blockers = true){
+					invalid_atom = true
+					break
+				}
+			}
+			if invalid_atom {
+				invalid_items[k] = true
+				continue
+			}
+		}
 
-	for k
-		in
-	invalid_items:
-	del
-	b._cache_data["blockers"][k]
-	if not b._cache_data["blockers"]:
-	cache_valid = false
+		for k:= range invalid_items {
+			del
+			b._cache_data["blockers"][k]
+		}
+		if not b._cache_data["blockers"] {
+			cache_valid = false
+		}
+	}
 
-	if not cache_valid:
-	b._cache_data =
-	{
-		"version":b._cache_version
+	if !cache_valid {
+		b._cache_data =
+		{
+			"version":b._cache_version
+		}
+		b._cache_data["blockers"] =
+		{
+		}
 	}
-	b._cache_data["blockers"] =
-	{
-	}
-	b._modified.clear()
+	b._modified = map[string]bool{}
 }
 
 func (b *BlockerCache) flush() {
 	if len(b._modified) >= b._cache_threshold && *secpass >= 2:
-try:
+//try:
 	f := NewAtomic_ofstream(b._cache_filename, os.O_RDWR|os.O_TRUNC|os.O_CREATE, true)
-	pickle.dump(b._cache_data, f, protocol = 2)
+	ogórek.NewEncoder(f).Encode(b._cache_data)
 	f.Close()
 	apply_secpass_permissions(
 		b._cache_filename, -1, *portage_gid, 0644, -1, nil, nil)
-	except(IOError, OSError):
-	pass
+	//except(IOError, OSError):
+	//pass
 	b._modified= map[string]bool{}
 }
 
@@ -3087,12 +3080,10 @@ func(e *EbuildBuild) _prefetch_exit( prefetcher) {
 				e.returncode = &i
 				e._async_wait()
 			} else {
-				e._start_task(SpawnNofetchWithoutBuilddir(
-					background = e.background,
+				e._start_task(NewSpawnNofetchWithoutBuilddir(
+					e.background,
 					portdb = e.pkg.root_config.trees[e._tree].dbapi,
-					ebuild_path = e._ebuild_path,
-					scheduler=e.scheduler,
-					settings = e.settings),
+					e._ebuild_path, e.scheduler, nil, e.settings),
 				e._default_final_exit)
 			}
 			return
@@ -3136,12 +3127,9 @@ func(e *EbuildBuild)_fetchonly_exit( fetcher){
 	if e.returncode ==nil||*e.returncode!= 0 {
 		e.returncode = nil
 		portdb = e.pkg.root_config.trees[e._tree].dbapi
-		e._start_task(SpawnNofetchWithoutBuilddir(
-			background = e.background,
+		e._start_task(NewSpawnNofetchWithoutBuilddir(e.background,
 			portdb = portdb,
-			ebuild_path = e._ebuild_path,
-			scheduler=e.scheduler,
-			settings = e.settings),
+			e._ebuild_path, e.scheduler, nil, e.settings),
 		e._nofetch_without_builddir_exit)
 		return
 	}
@@ -3904,7 +3892,7 @@ None:
 	stderr_orig = sys.stderr
 	global_havecolor = portage.output.havecolor
 	out = io.StringIO()
-	eout = portage.output.EOutput()
+	eout = NewEOutput(false)
 	eout.quiet = settings.get("PORTAGE_QUIET") == "1"
 	success = true
 try:
@@ -3925,7 +3913,7 @@ None:
 	break
 	continue
 	ok, st = _check_distfile(filepath.Join(distdir, filename),
-		mydigests, eout, show_errors = false, hash_filter = hash_filter)
+		mydigests, eout, false, hash_filter)
 	if not ok:
 	success = false
 	break
@@ -3997,23 +3985,19 @@ func(e*_EbuildFetcherProcess) _start() {
 }
 
 func(e*_EbuildFetcherProcess) _run() {
-	HaveColor = e._settings.get('NOCOLOR') \
-	not
-	in('yes', 'true')
+	HaveColor = !(e._settings.ValueDict["NOCOLOR"]== "yes" ||e._settings.ValueDict["NOCOLOR"]== "true")
 
-	if _want_userfetch(e._settings):
-	_drop_privs_userfetch(e._settings)
+	if _want_userfetch(e._settings) {
+		_drop_privs_userfetch(e._settings)
+	}
 
-	rval = 1
-	allow_missing = e._get_manifest().allow_missing
-	or \
-	'digest'
-	in
-	e._settings.features
+	rval := 1
+	allow_missing := e._get_manifest().allow_missing||e._settings.Features.Features["digest"]
 	if fetch(e._uri_map, e._settings, fetchonly = e.fetchonly,
 		digests = copy.deepcopy(e._get_digests()),
-		allow_missing_digests = allow_missing):
-	rval = 0
+		allow_missing_digests = allow_missing){
+		rval = 0
+	}
 	return rval
 }
 
@@ -4673,7 +4657,7 @@ func (e *EbuildPhase) _start() {
 		maint_str := ""
 		upstr_str := ""
 		metadata_xml_path := filepath.Join(filepath.Dir(e.settings.ValueDict["EBUILD"]), "metadata.xml")
-		if MetaDataXML != nil && os.path.isfile(metadata_xml_path) {
+		if MetaDataXML != nil && pathIsFile(metadata_xml_path) {
 			herds_path := filepath.Join(e.settings.ValueDict["PORTDIR"],
 				"metadata/herds.xml")
 			//try{
@@ -5515,7 +5499,7 @@ func grab_global_updates(portdb *portdbapi) map[string][][]string{
 	return retupdates
 }
 
-func perform_global_updates(mycpv string, aux_dict map[string]string, mydb DBAPI, myupdates map[string][][]string) {
+func perform_global_updates(mycpv string, aux_dict map[string]string, mydb IDbApi, myupdates map[string][][]string) {
 
 	//try:
 	pkg := NewPkgStr(mycpv, aux_dict, mydb.settings, "", "", "", 0, 0, "", 0, nil)
@@ -5581,8 +5565,9 @@ func (f *FifoIpcDaemon) _cancel() {
 	f._async_wait()
 }
 
-func (f *FifoIpcDaemon) _input_handler() {
+func (f *FifoIpcDaemon) _input_handler() bool {
 	//raise NotImplementedError(f)
+	 return true
 }
 
 func (f *FifoIpcDaemon) _unregister() {
@@ -7316,7 +7301,7 @@ type  Scheduler struct {
 	myopts          interface{}
 	_spinner        interface{}
 	_mtimedb        int
-	_favorites      interface{}
+	_favorites      []*Atom
 	_args_set       *InternalPackageSet
 	_build_opts     *_build_opts_class
 	_parallel_fetch bool
@@ -7515,8 +7500,7 @@ func NewScheduler(settings *Config, trees, mtimedb, myopts, spinner, mergelist, 
 		s._config_pool[root] = []*Config{}
 	}
 
-	s._fetch_log = filepath.Join(_emerge_log_dir,
-		"emerge-fetch.log")
+	s._fetch_log = filepath.Join(_emerge_log_dir, "emerge-fetch.log")
 	fetch_iface := &_fetch_iface_class{log_file: s._fetch_log,
 		schedule: s._schedule_fetch}
 	s._sched_iface = &_iface_class{
@@ -8260,11 +8244,11 @@ func (s *Scheduler) _run_pkg_pretend()  int {
 			in
 		vardb.match(x.slot_atom) +
 			vardb.match('='+x.cpv)))
-		pretend_phase = NewEbuildPhase(nil, false, "pretend", sched_iface, settings, nil)
+		pretend_phase := NewEbuildPhase(nil, false, "pretend", sched_iface, settings, nil)
 
 		current_task = pretend_phase
 		pretend_phase.start()
-		ret = pretend_phase.wait()
+		ret := pretend_phase.wait()
 		if ret != 0 {
 			failures += 1
 		}
@@ -8992,11 +8976,11 @@ func (s *Scheduler) _deallocate_config(settings *Config) {
 }
 
 func (s *Scheduler) _keep_scheduling() bool {
-	return bool(not
+	return bool(!
 	s._terminated.is_set()&&
 		s._pkg_queue&&
-		not(s._failed_pkgs&&
-			not
+		!(s._failed_pkgs&&
+			!
 	s._build_opts.fetchonly))
 }
 
@@ -9257,7 +9241,7 @@ func (s *Scheduler) _failed_pkg_msg(failed_pkg *_failed_pkg, action, preposition
 
 func (s *Scheduler) _status_msg( msg string) {
 	if !s._background {
-		WriteMsgLevel("\n", 0, nil)
+		WriteMsgLevel("\n", 0, 0)
 	}
 	s._status_display.displayMessage(msg)
 }
@@ -9269,10 +9253,8 @@ func (s *Scheduler) _save_resume_list() {
 	mtimedb["resume"]["myopts"] = s.myopts.copy()
 
 	rf := []string{}
-	for x
-		in
-	s._favorites {
-		rf = append(rf, string(x))
+	for _, x:= range s._favorites {
+		rf = append(rf, string(x.value))
 	}
 	mtimedb["resume"]["favorites"] = rf
 	rm := []string{}
@@ -10557,7 +10539,7 @@ func(m *MergeProcess) _unregister() {
 
 func NewMergeProcess(mycat, mypkg string, settings *Config,treetype string,
 	vartree *varTree, scheduler *SchedulerInterface, background bool, blockers interface{},
-pkgloc, infloc, myebuild string,mydbapi DBAPI ,prev_mtimes interface{},
+pkgloc, infloc, myebuild string,mydbapi IDbApi,prev_mtimes interface{},
 logfile string, fd_pipes map[int]int) *MergeProcess {
 	m := &MergeProcess{}
 	m.ForkProcess = NewForkProcess()
@@ -10772,11 +10754,14 @@ func NewUserQuery(myopts map[string]string)*UserQuery{
 
 type  SchedulerInterface struct {
 	// slot
-	add_reader func(int, func() bool)
-	add_writer func()
-	remove_reader func(int)
-	call_soon func(func())
-	create_future func() IFuture
+	add_reader         func(int, func() bool)
+	add_writer         func()
+	remove_reader      func(int)
+	call_soon          func(func())
+	create_future      func() IFuture
+	run_until_complete func(IFuture)
+	_is_background     func() bool
+	is_running         func() bool
 	call_at,
 	call_exception_handler,
 	call_later,
@@ -10785,16 +10770,13 @@ type  SchedulerInterface struct {
 	default_exception_handler,
 	get_debug,
 	is_closed,
-	is_running,
 	remove_writer,
-	run_in_executor,
-	run_until_complete,
+	run_in_executor
 	set_debug,
 	time,
 	_asyncio_child_watcher,
-	_asyncio_wrapper,
+	_asyncio_wrapper
 	_event_loop string
-	_is_background func()bool
 }
 
 var _event_loop_attrs = []string{

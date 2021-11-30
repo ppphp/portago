@@ -420,7 +420,7 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *portdbapi) 
 		}, mysettings):
 		myebuild := filepath.Join(mysettings.ValueDict["O"],
 			catsplit(cpv)[1]+".ebuild")
-		spawn_nofetch(myportdb, myebuild)
+		spawn_nofetch(myportdb, myebuild, nil, nil)
 		WriteMsg(fmt.Sprintf("!!! Fetch failed for %s, can't update Manifest\n",
 		 myfile),  -1, nil)
 		if Inmsmss(
@@ -830,7 +830,7 @@ func _doebuild_path(settings *Config, eapi string) {
 
 // nil, nil, false, nil, nil
 func doebuild_environment(myebuild , mydo string, myroot=None, settings *Config,
-debug bool, use_cache=None, db DBAPI) {
+debug bool, use_cache=None, db IDbApi) {
 
 	if settings == nil {
 		//raise TypeError("Settings argument is required")
@@ -1154,7 +1154,7 @@ _doebuild_commands_without_builddir = []string{
 // 0, 0, 0, 0, 1, 0, "", nil, nil, nil, nil, false
 func doebuild(myebuild, mydo string, settings *Config, debug, listonly,
 fetchonly, cleanup, use_cache, fetchall int, tree string,
-mydbapi DBAPI, vartree *varTree, prev_mtimes=None,
+mydbapi IDbApi, vartree *varTree, prev_mtimes=None,
 fd_pipes map[int]int, returnpid bool) int {
 	if settings == nil {
 		//raise TypeError("Settings parameter is required")
@@ -1405,8 +1405,7 @@ fd_pipes map[int]int, returnpid bool) int {
 				fmt.Sprintf("returnpid is not supported for phase '%s'\n", mydo)),
 				-1, nil)
 		}
-		return spawn_nofetch(mydbapi, myebuild, settings = mysettings,
-			fd_pipes = fd_pipes)
+		return spawn_nofetch(mydbapi, myebuild, mysettings, fd_pipes)
 	}
 
 	if tree == "porttree" {
@@ -1649,6 +1648,7 @@ fd_pipes map[int]int, returnpid bool) int {
 		}
 
 		loop = asyncio._safe_loop()
+		var success bool
 		if loop.is_running() {
 
 			success = fetch(fetchme, mysettings, listonly = listonly,
@@ -1661,8 +1661,7 @@ fd_pipes map[int]int, returnpid bool) int {
 		}
 		if !success {
 			if !listonly {
-				spawn_nofetch(mydbapi, myebuild, settings = mysettings,
-					fd_pipes = fd_pipes)
+				spawn_nofetch(mydbapi, myebuild, mysettings, fd_pipes)
 			}
 			return 1
 		}
@@ -1935,7 +1934,7 @@ func _spawn_actionmap(settings *Config) Actionmap {
 	return actionmap
 }
 
-func _validate_deps(mysettings *Config, myroot, mydo string, mydbapi DBAPI)int {
+func _validate_deps(mysettings *Config, myroot, mydo string, mydbapi IDbApi)int {
 	invalid_dep_exempt_phases := map[string]bool{"clean": true, "cleanrm": true, "help": true, "prerm": true, "postrm": true}
 	all_keys := CopyMapSB(NewPackage(false, nil, false, nil, nil, "").metadataKeys)
 	all_keys["SRC_URI"] = true
@@ -1970,12 +1969,12 @@ func _validate_deps(mysettings *Config, myroot, mydo string, mydbapi DBAPI)int {
 	}
 
 	type FakeTree struct {
-		DBAPI
+		IDbApi
 	}
 
-	NewFakeTree := func(mydb DBAPI) *FakeTree {
+	NewFakeTree := func(mydb IDbApi) *FakeTree {
 		f := &FakeTree{}
-		f.DBAPI = mydb
+		f.IDbApi = mydb
 		return f
 	}
 

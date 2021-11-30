@@ -167,7 +167,7 @@ func cpv_expand(myCpv string, myDb *dbapi, useCache int, settings *Config) strin
 	}
 }
 
-type DBAPI interface {
+type IDbApi interface {
 	categories() []string
 	close_caches()
 	cp_list(cp string, useCache int) []*PkgStr
@@ -4666,7 +4666,7 @@ func (d *dblink) _elog_process(phasefilter []string) {
 func (d *dblink) _emerge_log(msg string) {emergelog(false, msg, "")}
 
 // 0, nil, nil, 0
-func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup bool, mydbapi DBAPI, prev_mtimes=nil, counter int) int {
+func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup bool, mydbapi IDbApi, prev_mtimes=nil, counter int) int {
 	destroot := d.settings.ValueDict["ROOT"]
 
 	showMessage := d._display_merge
@@ -6170,7 +6170,7 @@ func NewDblink(cat, pkg, myroot string, settings *Config, treetype string,
 
 // nil, "", "", nil, nil, nil, nil, nil, nil
 func merge(mycat, mypkg, pkgloc, infloc string, settings *Config, myebuild, mytree string,
-	mydbapi DBAPI, vartree *varTree, prev_mtimes=nil, blockers=nil, scheduler=nil, fd_pipes=nil) int {
+	mydbapi IDbApi, vartree *varTree, prev_mtimes=nil, blockers=nil, scheduler=nil, fd_pipes=nil) int {
 	if settings == nil{
 		//raise TypeError("Settings argument is required")
 	}
