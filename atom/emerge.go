@@ -3985,7 +3985,12 @@ func(e*_EbuildFetcherProcess) _start() {
 }
 
 func(e*_EbuildFetcherProcess) _run() {
-	HaveColor = !(e._settings.ValueDict["NOCOLOR"]== "yes" ||e._settings.ValueDict["NOCOLOR"]== "true")
+	h := !(e._settings.ValueDict["NOCOLOR"]== "yes" ||e._settings.ValueDict["NOCOLOR"]== "true")
+	if h {
+		HaveColor = 1
+	} else {
+		HaveColor = 0
+	}
 
 	if _want_userfetch(e._settings) {
 		_drop_privs_userfetch(e._settings)
