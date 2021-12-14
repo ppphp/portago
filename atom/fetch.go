@@ -7,6 +7,7 @@ import (
 	"github.com/ppphp/shlex"
 	"golang.org/x/sys/unix"
 	"io/fs"
+	"math/rand"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 const _download_suffix = ".__download__"
@@ -169,7 +171,7 @@ func _ensure_distdir(settings *Config, distdir string) {
 	){
 			raise
 			OperationNotPermitted(
-				_("Failed to apply recursive permissions for the portage group.")
+				_("Failed to apply recursive permissions for the portage group."),
 			)
 		}
 	}
@@ -550,7 +552,7 @@ func (m *MirrorLayoutConfig) get_all_layouts() {
 }
 
 // ""
-func get_mirror_url(mirror_url, filename, mysettings, cache_path string) string {
+func get_mirror_url(mirror_url string, filename string, mysettings *Config, cache_path string) string {
 
 	mirror_conf := NewMirrorLayoutConfig()
 
@@ -569,12 +571,12 @@ func get_mirror_url(mirror_url, filename, mysettings, cache_path string) string 
 	}
 
 	ts, data := cache.get(mirror_url, (0, None))
-	if ts >= time.time()-86400 {
+	if ts >= time.Now().Unix()-86400 {
 		mirror_conf.deserialize(data)
 	} else {
-		tmpfile = ".layout.conf.%s" % urlparse(mirror_url).hostname
+		tmpfile := ".layout.conf.%s" % urlparse(mirror_url).hostname
 	try:
-		if mirror_url[:1] == "/":
+		if strings.HasPrefix(mirror_url, "/"):
 		tmpfile = filepath.Join(mirror_url, "layout.conf")
 		mirror_conf.read_from_file(tmpfile)
 		else if
@@ -675,23 +677,17 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 		if len(fetch_resume_size) == 0 {
 			fetch_resume_size = fetch_resume_size_default
 		}
-		match = _fetch_resume_size_re.match(fetch_resume_size)
-		if match is
-		None
-		or(match.group(2).upper()
-		not
-		in
-		_size_suffix_map):
-		WriteMsg(fmt.Sprintf("!!! Variable PORTAGE_FETCH_RESUME_MIN_SIZE"+
-			" contains an unrecognized format: '%s'\n",
-			mysettings.ValueDict["PORTAGE_FETCH_RESUME_MIN_SIZE"]), -1, nil)
-		WriteMsg(
-			_("!!! Using PORTAGE_FETCH_RESUME_MIN_SIZE "
-		"default value: %s\n")
-		% fetch_resume_size_default,
-			-1, nil
-		)
-		ok = false
+		match := _fetch_resume_size_re.FindAllString(fetch_resume_size, -1)
+		if _, ok := _size_suffix_map[strings.ToUpper(match[2])]; match == nil || !ok {
+			WriteMsg(fmt.Sprintf("!!! Variable PORTAGE_FETCH_RESUME_MIN_SIZE"+
+				" contains an unrecognized format: '%s'\n",
+				mysettings.ValueDict["PORTAGE_FETCH_RESUME_MIN_SIZE"]), -1, nil)
+			WriteMsg(
+				fmt.Sprintf("!!! Using PORTAGE_FETCH_RESUME_MIN_SIZE "+
+					"default value: %s\n", fetch_resume_size_default),
+				-1, nil)
+			ok = false
+		}
 	}
 	if !ok {
 		fetch_resume_size = fetch_resume_size_default
@@ -787,697 +783,842 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 	restrict_fetch := Ins(restrict, "fetch")
 	force_mirror := features.Features["force-mirror"] && !restrict_mirror
 
-	file_uri_tuples := []string{}
-	if hasattr(myuris, "items") {
-		for myfile, uri_set
-			in
-		myuris.items():
-		for myuri
-			in
-		uri_set:
-		file_uri_tuples.append(
-			(DistfileName(myfile, digests = mydigests.get(myfile)), myuri)
-	)
-		if not uri_set:
-		file_uri_tuples.append(
-			(DistfileName(myfile, digests = mydigests.get(myfile)), None)
-	)
+	type ds struct {
+		d *DistfileName
+		s string
+	}
+	file_uri_tuples := []ds{}
+	if false { //hasattr(myuris, "items") {
+		//	for myfile, uri_set
+		//		in
+		//	myuris.items():
+		//	for myuri
+		//		in
+		//	uri_set:
+		//	file_uri_tuples.append(
+		//		(DistfileName(myfile, digests = mydigests.get(myfile)), myuri)
+		//)
+		//	if not uri_set:
+		//	file_uri_tuples.append(
+		//		(DistfileName(myfile, digests = mydigests.get(myfile)), None)
+		//)
 	} else {
-		for myuri
+		for myuri := range myuris {
+			u, _ := url.Parse(myuri)
+			if u.Scheme != "" {
+				file_uri_tuples = append(file_uri_tuples, ds{
+					NewDistfileName(filepath.Base(myuri),
+						mydigests[filepath.Base(myuri)]), myuri})
+			} else {
+				file_uri_tuples = append(file_uri_tuples, ds{
+					NewDistfileName(
+						filepath.Base(myuri),
+						mydigests[filepath.Base(myuri)],
+					), ""})
+			}
+		}
+	}
+
+	filedict := OrderedDict()
+	primaryuri_dict := map[*DistfileName][]string{}
+	thirdpartymirror_uris := map[*DistfileName][]string{}
+	for _, val := range file_uri_tuples {
+		myfile, myuri := val.d, val.s
+
+		override_mirror := false
+		if myuri != "" {
+			override_mirror = strings.HasPrefix(myuri, "mirror+")
+		}
+		override_fetch := override_mirror
+
+		if !override_fetch {
+			if myuri != "" {
+				override_fetch = strings.HasPrefix(myuri, "fetch+")
+			}
+		}
+		if override_fetch {
+			myuri = strings.Split(myuri, "+")[1]
+		}
+
+		if _, ok := filedict[myfile]; !ok {
+			filedict[myfile] = []string{}
+			mirror_cache := ""
+			if distdir_writable {
+				mirror_cache = filepath.Join(mysettings.ValueDict["DISTDIR"], ".mirror-cache.json")
+			}
+
+			file_restrict_mirror := (restrict_fetch || restrict_mirror) && !override_mirror
+
+			location_lists := [][]string{local_mirrors}
+			if !file_restrict_mirror {
+				location_lists = append(location_lists, public_mirrors)
+			}
+
+			for _, v := range location_lists {
+				for _, vv := range v {
+					filedict[myfile] = append(filedict[myfile],
+						get_mirror_url(vv, myfile, mysettings, mirror_cache))
+
+				}
+			}
+		}
+		if myuri == "" {
+			continue
+		}
+		if myuri[:9] == "mirror://" {
+			eidx := strings.Index(myuri[9:], "/")
+			if eidx != -1 {
+				mirrorname := myuri[9:eidx]
+				path := myuri[eidx+1:]
+
+				if _, ok := custommirrors[mirrorname]; ok {
+					for _, cmirr := range custommirrors[mirrorname] {
+						filedict[myfile] = append(filedict[myfile], strings.TrimRight(cmirr, "/")+"/"+path)
+					}
+
+					if _, ok := thirdpartymirrors[mirrorname]; ok {
+
+						uris := []string{}
+						for _, locmirr := range thirdpartymirrors[mirrorname] {
+							uris = append(uris, strings.TrimRight(locmirr, "/")+"/"+path)
+						}
+						rand.Shuffle(len(uris), func(i, j int) {
+							uris[i], uris[j] = uris[j], uris[i]
+						})
+						filedict[myfile] = append(filedict[myfile], uris...)
+						if _, ok := thirdpartymirror_uris[myfile]; !ok {
+							thirdpartymirror_uris[myfile] = append(thirdpartymirror_uris[myfile], uris...)
+						}
+					}
+
+					if !Inmsss(custommirrors, mirrorname) && !Inmsss(thirdpartymirrors, mirrorname) {
+						WriteMsg(fmt.Sprintf("!!! No known mirror by the name: %s\n", mirrorname), 0, nil)
+					}
+				} else {
+					WriteMsg("Invalid mirror definition in SRC_URI:\n", -1, nil)
+					WriteMsg(fmt.Sprintf("  %s\n", myuri), -1, nil)
+				}
+			} else {
+				if (restrict_fetch && !override_fetch) || force_mirror {
+					continue
+				}
+				primaryuris, ok := primaryuri_dict[myfile]
+				if !ok {
+					primaryuris = []string{}
+					primaryuri_dict[myfile] = primaryuris
+				}
+				primaryuris = append(primaryuris, myuri)
+			}
+		}
+
+		for _, uris := range primaryuri_dict {
+			reversed(uris)
+		}
+
+		for myfile, uris := range thirdpartymirror_uris {
+			if _, ok := primaryuri_dict[myfile]; !ok {
+				primaryuri_dict[myfile] = []string{}
+			}
+			primaryuri_dict[myfile] = append(primaryuri_dict[myfile], uris...)
+		}
+
+		if Ins(restrict, "primaryuri") {
+			for myfile, uris := range filedict {
+				filedict[myfile] = primaryuri_dict[myfile] + uris
+			}
+		} else {
+			for myfile := range filedict {
+				filedict[myfile] += primaryuri_dict[myfile]
+			}
+		}
+
+		can_fetch := true
+
+		if listonly {
+			can_fetch = false
+		}
+
+		if can_fetch && fetch_to_ro == 0 {
+			//try:
+			_ensure_distdir(mysettings, mysettings.ValueDict["DISTDIR"])
+			//except PortageException as e:
+			//if not pathIsDir(mysettings["DISTDIR"]):
+			//WriteMsg("!!! %s\n"%str(e), noiselevel = -1)
+			//WriteMsg(
+			//	_("!!! Directory Not Found: DISTDIR='%s'\n")
+			//% mysettings["DISTDIR"],
+			//	-1, nil
+			//)
+			//WriteMsg(_("!!! Fetching will fail!\n"), noiselevel = -1)
+		}
+
+		if can_fetch && !fetch_to_ro && !osAccess(mysettings["DISTDIR"], unix.W_OK) {
+			WriteMsg(fmt.Sprintf("!!! No write access to '%s'\n", mysettings.ValueDict["DISTDIR"]), -1, nil)
+			can_fetch = false
+		}
+
+		distdir_writable = can_fetch && !fetch_to_ro
+		failed_files := set()
+		restrict_fetch_msg := false
+		valid_hashes := CopyMapSB(getValidChecksumKeys())
+		delete(valid_hashes, "size")
+
+		for myfile
 			in
-		myuris:
-		if urlparse(myuri).scheme:
-		file_uri_tuples.append(
-			(
-				DistfileName(
-					os.path.basename(myuri),
-					digests = mydigests.get(os.path.basename(myuri)),
-	),
-		myuri,
-	)
-	) else:
-		file_uri_tuples.append(
-			(
-				DistfileName(
-					os.path.basename(myuri),
-					digests = mydigests.get(os.path.basename(myuri)),
-	),
-		None,
-	)
-	)
-	}
+		filedict:
+		fetched = 0
 
-	filedict = OrderedDict()
-	primaryuri_dict =
-	{
-	}
-	thirdpartymirror_uris =
-	{
-	}
-	for myfile, myuri
+		orig_digests = mydigests.get(myfile,
+		{
+		})
+
+		if not(allow_missing_digests or
+		listonly):
+		verifiable_hash_types = set(orig_digests).intersection(valid_hashes)
+		if not verifiable_hash_types:
+		expected = " ".join(sorted(valid_hashes))
+		got = set(orig_digests)
+		got.discard("size")
+		got = " ".join(sorted(got))
+		reason = (
+			_("Insufficient data for checksum verification"),
+			got,
+			expected,
+	)
+		WriteMsg(
+			_("!!! Fetched file: %s VERIFY FAILED!\n")%myfile, noiselevel = -1
+		)
+		WriteMsg(_("!!! Reason: %s\n")%reason[0], noiselevel = -1)
+		WriteMsg(
+			_("!!! Got:      %s\n!!! Expected: %s\n")%(reason[1], reason[2]),
+			-1, nil
+		)
+
+		if fetchonly:
+		failed_files.add(myfile)
+		continue
+		else:
+		return 0
+
+		size = orig_digests.get("size")
+		if size == 0:
+		del
+		mydigests[myfile]
+		orig_digests.clear()
+		size = None
+		pruned_digests = orig_digests
+		if parallel_fetchonly:
+		pruned_digests =
+		{
+		}
+		if size != nil:
+		pruned_digests["size"] = size
+
+		myfile_path = filepath.Join(mysettings["DISTDIR"], myfile)
+		download_path = myfile_path
+		if fetch_to_ro
+		else
+		myfile_path + _download_suffix
+		has_space = True
+		has_space_superuser = True
+		file_lock = None
+		if listonly:
+		WriteMsg_stdout("\n", noiselevel = -1) else:
+		vfs_stat = None
+		if size != nil and
+		hasattr(os, "statvfs"):
+	try:
+		vfs_stat = os.statvfs(mysettings["DISTDIR"])
+		except
+		OSError
+		as
+	e:
+		WriteMsg_level(
+			"!!! statvfs('%s'): %s\n"%(mysettings["DISTDIR"], e),
+			-1, nil
+		level = logging.ERROR,
+	)
+		del
+		e
+
+		if vfs_stat != nil:
+	try:
+		mysize = os.stat(myfile_path).st_size
+		except
+		OSError
+		as
+	e:
+		if e.errno not
+		in(errno.ENOENT, errno.ESTALE):
+		raise
+		del
+		e
+		mysize = 0
+		if (size - mysize + vfs_stat.f_bsize) >= (
+			vfs_stat.f_bsize * vfs_stat.f_bavail
+	):
+
+		if (size - mysize + vfs_stat.f_bsize) >= (
+			vfs_stat.f_bsize * vfs_stat.f_bfree
+	):
+		has_space_superuser = False
+
+		if not has_space_superuser:
+		has_space = False
+		else if portage.data.secpass < 2:
+		has_space = False else if userfetch:
+		has_space = False
+
+		if distdir_writable and
+	use_locks:
+
+		lock_kwargs =
+		{
+		}
+		if fetchonly:
+		lock_kwargs["flags"] = os.O_NONBLOCK
+
+	try:
+		file_lock = lockfile(myfile_path, wantnewlockfile = 1, **lock_kwargs)
+		except
+	TryAgain:
+		WriteMsg(
+			_(
+				">>> File '%s' is already locked by "
+		"another fetcher. Continuing...\n"
+		)
+		% myfile,
+			-1, nil
+		)
+		continue
+	try:
+		if not listonly:
+
+		eout = EOutput()
+		eout.quiet = mysettings.get("PORTAGE_QUIET") == "1"
+		match, mystat = _check_distfile(
+			myfile_path, pruned_digests, eout, hash_filter = hash_filter
+		)
+		if match and
+		not
+	force:
+		if distdir_writable and
+		not
+		os.path.islink(myfile_path):
+	try:
+		apply_secpass_permissions(
+			myfile_path,
+			gid = portage_gid,
+			mode = 0o664,
+			mask = 0o2,
+			stat_cached = mystat,
+	)
+		except
+		PortageException
+		as
+	e:
+		if not osAccess(myfile_path, os.R_OK):
+		WriteMsg(
+			_("!!! Failed to adjust permissions:"
+		" %s\n")
+		% str(e),
+			-1, nil
+		)
+		del
+		e
+		continue
+
+		if distdir_writable and
+		mystat
+		is
+		None
+		or
+		os.path.islink(myfile_path):
+	try:
+		os.unlink(myfile_path)
+		except
+		OSError
+		as
+	e:
+		if e.errno not
+		in(errno.ENOENT, errno.ESTALE):
+		raise
+		mystat = None
+
+		if mystat != nil:
+		if stat.S_ISDIR(mystat.st_mode):
+		WriteMsg_level(
+			_(
+				"!!! Unable to fetch file since "
+		"a directory is in the way: \n"
+		"!!!   %s\n"
+		)
+		% myfile_path,
+			level = logging.ERROR,
+			-1, nil
+		)
+		return 0
+
+		if distdir_writable and
+		not
+	force:
+		temp_filename = _checksum_failure_temp_file(
+			mysettings, mysettings["DISTDIR"], myfile,
+		)
+		WriteMsg_stdout(
+			_("Refetching... "
+		"File renamed to '%s'\n\n")
+		% temp_filename,
+			-1, nil
+		)
+
+	try:
+		mystat = os.stat(download_path)
+		except
+		OSError
+		as
+	e:
+		if e.errno not
+		in(errno.ENOENT, errno.ESTALE):
+		raise
+		mystat = None
+
+		if mystat != nil:
+		if mystat.st_size == 0:
+		if distdir_writable:
+	try:
+		os.unlink(download_path)
+		except
+	OSError:
+		pass else if distdir_writable and
+		size != nil:
+		if mystat.st_size < fetch_resume_size and
+		mystat.st_size < size:
+		WriteMsg(
+			_(
+				">>> Renaming distfile with size "
+		"%d (smaller than "
+		"PORTAGE_FETCH_RESU"
+		"ME_MIN_SIZE)\n"
+		)
+		% mystat.st_size
+		)
+		temp_filename = _checksum_failure_temp_file(
+			mysettings,
+			mysettings["DISTDIR"],
+			filepath.Base(download_path),
+		)
+		WriteMsg_stdout(
+			_("Refetching... "
+		"File renamed to '%s'\n\n")
+		% temp_filename,
+			-1, nil
+		) else if mystat.st_size >= size:
+		temp_filename = _checksum_failure_temp_file(
+			mysettings,
+			mysettings["DISTDIR"],
+			filepath.Base(download_path),
+		)
+		WriteMsg_stdout(
+			_("Refetching... "
+		"File renamed to '%s'\n\n")
+		% temp_filename,
+			-1, nil
+		)
+
+		if distdir_writable and
+	ro_distdirs:
+		readonly_file = None
+		for x
+			in
+		ro_distdirs:
+		filename = get_mirror_url(x, myfile, mysettings)
+		match, mystat = _check_distfile(
+			filename, pruned_digests, eout, hash_filter = hash_filter
+		)
+		if match:
+		readonly_file = filename
+		break
+		if readonly_file != nil:
+	try:
+		os.unlink(myfile_path)
+		except
+		OSError
+		as
+	e:
+		if e.errno not
+		in(errno.ENOENT, errno.ESTALE):
+		raise
+		del
+		e
+		os.symlink(readonly_file, myfile_path)
+		continue
+
+		if not has_space:
+		WriteMsg(
+			_("!!! Insufficient space to store %s in %s\n")
+		% (myfile, mysettings["DISTDIR"]),
+		-1, nil
+		)
+
+		if has_space_superuser:
+		WriteMsg(
+			_(
+				"!!! Insufficient privileges to use "
+		"remaining space.\n"
+		),
+		-1, nil
+		)
+		if userfetch:
+		WriteMsg(
+			_(
+				'!!! You may set FEATURES="-userfetch"'
+		" in /etc/portage/make.conf in order to fetch with\n"
+		"!!! superuser privileges.\n"
+		),
+		-1, nil
+		)
+
+		if fsmirrors and
+		not
+		os.path.exists(myfile_path)
+		and
+	has_space:
+		for mydir
+			in
+		fsmirrors:
+		mirror_file = get_mirror_url(mydir, myfile, mysettings)
+	try:
+		shutil.copyfile(mirror_file, download_path)
+		WriteMsg(_("Local mirror has file: %s\n") % myfile)
+		break
+		except(IOError, OSError)
+		as
+	e:
+		if e.errno not
+		in(errno.ENOENT, errno.ESTALE):
+		raise
+		del
+		e
+
+	try:
+		mystat = os.stat(download_path)
+		except
+		OSError
+		as
+	e:
+		if e.errno not
+		in(errno.ENOENT, errno.ESTALE):
+		raise
+		del
+		e else:
+		if not os.path.islink(download_path):
+	try:
+		apply_secpass_permissions(
+			download_path,
+			gid = portage_gid,
+			mode = 0o664,
+			mask = 0o2,
+			stat_cached = mystat,
+	)
+		except
+		PortageException
+		as
+	e:
+		if not osAccess(download_path, os.R_OK):
+		WriteMsg(
+			_("!!! Failed to adjust permissions:"
+		" %s\n")
+		% (e, ),
+		-1, nil
+		)
+
+		if mystat.st_size == 0:
+		if distdir_writable:
+	try:
+		os.unlink(download_path)
+		except
+	EnvironmentError:
+		pass else if not orig_digests:
+		if not force:
+		fetched = 1 else:
+		if (
+			mydigests[myfile].get("size") != nil
+			and
+		mystat.st_size < mydigests[myfile]["size"]
+		and
+		not
+		restrict_fetch
+		):
+		fetched = 1 else if (
+			parallel_fetchonly
+			and
+		mystat.st_size == mydigests[myfile]["size"]
+		):
+		eout = EOutput()
+		eout.quiet = mysettings.get("PORTAGE_QUIET") == "1"
+		eout.ebegin("%s size ;-)" % (myfile))
+		eout.eend(0)
+		continue else:
+		digests = _filter_unaccelarated_hashes(mydigests[myfile])
+		if hash_filter != nil:
+		digests = _apply_hash_filter(digests, hash_filter)
+		verified_ok, reason = verify_all(download_path, digests)
+		if not verified_ok:
+		WriteMsg(
+			_("!!! Previously fetched"
+		" file: '%s'\n")
+		% myfile,
+			-1, nil
+		)
+		WriteMsg(
+			_("!!! Reason: %s\n")%reason[0], noiselevel = -1
+		)
+		WriteMsg(
+			_("!!! Got:      %s\n"
+		"!!! Expected: %s\n")
+		% (reason[1], reason[2]),
+		-1, nil
+		)
+		if reason[0] == _(
+			"Insufficient data for checksum verification",
+		):
+		return 0
+		if distdir_writable:
+		temp_filename = _checksum_failure_temp_file(
+			mysettings,
+			mysettings["DISTDIR"],
+			filepath.Base(download_path),
+		)
+		WriteMsg_stdout(
+			_("Refetching... "
+		"File renamed to '%s'\n\n")
+		% temp_filename,
+			-1, nil
+		) else:
+		if not fetch_to_ro:
+		_movefile(
+			download_path,
+			myfile_path,
+			mysettings = mysettings,
+	)
+		eout = EOutput()
+		eout.quiet = (
+			mysettings.get("PORTAGE_QUIET", None) == "1"
+		)
+		if digests:
+		digests = list(digests)
+		digests.sort()
+		eout.ebegin(
+			"%s %s ;-)"%(myfile, " ".join(digests))
+		)
+		eout.eend(0)
+		continue
+
+		uri_list = filedict[myfile][:]
+		uri_list.reverse()
+		checksum_failure_count = 0
+		tried_locations = set()
+		while
+	uri_list:
+		loc = uri_list.pop()
+		if isinstance(loc, functools.partial):
+		loc = loc()
+		if loc in
+	tried_locations:
+		continue
+		tried_locations.add(loc)
+		if listonly:
+		WriteMsg_stdout(loc+" ", noiselevel = -1)
+		continue
+		protocol = loc[0:loc.find("://")]
+
+		global_config_path = GLOBAL_CONFIG_PATH
+		if portage.
+		const.EPREFIX:
+		global_config_path = filepath.Join(
+			portage.
+		const.EPREFIX, GLOBAL_CONFIG_PATH.lstrip(os.sep)
+		)
+
+		missing_file_param = False
+		fetchcommand_var = "FETCHCOMMAND_" + protocol.upper()
+		fetchcommand = mysettings.get(fetchcommand_var)
+		if fetchcommand is
+	None:
+		fetchcommand_var = "FETCHCOMMAND"
+		fetchcommand = mysettings.get(fetchcommand_var)
+		if fetchcommand is
+	None:
+		WriteMsg_level(
+			_(
+				"!!! %s is unset. It should "
+		"have been defined in\n!!! %s/make.globals.\n"
+		)
+		% (fetchcommand_var, global_config_path),
+		level = logging.ERROR,
+			-1, nil
+		)
+		return 0
+		if "${FILE}" not
 		in
-	file_uri_tuples:
-	override_mirror = (myuri
-	or
-	"").startswith("mirror+")
-	override_fetch = override_mirror
-	or(myuri
-	or
-	"").startswith("fetch+")
-	if override_fetch:
-	myuri = myuri.partition("+")[2]
+	fetchcommand:
+		WriteMsg_level(
+			_(
+				"!!! %s does not contain the required ${FILE}"
+		" parameter.\n"
+		)
+		% fetchcommand_var,
+			level = logging.ERROR,
+			-1, nil
+		)
+		missing_file_param = True
 
-	if myfile not
-	in
-filedict:
-	filedict[myfile] = []
-if distdir_writable:
-mirror_cache = filepath.Join(mysettings["DISTDIR"], ".mirror-cache.json") else:
-mirror_cache = None
+		resumecommand_var = "RESUMECOMMAND_" + protocol.upper()
+		resumecommand = mysettings.get(resumecommand_var)
+		if resumecommand is
+	None:
+		resumecommand_var = "RESUMECOMMAND"
+		resumecommand = mysettings.get(resumecommand_var)
+		if resumecommand is
+	None:
+		WriteMsg_level(
+			_(
+				"!!! %s is unset. It should "
+		"have been defined in\n!!! %s/make.globals.\n"
+		)
+		% (resumecommand_var, global_config_path),
+		level = logging.ERROR,
+			-1, nil
+		)
+		return 0
+		if "${FILE}" not
+		in
+	resumecommand:
+		WriteMsg_level(
+			_(
+				"!!! %s does not contain the required ${FILE}"
+		" parameter.\n"
+		)
+		% resumecommand_var,
+			level = logging.ERROR,
+			noiselevel =-1,
+	)
+		missing_file_param = True
 
-file_restrict_mirror = (
-restrict_fetch or restrict_mirror
-) and not override_mirror
+		if missing_file_param:
+		WriteMsg_level(
+			_(
+				"!!! Refer to the make.conf(5) man page for "
+		"information about how to\n!!! correctly specify "
+		"FETCHCOMMAND and RESUMECOMMAND.\n"
+		),
+		level = logging.ERROR,
+			-1, nil
+		)
+		if myfile != filepath.Base(loc):
+		return 0
 
-location_lists = [local_mirrors]
-if not file_restrict_mirror:
-location_lists.append(public_mirrors)
+		if not can_fetch:
+		if fetched != 2:
+	try:
+		mysize = os.stat(download_path).st_size
+		except
+		OSError
+		as
+	e:
+		if e.errno not
+		in(errno.ENOENT, errno.ESTALE):
+		raise
+		del
+		e
+		mysize = 0
 
-for l in itertools.chain(*location_lists):
-filedict[myfile].append(
-functools.partial(
-get_mirror_url, l, myfile, mysettings, mirror_cache
-)
-)
-if myuri is None:
-continue
-if myuri[:9] == "mirror://":
-eidx = myuri.find("/", 9)
-if eidx != -1:
-mirrorname = myuri[9:eidx]
-path = myuri[eidx + 1:]
+		if mysize == 0:
+		WriteMsg(
+			_("!!! File %s isn't fetched but unable to get it.\n")
+		% myfile,
+			noiselevel = -1,
+	) else if size is
+		None
+		or
+		size > mysize:
+		WriteMsg(
+			_(
+				"!!! File %s isn't fully fetched, but unable to complete it\n",
+			)
+		% myfile,
+			-1, nil
+		) else:
+		WriteMsg(
+			_(
+				"!!! File %s is incorrect size, "
+		"but unable to retry.\n"
+		)
+		% myfile,
+			noiselevel = -1,
+	)
+		return 0
+		continue
 
-if mirrorname in custommirrors:
-for cmirr in custommirrors[mirrorname]:
-filedict[myfile].append(cmirr.rstrip("/") + "/" + path)
+		if fetched != 2 and
+	has_space:
+		if fetched == 1:
+	try:
+		mystat = os.stat(download_path)
+		except
+		OSError
+		as
+	e:
+		if e.errno not
+		in(errno.ENOENT, errno.ESTALE):
+		raise
+		del
+		e
+		fetched = 0 else:
+		if distdir_writable and
+		mystat.st_size < fetch_resume_size:
+		WriteMsg(
+			_(
+				">>> Deleting distfile with size "
+		"%d (smaller than "
+		"PORTAGE_FETCH_RESU"
+		"ME_MIN_SIZE)\n"
+		)
+		% mystat.st_size
+		)
+	try:
+		os.unlink(download_path)
+		except
+		OSError
+		as
+	e:
+		if e.errno not
+		in(errno.ENOENT, errno.ESTALE):
+		raise
+		del
+		e
+		fetched = 0
+		if fetched == 1:
+		WriteMsg(_(">>> Resuming download...\n"))
+		locfetch = resumecommand
+		command_var = resumecommand_var else:
+		locfetch = fetchcommand
+		command_var = fetchcommand_var
+		WriteMsg_stdout(_(">>> Downloading '%s'\n") % _hide_url_passwd(loc))
+		variables =
+		{
+			"URI": loc, "FILE": filepath.Base(download_path)
+		}
 
-if mirrorname in thirdpartymirrors:
-uris = [
-locmirr.rstrip("/") + "/" + path
-for locmirr in thirdpartymirrors[mirrorname]
-]
-random.shuffle(uris)
-filedict[myfile].extend(uris)
-thirdpartymirror_uris.setdefault(myfile, []).extend(uris)
-
-if (
-mirrorname not in custommirrors
-and mirrorname not in thirdpartymirrors
-):
-WriteMsg(_("!!! No known mirror by the name: %s\n") % (mirrorname)) else:
-WriteMsg(_("Invalid mirror definition in SRC_URI:\n"), noiselevel = -1)
-WriteMsg("  %s\n" % (myuri), noiselevel = -1) else:
-if (restrict_fetch and not override_fetch) or force_mirror:
-continue
-primaryuris = primaryuri_dict.get(myfile)
-if primaryuris is None:
-primaryuris = []
-primaryuri_dict[myfile] = primaryuris
-primaryuris.append(myuri)
-
-for uris in primaryuri_dict.values():
-uris.reverse()
-
-for myfile, uris in thirdpartymirror_uris.items():
-primaryuri_dict.setdefault(myfile, []).extend(uris)
-
-if "primaryuri" in restrict:
-for myfile, uris in filedict.items():
-filedict[myfile] = primaryuri_dict.get(myfile, []) + uris else:
-for myfile in filedict:
-filedict[myfile] += primaryuri_dict.get(myfile, [])
-
-can_fetch = True
-
-if listonly:
-can_fetch = False
-
-if can_fetch and not fetch_to_ro:
-try:
-_ensure_distdir(mysettings, mysettings["DISTDIR"])
-except PortageException as e:
-if not pathIsDir(mysettings["DISTDIR"]):
-WriteMsg("!!! %s\n" % str(e), noiselevel = -1)
-WriteMsg(
-_("!!! Directory Not Found: DISTDIR='%s'\n")
-% mysettings["DISTDIR"],
--1, nil
-)
-WriteMsg(_("!!! Fetching will fail!\n"), noiselevel = -1)
-
-if can_fetch and not fetch_to_ro and not os.access(mysettings["DISTDIR"], os.W_OK):
-WriteMsg(
-_("!!! No write access to '%s'\n") % mysettings["DISTDIR"], noiselevel = -1
-)
-can_fetch = False
-
-distdir_writable = can_fetch and not fetch_to_ro
-failed_files = set()
-restrict_fetch_msg = False
-valid_hashes = set(get_valid_checksum_keys())
-valid_hashes.discard("size")
-
-for myfile in filedict:
-fetched = 0
-
-orig_digests = mydigests.get(myfile, {})
-
-if not (allow_missing_digests or listonly):
-verifiable_hash_types = set(orig_digests).intersection(valid_hashes)
-if not verifiable_hash_types:
-expected = " ".join(sorted(valid_hashes))
-got = set(orig_digests)
-got.discard("size")
-got = " ".join(sorted(got))
-reason = (
-_("Insufficient data for checksum verification"),
-got,
-expected,
-)
-WriteMsg(
-_("!!! Fetched file: %s VERIFY FAILED!\n") % myfile, noiselevel = -1
-)
-WriteMsg(_("!!! Reason: %s\n") % reason[0], noiselevel = -1)
-WriteMsg(
-_("!!! Got:      %s\n!!! Expected: %s\n") % (reason[1], reason[2]),
--1, nil
-)
-
-if fetchonly:
-failed_files.add(myfile)
-continue
-else:
-return 0
-
-size = orig_digests.get("size")
-if size == 0:
-# Zero-byte distfiles are always invalid, so discard their digests.
-del mydigests[myfile]
-orig_digests.clear()
-size = None
-pruned_digests = orig_digests
-if parallel_fetchonly:
-pruned_digests = {}
-if size != nil:
-pruned_digests["size"] = size
-
-myfile_path = filepath.Join(mysettings["DISTDIR"], myfile)
-download_path = myfile_path if fetch_to_ro else myfile_path + _download_suffix
-has_space = True
-has_space_superuser = True
-file_lock = None
-if listonly:
-WriteMsg_stdout("\n", noiselevel = -1) else:
-vfs_stat = None
-if size != nil and hasattr(os, "statvfs"):
-try:
-vfs_stat = os.statvfs(mysettings["DISTDIR"])
-except OSError as e:
-WriteMsg_level(
-"!!! statvfs('%s'): %s\n" % (mysettings["DISTDIR"], e),
--1, nil
-level = logging.ERROR,
-)
-del e
-
-if vfs_stat != nil:
-try:
-mysize = os.stat(myfile_path).st_size
-except OSError as e:
-if e.errno not in (errno.ENOENT, errno.ESTALE):
-raise
-del e
-mysize = 0
-if (size - mysize + vfs_stat.f_bsize) >= (
-vfs_stat.f_bsize * vfs_stat.f_bavail
-):
-
-if (size - mysize + vfs_stat.f_bsize) >= (
-vfs_stat.f_bsize * vfs_stat.f_bfree
-):
-has_space_superuser = False
-
-if not has_space_superuser:
-has_space = False
-else if portage.data.secpass < 2:
-has_space = False else if userfetch:
-has_space = False
-
-if distdir_writable and use_locks:
-
-lock_kwargs = {}
-if fetchonly:
-lock_kwargs["flags"] = os.O_NONBLOCK
-
-try:
-file_lock = lockfile(myfile_path, wantnewlockfile = 1, **lock_kwargs)
-except TryAgain:
-WriteMsg(
-_(
-">>> File '%s' is already locked by "
-"another fetcher. Continuing...\n"
-)
-% myfile,
--1, nil
-)
-continue
-try:
-if not listonly:
-
-eout = EOutput()
-eout.quiet = mysettings.get("PORTAGE_QUIET") == "1"
-match, mystat = _check_distfile(
-myfile_path, pruned_digests, eout, hash_filter = hash_filter
-)
-if match and not force:
-if distdir_writable and not os.path.islink(myfile_path):
-try:
-apply_secpass_permissions(
-myfile_path,
-gid = portage_gid,
-mode = 0o664,
-mask = 0o2,
-stat_cached = mystat,
-)
-except PortageException as e:
-if not os.access(myfile_path, os.R_OK):
-WriteMsg(
-_("!!! Failed to adjust permissions:" " %s\n")
-% str(e),
--1, nil
-)
-del e
-continue
-
-if distdir_writable and mystat is None or os.path.islink(myfile_path):
-try:
-os.unlink(myfile_path)
-except OSError as e:
-if e.errno not in (errno.ENOENT, errno.ESTALE):
-raise
-mystat = None
-
-if mystat != nil:
-if stat.S_ISDIR(mystat.st_mode):
-WriteMsg_level(
-_(
-"!!! Unable to fetch file since "
-"a directory is in the way: \n"
-"!!!   %s\n"
-)
-% myfile_path,
-level = logging.ERROR,
--1, nil
-)
-return 0
-
-if distdir_writable and not force:
-temp_filename = _checksum_failure_temp_file(
-mysettings, mysettings["DISTDIR"], myfile
-)
-WriteMsg_stdout(
-_("Refetching... " "File renamed to '%s'\n\n")
-% temp_filename,
--1, nil
-)
-
-try:
-mystat = os.stat(download_path)
-except OSError as e:
-if e.errno not in (errno.ENOENT, errno.ESTALE):
-raise
-mystat = None
-
-if mystat != nil:
-if mystat.st_size == 0:
-if distdir_writable:
-try:
-os.unlink(download_path)
-except OSError:
-pass else if distdir_writable and size != nil:
-if mystat.st_size < fetch_resume_size and mystat.st_size < size:
-WriteMsg(
-_(
-">>> Renaming distfile with size "
-"%d (smaller than "
-"PORTAGE_FETCH_RESU"
-"ME_MIN_SIZE)\n"
-)
-% mystat.st_size
-)
-temp_filename = _checksum_failure_temp_file(
-mysettings,
-mysettings["DISTDIR"],
-os.path.basename(download_path),
-)
-WriteMsg_stdout(
-_("Refetching... " "File renamed to '%s'\n\n")
-% temp_filename,
--1, nil
-)
-else if mystat.st_size >= size:
-temp_filename = _checksum_failure_temp_file(
-mysettings,
-mysettings["DISTDIR"],
-os.path.basename(download_path),
-)
-WriteMsg_stdout(
-_("Refetching... " "File renamed to '%s'\n\n")
-% temp_filename,
--1, nil
-)
-
-if distdir_writable and ro_distdirs:
-readonly_file = None
-for x in ro_distdirs:
-filename = get_mirror_url(x, myfile, mysettings)
-match, mystat = _check_distfile(
-filename, pruned_digests, eout, hash_filter = hash_filter
-)
-if match:
-readonly_file = filename
-break
-if readonly_file != nil:
-try:
-os.unlink(myfile_path)
-except OSError as e:
-if e.errno not in (errno.ENOENT, errno.ESTALE):
-raise
-del e
-os.symlink(readonly_file, myfile_path)
-continue
-
-if not has_space:
-WriteMsg(
-_("!!! Insufficient space to store %s in %s\n")
-% (myfile, mysettings["DISTDIR"]),
--1, nil
-)
-
-if has_space_superuser:
-WriteMsg(
-_(
-"!!! Insufficient privileges to use "
-"remaining space.\n"
-),
--1, nil
-)
-if userfetch:
-WriteMsg(
-_(
-'!!! You may set FEATURES="-userfetch"'
-" in /etc/portage/make.conf in order to fetch with\n"
-"!!! superuser privileges.\n"
-),
--1, nil
-)
-
-if fsmirrors and not os.path.exists(myfile_path) and has_space:
-for mydir in fsmirrors:
-mirror_file = get_mirror_url(mydir, myfile, mysettings)
-try:
-shutil.copyfile(mirror_file, download_path)
-WriteMsg(_("Local mirror has file: %s\n") % myfile)
-break
-except (IOError, OSError) as e:
-if e.errno not in (errno.ENOENT, errno.ESTALE):
-raise
-del e
-
-try:
-mystat = os.stat(download_path)
-except OSError as e:
-if e.errno not in (errno.ENOENT, errno.ESTALE):
-raise
-del e else:
-if not os.path.islink(download_path):
-try:
-apply_secpass_permissions(
-download_path,
-gid = portage_gid,
-mode = 0o664,
-mask = 0o2,
-stat_cached = mystat,
-)
-except PortageException as e:
-if not os.access(download_path, os.R_OK):
-WriteMsg(
-_("!!! Failed to adjust permissions:" " %s\n")
-% (e, ),
--1, nil
-)
-
-if mystat.st_size == 0:
-if distdir_writable:
-try:
-os.unlink(download_path)
-except EnvironmentError:
-pass else if not orig_digests:
-if not force:
-fetched = 1 else:
-if (
-mydigests[myfile].get("size") != nil
-and mystat.st_size < mydigests[myfile]["size"]
-and not restrict_fetch
-):
-fetched = 1 else if (
-parallel_fetchonly
-and mystat.st_size == mydigests[myfile]["size"]
-):
-eout = EOutput()
-eout.quiet = mysettings.get("PORTAGE_QUIET") == "1"
-eout.ebegin("%s size ;-)" % (myfile, ))
-eout.eend(0)
-continue else:
-digests = _filter_unaccelarated_hashes(mydigests[myfile])
-if hash_filter != nil:
-digests = _apply_hash_filter(digests, hash_filter)
-verified_ok, reason = verify_all(download_path, digests)
-if not verified_ok:
-WriteMsg(
-_("!!! Previously fetched" " file: '%s'\n")
-% myfile,
--1, nil
-)
-WriteMsg(
-_("!!! Reason: %s\n") % reason[0], noiselevel = -1
-)
-WriteMsg(
-_("!!! Got:      %s\n" "!!! Expected: %s\n")
-% (reason[1], reason[2]),
--1, nil
-)
-if reason[0] == _(
-"Insufficient data for checksum verification"
-):
-return 0
-if distdir_writable:
-temp_filename = _checksum_failure_temp_file(
-mysettings,
-mysettings["DISTDIR"],
-os.path.basename(download_path),
-)
-WriteMsg_stdout(
-_("Refetching... " "File renamed to '%s'\n\n")
-% temp_filename,
--1, nil
-) else:
-if not fetch_to_ro:
-_movefile(
-download_path,
-myfile_path,
-mysettings = mysettings,
-)
-eout = EOutput()
-eout.quiet = (
-mysettings.get("PORTAGE_QUIET", None) == "1"
-)
-if digests:
-digests = list(digests)
-digests.sort()
-eout.ebegin(
-"%s %s ;-)" % (myfile, " ".join(digests))
-)
-eout.eend(0)
-continue
-
-uri_list = filedict[myfile][:]
-uri_list.reverse()
-checksum_failure_count = 0
-tried_locations = set()
-while uri_list:
-loc = uri_list.pop()
-if isinstance(loc, functools.partial):
-loc = loc()
-if loc in tried_locations:
-continue
-tried_locations.add(loc)
-if listonly:
-WriteMsg_stdout(loc + " ", noiselevel = -1)
-continue
-protocol = loc[0: loc.find("://")]
-
-global_config_path = GLOBAL_CONFIG_PATH
-if portage.const.EPREFIX:
-global_config_path = filepath.Join(
-portage.const.EPREFIX, GLOBAL_CONFIG_PATH.lstrip(os.sep)
-)
-
-missing_file_param = False
-fetchcommand_var = "FETCHCOMMAND_" + protocol.upper()
-fetchcommand = mysettings.get(fetchcommand_var)
-if fetchcommand is None:
-fetchcommand_var = "FETCHCOMMAND"
-fetchcommand = mysettings.get(fetchcommand_var)
-if fetchcommand is None:
-WriteMsg_level(
-_(
-"!!! %s is unset. It should "
-"have been defined in\n!!! %s/make.globals.\n"
-)
-% (fetchcommand_var, global_config_path),
-level = logging.ERROR,
--1, nil
-)
-return 0
-if "${FILE}" not in fetchcommand:
-WriteMsg_level(
-_(
-"!!! %s does not contain the required ${FILE}"
-" parameter.\n"
-)
-% fetchcommand_var,
-level = logging.ERROR,
--1, nil
-)
-missing_file_param = True
-
-resumecommand_var = "RESUMECOMMAND_" + protocol.upper()
-resumecommand = mysettings.get(resumecommand_var)
-if resumecommand is None:
-resumecommand_var = "RESUMECOMMAND"
-resumecommand = mysettings.get(resumecommand_var)
-if resumecommand is None:
-WriteMsg_level(
-_(
-"!!! %s is unset. It should "
-"have been defined in\n!!! %s/make.globals.\n"
-)
-% (resumecommand_var, global_config_path),
-level = logging.ERROR,
--1, nil
-)
-return 0
-if "${FILE}" not in resumecommand:
-WriteMsg_level(
-_(
-"!!! %s does not contain the required ${FILE}"
-" parameter.\n"
-)
-% resumecommand_var,
-level = logging.ERROR,
-noiselevel =-1,
-)
-missing_file_param = True
-
-if missing_file_param:
-WriteMsg_level(
-_(
-"!!! Refer to the make.conf(5) man page for "
-"information about how to\n!!! correctly specify "
-"FETCHCOMMAND and RESUMECOMMAND.\n"
-),
-level = logging.ERROR,
--1, nil
-)
-if myfile != os.path.basename(loc):
-return 0
-
-if not can_fetch:
-if fetched != 2:
-try:
-mysize = os.stat(download_path).st_size
-except OSError as e:
-if e.errno not in (errno.ENOENT, errno.ESTALE):
-raise
-del e
-mysize = 0
-
-if mysize == 0:
-WriteMsg(
-_("!!! File %s isn't fetched but unable to get it.\n")
-% myfile,
-noiselevel= -1,
-) else if size is None or size > mysize:
-WriteMsg(
-_(
-"!!! File %s isn't fully fetched, but unable to complete it\n"
-)
-% myfile,
--1, nil
-) else:
-WriteMsg(
-_(
-"!!! File %s is incorrect size, "
-"but unable to retry.\n"
-)
-% myfile,
-noiselevel = -1,
-)
-return 0
-continue
-
-if fetched != 2 and has_space:
-if fetched == 1:
-try:
-mystat = os.stat(download_path)
-except OSError as e:
-if e.errno not in (errno.ENOENT, errno.ESTALE):
-raise
-del e
-fetched = 0 else:
-if distdir_writable and mystat.st_size < fetch_resume_size:
-WriteMsg(
-_(
-">>> Deleting distfile with size "
-"%d (smaller than "
-"PORTAGE_FETCH_RESU"
-"ME_MIN_SIZE)\n"
-)
-% mystat.st_size
-)
-try:
-os.unlink(download_path)
-except OSError as e:
-if e.errno not in (errno.ENOENT, errno.ESTALE):
-raise
-del e
-fetched = 0
-if fetched == 1:
-WriteMsg(_(">>> Resuming download...\n"))
-locfetch = resumecommand
-command_var = resumecommand_var else:
-locfetch = fetchcommand
-command_var = fetchcommand_var
-WriteMsg_stdout(_(">>> Downloading '%s'\n") % _hide_url_passwd(loc))
-variables = {"URI": loc, "FILE": os.path.basename(download_path)}
-
-try:
-variables["DIGESTS"] = " ".join(
-[
-"%s:%s" % (k.lower(), v)
-for k, v in mydigests[myfile].items()
-if k != "size"
+	try:
+		variables["DIGESTS"] = " ".join(
+		[
+		"%s:%s" % (k.lower(), v)
+		for k, v
+			in
+		mydigests[myfile].items()
+		if k != "size"
 ]
 )
 except KeyError:
@@ -1504,7 +1645,7 @@ download_path, gid = portage_gid, mode = 0o664, mask = 0o2
 except FileNotFound:
 pass
 except PortageException as e:
-if not os.access(download_path, os.R_OK):
+if not osAccess(download_path, os.R_OK):
 WriteMsg(
 _("!!! Failed to adjust permissions:" " %s\n")
 % str(e),
@@ -1627,7 +1768,7 @@ if distdir_writable:
 temp_filename = _checksum_failure_temp_file(
 mysettings,
 mysettings["DISTDIR"],
-os.path.basename(download_path),
+filepath.Base(download_path),
 )
 WriteMsg_stdout(
 _(
@@ -1675,8 +1816,7 @@ _movefile(
 download_path, myfile_path, mysettings = mysettings
 )
 fetched = 2
-break
-else if mydigests != None:
+break else if mydigests != None:
 WriteMsg(
 _("No digest file available and download failed.\n\n"),
 noiselevel = -1,
@@ -1699,8 +1839,7 @@ msg = _(
 "!!! manually.  See the comments in"
 " the ebuild for more information.\n\n"
 ) % (mysettings["CATEGORY"], mysettings["PF"])
-WriteMsg_level(msg, level = logging.ERROR, noiselevel = -1)
-else if restrict_fetch:
+WriteMsg_level(msg, level = logging.ERROR, noiselevel = -1) else if restrict_fetch:
 pass else if listonly:
 pass else if not filedict[myfile]:
 WriteMsg(
