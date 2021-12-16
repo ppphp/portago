@@ -89,6 +89,15 @@ func Inmsss(a map[string][]string, b string) bool {
 	return false
 }
 
+func Inmssb(a map[string]map[string]bool, b string) bool {
+	for v := range a {
+		if b == v {
+			return true
+		}
+	}
+	return false
+}
+
 func Ins(a []string, b string) bool {
 	for _, v := range a {
 		if b == v {
