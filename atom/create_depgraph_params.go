@@ -1,6 +1,10 @@
 package atom
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/util"
+)
 
 func create_depgraph_params(myopts map[string]string, myaction string) map[string]interface{} {
 	myparams := map[string]interface{}{"recurse": true}
@@ -8,7 +12,7 @@ func create_depgraph_params(myopts map[string]string, myaction string) map[strin
 	binpkg_respect_use, ok := myopts["--binpkg-respect-use"]
 	if ok {
 		myparams["binpkg_respect_use"] = binpkg_respect_use
-	} else if !Inmss(myopts, "--usepkgonly") {
+	} else if !myutil.Inmss(myopts, "--usepkgonly") {
 		myparams["binpkg_respect_use"] = "auto"
 	}
 
@@ -72,7 +76,7 @@ func create_depgraph_params(myopts map[string]string, myaction string) map[strin
 	if ok {
 		myparams["bdeps"] = bdeps
 	} else if myaction == "remove" || (myopts["--with-bdeps-auto"] != "n" &&
-		!Inmss(myopts, "--usepkg")) {
+		!myutil.Inmss(myopts, "--usepkg")) {
 		myparams["bdeps"] = "auto"
 	}
 
@@ -86,7 +90,7 @@ func create_depgraph_params(myopts map[string]string, myaction string) map[strin
 		myparams["ignore_soname_deps"] = "y"
 	}
 
-	dynamic_deps := myopts["--dynamic-deps"] != "n" && !Inmss(myopts, "--nodeps")
+	dynamic_deps := myopts["--dynamic-deps"] != "n" && !myutil.Inmss(myopts, "--nodeps")
 	if dynamic_deps {
 		myparams["dynamic_deps"] = true
 	}
@@ -114,11 +118,11 @@ func create_depgraph_params(myopts map[string]string, myaction string) map[strin
 		myparams["changed_slot"] = true
 	}
 
-	if Inmss(myopts, "--update") || Inmss(myopts, "--newrepo") ||
-		Inmss(myopts, "--newuse") || Inmss(myopts, "--reinstall") ||
-		Inmss(myopts, "--noreplace") ||
-		(!Inmss(myopts, "--changed-deps") || myopts["--changed-deps"] != "n") ||
-		changed_slot || (!Inmss(myopts, "--selective") || myopts["--selective"] != "n") {
+	if myutil.Inmss(myopts, "--update") || myutil.Inmss(myopts, "--newrepo") ||
+		myutil.Inmss(myopts, "--newuse") || myutil.Inmss(myopts, "--reinstall") ||
+		myutil.Inmss(myopts, "--noreplace") ||
+		(!myutil.Inmss(myopts, "--changed-deps") || myopts["--changed-deps"] != "n") ||
+		changed_slot || (!myutil.Inmss(myopts, "--selective") || myopts["--selective"] != "n") {
 		myparams["selective"] = true
 	}
 
@@ -137,19 +141,19 @@ func create_depgraph_params(myopts map[string]string, myaction string) map[strin
 		myparams["complete_if_new_ver"] = complete_if_new_ver
 	}
 
-	if Inmss(myopts, "--complete-graph") ||
-		Inmss(myopts, "--rebuild-if-new-rev") ||
-		Inmss(myopts, "--rebuild-if-new-ver") ||
-		Inmss(myopts, "--rebuild-if-unbuilt") {
+	if myutil.Inmss(myopts, "--complete-graph") ||
+		myutil.Inmss(myopts, "--rebuild-if-new-rev") ||
+		myutil.Inmss(myopts, "--rebuild-if-new-ver") ||
+		myutil.Inmss(myopts, "--rebuild-if-unbuilt") {
 		myparams["complete"] = true
 	}
-	if Inmss(myopts, "--emptytree") {
+	if myutil.Inmss(myopts, "--emptytree") {
 		myparams["empty"] = true
 		myparams["deep"] = true
 		delete(myparams, "selective")
 	}
 
-	if Inmss(myopts, "--nodeps") {
+	if myutil.Inmss(myopts, "--nodeps") {
 		delete(myparams, "recurse")
 		delete(myparams, "deep")
 		delete(myparams, "complete")
@@ -157,15 +161,15 @@ func create_depgraph_params(myopts map[string]string, myaction string) map[strin
 
 	rebuilt_binaries := myopts["--rebuilt-binaries"]
 	if rebuilt_binaries == "true" || rebuilt_binaries != "n" &&
-		Inmss(myopts, "--usepkgonly") && myopts["--deep"] == "true" &&
-		Inmss(myopts, "--update") {
+		myutil.Inmss(myopts, "--usepkgonly") && myopts["--deep"] == "true" &&
+		myutil.Inmss(myopts, "--update") {
 		myparams["rebuilt_binaries"] = true
 	}
 
 	binpkg_changed_deps, ok := myopts["--binpkg-changed-deps"]
 	if ok {
 		myparams["binpkg_changed_deps"] = binpkg_changed_deps
-	} else if !Inmss(myopts, "--usepkgonly") {
+	} else if !myutil.Inmss(myopts, "--usepkgonly") {
 		myparams["binpkg_changed_deps"] = "auto"
 	}
 
@@ -188,8 +192,8 @@ func create_depgraph_params(myopts map[string]string, myaction string) map[strin
 		myparams["with_test_deps"] = with_test_deps
 	}
 
-	if Inmss(myopts, "--debug") {
-		WriteMsgLevel(fmt.Sprintf("\n\nmyparams %s\n\n", myparams), -1, 10)
+	if myutil.Inmss(myopts, "--debug") {
+		util.WriteMsgLevel(fmt.Sprintf("\n\nmyparams %s\n\n", myparams), -1, 10)
 	}
 
 	return myparams

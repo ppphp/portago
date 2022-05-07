@@ -1,8 +1,11 @@
-package atom
+package output
 
 import (
 	"bufio"
 	"fmt"
+	"github.com/ppphp/portago/atom"
+	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/util"
 	"io"
 	"io/ioutil"
 	"os"
@@ -12,7 +15,7 @@ import (
 	"strings"
 	"syscall"
 
-	"golang.org/x/crypto/ssh/terminal"
+	terminal "golang.org/x/term"
 )
 
 const (
@@ -118,7 +121,7 @@ func init() {
 
 // "/", nil
 func parseColorMap(configRoot string, onerror func(error) error) error {
-	myfile := path.Join(configRoot, ColorMapFile)
+	myfile := path.Join(configRoot, _const.ColorMapFile)
 	ansiCodePattern := regexp.MustCompile("^[0-9;]*m$")
 	quotes := "'\""
 	stripQuotes := func(token string) string {
@@ -252,12 +255,12 @@ func xtermTitleReset() {
 			if doTitles != 0 && tb && _legal_terms_re.MatchString(ts) && terminal.IsTerminal(int(os.Stderr.Fd())) {
 				shell := os.Getenv("SHELL")
 				st, err := os.Stat(shell)
-				if shell == "" || (err !=nil && st.Mode()&syscall.O_EXCL != 0) {
-					shell = FindBinary("sh")
+				if shell == "" || (err != nil && st.Mode()&syscall.O_EXCL != 0) {
+					shell = atom.FindBinary("sh")
 				}
 				if shell != "" {
-					spawn([]string{shell, "-c", promptCommand}, nil, "", map[int]uintptr{
-						0: getStdin().Fd(),
+					atom.spawn([]string{shell, "-c", promptCommand}, nil, "", map[int]uintptr{
+						0: atom.getStdin().Fd(),
 						1: os.Stderr.Fd(),
 						2: os.Stderr.Fd(),
 					}, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
@@ -314,7 +317,7 @@ func ColorMap() string {
 	return strings.Join(mycolors, "\n")
 }
 
-func colorize(color_key, text string) string {
+func Colorize(color_key, text string) string {
 	if HaveColor != 0 {
 		if _, ok := codes[color_key]; ok {
 			return codes[color_key] + text + codes["reset"]
@@ -335,24 +338,24 @@ var compat_functions_colors = []string{
 }
 
 func NewCreateColorFunc(colorKey string) func(text string) string {
-	return func(text string) string { return colorize(colorKey, text) }
+	return func(text string) string { return Colorize(colorKey, text) }
 }
 
-var Bold = func(text string) string { return colorize("bold", text) }
-var White = func(text string) string { return colorize("white", text) }
-var Teal = func(text string) string { return colorize("teal", text) }
-var Turquoise = func(text string) string { return colorize("turquoise", text) }
-var Darkteal = func(text string) string { return colorize("darkteal", text) }
-var Fuchsia = func(text string) string { return colorize("fuschia", text) }
-var Purple = func(text string) string { return colorize("purple", text) }
-var Blue = func(text string) string { return colorize("blue", text) }
-var Green = func(text string) string { return colorize("green", text) }
-var Red = func(text string) string { return colorize("red", text) }
+var Bold = func(text string) string { return Colorize("bold", text) }
+var White = func(text string) string { return Colorize("white", text) }
+var Teal = func(text string) string { return Colorize("teal", text) }
+var Turquoise = func(text string) string { return Colorize("turquoise", text) }
+var Darkteal = func(text string) string { return Colorize("darkteal", text) }
+var Fuchsia = func(text string) string { return Colorize("fuschia", text) }
+var Purple = func(text string) string { return Colorize("purple", text) }
+var Blue = func(text string) string { return Colorize("blue", text) }
+var Green = func(text string) string { return Colorize("green", text) }
+var Red = func(text string) string { return Colorize("red", text) }
 
 type consoleStyleFile struct {
-	_file io.WriteCloser
+	_file          io.WriteCloser
 	write_listener io.Writer
-	_styles               []string
+	_styles        []string
 }
 
 func NewConsoleStylefile(f io.WriteCloser) *consoleStyleFile {
@@ -365,18 +368,18 @@ func (c *consoleStyleFile) new_styles(styles []string) {
 }
 
 func (c *consoleStyleFile) write(s string) {
-	if HaveColor!=0 && len(c._styles)>0 {
+	if HaveColor != 0 && len(c._styles) > 0 {
 		styled_s := []string{}
 		for _, style := range c._styles {
-			styled_s=append(styled_s, styleToAnsiCode(style))
+			styled_s = append(styled_s, styleToAnsiCode(style))
 		}
-		styled_s=append(styled_s, s)
-		styled_s=append(styled_s, codes["reset"])
-		c._write(c._file,strings.Join(styled_s,""))
-	}else {
+		styled_s = append(styled_s, s)
+		styled_s = append(styled_s, codes["reset"])
+		c._write(c._file, strings.Join(styled_s, ""))
+	} else {
 		c._write(c._file, s)
 	}
-	if c.write_listener!= nil {
+	if c.write_listener != nil {
 		c._write(c.write_listener, s)
 	}
 }
@@ -426,7 +429,7 @@ func get_term_size(fd int) (int, int, error) {
 }
 
 func set_term_size(lines, columns, fd int) error {
-	_, err := spawn([]string{"stty", "rows", string(lines), "columns", string(columns)}, nil, "", map[int]uintptr{0: uintptr(fd)}, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
+	_, err := atom.spawn([]string{"stty", "rows", string(lines), "columns", string(columns)}, nil, "", map[int]uintptr{0: uintptr(fd)}, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
 	return err
 }
 
@@ -451,15 +454,15 @@ func NewEOutput(quiet bool) *eOutput {
 }
 
 func (e *eOutput) _write(f *os.File, s string) {
-	WriteMsg(s, -1, f)
+	util.WriteMsg(s, -1, f)
 }
 
 func (e *eOutput) __eend(caller string, errno int, msg string) {
 	status_brackets := ""
 	if errno == 0 {
-		status_brackets = colorize("BRACKET", "[ ") + colorize("GOOD", "ok") + colorize("BRACKET", " ]")
+		status_brackets = Colorize("BRACKET", "[ ") + Colorize("GOOD", "ok") + Colorize("BRACKET", " ]")
 	} else {
-		status_brackets = colorize("BRACKET", "[ ") + colorize("BAD", "!!") + colorize("BRACKET", " ]")
+		status_brackets = Colorize("BRACKET", "[ ") + Colorize("BAD", "!!") + Colorize("BRACKET", " ]")
 		if msg != "" {
 			if caller == "eend" {
 				e.eerror(msg[:1])
@@ -502,7 +505,7 @@ func (e *eOutput) eerror(msg string) {
 		if e.__last_e_cmd == "ebegin" {
 			e._write(out, "\n")
 		}
-		e._write(out, colorize("BAD", " * ")+msg+"\n")
+		e._write(out, Colorize("BAD", " * ")+msg+"\n")
 	}
 	e.__last_e_cmd = "eerror"
 }
@@ -513,7 +516,7 @@ func (e *eOutput) einfo(msg string) {
 		if e.__last_e_cmd == "ebegin" {
 			e._write(out, "\n")
 		}
-		e._write(out, colorize("GOOD", " * ")+msg+"\n")
+		e._write(out, Colorize("GOOD", " * ")+msg+"\n")
 	}
 	e.__last_e_cmd = "einfo"
 }
@@ -524,7 +527,7 @@ func (e *eOutput) einfon(msg string) {
 		if e.__last_e_cmd == "ebegin" {
 			e._write(out, "\n")
 		}
-		e._write(out, colorize("GOOD", " * ")+msg)
+		e._write(out, Colorize("GOOD", " * ")+msg)
 	}
 	e.__last_e_cmd = "einfon"
 }
@@ -535,7 +538,7 @@ func (e *eOutput) ewarn(msg string) {
 		if e.__last_e_cmd == "ebegin" {
 			e._write(out, "\n")
 		}
-		e._write(out, colorize("WARN", " * ")+msg+"\n")
+		e._write(out, Colorize("WARN", " * ")+msg+"\n")
 	}
 	e.__last_e_cmd = "ewarn"
 }
@@ -771,7 +774,7 @@ func output_init(config_root string) { // /
 	}
 	_color_map_loaded = true
 	if err := parseColorMap(config_root, func(e error) error {
-		WriteMsg(fmt.Sprintf("%s\n", e.Error()), -1, nil)
+		util.WriteMsg(fmt.Sprintf("%s\n", e.Error()), -1, nil)
 		return nil
 	}); err != nil {
 		return

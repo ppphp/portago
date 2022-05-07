@@ -1,9 +1,11 @@
 package atom
 
+import "github.com/ppphp/portago/pkg/output"
+
 func emergeHelp() {
-	bold := Bold
-	turquoise := Turquoise
-	green := Green
+	bold := output.Bold
+	turquoise := output.Turquoise
+	green := output.Green
 	println(bold("emerge:") + " command-line interface to the Portage system")
 	println(bold("Usage:"))
 	println("   " + turquoise("emerge") + " [ " + green("options") + " ] [ " + green("action") + " ] [ " + turquoise("ebuild") + " | " + turquoise("tbz2") + " | " + turquoise("file") + " | " + turquoise("@set") + " | " + turquoise("atom") + " ] [ ... ]")

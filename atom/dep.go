@@ -3,6 +3,8 @@ package atom
 import (
 	"errors"
 	"fmt"
+	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/util"
 	"golang.org/x/net/html/atom"
 	"reflect"
 	"regexp"
@@ -486,14 +488,14 @@ type useDep struct {
 }
 
 func (u *useDep) evaluateConditionals(use map[string]bool) *useDep {
-	enabledFlags := CopyMapSB(u.enabled)
-	disabledFlags := CopyMapSB(u.disabled)
+	enabledFlags := myutil.CopyMapSB(u.enabled)
+	disabledFlags := myutil.CopyMapSB(u.disabled)
 	tokens := []string{}
 	usedepRe := getUsedepRe(*u.eapiAttrs)
 	for _, x := range  u.tokens {
-		operator := getNamedRegexp(usedepRe, x, "prefix") + getNamedRegexp(usedepRe, x, "suffix")
-		flag := getNamedRegexp(usedepRe, x, "flag")
-		defaults := getNamedRegexp(usedepRe, x, "default")
+		operator := myutil.getNamedRegexp(usedepRe, x, "prefix") + myutil.getNamedRegexp(usedepRe, x, "suffix")
+		flag := myutil.getNamedRegexp(usedepRe, x, "flag")
+		defaults := myutil.getNamedRegexp(usedepRe, x, "default")
 		if operator == "?" {
 			enabledFlags[flag] = true
 			tokens = append(tokens, flag+defaults)
@@ -530,8 +532,8 @@ func (u *useDep) violatedConditionals(otherUse map[string]bool, isValidFlag func
 		//raise InvalidAtom("violated_conditionals needs 'parent_use'" + 
 		//" parameter for conditional flags.")
 	}
-	enabledFlags := CopyMapSB(u.enabled)
-	disabledFlags := CopyMapSB(u.disabled)
+	enabledFlags := myutil.CopyMapSB(u.enabled)
+	disabledFlags := myutil.CopyMapSB(u.disabled)
 	conditional := map[string]map[string]bool{}
 	tokens := []string{}
 	allDefaults := map[string]bool{}
@@ -547,8 +549,8 @@ func (u *useDep) violatedConditionals(otherUse map[string]bool, isValidFlag func
 
 	usedepRe := getUsedepRe(*u.eapiAttrs)
 	for _, x := range  u.tokens {
-		operator := getNamedRegexp(usedepRe, x, "prefix") + getNamedRegexp(usedepRe, x, "suffix")
-		flag := getNamedRegexp(usedepRe, x, "flag")
+		operator := myutil.getNamedRegexp(usedepRe, x, "prefix") + myutil.getNamedRegexp(usedepRe, x, "suffix")
+		flag := myutil.getNamedRegexp(usedepRe, x, "flag")
 		if !validateFlag(flag) {
 			tokens = append(tokens, flag)
 			if operator == "" {
@@ -719,14 +721,14 @@ func (u *useDep) violatedConditionals(otherUse map[string]bool, isValidFlag func
 }
 
 func (u *useDep) evalQaConditionals(useMask, useForce map[string]bool) *useDep {
-	enabledFlags := CopyMapSB(u.enabled)
-	disabledFlags := CopyMapSB(u.disabled)
+	enabledFlags := myutil.CopyMapSB(u.enabled)
+	disabledFlags := myutil.CopyMapSB(u.disabled)
 	tokens := []string{}
 	usedepRe := getUsedepRe(*u.eapiAttrs)
 	for _, x := range  u.tokens {
-		operator := getNamedRegexp(usedepRe, x, "prefix") + getNamedRegexp(usedepRe, x, "suffix")
-		flag := getNamedRegexp(usedepRe, x, "flag")
-		defaults := getNamedRegexp(usedepRe, x, "default")
+		operator := myutil.getNamedRegexp(usedepRe, x, "prefix") + myutil.getNamedRegexp(usedepRe, x, "suffix")
+		flag := myutil.getNamedRegexp(usedepRe, x, "flag")
+		defaults := myutil.getNamedRegexp(usedepRe, x, "default")
 		if operator == "?" {
 			if !useMask[flag] {
 				tokens = append(tokens, flag+defaults)
@@ -811,9 +813,9 @@ func NewUseDep(use []string, eapiAttrs *eapiAttrs, enabledFlags, disabledFlags, 
 		if !usedepRe.MatchString(x) {
 			//raise InvalidAtom(_("Invalid use dep: '%s'") % (x,))
 		}
-		operator := getNamedRegexp(usedepRe, x, "prefix") + getNamedRegexp(usedepRe, x, "suffix")
-		flag := getNamedRegexp(usedepRe, x, "flag")
-		defaults := getNamedRegexp(usedepRe, x, "default")
+		operator := myutil.getNamedRegexp(usedepRe, x, "prefix") + myutil.getNamedRegexp(usedepRe, x, "suffix")
+		flag := myutil.getNamedRegexp(usedepRe, x, "flag")
+		defaults := myutil.getNamedRegexp(usedepRe, x, "default")
 		if operator == "" {
 			enabledFlags[flag] = true
 		} else if operator == "-" {
@@ -1146,7 +1148,7 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 			if !atomRe.MatchString(s) {
 				return nil, errors.New("InvalidAtom") // InvalidAtom(self)
 			}
-			if getNamedRegexp(atomRe, s, "star") != "" {
+			if myutil.getNamedRegexp(atomRe, s, "star") != "" {
 				op = "=*"
 				ar := atomRe.SubexpNames()
 				base := 0
@@ -1156,11 +1158,11 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 					}
 				}
 				cp = atomRe.FindAllString(s, -1)[base+1]
-				cpv = getNamedRegexp(atomRe, s, "star")[1:]
+				cpv = myutil.getNamedRegexp(atomRe, s, "star")[1:]
 				extendedVersion = atomRe.FindAllString(s, -1)[base+4]
 			} else {
 				op = ""
-				cp = getNamedRegexp(atomRe, s, "simple")
+				cp = myutil.getNamedRegexp(atomRe, s, "simple")
 				cpv = cp
 				if len(atomRe.FindAllString(s, -1)) >= 4 {
 					return nil, errors.New("InvalidAtom")
@@ -1169,14 +1171,14 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 			if !strings.Contains(cpv, "**") {
 				return nil, errors.New("InvalidAtom")
 			}
-			slot = getNamedRegexp(atomRe, s, "slot")
-			repo = getNamedRegexp(atomRe, s, "repo")
+			slot = myutil.getNamedRegexp(atomRe, s, "slot")
+			repo = myutil.getNamedRegexp(atomRe, s, "repo")
 			useStr = ""
 			extendedSyntax = true
 		} else {
 			return nil, errors.New("InvalidAtom")
 		}
-	} else if getNamedRegexp(atomRe, s, "op") != "" {
+	} else if myutil.getNamedRegexp(atomRe, s, "op") != "" {
 		base := 0
 		ar := atomRe.SubexpNames()
 		for k, v := range ar {
@@ -1206,7 +1208,7 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 				return nil, errors.New("InvalidAtom")
 			}
 		}
-	} else if getNamedRegexp(atomRe, s, "star") != "" {
+	} else if myutil.getNamedRegexp(atomRe, s, "star") != "" {
 		base := 0
 		ar := atomRe.SubexpNames()
 		for k, v := range ar {
@@ -1224,7 +1226,7 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 		if len(atomRe.FindStringSubmatch(s)) >= base+3 && atomRe.FindStringSubmatch(s)[base+3] != "" {
 			return nil, errors.New("InvalidAtom")
 		}
-	} else if getNamedRegexp(atomRe, s, "simple") != "" {
+	} else if myutil.getNamedRegexp(atomRe, s, "simple") != "" {
 		op = ""
 		base := 0
 		ar := atomRe.SubexpNames()
@@ -1307,11 +1309,11 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 		} else {
 			use = NewUseDep(strings.Split(useStr[1:len(useStr)-1], ","), &eapiAttrs, nil, nil, nil, nil, nil, nil)
 		}
-		withoutUse, _ = NewAtom(blockerPrefix+getNamedRegexp(atomRe, s, "without_use"), nil, false, allowRepo, nil, "", nil, nil)
+		withoutUse, _ = NewAtom(blockerPrefix+myutil.getNamedRegexp(atomRe, s, "without_use"), nil, false, allowRepo, nil, "", nil, nil)
 	} else {
 		use = nil
 		if unevaluatedAtom != nil && unevaluatedAtom.Use != nil {
-			withoutUse, _ = NewAtom(blockerPrefix+getNamedRegexp(atomRe, s, "without_use"), nil, false, allowRepo, nil, "", nil, nil)
+			withoutUse, _ = NewAtom(blockerPrefix+myutil.getNamedRegexp(atomRe, s, "without_use"), nil, false, allowRepo, nil, "", nil, nil)
 		} else {
 			withoutUse = a
 		}
@@ -1783,7 +1785,7 @@ func matchFromList(mydep *Atom, candidateList []*PkgStr) []*PkgStr {
 	if ver != "" && rev != "" {
 		operator = mydepA.Operator
 		if operator == "" {
-			WriteMsg(fmt.Sprintf("!!! Invalid Atom: %s\n", mydep.value), -1, nil)
+			util.WriteMsg(fmt.Sprintf("!!! Invalid Atom: %s\n", mydep.value), -1, nil)
 		}
 		return []*PkgStr{}
 	} else {
@@ -1917,7 +1919,7 @@ func matchFromList(mydep *Atom, candidateList []*PkgStr) []*PkgStr {
 			}
 			result, err := verCmp(pkg.version, mydepA.version)
 			if err != nil {
-				WriteMsg(fmt.Sprintf("\nInvalid package name: %v\n", x), -1, nil)
+				util.WriteMsg(fmt.Sprintf("\nInvalid package name: %v\n", x), -1, nil)
 				//raise
 			}
 			if operator == ">" {
@@ -2238,7 +2240,7 @@ pkg_use_enabled == nil {
 
 pkgs := []string{}
 matches := portdb.match_pkgs(x.without_use)
-ReverseSlice(matches)
+myutil.ReverseSlice(matches)
 for _, pkg := range matches{
 		if strings.HasPrefix(pkg.cp,"virtual/"){
 		pkgs = append(pkgs, pkg)
@@ -2395,7 +2397,7 @@ minimize_slots bool) []string {
 	if trees == nil {
 		trees = Db()
 	}
-	WriteMsg(fmt.Sprint("ZapDeps -- %s\n", use_binaries), 2, nil)
+	util.WriteMsg(fmt.Sprint("ZapDeps -- %s\n", use_binaries), 2, nil)
 	if !reduced || (len(unreduced) == 0 && unreduced[0] == "||") || dep_eval(reduced) {
 		return []string{}
 	}
@@ -2973,9 +2975,9 @@ use_cache , use_binaries int, myroot string, trees *TreesDict) (int, []string) {
 		return 0, []string{"Invalid token"}
 	}
 
-	WriteMsg("\n\n\n", 1, nil)
-	WriteMsg(fmt.Sprint("mysplit:  %s\n", mysplit), 1, nil)
-	WriteMsg(fmt.Sprint("mysplit2: %s\n", mysplit2), 1, nil)
+	util.WriteMsg("\n\n\n", 1, nil)
+	util.WriteMsg(fmt.Sprint("mysplit:  %s\n", mysplit), 1, nil)
+	util.WriteMsg(fmt.Sprint("mysplit2: %s\n", mysplit2), 1, nil)
 
 	selected_atoms := dep_zapdeps(mysplit, mysplit2, myroot,
 		use_binaries, trees, dnf)
@@ -2990,7 +2992,7 @@ func _overlap_dnf(dep_struct) {
 	}
 
 	cp_map := map[string][]string{}
-	overlap_graph := NewDigraph()
+	overlap_graph := util.NewDigraph()
 	order_map := map[string]string{}
 	order_key = lambda
 x:
@@ -3052,7 +3054,7 @@ x:
 		if len(disjunctions) > 1{
 		overlap = true
 		result = append(result, _dnf_convert(
-		sorted(disjunctions.values(), key = order_key)))
+		myutil.sorted(disjunctions.values(), key = order_key)))
 	} else{
 		result = append(result, disjunctions.popitem()[1])
 	}
@@ -3092,7 +3094,7 @@ func dep_wordreduce(mydeplist []string,mysettings *Config,mydbapi,mode,use_cache
 			deplist[mypos] = false
 		} else {
 			mykey := deplist[mypos].cp
-			if mysettings!= nil &&  Inmsss(
+			if mysettings!= nil &&  myutil.Inmsss(
 			mysettings.pprovideddict,mykey) &&
 				matchFromList(deplist[mypos], mysettings.pprovideddict[mykey]) {
 				deplist[mypos] = true

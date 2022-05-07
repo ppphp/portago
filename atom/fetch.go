@@ -4,6 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/ppphp/configparser"
+	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/data"
+	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/shlex"
 	"golang.org/x/sys/unix"
 	"io/fs"
@@ -26,7 +31,7 @@ var _userpriv_spawn_kwargs = struct {
 	gid    *int32
 	umask  int
 	groups []int
-}{uid: portage_uid, gid: portage_gid, umask: 0o02, groups: userpriv_groups}
+}{uid: data.portage_uid, gid: data.portage_gid, umask: 0o02, groups: data.userpriv_groups}
 
 func _hide_url_passwd(url string) string {
 	r1 := regexp.MustCompile("//([^:\\s]+):[^@\\s]+@")
@@ -34,21 +39,21 @@ func _hide_url_passwd(url string) string {
 }
 
 func _want_userfetch(settings *Config) bool {
-	return settings.Features.Features["userfetch"] && *secpass >= 2 && os.Getuid() == 0
+	return settings.Features.Features["userfetch"] && *data.secpass >= 2 && os.Getuid() == 0
 }
 
 func _drop_privs_userfetch(settings *Config) {
 	//try:
 	_ensure_distdir(settings, settings.ValueDict["DISTDIR"])
 	//except PortageException:
-	if !pathIsDir(settings.ValueDict["DISTDIR"]) {
+	if !myutil.pathIsDir(settings.ValueDict["DISTDIR"]) {
 		raise
 	}
 	syscall.Setgid(int(*_userpriv_spawn_kwargs.gid))
 	syscall.Setgroups(_userpriv_spawn_kwargs.groups)
 	syscall.Setuid(*_userpriv_spawn_kwargs.uid)
 	syscall.Umask(_userpriv_spawn_kwargs.umask)
-	*secpass = 1
+	*data.secpass = 1
 }
 
 func _spawn_fetch(settings *Config, args []string, **kwargs) int {
@@ -68,9 +73,9 @@ kwargs:
 	}
 
 	var logname *string
-	if settings.Features.Features["userfetch"] && os.Getuid() == 0 && portage_gid != nil && *portage_gid != 0 && portage_uid != nil && *portage_uid != 0 {
+	if settings.Features.Features["userfetch"] && os.Getuid() == 0 && data.portage_gid != nil && *data.portage_gid != 0 && data.portage_uid != nil && *data.portage_uid != 0 {
 		kwargs.update(_userpriv_spawn_kwargs)
-		logname = _portage_username
+		logname = data._portage_username
 	}
 
 	spawn_func := spawn
@@ -78,8 +83,8 @@ kwargs:
 	if settings.selinux_enabled() {
 		spawn_func = selinux.spawn_wrapper(spawn_func, settings.ValueDict["PORTAGE_FETCH_T"])
 
-		if args[0] != BashBinary {
-			args = append([]string{BashBinary, "-c", `exec "$@"`, args[0]}, args...)
+		if args[0] != _const.BashBinary {
+			args = append([]string{_const.BashBinary, "-c", `exec "$@"`, args[0]}, args...)
 		}
 	}
 
@@ -112,7 +117,7 @@ func _userpriv_test_write_file(settings *Config, file_path string) int {
 	}
 
 	args := []string{
-		BashBinary,
+		_const.BashBinary,
 		"-c",
 		fmt.Sprintf(_userpriv_test_write_cmd_script, ShellQuote(file_path), ShellQuote(file_path)),
 	}
@@ -128,13 +133,13 @@ func _ensure_distdir(settings *Config, distdir string) {
 	dirmode := 0o070
 	filemode := 0o60
 	modemask := 0o2
-	dir_gid := int(*portage_gid)
-	if Inmss(settings.ValueDict, "FAKED_MODE") {
+	dir_gid := int(*data.portage_gid)
+	if myutil.Inmss(settings.ValueDict, "FAKED_MODE") {
 		dir_gid = 0
 	}
 
-	userfetch := *secpass >= 2 && settings.Features.Features["userfetch"]
-	userpriv := *secpass >= 2 && settings.Features.Features["userpriv"]
+	userfetch := *data.secpass >= 2 && settings.Features.Features["userfetch"]
+	userpriv := *data.secpass >= 2 && settings.Features.Features["userpriv"]
 	write_test_file := filepath.Join(distdir, ".__portage_test_write__")
 
 	st, _ := os.Stat(distdir)
@@ -149,11 +154,11 @@ func _ensure_distdir(settings *Config, distdir string) {
 	}
 
 	delete(_userpriv_test_write_file_cache, write_test_file)
-	if ensureDirs(distdir, 0-1, uint32(dir_gid), dirmode, mask, nil, true) {
+	if util.ensureDirs(distdir, 0-1, uint32(dir_gid), dirmode, mask, nil, true) {
 		if st == nil {
 			return
 		}
-		WriteMsg(fmt.Sprintf("Adjusting permissions recursively: '%s'\n", distdir), -1, nil)
+		util.WriteMsg(fmt.Sprintf("Adjusting permissions recursively: '%s'\n", distdir), -1, nil)
 		if !apply_recursive_permissions(
 			distdir,
 			gid = dir_gid,
@@ -161,7 +166,7 @@ func _ensure_distdir(settings *Config, distdir string) {
 			dirmask = modemask,
 			filemode = filemode,
 			filemask = modemask,
-			onerror = _raise_exc,
+			onerror = util._raise_exc,
 	){
 			raise
 			OperationNotPermitted(
@@ -184,7 +189,7 @@ func _checksum_failure_temp_file(settings *Config, distdir, basename string) str
 	var checksum []byte
 	tempfile_re := regexp.MustCompile(regexp.QuoteMeta(normal_basename) +
 		"\\._checksum_failure_\\..*")
-	ld, _ := listDir(distdir)
+	ld, _ := myutil.listDir(distdir)
 	for _, temp_filename := range ld {
 		if !tempfile_re.MatchString(temp_filename) {
 			continue
@@ -214,7 +219,7 @@ func _checksum_failure_temp_file(settings *Config, distdir, basename string) str
 	f, _ := os.CreateTemp(distdir, normal_basename+"._checksum_failure_.")
 	temp_filename := f.Name()
 	f.Close()
-	_movefile(filename, temp_filename, 0, nil, settings, nil)
+	util._movefile(filename, temp_filename, 0, nil, settings, nil)
 	return temp_filename
 }
 
@@ -223,10 +228,10 @@ func _check_digests(filename string, digests map[string]string, show_errors int)
 	verified_ok, reason0, reason1, reason2 := verifyAll(filename, digests, false, 0)
 	if !verified_ok {
 		if show_errors != 0 {
-			WriteMsg(fmt.Sprintf("!!! Previously fetched"+
+			util.WriteMsg(fmt.Sprintf("!!! Previously fetched"+
 				" file: '%s'\n", filename), -1, nil)
-			WriteMsg(fmt.Sprintf("!!! Reason: %s\n", reason0), -1, nil)
-			WriteMsg(fmt.Sprintf("!!! Got:      %s\n"+
+			util.WriteMsg(fmt.Sprintf("!!! Reason: %s\n", reason0), -1, nil)
+			util.WriteMsg(fmt.Sprintf("!!! Got:      %s\n"+
 				"!!! Expected: %s\n", reason1, reason2), -1, nil)
 		}
 		return false
@@ -235,7 +240,7 @@ func _check_digests(filename string, digests map[string]string, show_errors int)
 }
 
 // 1, nil
-func _check_distfile(filename string, digests map[string]string, eout *eOutput, show_errors int, hash_filter *hashFilter) (bool, os.FileInfo) {
+func _check_distfile(filename string, digests map[string]string, eout *output.eOutput, show_errors int, hash_filter *hashFilter) (bool, os.FileInfo) {
 	if digests == nil {
 		digests = map[string]string{}
 	}
@@ -265,7 +270,7 @@ func _check_distfile(filename string, digests map[string]string, eout *eOutput, 
 			digests = applyHashFilter(digests, hash_filter)
 		}
 		if _check_digests(filename, digests, show_errors) {
-			eout.ebegin(fmt.Sprintf("%s %s ;-)", filepath.Base(filename), strings.Join(sortedmss(digests), " ")))
+			eout.ebegin(fmt.Sprintf("%s %s ;-)", filepath.Base(filename), strings.Join(myutil.sortedmss(digests), " ")))
 			eout.eend(0, "")
 		} else {
 			return false, st
@@ -351,7 +356,7 @@ func NewFilenameHashLayout(algo, cutoffs string) *FilenameHashLayout {
 	f.algo = algo
 	f.cutoffs = []int{}
 	for _, x := range strings.Split(cutoffs, ":") {
-		f.cutoffs = append(f.cutoffs, toi(x))
+		f.cutoffs = append(f.cutoffs, myutil.toi(x))
 	}
 	return f
 }
@@ -474,7 +479,7 @@ func NewMirrorLayoutConfig() *MirrorLayoutConfig {
 
 func (m *MirrorLayoutConfig) read_from_file(f string) {
 	cp := configparser.NewConfigParser(configparser.DefaultArgument)
-	readConfigs(cp, []string{f})
+	util.readConfigs(cp, []string{f})
 	vals := [][]string{}
 	for i := 0; ; i++ {
 		//try:
@@ -591,7 +596,7 @@ func get_mirror_url(mirror_url string, filename string, mysettings *Config, cach
 			SS [][]string
 		}{time.Now().Unix(), mirror_conf.serialize()}
 		if cache_path != "" {
-			f := NewAtomic_ofstream(cache_path, os.O_WRONLY, true)
+			f := util.NewAtomic_ofstream(cache_path, os.O_WRONLY, true)
 			json.NewEncoder(f).Encode(f)
 			f.Close()
 		}
@@ -599,7 +604,7 @@ func get_mirror_url(mirror_url string, filename string, mysettings *Config, cach
 
 	path := mirror_conf.get_best_supported_layout(filename).get_path(filename)
 	up, _ := url.Parse(mirror_url)
-	if Ins([]string{"ftp", "http", "https"}, up.Scheme) {
+	if myutil.Ins([]string{"ftp", "http", "https"}, up.Scheme) {
 		path = url.PathEscape(path)
 	}
 	if mirror_url[:1] == "/" {
@@ -626,9 +631,9 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 
 	features := mysettings.Features
 	restrict := strings.Fields(mysettings.ValueDict["PORTAGE_RESTRICT"])
-	userfetch := *secpass >= 2 && features.Features["userfetch"]
+	userfetch := *data.secpass >= 2 && features.Features["userfetch"]
 
-	restrict_mirror := Ins(restrict, "mirror") || Ins(restrict, "nomirror")
+	restrict_mirror := myutil.Ins(restrict, "mirror") || myutil.Ins(restrict, "nomirror")
 	if restrict_mirror {
 		if features.Features["mirror"] && !features.Features["lmirror"] {
 			print(">>> \"mirror\" mode desired and \"mirror\" restriction found; skipping fetch.")
@@ -646,17 +651,17 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 	v, err := strconv.Atoi(mv)
 	if err != nil {
 		//except(ValueError, OverflowError):
-		WriteMsg(fmt.Sprintf("!!! Variable PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS"+
+		util.WriteMsg(fmt.Sprintf("!!! Variable PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS"+
 			" contains non-integer value: '%s'\n",
 			mysettings.ValueDict["PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS"]), -1, nil)
-		WriteMsg(fmt.Sprintf("!!! Using PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS "+
+		util.WriteMsg(fmt.Sprintf("!!! Using PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS "+
 			"default value: %s\n", checksum_failure_max_tries), -1, nil)
 		v = checksum_failure_max_tries
 	}
 	if v < 1 {
-		WriteMsg(fmt.Sprintf("!!! Variable PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS"+
+		util.WriteMsg(fmt.Sprintf("!!! Variable PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS"+
 			" contains value less than 1: '%s'\n", v), -1, nil)
-		WriteMsg(fmt.Sprintf("!!! Using PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS "+
+		util.WriteMsg(fmt.Sprintf("!!! Using PORTAGE_FETCH_CHECKSUM_TRY_MIRRORS "+
 			"default value: %s\n", checksum_failure_max_tries), -1, nil)
 		v = checksum_failure_max_tries
 	}
@@ -671,10 +676,10 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 		}
 		match := _fetch_resume_size_re.FindAllString(fetch_resume_size, -1)
 		if _, ok := _size_suffix_map[strings.ToUpper(match[2])]; match == nil || !ok {
-			WriteMsg(fmt.Sprintf("!!! Variable PORTAGE_FETCH_RESUME_MIN_SIZE"+
+			util.WriteMsg(fmt.Sprintf("!!! Variable PORTAGE_FETCH_RESUME_MIN_SIZE"+
 				" contains an unrecognized format: '%s'\n",
 				mysettings.ValueDict["PORTAGE_FETCH_RESUME_MIN_SIZE"]), -1, nil)
-			WriteMsg(
+			util.WriteMsg(
 				fmt.Sprintf("!!! Using PORTAGE_FETCH_RESUME_MIN_SIZE "+
 					"default value: %s\n", fetch_resume_size_default),
 				-1, nil)
@@ -692,20 +697,20 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 	checksum_failure_primaryuri := 2
 	thirdpartymirrors := mysettings.thirdpartymirrors()
 
-	parallel_fetchonly := Inmss(mysettings.ValueDict, "PORTAGE_PARALLEL_FETCHONLY")
+	parallel_fetchonly := myutil.Inmss(mysettings.ValueDict, "PORTAGE_PARALLEL_FETCHONLY")
 	if parallel_fetchonly {
 		fetchonly = 1
 	}
 
 	check_config_instance(mysettings)
 
-	custommirrors := grabDict(filepath.Join(mysettings.ValueDict["PORTAGE_CONFIGROOT"], CustomMirrorsFile), false, false, true, true, false)
+	custommirrors := util.grabDict(filepath.Join(mysettings.ValueDict["PORTAGE_CONFIGROOT"], _const.CustomMirrorsFile), false, false, true, true, false)
 
 	if listonly != 0 || !features.Features["distlocks"] {
 		use_locks = 0
 	}
 
-	distdir_writable := osAccess(mysettings.ValueDict["DISTDIR"], unix.W_OK)
+	distdir_writable := myutil.osAccess(mysettings.ValueDict["DISTDIR"], unix.W_OK)
 	fetch_to_ro := 0
 	if features.Features["skiprocheck"] {
 		fetch_to_ro = 1
@@ -713,10 +718,10 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 
 	if !distdir_writable && fetch_to_ro != 0 {
 		if use_locks != 0 {
-			WriteMsg(colorize("BAD",
+			util.WriteMsg(output.colorize("BAD",
 				"!!! For fetching to a read-only filesystem, "+
 					"locking should be turned off.\n"), -1, nil)
-			WriteMsg("!!! This can be done by adding -distlocks to "+
+			util.WriteMsg("!!! This can be done by adding -distlocks to "+
 				"FEATURES in /etc/portage/make.conf\n", -1, nil)
 		}
 	}
@@ -767,12 +772,12 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 	ro_distdirs := []string{}
 	ss, _ := shlex.Split(strings.NewReader(mysettings.ValueDict["PORTAGE_RO_DISTDIRS"]), false, true)
 	for _, x := range ss {
-		if pathIsDir(x) {
+		if myutil.pathIsDir(x) {
 			ro_distdirs = append(ro_distdirs, x)
 		}
 	}
 
-	restrict_fetch := Ins(restrict, "fetch")
+	restrict_fetch := myutil.Ins(restrict, "fetch")
 	force_mirror := features.Features["force-mirror"] && !restrict_mirror
 
 	type ds struct {
@@ -883,12 +888,12 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 						}
 					}
 
-					if !Inmsss(custommirrors, mirrorname) && !Inmsss(thirdpartymirrors, mirrorname) {
-						WriteMsg(fmt.Sprintf("!!! No known mirror by the name: %s\n", mirrorname), 0, nil)
+					if !myutil.Inmsss(custommirrors, mirrorname) && !myutil.Inmsss(thirdpartymirrors, mirrorname) {
+						util.WriteMsg(fmt.Sprintf("!!! No known mirror by the name: %s\n", mirrorname), 0, nil)
 					}
 				} else {
-					WriteMsg("Invalid mirror definition in SRC_URI:\n", -1, nil)
-					WriteMsg(fmt.Sprintf("  %s\n", myuri), -1, nil)
+					util.WriteMsg("Invalid mirror definition in SRC_URI:\n", -1, nil)
+					util.WriteMsg(fmt.Sprintf("  %s\n", myuri), -1, nil)
 				}
 			} else {
 				if (restrict_fetch && !override_fetch) || force_mirror {
@@ -905,7 +910,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 	}
 
 	for _, uris := range primaryuri_dict {
-		reversed(uris)
+		myutil.reversed(uris)
 	}
 
 	for myfile, uris := range thirdpartymirror_uris {
@@ -915,7 +920,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 		primaryuri_dict[myfile] = append(primaryuri_dict[myfile], uris...)
 	}
 
-	if Ins(restrict, "primaryuri") {
+	if myutil.Ins(restrict, "primaryuri") {
 		for myfile, uris := range filedict {
 			filedict[myfile] = primaryuri_dict[myfile] + uris
 		}
@@ -945,15 +950,15 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 		//WriteMsg(_("!!! Fetching will fail!\n"), noiselevel = -1)
 	}
 
-	if can_fetch && fetch_to_ro == 0 && !osAccess(mysettings.ValueDict["DISTDIR"], unix.W_OK) {
-		WriteMsg(fmt.Sprintf("!!! No write access to '%s'\n", mysettings.ValueDict["DISTDIR"]), -1, nil)
+	if can_fetch && fetch_to_ro == 0 && !myutil.osAccess(mysettings.ValueDict["DISTDIR"], unix.W_OK) {
+		util.WriteMsg(fmt.Sprintf("!!! No write access to '%s'\n", mysettings.ValueDict["DISTDIR"]), -1, nil)
 		can_fetch = false
 	}
 
 	distdir_writable = can_fetch && fetch_to_ro == 0
 	failed_files := map[string]bool{}
 	restrict_fetch_msg := false
-	valid_hashes := CopyMapSB(getValidChecksumKeys())
+	valid_hashes := myutil.CopyMapSB(getValidChecksumKeys())
 	delete(valid_hashes, "size")
 
 	for myfile := range filedict {
@@ -969,18 +974,18 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 				}
 			}
 			if len(verifiable_hash_types) == 0 {
-				expected := strings.Join(sortedmsb(valid_hashes), " ")
-				got := CopyMapSB(orig_digests)
+				expected := strings.Join(myutil.sortedmsb(valid_hashes), " ")
+				got := myutil.CopyMapSB(orig_digests)
 				delete(got, "size")
-				gots := strings.Join(sortedmsb(got), " ")
+				gots := strings.Join(myutil.sortedmsb(got), " ")
 				reason := [3]string{
 					"Insufficient data for checksum verification",
 					gots,
 					expected,
 				}
-				WriteMsg(fmt.Sprintf("!!! Fetched file: %s VERIFY FAILED!\n", myfile), -1, nil)
-				WriteMsg(fmt.Sprintf("!!! Reason: %s\n", reason[0]), -1, nil)
-				WriteMsg(fmt.Sprintf("!!! Got:      %s\n!!! Expected: %s\n", reason[1], reason[2]), -1, nil)
+				util.WriteMsg(fmt.Sprintf("!!! Fetched file: %s VERIFY FAILED!\n", myfile), -1, nil)
+				util.WriteMsg(fmt.Sprintf("!!! Reason: %s\n", reason[0]), -1, nil)
+				util.WriteMsg(fmt.Sprintf("!!! Got:      %s\n!!! Expected: %s\n", reason[1], reason[2]), -1, nil)
 
 				if fetchonly != 0 {
 					failed_files[myfile] = true
@@ -1016,7 +1021,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 		has_space_superuser := true
 		var file_lock *LockFileS
 		if listonly != 0 {
-			WriteMsgStdout("\n", -1)
+			util.WriteMsgStdout("\n", -1)
 		} else {
 			var vfs_stat *syscall.Statfs_t
 			if size != nil {
@@ -1024,7 +1029,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 				err := syscall.Statfs(mysettings.ValueDict["DISTDIR"], vfs_stat)
 				if err != nil {
 					//except OSError as e:
-					WriteMsgLevel(fmt.Sprintf("!!! statvfs('%s'): %s\n", mysettings.ValueDict["DISTDIR"], err),
+					util.WriteMsgLevel(fmt.Sprintf("!!! statvfs('%s'): %s\n", mysettings.ValueDict["DISTDIR"], err),
 						-1, 40)
 					//del e
 				}
@@ -1051,7 +1056,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 
 					if !has_space_superuser {
 						has_space = false
-					} else if *secpass < 2 {
+					} else if *data.secpass < 2 {
 						has_space = false
 					} else if userfetch {
 						has_space = false
@@ -1068,7 +1073,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 				file_lock, err = Lockfile(myfile_path, true, false, "", flags)
 				if err != nil {
 					//except TryAgain:
-					WriteMsg(
+					util.WriteMsg(
 						fmt.Sprintf(">>> File '%s' is already locked by "+
 							"another fetcher. Continuing...\n", myfile), -1, nil)
 					continue
@@ -1086,7 +1091,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 				}
 			}()
 			if listonly == 0 {
-				eout := NewEOutput(false)
+				eout := output.NewEOutput(false)
 				eout.quiet = mysettings.ValueDict["PORTAGE_QUIET"] == "1"
 				match, mystat := _check_distfile(
 					myfile_path, pruned_digests, eout, 1, hash_filter)
@@ -1094,8 +1099,8 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 					st, err := os.Stat(myfile_path)
 					if distdir_writable && (err != nil || st.Mode()&os.ModeSymlink == os.ModeSymlink) {
 						//try:
-						apply_secpass_permissions(
-							myfile_path, -1, *portage_gid, 0664, 02, mystat, true)
+						util.apply_secpass_permissions(
+							myfile_path, -1, *data.portage_gid, 0664, 02, mystat, true)
 						//except PortageException as e:
 						//if ! osAccess(myfile_path, unix.R_OK) {
 						//	WriteMsg(
@@ -1121,7 +1126,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 
 				if mystat != nil {
 					if mystat.IsDir() {
-						WriteMsgLevel(
+						util.WriteMsgLevel(
 							fmt.Sprintf(
 								"!!! Unable to fetch file since "+
 									"a directory is in the way: \n"+
@@ -1135,7 +1140,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 						temp_filename := _checksum_failure_temp_file(
 							mysettings, mysettings.ValueDict["DISTDIR"], myfile,
 						)
-						WriteMsgStdout(
+						util.WriteMsgStdout(
 							fmt.Sprintf("Refetching... "+
 								"File renamed to '%s'\n\n", temp_filename), -1)
 					}
@@ -1159,7 +1164,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 						}
 					} else if distdir_writable && size != nil {
 						if mystat.Size() < fetch_resume_size && mystat.Size() < size {
-							WriteMsg(
+							util.WriteMsg(
 								fmt.Sprintf(
 									">>> Renaming distfile with size "+
 										"%d (smaller than "+
@@ -1170,14 +1175,14 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 								mysettings.ValueDict["DISTDIR"],
 								filepath.Base(download_path),
 							)
-							WriteMsgStdout(fmt.Sprintf("Refetching... "+
+							util.WriteMsgStdout(fmt.Sprintf("Refetching... "+
 								"File renamed to '%s'\n\n", temp_filename), -1)
 						} else if mystat.Size() >= size {
 							temp_filename := _checksum_failure_temp_file(
 								mysettings, mysettings.ValueDict["DISTDIR"],
 								filepath.Base(download_path),
 							)
-							WriteMsgStdout(fmt.Sprintf("Refetching... "+
+							util.WriteMsgStdout(fmt.Sprintf("Refetching... "+
 								"File renamed to '%s'\n\n", temp_filename), -1)
 						}
 					}
@@ -1208,32 +1213,32 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 				}
 
 				if !has_space {
-					WriteMsg(
+					util.WriteMsg(
 						fmt.Sprintf("!!! Insufficient space to store %s in %s\n",
 							myfile, mysettings.ValueDict["DISTDIR"]),
 						-1, nil)
 
 					if has_space_superuser {
-						WriteMsg("!!! Insufficient privileges to use "+
+						util.WriteMsg("!!! Insufficient privileges to use "+
 							"remaining space.\n", -1, nil)
 						if userfetch {
-							WriteMsg(`!!! You may set FEATURES="-userfetch"`+
+							util.WriteMsg(`!!! You may set FEATURES="-userfetch"`+
 								" in /etc/portage/make.conf in order to fetch with\n"+
 								"!!! superuser privileges.\n", -1, nil)
 						}
 					}
 				}
 
-				if len(fsmirrors) > 0 && !pathExists(myfile_path) && has_space {
+				if len(fsmirrors) > 0 && !myutil.pathExists(myfile_path) && has_space {
 					for _, mydir := range fsmirrors {
 						mirror_file := get_mirror_url(mydir, myfile, mysettings, "")
-						if err := copyfile(mirror_file, download_path); err != nil {
+						if err := util.copyfile(mirror_file, download_path); err != nil {
 							//except(IOError, OSError) as e:
 							//if e.errno not in(errno.ENOENT, errno.ESTALE):
 							//raise
 							//del e
 						}
-						WriteMsg(fmt.Sprintf("Local mirror has file: %s\n", myfile), 0, nil)
+						util.WriteMsg(fmt.Sprintf("Local mirror has file: %s\n", myfile), 0, nil)
 						break
 					}
 				}
@@ -1248,13 +1253,13 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 					mystat, err = os.Stat(download_path)
 					if err == nil && mystat.Mode()&os.ModeSymlink == os.ModeSymlink {
 
-						if err := apply_secpass_permissions(
+						if err := util.apply_secpass_permissions(
 							download_path, -1,
-							*portage_gid,
+							*data.portage_gid,
 							0664, 02, mystat, true); err != nil {
 							//except PortageException as e:
-							if !osAccess(download_path, unix.R_OK) {
-								WriteMsg(
+							if !myutil.osAccess(download_path, unix.R_OK) {
+								util.WriteMsg(
 									fmt.Sprintf("!!! Failed to adjust permissions:"+
 										" %s\n", err), -1, nil)
 							}
@@ -1278,7 +1283,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 							fetched = 1
 						} else if parallel_fetchonly &&
 							mystat.Size() == mydigests[myfile]["size"] {
-							eout = NewEOutput(false)
+							eout = output.NewEOutput(false)
 							eout.quiet = mysettings.ValueDict["PORTAGE_QUIET"] == "1"
 							eout.ebegin(fmt.Sprintf("%s size ;-)", myfile))
 							eout.eend(0, "")
@@ -1291,11 +1296,11 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 							}
 							verified_ok, r0, r1, r2 := verifyAll(download_path, digests, false, 0)
 							if !verified_ok {
-								WriteMsg(
+								util.WriteMsg(
 									fmt.Sprintf("!!! Previously fetched file: '%s'\n", myfile), -1, nil)
-								WriteMsg(
+								util.WriteMsg(
 									fmt.Sprintf("!!! Reason: %s\n", r0), -1, nil)
-								WriteMsg(
+								util.WriteMsg(
 									fmt.Sprintf("!!! Got:      %s\n!!! Expected: %s\n", r1, r2), -1, nil)
 								if r0 == "Insufficient data for checksum verification" {
 									retb = true
@@ -1308,17 +1313,17 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 										mysettings.ValueDict["DISTDIR"],
 										filepath.Base(download_path),
 									)
-									WriteMsgStdout(
+									util.WriteMsgStdout(
 										fmt.Sprintf("Refetching... File renamed to '%s'\n\n", temp_filename), -1)
 								}
 							} else {
 								if fetch_to_ro == 0 {
-									_movefile(
+									util._movefile(
 										download_path,
 										myfile_path, 0, nil,
 										mysettings, nil)
 								}
-								eout = NewEOutput(false)
+								eout = output.NewEOutput(false)
 								eout.quiet = mysettings.ValueDict["PORTAGE_QUIET"] == "1"
 
 								if len(digests) > 0 {
@@ -1340,7 +1345,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 
 			uri_list := []string{}
 			copy(uri_list, filedict[myfile][:])
-			ReverseSlice(uri_list)
+			myutil.ReverseSlice(uri_list)
 			checksum_failure_count := 0
 			tried_locations := map[string]bool{}
 			for len(uri_list) > 0 {
@@ -1354,15 +1359,15 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 				}
 				tried_locations[loc] = true
 				if listonly != 0 {
-					WriteMsgStdout(loc+" ", -1)
+					util.WriteMsgStdout(loc+" ", -1)
 					continue
 				}
 				protocol := loc[0:strings.Index(loc, "://")]
 
-				global_config_path := GlobalConfigPath
-				if len(EPREFIX) > 0 {
+				global_config_path := _const.GlobalConfigPath
+				if len(_const.EPREFIX) > 0 {
 					global_config_path = filepath.Join(
-						EPREFIX, strings.TrimLeft(GlobalConfigPath, string(filepath.Separator)))
+						_const.EPREFIX, strings.TrimLeft(_const.GlobalConfigPath, string(filepath.Separator)))
 					)
 				}
 
@@ -1373,7 +1378,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 					fetchcommand_var = "FETCHCOMMAND"
 					fetchcommand, ok = mysettings.ValueDict[fetchcommand_var]
 					if !ok {
-						WriteMsgLevel(
+						util.WriteMsgLevel(
 							fmt.Sprintf("!!! %s is unset. It should "+
 								"have been defined in\n!!! %s/make.globals.\n",
 								fetchcommand_var, global_config_path),
@@ -1384,7 +1389,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 					}
 				}
 				if !strings.Contains(fetchcommand, "${FILE}") {
-					WriteMsgLevel(fmt.Sprintf(
+					util.WriteMsgLevel(fmt.Sprintf(
 						"!!! %s does not contain the required ${FILE}"+
 							" parameter.\n", fetchcommand_var), 40, -1)
 					missing_file_param = true
@@ -1396,7 +1401,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 					resumecommand_var = "RESUMECOMMAND"
 					resumecommand, ok = mysettings.ValueDict[resumecommand_var]
 					if !ok {
-						WriteMsgLevel(fmt.Sprintf(
+						util.WriteMsgLevel(fmt.Sprintf(
 							"!!! %s is unset. It should "+
 								"have been defined in\n!!! %s/make.globals.\n",
 							resumecommand_var, global_config_path),
@@ -1407,7 +1412,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 					}
 				}
 				if !strings.Contains(resumecommand, "${FILE}") {
-					WriteMsgLevel(fmt.Sprintf(
+					util.WriteMsgLevel(fmt.Sprintf(
 
 						"!!! %s does not contain the required ${FILE}"+
 							" parameter.\n", resumecommand_var),
@@ -1416,7 +1421,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 				}
 
 				if missing_file_param {
-					WriteMsgLevel(
+					util.WriteMsgLevel(
 						"!!! Refer to the make.conf(5) man page for "+
 							"information about how to\n!!! correctly specify "+
 							"FETCHCOMMAND and RESUMECOMMAND.\n", 40, -1)
@@ -1441,16 +1446,16 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 						}
 
 						if mysize == 0 {
-							WriteMsg(
+							util.WriteMsg(
 								fmt.Sprintf("!!! File %s isn't fetched but unable to get it.\n"), myfile),
 								-1, nil                    )
 						} else if size == nil || size > mysize {
-							WriteMsg(
+							util.WriteMsg(
 								fmt.Sprintf(
 									"!!! File %s isn't fully fetched, but unable to complete it\n",, myfile),
 								-1, nil)
 						} else {
-							WriteMsg(fmt.Sprintf("!!! File %s is incorrect size, "+
+							util.WriteMsg(fmt.Sprintf("!!! File %s is incorrect size, "+
 								"but unable to retry.\n",
 								myfile), -1, nil)
 						}
@@ -1472,7 +1477,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 							fetched = 0
 						} else {
 							if distdir_writable && mystat.Size() < fetch_resume_size {
-								WriteMsg(
+								util.WriteMsg(
 									fmt.Sprintf(
 										">>> Deleting distfile with size "+
 											"%d (smaller than "+
@@ -1491,11 +1496,11 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 					locfetch := fetchcommand
 					command_var := fetchcommand_var
 					if fetched == 1 {
-						WriteMsg(">>> Resuming download...\n", -1, nil)
+						util.WriteMsg(">>> Resuming download...\n", -1, nil)
 						locfetch = resumecommand
 						command_var = resumecommand_var
 					}
-					WriteMsgStdout(fmt.Sprintf(">>> Downloading '%s'\n", _hide_url_passwd(loc)), 0)
+					util.WriteMsgStdout(fmt.Sprintf(">>> Downloading '%s'\n", _hide_url_passwd(loc)), 0)
 					variables :=
 					{
 						"URI": loc, "FILE": filepath.Base(download_path)
@@ -1520,7 +1525,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 						}
 					}
 
-					myfetch1 := varExpand(locfetch, variables, nil)
+					myfetch1 := util.varExpand(locfetch, variables, nil)
 					myfetch, _ := shlex.Split(strings.NewReader(myfetch1), false, true)
 
 					myret := -1
@@ -1530,8 +1535,8 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 
 					//finally:
 					//try:
-					apply_secpass_permissions(
-						download_path, -1, *portage_gid, 0664, 02, nil, true)
+					util.apply_secpass_permissions(
+						download_path, -1, *data.portage_gid, 0664, 02, nil, true)
 					//except FileNotFound:
 					//pass
 					//except PortageException as e:
@@ -1549,14 +1554,14 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 						//except EnvironmentError:
 						//pass
 					} else {
-						if mystat.Size() == 0 || (mystat.Mode()&os.ModeSymlink == os.ModeSymlink && !pathExists(download_path)) {
+						if mystat.Size() == 0 || (mystat.Mode()&os.ModeSymlink == os.ModeSymlink && !myutil.pathExists(download_path)) {
 							syscall.Unlink(download_path)
 							fetched = 0
 							continue
 						}
 					}
 
-					if mydigests != nil && Inmssb(mydigests, myfile) {
+					if mydigests != nil && myutil.Inmssb(mydigests, myfile) {
 						mystat, err := os.Stat(download_path)
 						if err != nil {
 							//except OSError as e:
@@ -1567,12 +1572,12 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 						} else {
 
 							if mystat.IsDir() {
-								WriteMsgLevel(
+								util.WriteMsgLevel(
 									fmt.Sprintf("!!! The command specified in the "+
 										"%s variable appears to have\n!!! "+
 										"created a directory instead of a "+
 										"normal file.\n", command_var), 40, -1)
-								WriteMsgLevel(
+								util.WriteMsgLevel(
 									"!!! Refer to the make.conf(5) "+
 										"man page for information about how "+
 										"to\n!!! correctly specify "+
@@ -1592,7 +1597,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 									if err == nil {
 										if html404.FindString(string(f)) != "" {
 											if err := syscall.Unlink(download_path); err == nil {
-												WriteMsg(">>> Deleting invalid distfile. (Improper 404 redirect from server.)\n",, 0, nil)
+												util.WriteMsg(">>> Deleting invalid distfile. (Improper 404 redirect from server.)\n",, 0, nil)
 
 												fetched = 0
 												continue
@@ -1612,9 +1617,9 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 							}
 							verified_ok, r0, r1, r2 := verifyAll(download_path, digests)
 							if !verified_ok {
-								WriteMsg(fmt.Sprintf("!!! Fetched file: %s VERIFY FAILED!\n", myfile), -1, nil)
-								WriteMsg(fmt.Sprintf("!!! Reason: %s\n", r0), -1, nil)
-								WriteMsg(fmt.Sprintf("!!! Got:      %s\n!!! Expected: %s\n", r1, r2), -1, nil)
+								util.WriteMsg(fmt.Sprintf("!!! Fetched file: %s VERIFY FAILED!\n", myfile), -1, nil)
+								util.WriteMsg(fmt.Sprintf("!!! Reason: %s\n", r0), -1, nil)
+								util.WriteMsg(fmt.Sprintf("!!! Got:      %s\n!!! Expected: %s\n", r1, r2), -1, nil)
 								if r0 == "Insufficient data for checksum verification" {
 									retb = true
 									retv = 0
@@ -1626,7 +1631,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 										mysettings.ValueDict["DISTDIR"],
 										filepath.Base(download_path),
 									)
-									WriteMsgStdout(fmt.Sprintf(
+									util.WriteMsgStdout(fmt.Sprintf(
 										"Refetching... "+
 											"File renamed to '%s'\n\n",
 										temp_filename), -1)
@@ -1636,7 +1641,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 								if checksum_failure_count == checksum_failure_primaryuri {
 									primaryuris := primaryuri_dict[myfile]
 									if len(primaryuris) > 0 {
-										uri_list = append(uri_list, reversed(primaryuris)...)
+										uri_list = append(uri_list, myutil.reversed(primaryuris)...)
 									}
 								}
 								if checksum_failure_count >= checksum_failure_max_tries {
@@ -1644,13 +1649,13 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 								}
 							} else {
 								if fetch_to_ro == 0 {
-									_movefile(download_path, myfile_path, 0, nil, mysettings, nil)
+									util._movefile(download_path, myfile_path, 0, nil, mysettings, nil)
 								}
-								eout := NewEOutput(false)
+								eout := output.NewEOutput(false)
 								eout.quiet = mysettings.ValueDict["PORTAGE_QUIET"] == "1"
 
 								if len(digests) > 0 {
-									eout.ebegin(fmt.Sprintf("%s %s ;-)", myfile, strings.Join(sortedmsb(digests), " ")))
+									eout.ebegin(fmt.Sprintf("%s %s ;-)", myfile, strings.Join(myutil.sortedmsb(digests), " ")))
 									eout.eend(0, "")
 								}
 								fetched = 2
@@ -1660,12 +1665,12 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 					} else {
 						if myret == 0 {
 							if fetch_to_ro == 0 {
-								_movefile(download_path, myfile_path, 0, nil, mysettings, nil)
+								util._movefile(download_path, myfile_path, 0, nil, mysettings, nil)
 								fetched = 2
 								break
 							}
 						} else if mydigests != nil {
-							WriteMsg(
+							util.WriteMsg(
 								"No digest file available and download failed.\n\n",
 								-1, nil)
 						}
@@ -1681,7 +1686,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 		}
 
 		if listonly != 0 {
-			WriteMsgStdout("\n", -1)
+			util.WriteMsgStdout("\n", -1)
 		}
 		if fetched != 2 {
 			if restrict_fetch && !restrict_fetch_msg {
@@ -1694,16 +1699,16 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 						"!!! manually.  See the comments in"+
 						" the ebuild for more information.\n\n",
 					mysettings.ValueDict["CATEGORY"], mysettings.ValueDict["PF"])
-				WriteMsgLevel(msg, 40, -1)
+				util.WriteMsgLevel(msg, 40, -1)
 			} else if restrict_fetch {
 				//pass
 			} else if listonly != 0 {
 				//pass
 			} else if len(filedict[myfile]) == 0 {
-				WriteMsg(
+				util.WriteMsg(
 					fmt.Sprintf("Warning: No mirrors available for file"+" '%s'\n", myfile), -1, nil)
 			} else {
-				WriteMsg(
+				util.WriteMsg(
 					fmt.Sprintf("!!! Couldn't download '%s'. Aborting.\n", myfile), -1, nil)
 			}
 

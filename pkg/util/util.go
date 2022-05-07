@@ -1,10 +1,12 @@
-package atom
+package util
 
 import (
 	"bytes"
-	"debug/elf"
 	"encoding/json"
 	"fmt"
+	"github.com/ppphp/portago/atom"
+	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/myutil"
 	"golang.org/x/sys/unix"
 	"io"
 	"io/ioutil"
@@ -211,11 +213,11 @@ type SB struct {
 }
 
 type AS struct {
-	A *Atom
+	A *atom.Atom
 	S string
 }
 
-func appendRepo(atomList map[*Atom]string, repoName string, rememberSourceFile bool) []AS {
+func appendRepo(atomList map[*atom.Atom]string, repoName string, rememberSourceFile bool) []AS {
 	sb := []AS{}
 	if rememberSourceFile {
 		for atom, source := range atomList {
@@ -241,10 +243,10 @@ func appendRepo(atomList map[*Atom]string, repoName string, rememberSourceFile b
 	return sb
 }
 
-func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[*Atom]string { //1,false,false,false,false
+func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[*atom.Atom]string { //1,false,false,false,false
 	matchedRemovals := map[[2]string]bool{}
 	unmatchedRemovals := map[string][]string{}
-	newList := map[*Atom]string{}
+	newList := map[*atom.Atom]string{}
 	for _, subList := range lists {
 		for _, t := range subList {
 			tokenKey := t
@@ -260,11 +262,11 @@ func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 			}
 			if incremental != 0 {
 				if token == "-*" {
-					newList = map[*Atom]string{}
+					newList = map[*atom.Atom]string{}
 				} else if token[:1] == "-" {
 					matched := false
 					if ignoreRepo && !strings.Contains(token, "::") {
-						toBeRemoved := []*Atom{}
+						toBeRemoved := []*atom.Atom{}
 						tokenSlice := token[1:]
 						for atom := range newList {
 							atomWithoutRepo := atom.value
@@ -301,10 +303,10 @@ func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 						matchedRemovals[tokenKey] = true
 					}
 				} else {
-					newList[&Atom{value: token}] = sourceFile
+					newList[&atom.Atom{value: token}] = sourceFile
 				}
 			} else {
-				newList[&Atom{value: token}] = sourceFile
+				newList[&atom.Atom{value: token}] = sourceFile
 			}
 		}
 	}
@@ -399,14 +401,14 @@ func readCorrespondingEapiFile(filename, defaults string) string { // "0"
 	return eapi
 }
 
-func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, allowWildcard, allowRepo, allowBuildId, allowUse, verifyEapi bool, eapi, eapiDefault string) map[*Atom][]string { //000ffftf none 0
+func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, allowWildcard, allowRepo, allowBuildId, allowUse, verifyEapi bool, eapi, eapiDefault string) map[*atom.Atom][]string { //000ffftf none 0
 	fileList := []string{}
 	if recursive {
 		fileList = RecursiveFileList(myfilename)
 	} else {
 		fileList = []string{myfilename}
 	}
-	atoms := map[*Atom][]string{}
+	atoms := map[*atom.Atom][]string{}
 	var d map[string][]string
 	for _, filename := range fileList {
 		d = grabDict(filename, false, true, false, true, newlines)
@@ -417,7 +419,7 @@ func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, a
 			eapi = readCorrespondingEapiFile(myfilename, eapiDefault)
 		}
 		for k, v := range d {
-			a, err := NewAtom(k, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId)
+			a, err := atom.NewAtom(k, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId)
 			if err != nil {
 				WriteMsg(fmt.Sprintf("--- Invalid Atom in %s: %s\n", filename, err), -1, nil)
 			} else {
@@ -469,7 +471,7 @@ func grabFilePackage(myFileName string, compatLevel int, recursive, allowWildcar
 			pkg = pkg[1:]
 		}
 
-		if _, err := NewAtom(pkg, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId); err != nil {
+		if _, err := atom.NewAtom(pkg, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId); err != nil {
 			WriteMsg(fmt.Sprintf("--- Invalid Atom in %s: %s\n", sourceFile, err), -1, nil)
 		} else {
 			if pkgOrig == pkg {
@@ -508,7 +510,7 @@ func RecursiveFileList(p string) []string {
 			continue
 		}
 		if st.Mode().IsDir() {
-			if VcsDirs[fname] || !recursiveBasenameFilter(fname) {
+			if _const.VcsDirs[fname] || !recursiveBasenameFilter(fname) {
 				continue
 			}
 			children, err := ioutil.ReadDir(fullPath)
@@ -707,7 +709,7 @@ func new_protect_filename(myDest, newMd5 string, force bool) string {
 					return oldPfile
 				}
 			} else {
-				lastPfileMd5 := performMd5Merge(oldPfile, false)
+				lastPfileMd5 := atom.performMd5Merge(oldPfile, false)
 				//except FileNotFound:
 				//pass
 				//else{
@@ -750,10 +752,10 @@ func findUpdatedConfigFiles(targetRoot string, configProtect []string) []sss {
 			}
 			myCommand += " ! -name '.*~' ! -iname '.*.bak' -print0"
 			cmd, _ := shlex.Split(strings.NewReader(myCommand), false, false)
-			if FindBinary(cmd[0]) == "" {
+			if atom.FindBinary(cmd[0]) == "" {
 				return nil
 			}
-			c := exec.Command(FindBinary(cmd[0]), cmd[1:]...)
+			c := exec.Command(atom.FindBinary(cmd[0]), cmd[1:]...)
 			var out, err bytes.Buffer
 			c.Stdout = &out
 			c.Stderr = &err
@@ -1203,7 +1205,7 @@ func apply_secpass_permissions(filename string, uid, gid uint32, mode, mask os.F
 
 	allApplied := true
 
-	if (int(uid) != -1 || int(gid) != -1) && secpass != nil && *secpass < 2 {
+	if (int(uid) != -1 || int(gid) != -1) && atom.secpass != nil && *atom.secpass < 2 {
 		if int(uid) != -1 && uid != statCached.Sys().(*syscall.Stat_t).Uid {
 			allApplied = false
 			uid = -1
@@ -1375,7 +1377,7 @@ func NewProjectFilename(myDest, newMd5 string, force bool) string {
 	return newPFile
 }
 
-func readConfigs(parser configparser.ConfigParser, paths []string) error {
+func ReadConfigs(parser configparser.ConfigParser, paths []string) error {
 	for _, p := range paths {
 		f, err := os.Open(p)
 		if err != nil {
@@ -1471,21 +1473,21 @@ type preservedLibsRegistry struct {
 		cpv, counter string
 		paths        []string
 	}
-	_lock *LockFileS
+	_lock *atom.LockFileS
 }
 
 func (p *preservedLibsRegistry) lock() {
 	if p._lock != nil {
 		//raise AssertionError("already locked")
 	}
-	p._lock, _ = Lockfile(p._filename, false, false, "", 0)
+	p._lock, _ = atom.Lockfile(p._filename, false, false, "", 0)
 }
 
 func (p *preservedLibsRegistry) unlock() {
 	if p._lock == nil {
 		//raise AssertionError("not locked")
 	}
-	Unlockfile(p._lock)
+	atom.Unlockfile(p._lock)
 	p._lock = nil
 }
 
@@ -1573,7 +1575,7 @@ func (p *preservedLibsRegistry) _normalize_counter(counter string) string {
 
 func (p *preservedLibsRegistry) register(cpv, slot, counter string, paths []string) {
 
-	cp := cpvGetKey(cpv, "")
+	cp := atom.cpvGetKey(cpv, "")
 	cps := cp + ":" + slot
 	counter = p._normalize_counter(counter)
 	if _, ok := p._data[cps]; len(paths) == 0 && ok && p._data[cps].cpv == cpv && p._normalize_counter(p._data[cps].counter) == counter {
@@ -1618,7 +1620,7 @@ func (p *preservedLibsRegistry) pruneNonExisting() {
 		}
 
 		for f, target := range symlinks {
-			if hardlinks[absSymlink(f, target)] {
+			if hardlinks[atom.absSymlink(f, target)] {
 				paths = append(paths, f)
 			}
 		}
@@ -1669,7 +1671,7 @@ type linkageMapELF struct {
 	_soname_map_class struct {
 		consumers, providers []string
 	}
-	_dbapi                                                            *vardbapi
+	_dbapi                                                            *atom.vardbapi
 	_root                                                             string
 	_libs map[string][] string
 	_obj_properties map[string]*_obj_properties_class
@@ -1684,7 +1686,7 @@ type _obj_properties_class struct{
 	alt_paths map[string]bool
 }
 
-func New_obj_properties_class(arch string, needed, runpaths []string, soname string, alt_paths map[string]bool, owner string)*_obj_properties_class{
+func New_obj_properties_class(arch string, needed, runpaths []string, soname string, alt_paths map[string]bool, owner string)*_obj_properties_class {
 	o := &_obj_properties_class{}
 	o.arch = arch
 	o.needed = needed
@@ -1703,7 +1705,7 @@ func (o*linkageMapELF) _clear_cache() {
 	o._path_key_cache= map[string]*_ObjectKey{}
 }
 
-func (o*linkageMapELF) _path_key( path string)  *_ObjectKey{
+func (o*linkageMapELF) _path_key( path string)  *_ObjectKey {
 	key := o._path_key_cache[path]
 	if key == nil {
 		key = New_ObjectKey(path, o._root)
@@ -1764,10 +1766,10 @@ type _LibGraphNode struct{
 }
 
 func( l*_LibGraphNode) __str__() string {
-	return str(sortedmsb(l.alt_paths))
+	return str(atom.sortedmsb(l.alt_paths))
 }
 
-func New_LibGraphNode( key *_ObjectKey) *_LibGraphNode{
+func New_LibGraphNode( key *_ObjectKey) *_LibGraphNode {
 	l := &_LibGraphNode{}
 	l._key = key._key
 	l.alt_paths = map[string]bool{}
@@ -1775,7 +1777,7 @@ func New_LibGraphNode( key *_ObjectKey) *_LibGraphNode{
 }
 
 // nil, "", nil
-func (o*linkageMapELF) rebuild(exclude_pkgs []*PkgStr, include_file string, preserve_paths map[string]bool) {
+func (o*linkageMapELF) rebuild(exclude_pkgs []*atom.PkgStr, include_file string, preserve_paths map[string]bool) {
 
 	root := o._root
 	root_len := len(root) - 1
@@ -1788,21 +1790,21 @@ func (o*linkageMapELF) rebuild(exclude_pkgs []*PkgStr, include_file string, pres
 	obj_properties := o._obj_properties
 
 	lines := []*struct {
-		p      *PkgStr;
+		p      *atom.PkgStr;
 		s1, s2 string
 	}{}
 
 	if include_file != "" {
 		for _, line := range grabFile(include_file, 0, false, false) {
 			lines = append(lines, &struct {
-				p      *PkgStr;
+				p      *atom.PkgStr;
 				s1, s2 string
 			}{nil, include_file, line[0]})
 		}
 	}
 
 	aux_keys := map[string]bool{o._needed_aux_key: true}
-	can_lock := osAccess(filepath.Dir(o._dbapi._dbroot), unix.W_OK)
+	can_lock := atom.osAccess(filepath.Dir(o._dbapi._dbroot), unix.W_OK)
 	if can_lock {
 		o._dbapi.lock()
 	}
@@ -1821,7 +1823,7 @@ func (o*linkageMapELF) rebuild(exclude_pkgs []*PkgStr, include_file string, pres
 		needed_file := o._dbapi.getpath(cpv.string, o._needed_aux_key)
 		for _, line := range strings.Split(o._dbapi.aux_get(cpv.string, aux_keys, "")[0], "\n") {
 			lines = append(lines, &struct {
-				p      *PkgStr;
+				p      *atom.PkgStr;
 				s1, s2 string
 			}{cpv, needed_file, line})
 		}
@@ -1831,7 +1833,7 @@ func (o*linkageMapELF) rebuild(exclude_pkgs []*PkgStr, include_file string, pres
 		o._dbapi.unlock()
 	}
 
-	plibs := map[string]*PkgStr{}
+	plibs := map[string]*atom.PkgStr{}
 	if preserve_paths != nil{
 		for x := range preserve_paths {
 			plibs[x] = nil
@@ -1856,7 +1858,7 @@ func (o*linkageMapELF) rebuild(exclude_pkgs []*PkgStr, include_file string, pres
 		}
 	}
 	if len(plibs) > 0 {
-		ep := EPREFIX
+		ep := _const.EPREFIX
 		if ep == "" {
 			ep = "/"
 		}
@@ -1905,7 +1907,7 @@ func (o*linkageMapELF) rebuild(exclude_pkgs []*PkgStr, include_file string, pres
 					}
 					continue
 				}
-				elf_header := ReadELFHeader(f)
+				elf_header := atom.ReadELFHeader(f)
 
 				if entry.soname == "" {
 					cmd := exec.Command("file", entry.filename)
@@ -1921,18 +1923,18 @@ func (o*linkageMapELF) rebuild(exclude_pkgs []*PkgStr, include_file string, pres
 					}
 				}
 
-				entry.multilib_category = compute_multilib_category(elf_header)
+				entry.multilib_category = atom.compute_multilib_category(elf_header)
 				entry.filename = entry.filename[root_len:]
 				owner := plibs[entry.filename]
 				delete(plibs, entry.filename)
-				lines=append(lines, &struct {p*PkgStr;s1, s2 string}{owner, "scanelf", entry.__str__()})
+				lines=append(lines, &struct {p *atom.PkgStr;s1, s2 string}{owner, "scanelf", entry.__str__()})
 			}
 		}
 	}
 
 	if len(plibs) > 0 {
 		for x, cpv := range plibs {
-			lines=append(lines, &struct {p*PkgStr;s1, s2 string}{cpv, "plibs", strings.Join([]string{"", x, "", "", ""},";")})
+			lines=append(lines, &struct {p *atom.PkgStr;s1, s2 string}{cpv, "plibs", strings.Join([]string{"", x, "", "", ""},";")})
 		}
 	}
 
@@ -1995,7 +1997,7 @@ func (o*linkageMapELF) rebuild(exclude_pkgs []*PkgStr, include_file string, pres
 		}
 		for _, entry := range entries {
 			if entry.soname != "" {
-				providers[NewSonameAtom(entry.multilib_category, entry.soname)] = entry
+				providers[atom.NewSonameAtom(entry.multilib_category, entry.soname)] = entry
 			}
 		}
 
@@ -2093,7 +2095,7 @@ type _LibraryCache struct {
 	cache map[]
 }
 
-func NewLibraryCache(o *linkageMapELF) *_LibraryCache{
+func NewLibraryCache(o *linkageMapELF) *_LibraryCache {
 	l := &_LibraryCache{}
 	l.o = o
 	l.cache =
@@ -2190,7 +2192,7 @@ func (o*linkageMapELF) listBrokenBinaries( debug bool) {
 			libraries {
 				rValue.setdefault(lib, set()).add(soname)
 				if debug {
-					if not pathIsFile(lib) {
+					if not atom.pathIsFile(lib) {
 						WriteMsgLevel(fmt.Sprintf("Missing library:"+" %s\n", lib, ), 20, -1)
 					}else {
 						WriteMsgLevel(fmt.Sprintf("Possibly missing symlink:"+
@@ -2491,7 +2493,7 @@ None{
 	return rValue
 }
 
-func NewLinkageMapELF(vardbapi *vardbapi) *linkageMapELF {
+func NewLinkageMapELF(vardbapi *atom.vardbapi) *linkageMapELF {
 	l := &linkageMapELF{}
 	l._dbapi = vardbapi
 	l._root = l._dbapi.settings.ValueDict["ROOT"]
@@ -3043,9 +3045,9 @@ func httpToTimestamp(httpDatetimeString string) string {
 }
 
 // 0, nil, nil, nil
-func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *Config, hardlink_candidates []string) int64 {
+func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *atom.Config, hardlink_candidates []string) int64 {
 	if mysettings == nil {
-		mysettings = Settings()
+		mysettings = atom.Settings()
 	}
 
 	xattr_enabled := mysettings.Features.Features["xattr"]
@@ -3249,7 +3251,7 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 				return 0
 			}
 		} else {
-			a, _ := spawn([]string{MoveBinary, "-f", src, dest}, ExpandEnv(), "", nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
+			a, _ := atom.spawn([]string{_const.MoveBinary, "-f", src, dest}, ExpandEnv(), "", nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
 			if len(a) != 0 && a[0] != syscall.F_OK {
 				WriteMsg(fmt.Sprintf("!!! Failed to move special file:\n"), -1, nil)
 				WriteMsg(fmt.Sprintf("!!! '%s' to '%s'\n", src, dest), -1, nil)
@@ -3479,9 +3481,9 @@ func cacheddir(myOriginalPath string, ignoreCvs bool, ignoreList []string, Empty
 		for i, filePath := range fpaths {
 			fileType := ftype[i]
 
-			if Ins(ignoreList, filePath.Name()) {
+			if myutil.Ins(ignoreList, filePath.Name()) {
 			} else if ignoreCvs {
-				if filePath.Name()[:2] != ".#" && !(fileType == 1 && VcsDirs[filePath.Name()]) {
+				if filePath.Name()[:2] != ".#" && !(fileType == 1 && _const.VcsDirs[filePath.Name()]) {
 					retList = append(retList, filePath.Name())
 					retFtype = append(retFtype, fileType)
 				}
@@ -3632,7 +3634,7 @@ func (m *MtimeDB) _load(filename string) {
 	for k, v := range d {
 		m.dict[k] = v
 	}
-	d = CopyMap(m._clean_data)
+	d = myutil.CopyMap(m._clean_data)
 }
 
 func (m *MtimeDB) Commit() {
@@ -3644,7 +3646,7 @@ func (m *MtimeDB) Commit() {
 		d[k] = v
 	}
 	if !reflect.DeepEqual(d, m._clean_data) {
-		d["version"] = fmt.Sprint(VERSION)
+		d["version"] = fmt.Sprint(atom.VERSION)
 		//try:
 		f := NewAtomic_ofstream(m.filename, os.O_CREATE|os.O_RDWR|os.O_TRUNC, true)
 		//except
@@ -3657,8 +3659,8 @@ func (m *MtimeDB) Commit() {
 		}
 		f.Close()
 		apply_secpass_permissions(m.filename,
-			uint32(uid), *portage_gid, 0o644, -1, nil, true)
-		m._clean_data = CopyMap(d)
+			uint32(atom.uid), *atom.portage_gid, 0o644, -1, nil, true)
+		m._clean_data = myutil.CopyMap(d)
 	}
 }
 func NewMtimeDB(filename string) *MtimeDB {
@@ -3785,7 +3787,7 @@ func NewInstallMask( install_mask string)*InstallMask {
 	return i
 }
 
-func(i*InstallMask) _iter_relevant_patterns( path string) []*_pattern{
+func(i*InstallMask) _iter_relevant_patterns( path string) []*_pattern {
 	current_dir := i._anchored
 	components := []string{}
 	for _, v := range strings.Split(path, "/"){
@@ -3900,9 +3902,9 @@ func install_mask_dir(base_dir string, install_mask *InstallMask, onerror func(e
 
 // 1, "", nil, nil, nil, nil, nil
 func env_update(makelinks int, target_root string, prev_mtimes=None, contents map[string][]string,
-env *Config, writemsg_level func(string, int, int), vardbapi *vardbapi) {
+env *atom.Config, writemsg_level func(string, int, int), vardbapi *atom.vardbapi) {
 	if vardbapi == nil {
-		vardbapi = NewVarTree(nil, env).dbapi
+		vardbapi = atom.NewVarTree(nil, env).dbapi
 	}
 
 	vardbapi._fs_lock()
@@ -3911,20 +3913,20 @@ env *Config, writemsg_level func(string, int, int), vardbapi *vardbapi) {
 		env, writemsg_level)
 }
 
-func _env_update(makelinks int, target_root string, prev_mtimes map[string]int, contents map[string][]string, envC *Config,
+func _env_update(makelinks int, target_root string, prev_mtimes map[string]int, contents map[string][]string, envC *atom.Config,
 writemsg_level func(string, int, int)) {
 	if writemsg_level == nil {
 		writemsg_level = WriteMsgLevel
 	}
 	if target_root == "" {
-		target_root = Settings().ValueDict["ROOT"]
+		target_root = atom.Settings().ValueDict["ROOT"]
 	}
 	if prev_mtimes == nil {
 		prev_mtimes = portage.mtimedb["ldpath"]
 	}
-	var settings *Config
+	var settings *atom.Config
 	if envC == nil {
-		settings = Settings()
+		settings = atom.Settings()
 	} else {
 		settings = envC
 	}
@@ -3975,13 +3977,13 @@ writemsg_level func(string, int, int)) {
 		}
 
 		config_list = append(config_list, myconfig)
-		if Inmss(myconfig, "SPACE_SEPARATED") {
+		if myutil.Inmss(myconfig, "SPACE_SEPARATED") {
 			for _, v := range strings.Fields(myconfig["SPACE_SEPARATED"]) {
 				space_separated[v] = true
 			}
 			delete(myconfig, "SPACE_SEPARATED")
 		}
-		if Inmss(myconfig, "COLON_SEPARATED") {
+		if myutil.Inmss(myconfig, "COLON_SEPARATED") {
 			for _, v := range strings.Fields(myconfig["COLON_SEPARATED"]) {
 				colon_separated[v] = true
 			}
@@ -3994,9 +3996,9 @@ writemsg_level func(string, int, int)) {
 	for v := range space_separated {
 		mylist := []string{}
 		for _, myconfig := range config_list {
-			if Inmss(myconfig, v) {
+			if myutil.Inmss(myconfig, v) {
 				for _, item := range strings.Fields(myconfig[v]) {
-					if item != "" && !Ins(mylist, item) {
+					if item != "" && !myutil.Ins(mylist, item) {
 						mylist = append(mylist, item)
 					}
 				}
@@ -4014,9 +4016,9 @@ writemsg_level func(string, int, int)) {
 	for v := range colon_separated {
 		mylist := []string{}
 		for _, myconfig := range config_list {
-			if Inmss(myconfig, v) {
+			if myutil.Inmss(myconfig, v) {
 				for _, item := range strings.Fields(myconfig[v]) {
-					if item != "" && !Ins(mylist, item) {
+					if item != "" && !myutil.Ins(mylist, item) {
 						mylist = append(mylist, item)
 					}
 				}
@@ -4085,14 +4087,14 @@ writemsg_level func(string, int, int)) {
 		}
 	}
 
-	if prelinkCapable {
+	if atom.prelinkCapable {
 		prelink_d := filepath.Join(eroot, "etc", "prelink.conf.d")
 		ensureDirs(prelink_d, -1, -1, -1, -1, nil, true)
 		newprelink := NewAtomic_ofstream(filepath.Join(prelink_d, "portage.conf"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, true)
 		newprelink.Write([]byte("# prelink.conf autogenerated by env-update; make all changes to\n"))
 		newprelink.Write([]byte("# contents of /etc/env.d directory\n"))
 
-		for _, x := range append(sortedmsb(potential_lib_dirs), "bin", "sbin") {
+		for _, x := range append(atom.sortedmsb(potential_lib_dirs), "bin", "sbin") {
 			newprelink.Write([]byte(fmt.Sprintf("-l /%s\n", x, )))
 		}
 		prelink_paths := map[string]bool{}
@@ -4211,24 +4213,24 @@ writemsg_level func(string, int, int)) {
 	}
 
 	ldconfig := ""
-	if Inmss(settings.ValueDict, "CHOST") && Inmss(settings.ValueDict, "CBUILD") && settings["CHOST"] != settings["CBUILD"] {
-		ldconfig = FindBinary(fmt.Sprintf("%s-ldconfig", settings.ValueDict["CHOST"]))
+	if myutil.Inmss(settings.ValueDict, "CHOST") && myutil.Inmss(settings.ValueDict, "CBUILD") && settings["CHOST"] != settings["CBUILD"] {
+		ldconfig = atom.FindBinary(fmt.Sprintf("%s-ldconfig", settings.ValueDict["CHOST"]))
 	} else {
 		ldconfig = filepath.Join(eroot, "sbin", "ldconfig")
 	}
 
 	if ldconfig == "" {
 		//pass
-	} else if !(osAccess(ldconfig, unix.X_OK) && pathIsFile(ldconfig)) {
+	} else if !(atom.osAccess(ldconfig, unix.X_OK) && atom.pathIsFile(ldconfig)) {
 		ldconfig = ""
 	}
 
 	if makelinks != 0 && ldconfig != "" {
-		if ostype == "Linux" || strings.HasSuffix(strings.ToLower(ostype), "gnu") {
+		if atom.ostype == "Linux" || strings.HasSuffix(strings.ToLower(atom.ostype), "gnu") {
 			writemsg_level(fmt.Sprintf(">>> Regenerating %setc/ld.so.cache...\n",
 				target_root, ), 0, 0)
 			exec.Command("sh", "-c", fmt.Sprintf("cd / ; %s -X -r '%s'", ldconfig, target_root))
-		} else if ostype == "FreeBSD" || ostype == "DragonFly" {
+		} else if atom.ostype == "FreeBSD" || atom.ostype == "DragonFly" {
 			writemsg_level(fmt.Sprintf(">>> Regenerating %svar/run/ld-elf.so.hints...\n",
 				target_root), 0, 0)
 			exec.Command("sh", "-c", fmt.Sprintf("cd / ; %s -elf -i "+
@@ -4306,7 +4308,7 @@ func ExtractKernelVersion(base_dir string) (string,error) {
 		}
 	}
 
-	localversions, _ := listDir(base_dir)
+	localversions, _ := atom.listDir(base_dir)
 	for x := len(localversions) - 1; x >= 0; x-- {
 		if localversions[x][:12] != "localversion" {
 			lvs := []string{}
@@ -4329,7 +4331,7 @@ func ExtractKernelVersion(base_dir string) (string,error) {
 		version += strings.Join(strings.Fields(strings.Join(fs, " ")), "")
 	}
 
-	loader := NewKeyValuePairFileLoader(filepath.Join(base_dir, ".config"), nil, nil)
+	loader := atom.NewKeyValuePairFileLoader(filepath.Join(base_dir, ".config"), nil, nil)
 	kernelconfig, loader_errors := loader.load()
 	if len(loader_errors) > 0 {
 		for file_path, file_errors := range loader_errors {
@@ -4339,100 +4341,10 @@ func ExtractKernelVersion(base_dir string) (string,error) {
 		}
 	}
 
-	if len(kernelconfig) > 0 && Inmsss(kernelconfig, "CONFIG_LOCALVERSION") {
+	if len(kernelconfig) > 0 && myutil.Inmsss(kernelconfig, "CONFIG_LOCALVERSION") {
 		ss, _ := shlex.Split(strings.NewReader(kernelconfig["CONFIG_LOCALVERSION"][0]), false, true)
 		version += strings.Join(ss, "")
 	}
 
 	return version, nil
-}
-
-func get_ro_checker() func(map[string]bool)map[string]bool {
-	if v, ok := _CHECKERS[ostype]; ok {
-		return v
-	} else {
-		return empty_ro_checker
-	}
-}
-
-func linux_ro_checker(dir_list map[string]bool) map[string]bool {
-	ro_filesystems := map[string]bool{}
-	invalids := []string{}
-
-	f, err := ioutil.ReadFile("/proc/self/mountinfo")
-	if err != nil {
-		//except EnvironmentError:
-		WriteMsgLevel("!!! /proc/self/mountinfo cannot be read", 30, -1)
-		return map[string]bool{}
-	}
-
-	for _, line := range strings.Split(string(f), "\n") {
-		mount := strings.SplitN(line, " - ", 2)
-		v := strings.Fields(mount[0])
-		if len(v) < 6 {
-			//except ValueError:
-			invalids = append(invalids, line)
-			continue
-		}
-		_dir, attr1 := v[4], v[5]
-		attr2 := ""
-		if len(mount) > 1 {
-			v := strings.Fields(mount[1])
-			if len(v) < 2 {
-				invalids = append(invalids, line)
-				continue
-			} else if len(v) == 2 {
-				attr2 = v[1]
-			} else {
-				attr2 = v[1]
-			}
-		} else {
-			invalids = append(invalids, line)
-			continue
-		}
-		if strings.HasPrefix(attr1, "ro") || strings.HasPrefix(attr2, "ro") {
-			ro_filesystems[_dir] = true
-		}
-	}
-
-	for _, line := range invalids {
-		WriteMsgLevel(fmt.Sprintf("!!! /proc/self/mountinfo contains unrecognized line: %s\n",
-			strings.TrimRight(line, "\n")), 30, -1)
-	}
-
-	ro_devs := map[uint64]string{}
-	for x := range ro_filesystems {
-		st, err := os.Stat(x)
-		if err != nil {
-			//except OSError:
-			//pass
-		} else {
-			ro_devs[st.Sys().(*syscall.Stat_t).Dev] = x
-		}
-	}
-
-	ro_filesystems = map[string]bool{}
-	for x := range dir_list {
-
-		st, err := os.Stat(x)
-		if err != nil {
-			//except OSError:
-			//pass
-		} else {
-			dev := st.Sys().(*syscall.Stat_t).Dev
-			ro_filesystems[ro_devs[dev]] = true
-		}
-	}
-
-	return ro_filesystems
-}
-
-
-func empty_ro_checker(dir_list map[string]bool)map[string]bool {
-	return map[string]bool{}
-}
-
-
-var _CHECKERS = map[string]func(map[string]bool)map[string]bool{
-	"linux": linux_ro_checker,
 }

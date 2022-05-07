@@ -2,6 +2,11 @@ package atom
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/data"
+	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/util"
 	"io"
 	"io/ioutil"
 	"log/syslog"
@@ -93,7 +98,7 @@ func _merge_logentries(a, b map[string][]struct {
 
 func _combine_logentries(logentries map[string][]struct {s  string;ss []string} ) string {
 	rValue := []string{}
-	for phase := range EBUILD_PHASES {
+	for phase := range _const.EBUILD_PHASES {
 		if _, ok := logentries[phase]; !ok {
 			continue
 		}
@@ -168,7 +173,7 @@ func elog_process(cpv string, mysettings *Config, phasefilter []string) {
 		s  string
 		ss []string
 	}{}
-	if Inmss(mysettings.ValueDict, "T") {
+	if myutil.Inmss(mysettings.ValueDict, "T") {
 		ebuild_logentries = collect_ebuild_messages(filepath.Join(mysettings.ValueDict["T"], "logging"))
 	}
 	all_logentries := collect_messages(cpv, phasefilter)
@@ -260,18 +265,18 @@ func elog_process(cpv string, mysettings *Config, phasefilter []string) {
 			except(ImportError, AttributeError)
 			as
 		e:
-			WriteMsg(_("!!! Error while importing logging modules "
+			util.WriteMsg(_("!!! Error while importing logging modules "
 			"while loading \"mod_%s\":\n") % str(s))
-			WriteMsg("%s\n"%str(e), noiselevel = -1)
+			util.WriteMsg("%s\n"%str(e), noiselevel = -1)
 			except
 		AlarmSignal:
-			WriteMsg("Timeout in elog_process for system '%s'\n"%s,
+			util.WriteMsg("Timeout in elog_process for system '%s'\n"%s,
 				noiselevel = -1)
 			except
 			PortageException
 			as
 		e:
-			WriteMsg("%s\n"%str(e), noiselevel = -1)
+			util.WriteMsg("%s\n"%str(e), noiselevel = -1)
 		}
 	}
 }
@@ -285,7 +290,7 @@ var _log_levels = map[string]bool{
 }
 
 func collect_ebuild_messages(path string)map[string][]struct{s string; ss []string} {
-	mylogfiles, err := listDir(path)
+	mylogfiles, err := myutil.listDir(path)
 	if err != nil {
 		//except OSError:
 		//pass
@@ -296,15 +301,15 @@ func collect_ebuild_messages(path string)map[string][]struct{s string; ss []stri
 			ss []string
 		}{}
 	}
-	ReverseSlice(mylogfiles)
+	myutil.ReverseSlice(mylogfiles)
 	logentries := map[string][]struct {
 		s  string;
 		ss []string
 	}{}
 	for _, msgfunction := range mylogfiles {
 		filename := filepath.Join(path, msgfunction)
-		if !EBUILD_PHASES[msgfunction] {
-			WriteMsg(fmt.Sprintf("!!! can't process invalid log file: %s\n", filename),
+		if !_const.EBUILD_PHASES[msgfunction] {
+			util.WriteMsg(fmt.Sprintf("!!! can't process invalid log file: %s\n", filename),
 				-1, nil)
 			continue
 		}
@@ -323,7 +328,7 @@ func collect_ebuild_messages(path string)map[string][]struct{s string; ss []stri
 			}
 			msgtype, msg := strings.SplitN(l, " ", 1)[0], strings.SplitN(l, " ", 1)[1]
 			if !_log_levels[msgtype] {
-				WriteMsg(fmt.Sprintf("!!! malformed entry in "+
+				util.WriteMsg(fmt.Sprintf("!!! malformed entry in "+
 					"log file: '%s': %s\n", filename, l), -1, nil)
 				continue
 			}
@@ -373,7 +378,7 @@ func _elog_base(level, msg, phase, key, color string, out io.Writer) {
 		color = "GOOD"
 	}
 
-	formatted_msg := colorize(color, " * ") + msg + "\n"
+	formatted_msg := output.colorize(color, " * ") + msg + "\n"
 
 	out.Write([]byte(formatted_msg))
 
@@ -470,7 +475,7 @@ func custom_process(mysettings *Config, key string, logentries map[string][]stru
 var _echo_items = []*struct{s1,s2 string; ss map[string][]struct {s  string;ss []string}; s3 string}
 func echo_process(mysettings *Config, key string, logentries map[string][]struct {s  string;ss []string}, fulltext string) {
 	logfile := ""
-	if key == mysettings.mycpv.string && Inmss(mysettings.ValueDict,"PORTAGE_LOGDIR") && Inmss(mysettings.ValueDict,"PORTAGE_LOG_FILE") {
+	if key == mysettings.mycpv.string && myutil.Inmss(mysettings.ValueDict,"PORTAGE_LOGDIR") && myutil.Inmss(mysettings.ValueDict,"PORTAGE_LOG_FILE") {
 		logfile = mysettings.ValueDict["PORTAGE_LOG_FILE"]
 	}
 	_echo_items=append(_echo_items,&struct{s1,s2 string; ss map[string][]struct {s  string;ss []string}; s3 string}{mysettings.ValueDict["ROOT"], key, logentries, logfile})
@@ -486,22 +491,22 @@ func echo_finalize() {
 }
 
 func _echo_finalize() {
-	printer := NewEOutput(false)
+	printer := output.NewEOutput(false)
 	for _, v := range _echo_items{
 		root, key, logentries, logfile := v.s1, v.s2, v.ss, v.s3
 		print()
 		if root == "/" {
 			printer.einfo(fmt.Sprintf("Messages for package %s:",
-				colorize("INFORM", key))
+				output.colorize("INFORM", key))
 		}else {
 			printer.einfo(fmt.Sprintf("Messages for package %s merged to %s:",
-				colorize("INFORM", key),  root))
+				output.colorize("INFORM", key),  root))
 		}
 		if logfile !="" {
-			printer.einfo(fmt.Sprintf("Log file: %s", colorize("INFORM", logfile)))
+			printer.einfo(fmt.Sprintf("Log file: %s", output.colorize("INFORM", logfile)))
 		}
 		print()
-		for phase:= range EBUILD_PHASES{
+		for phase:= range _const.EBUILD_PHASES {
 			if _, ok := logentries[phase];!ok {
 				continue
 			}
@@ -528,7 +533,7 @@ func _echo_finalize() {
 
 func mail_process(mysettings *Config, key string, logentries map[string][]struct {s  string;ss []string}, fulltext string) {
 	myrecipient := "root@localhost"
-	if Inmss(mysettings.ValueDict, "PORTAGE_ELOG_MAILURI") {
+	if myutil.Inmss(mysettings.ValueDict, "PORTAGE_ELOG_MAILURI") {
 		myrecipient = strings.Fields(mysettings.ValueDict["PORTAGE_ELOG_MAILURI"])[0]
 	}
 	myfrom := mysettings.ValueDict["PORTAGE_ELOG_MAILFROM"]
@@ -557,7 +562,7 @@ func mail_process(mysettings *Config, key string, logentries map[string][]struct
 try:
 	portage.mail.send_mail(mysettings, mymessage)
 	except PortageException as e:
-	WriteMsg("%s\n"%str(e), noiselevel = -1)
+	util.WriteMsg("%s\n"%str(e), noiselevel = -1)
 
 	return
 }
@@ -604,7 +609,7 @@ func _mail_summary_finalize(mysettings , items map[string]string) {
 		count = "multiple packages"
 	}
 	myrecipient := "root@localhost"
-	if Inmss(mysettings, "PORTAGE_ELOG_MAILURI") {
+	if myutil.Inmss(mysettings, "PORTAGE_ELOG_MAILURI") {
 		myrecipient = strings.Fields(mysettings["PORTAGE_ELOG_MAILURI"])[0]
 	}
 	myfrom := mysettings["PORTAGE_ELOG_MAILFROM"]
@@ -630,13 +635,13 @@ finally:
 	AlarmSignal.unregister()
 	except
 AlarmSignal:
-	WriteMsg("Timeout in finalize() for elog system 'mail_summary'\n",
+	util.WriteMsg("Timeout in finalize() for elog system 'mail_summary'\n",
 		noiselevel = -1)
 	except
 	PortageException
 	as
 e:
-	WriteMsg("%s\n" % (e, ), noiselevel = -1)
+	util.WriteMsg("%s\n" % (e, ), noiselevel = -1)
 
 	return
 }
@@ -647,18 +652,18 @@ e:
 func save_process(mysettings *Config, key string, logentries map[string][]struct {s  string;ss []string}, fulltext string) {
 	logdir := ""
 	if mysettings.ValueDict["PORTAGE_LOGDIR"]!= "" {
-		logdir = NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])
+		logdir = util.NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])
 	}else {
 		logdir = filepath.Join(string(os.PathSeparator), strings.TrimLeft(mysettings.ValueDict["EPREFIX"], string(os.PathSeparator)),
 			"var", "log", "portage")
 	}
 
-	if ! pathIsDir(logdir) {
+	if ! myutil.pathIsDir(logdir) {
 		uid := -1
-		if *secpass >= 2 {
-			uid = *portage_uid
+		if *data.secpass >= 2 {
+			uid = *data.portage_uid
 		}
-		ensureDirs(logdir, uint32(uid), *portage_gid, 02770, -1,nil,true)
+		util.ensureDirs(logdir, uint32(uid), *data.portage_gid, 02770, -1,nil,true)
 	}
 
 	cat, pf := catsplit(key)[0], catsplit(key)[1]
@@ -709,7 +714,7 @@ e:
 	logfile_uid = -1
 	if portage.data.secpass >= 2:
 	logfile_uid = elogdir_st.st_uid
-	applyPermissions(elogfilename, logfile_uid, elogdir_gid,
+	util.applyPermissions(elogfilename, logfile_uid, elogdir_gid,
 		elogdir_grp_mode, 0, nil, nil)
 
 	return elogfilename
@@ -722,18 +727,18 @@ e:
 func save_summary_process(mysettings *Config, key string, logentries map[string][]struct {s  string;ss []string}, fulltext string) {
 	logdir := ""
 	if mysettings.ValueDict["PORTAGE_LOGDIR"] != "" {
-		logdir = NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])
+		logdir = util.NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])
 	}else {
 		logdir = filepath.Join(string(os.PathSeparator), strings.TrimLeft(mysettings.ValueDict["EPREFIX"], string(os.PathSeparator)),
 			"var", "log", "portage")
 	}
 
-	if ! pathIsDir(logdir) {
+	if ! myutil.pathIsDir(logdir) {
 		logdir_uid := -1
-		if *secpass >= 2 {
-			logdir_uid = *portage_uid
+		if *data.secpass >= 2 {
+			logdir_uid = *data.portage_uid
 		}
-		ensureDirs(logdir, uint32(logdir_uid), *portage_gid, 02770, -1, nil, false)
+		util.ensureDirs(logdir, uint32(logdir_uid), *data.portage_gid, 02770, -1, nil, false)
 	}
 	elogdir := filepath.Join(logdir, "elog")
 	_ensure_log_subdirs(logdir, elogdir)
@@ -770,7 +775,7 @@ e:
 	logfile_uid = -1
 	if portage.data.secpass >= 2:
 	logfile_uid = elogdir_st.st_uid
-	apply_permissions(elogfilename, uid = logfile_uid, gid = elogdir_gid,
+	apply_permissions(elogfilename, data.uid = logfile_uid, gid = elogdir_gid,
 		mode = elogdir_grp_mode, mask=0)
 
 	time_fmt = "%Y-%m-%d %H:%M:%S %Z"
@@ -802,7 +807,7 @@ var _pri = map[string]syslog.Priority{
 
 func syslog_process(mysettings *Config, key string, logentries map[string][]struct {s  string;ss []string}, fulltext string) {
 	w, _ := syslog.New(syslog.LOG_ERR|syslog.LOG_WARNING|syslog.LOG_INFO|syslog.LOG_NOTICE| syslog.LOG_LOCAL5,"portage")
-	for phase := range  EBUILD_PHASES{
+	for phase := range _const.EBUILD_PHASES {
 		if _, ok := logentries[phase]; !ok {
 			continue
 		}

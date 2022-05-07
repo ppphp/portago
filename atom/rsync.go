@@ -2,8 +2,12 @@ package atom
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/data"
+	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/shlex"
-	"golang.org/x/sys/unix"
 	"io/ioutil"
 	"math/rand"
 	"net"
@@ -41,7 +45,7 @@ func(r *RsyncSync) name() string {
 
 func NewRsyncSync() *RsyncSync {
 	r := &RsyncSync{}
-	r.newBase = NewNewBase("rsync", RsyncPackageAtom)
+	r.newBase = NewNewBase("rsync", _const.RsyncPackageAtom)
 	return r
 }
 
@@ -54,22 +58,22 @@ func(r *RsyncSync) update() (int,bool) {
 	quiet := "--quiet"
 	in
 	opts
-	out := NewEOutput(quiet)
+	out := output.NewEOutput(quiet)
 	syncuri := r.repo.SyncUri
 	vcs_dirs := map[string]bool{}
 	if strings.ToLower(r.repo.moduleSpecificOptions["sync-rsync-vcs-ignore"]) == "true" {
 	} else {
-		vcs_dirs = CopyMapSB(VcsDirs)
-		old, _ := listDir(r.repo.Location)
+		vcs_dirs = myutil.CopyMapSB(_const.VcsDirs)
+		old, _ := myutil.listDir(r.repo.Location)
 		for k := range vcs_dirs {
-			if !Ins(old, k) {
+			if !myutil.Ins(old, k) {
 				delete(vcs_dirs, k)
 			}
 		}
 	}
 
 	for vcs_dir := range vcs_dirs {
-		WriteMsgLevel(fmt.Sprintf("!!! %s appears to be under revision "+
+		util.WriteMsgLevel(fmt.Sprintf("!!! %s appears to be under revision "+
 			"control (contains %s).\n!!! Aborting rsync sync "+
 			"(override with \"sync-rsync-vcs-ignore = true\" in repos.conf).\n",
 			r.repo.Location, vcs_dir), 40, -1)
@@ -107,7 +111,7 @@ func(r *RsyncSync) update() (int,bool) {
 		if err != nil || r.verify_jobs < 0 {
 			//raise ValueError(r.verify_jobs)
 			//except ValueError:
-			WriteMsgLevel(fmt.Sprintf("!!! sync-rsync-verify-jobs not a positive integer: %s\n", r.verify_jobs, ), 30, -1)
+			util.WriteMsgLevel(fmt.Sprintf("!!! sync-rsync-verify-jobs not a positive integer: %s\n", r.verify_jobs, ), 30, -1)
 			r.verify_jobs = 0
 		} else {
 			if r.verify_jobs == 0 {
@@ -121,7 +125,7 @@ func(r *RsyncSync) update() (int,bool) {
 		r.max_age, err = strconv.Atoi(max_age)
 		if err != nil || r.max_age < 0 {
 			//except ValueError:
-			WriteMsgLevel(fmt.Sprintf("!!! sync-rsync-max-age must be a non-negative integer: %s\n", r.max_age, ), 30, -1)
+			util.WriteMsgLevel(fmt.Sprintf("!!! sync-rsync-max-age must be a non-negative integer: %s\n", r.max_age, ), 30, -1)
 			r.max_age = 0
 		}
 	} else {
@@ -174,7 +178,7 @@ func(r *RsyncSync) update() (int,bool) {
 	r.servertimestampfile = filepath.Join(
 		r.repo.Location, "metadata", "timestamp.chk")
 
-	content := grabFile(r.servertimestampfile, 0, false, false)
+	content := util.grabFile(r.servertimestampfile, 0, false, false)
 	timestamp := int64(0)
 	if len(content) == 0 {
 		timestampT, err := time.Parse(content[0][0], time.RFC1123) // TimestampFormat)
@@ -263,7 +267,7 @@ func(r *RsyncSync) update() (int,bool) {
 	addrinfos, err := net.LookupIP(getaddrinfo_host)
 	if err != nil {
 		//except socket.error as e:
-		WriteMsgLevel(fmt.Sprintf("!!! getaddrinfo failed for \"%s\": %s\n",
+		util.WriteMsgLevel(fmt.Sprintf("!!! getaddrinfo failed for \"%s\": %s\n",
 			hostname, err), -1, 40)
 	}
 
@@ -307,7 +311,7 @@ func(r *RsyncSync) update() (int,bool) {
 		uris = []string{syncuri}
 	}
 
-	ReverseSlice(uris)
+	myutil.ReverseSlice(uris)
 	uris_orig := []string{}
 	copy(uris_orig, uris)
 
@@ -324,7 +328,7 @@ func(r *RsyncSync) update() (int,bool) {
 			uris = uris[:len(uris)-1]
 		} else if maxretries < 0 ||
 			retries > maxretries {
-			WriteMsg(fmt.Sprintf("!!! Exhausted addresses for %s\n", hostname), -1, nil)
+			util.WriteMsg(fmt.Sprintf("!!! Exhausted addresses for %s\n", hostname), -1, nil)
 			return 1, false
 		} else {
 			uris = append(uris, uris_orig...)
@@ -355,7 +359,7 @@ func(r *RsyncSync) update() (int,bool) {
 			r.logger(r.xtermTitles,
 				fmt.Sprintf(">>> Starting retry %d of %d with %s",
 					retries, effective_maxretries, dosyncuri))
-			WriteMsgStdout(fmt.Sprintf("\n\n>>> Starting retry %d of %d with %s\n",
+			util.WriteMsgStdout(fmt.Sprintf("\n\n>>> Starting retry %d of %d with %s\n",
 				retries, effective_maxretries, dosyncuri), -1)
 		}
 
@@ -446,7 +450,7 @@ func(r *RsyncSync) update() (int,bool) {
 	return exitcode, updatecache_flg
 }
 
-func(r *RsyncSync) _process_exitcode(exitcode int, syncuri string, out *eOutput, maxretries int) {
+func(r *RsyncSync) _process_exitcode(exitcode int, syncuri string, out *output.eOutput, maxretries int) {
 	if (exitcode == 0) {
 		//pass
 	} else if exitcode == SERVER_OUT_OF_DATE {
@@ -486,7 +490,7 @@ func(r *RsyncSync) new(* *kwargs) (int, bool) {
 		r._kwargs(kwargs)
 	}
 try:
-	if ! pathExists(r.repo.Location) {
+	if ! myutil.pathExists(r.repo.Location) {
 		os.MkdirAll(r.repo.Location, 0755)
 		r.logger(r.r.xterm_titles,
 			fmt.Sprintf("Created New Directory %s ",r.repo.Location))
@@ -512,7 +516,7 @@ IndexError:
 }
 
 func(r *RsyncSync) _set_rsync_defaults() []string {
-	WriteMsg("PORTAGE_RSYNC_OPTS empty or unset, using hardcoded defaults\n", 0, nil)
+	util.WriteMsg("PORTAGE_RSYNC_OPTS empty or unset, using hardcoded defaults\n", 0, nil)
 	rsync_opts := []string{
 		"--recursive",
 		"--links",
@@ -536,13 +540,13 @@ func(r *RsyncSync) _set_rsync_defaults() []string {
 
 func(r *RsyncSync) _validate_rsync_opts( rsync_opts []string, syncuri string) []string {
 
-	WriteMsg("Using PORTAGE_RSYNC_OPTS instead of hardcoded defaults\n", 1, nil)
+	util.WriteMsg("Using PORTAGE_RSYNC_OPTS instead of hardcoded defaults\n", 1, nil)
 	ss, _ := shlex.Split(strings.NewReader(
 		r.settings.ValueDict["PORTAGE_RSYNC_OPTS"]), false, true)
 	rsync_opts = append(rsync_opts, ss...)
 	for _, opt := range []string{"--recursive", "--times"} {
-		if !Ins(rsync_opts, opt) {
-			WriteMsg(yellow("WARNING:")+fmt.Sprint(" adding required option "+
+		if !myutil.Ins(rsync_opts, opt) {
+			util.WriteMsg(yellow("WARNING:")+fmt.Sprint(" adding required option "+
 				"%s not included in PORTAGE_RSYNC_OPTS\n", opt), 0, nil)
 			rsync_opts = append(rsync_opts, opt)
 		}
@@ -550,8 +554,8 @@ func(r *RsyncSync) _validate_rsync_opts( rsync_opts []string, syncuri string) []
 
 	for _, exclude := range []string{"distfiles", "local", "packages"} {
 		opt := fmt.Sprintf("--exclude=/%s", exclude)
-		if !Ins(rsync_opts, opt) {
-			WriteMsg(("WARNING:")+fmt.Sprintf(
+		if !myutil.Ins(rsync_opts, opt) {
+			util.WriteMsg(("WARNING:")+fmt.Sprintf(
 				" adding required option %s not included in ", opt)+
 				"PORTAGE_RSYNC_OPTS (can be overridden with --exclude='!')\n", 0, nil)
 			rsync_opts = append(rsync_opts, opt)
@@ -573,8 +577,8 @@ func(r *RsyncSync) _validate_rsync_opts( rsync_opts []string, syncuri string) []
 		}
 
 		for _, opt := range []string{"--compress", "--whole-file"} {
-			if !Ins(rsync_opts, opt) {
-				WriteMsg(yellow("WARNING:")+" adding required option "+
+			if !myutil.Ins(rsync_opts, opt) {
+				util.WriteMsg(yellow("WARNING:")+" adding required option "+
 					fmt.Sprintf("%s not included in PORTAGE_RSYNC_OPTS\n", opt), 0, nil)
 				rsync_opts = append(rsync_opts, opt)
 			}
@@ -634,18 +638,18 @@ func(r *RsyncSync) _do_rsync( syncuri string, timestamp int64, opts interface{})
 		tmpdir = filepath.Join(r.settings.ValueDict["PORTAGE_TMPDIR"], "portage")
 		var gid uint32
 		var mode, mask os.FileMode
-		if *secpass >= 1 {
-			gid = *portage_gid
+		if *data.secpass >= 1 {
+			gid = *data.portage_gid
 			mode = 070
 			mask = 0
 		}
-		ensureDirs(tmpdir, -1, gid, mode, mask, nil, true)
+		util.ensureDirs(tmpdir, -1, gid, mode, mask, nil, true)
 	}
 	fd, _ := ioutil.TempFile(tmpdir, "*")
 	fd.Close()
 	tmpservertimestampfile := filepath.Join(tmpdir, fd.Name())
 	if r.usersync_uid != nil {
-		applyPermissions(tmpservertimestampfile, r.usersync_uid, -1, -1, -1, nil, true)
+		util.applyPermissions(tmpservertimestampfile, r.usersync_uid, -1, -1, -1, nil, true)
 	}
 	command := rsynccommand[:]
 	command = append(command, "--inplace")
@@ -666,9 +670,9 @@ try:
 	pids = append(pids, pds...)
 	exitcode, _ = syscall.Wait4(pids[0], nil,  0, nil)
 	if r.usersync_uid != nil {
-		applyPermissions(tmpservertimestampfile, uint32(os.Getuid()) ,-1,-1,-1,nil,true)
+		util.applyPermissions(tmpservertimestampfile, uint32(os.Getuid()) ,-1,-1,-1,nil,true)
 	}
-	content = grabFile(tmpservertimestampfile, 0, false, false)
+	content = util.grabFile(tmpservertimestampfile, 0, false, false)
 finally:
 	if r.rsync_initial_timeout != 0 {
 		portage.exception.AlarmSignal.unregister()

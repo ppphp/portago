@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"fmt"
+	"github.com/ppphp/portago/pkg/const"
 	"hash"
 	"io/ioutil"
 	"os"
@@ -47,7 +48,7 @@ func (g *generateHashFunction) checksumStr(data string) []byte {
 func (g *generateHashFunction) checksumFile(fname string) ([]byte, int) {
 	f := openFile(fname)
 	defer f.Close()
-	blockSize := HashingBlocksize
+	blockSize := _const.HashingBlocksize
 	size := 0
 	checksum := g.hashObject
 	data := make([]byte, blockSize)
@@ -113,8 +114,8 @@ func (s *SizeHash) BlockSize() int {
 var prelinkCapable = false
 
 func init() {
-	if _, err := os.Stat(PrelinkBinary); !os.IsNotExist(err) {
-		cmd := exec.Command(PrelinkBinary, "--version")
+	if _, err := os.Stat(_const.PrelinkBinary); !os.IsNotExist(err) {
+		cmd := exec.Command(_const.PrelinkBinary, "--version")
 		if err := cmd.Run(); err != nil {
 			prelinkCapable = true
 		}
@@ -304,7 +305,7 @@ func performChecksum(fname, hashname string, calcPrelink bool) ([]byte, int) {
 		var retval []int
 		if err == nil {
 			prelinkTmpFile = tmpFileFd.Name()
-			retval, err = spawn([]string{PrelinkBinary, "--verify", fname}, nil, "", map[int]uintptr{1: tmpFileFd.Fd()}, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
+			retval, err = spawn([]string{_const.PrelinkBinary, "--verify", fname}, nil, "", map[int]uintptr{1: tmpFileFd.Fd()}, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
 		}
 		if err == nil {
 			tmpFileFd.Close()
@@ -318,8 +319,8 @@ func performChecksum(fname, hashname string, calcPrelink bool) ([]byte, int) {
 		}
 	}
 	if !hashFuncKeys[hashname] {
-	//	raise portage.exception.DigestException(hashname + \
-	//	" hash function not available (needs dev-python/pycrypto)")
+		//	raise portage.exception.DigestException(hashname + \
+		//	" hash function not available (needs dev-python/pycrypto)")
 	}
 	return hashFuncMap[hashname].checksumFile(myFileName)
 }

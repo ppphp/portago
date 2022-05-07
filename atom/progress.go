@@ -1,6 +1,7 @@
 package atom
 
 import (
+	"github.com/ppphp/portago/pkg/output"
 	"os"
 	"os/signal"
 	"syscall"
@@ -48,7 +49,7 @@ type ProgressBar2 struct {
 	maxval          int
 	label           string
 	max_desc_length int
-	progressBar     *TermProgressBar
+	progressBar     *output.TermProgressBar
 	c               chan os.Signal
 	cancel          chan bool
 }
@@ -69,7 +70,7 @@ func NewProgressBar2(isatty bool, fd *os.File, title string, maxval int, label s
 
 func (p *ProgressBar2) Start() func(int64, int64) {
 	if p.isatty {
-		p.progressBar = NewTermProgressBar(p.fd, p.title, p.maxval, p.label, p.max_desc_length)
+		p.progressBar = output.NewTermProgressBar(p.fd, p.title, p.maxval, p.label, p.max_desc_length)
 		p.c = make(chan os.Signal, 0)
 		p.cancel = make(chan bool, 0)
 		signal.Notify(p.c, syscall.SIGWINCH)
@@ -96,7 +97,7 @@ func (p *ProgressBar2) Display() {
 }
 
 func (p *ProgressBar2) sigwinch_handler(signum, frame int) {
-	_, p.progressBar.term_columns, _ = get_term_size(0)
+	_, p.progressBar.term_columns, _ = output.get_term_size(0)
 }
 
 func (p *ProgressBar2) Stop() {

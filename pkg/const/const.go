@@ -1,6 +1,7 @@
-package atom
+package _const
 
 import (
+	"github.com/ppphp/portago/atom"
 	"os"
 	"path"
 	"strings"
@@ -42,7 +43,7 @@ const (
 )
 
 var (
-	tmpPORTAGE_BASE_PATH = strings.Split(path.Join(getcwd(), strings.TrimSuffix(os.Args[0], "co")), string(os.PathSeparator))
+	tmpPORTAGE_BASE_PATH = strings.Split(path.Join(atom.getcwd(), strings.TrimSuffix(os.Args[0], "co")), string(os.PathSeparator))
 	PORTAGE_BASE_PATH    = path.Join(string(os.PathSeparator), strings.Join(tmpPORTAGE_BASE_PATH[:len(tmpPORTAGE_BASE_PATH)-2], string(os.PathSeparator)))
 	PORTAGE_BIN_PATH     = PORTAGE_BASE_PATH + "/bin"
 	PORTAGE_PYM_PATH     = path.Clean(path.Join(os.Args[0], "../.."))

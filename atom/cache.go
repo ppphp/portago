@@ -2,6 +2,7 @@ package atom
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/myutil"
 	"strings"
 )
 
@@ -330,12 +331,12 @@ func serialize_eclasses(eclass_dict, chf_type string, paths bool) string {
 		return "\t".join("%s\t%s\t%s"%(k, v.eclass_dir, getter(v))
 		for k, v
 			in
-		sorted(eclass_dict.items(), key = _keysorter))
+		myutil.sorted(eclass_dict.items(), key = _keysorter))
 	}
 	return "\t".join("%s\t%s"%(k, getter(v))
 	for k, v
 	in
-	sorted(eclass_dict.items(), key = _keysorter))
+	myutil.sorted(eclass_dict.items(), key = _keysorter))
 }
 
 func _md5_deserializer(md5 string) string {

@@ -1,7 +1,8 @@
-package atom
+package myutil
 
 import (
 	"bytes"
+	"github.com/ppphp/portago/atom"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -45,8 +46,8 @@ func CopyMapSB(m map[string]bool) map[string]bool {
 	return r
 }
 
-func CopyMSMASS(m map[string]map[*Atom][]string) map[string]map[*Atom][]string {
-	r := map[string]map[*Atom][]string{}
+func CopyMSMASS(m map[string]map[*atom.Atom][]string) map[string]map[*atom.Atom][]string {
+	r := map[string]map[*atom.Atom][]string{}
 	for k, v := range m {
 		r[k] = v
 	}
@@ -190,7 +191,7 @@ func pathIsFile(filename string) bool {
 	return st != nil && !st.IsDir()
 }
 
-func osAccess(filename string, mode os.FileMode) bool {
+func OsAccess(filename string, mode os.FileMode) bool {
 	st, _ := os.Stat(filename)
 	if st == nil {
 		return false
@@ -198,7 +199,7 @@ func osAccess(filename string, mode os.FileMode) bool {
 	return st.Mode()&mode != 0
 }
 
-func reversed(a []string) []string {
+func Reversed(a []string) []string {
 	b := []string{}
 	for _, v := range a {
 		b = append([]string{v}, b...)

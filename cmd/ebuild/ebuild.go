@@ -3,6 +3,10 @@ package main
 import (
 	"fmt"
 	"github.com/ppphp/portago/atom"
+	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/shlex"
 	"github.com/spf13/pflag"
 	"golang.org/x/crypto/ssh/terminal"
@@ -81,7 +85,7 @@ func main() {
 			(atom.Settings().ValueDict["NOCOLOR"] != "yes" &&
 				atom.Settings().ValueDict["NOCOLOR"] != "true") ||
 			atom.Settings().ValueDict["TERM"] == "dumb" || !terminal.IsTerminal(int(os.Stdout.Fd()))) {
-		atom.NoColor()
+		output.NoColor()
 		atom.Settings().Unlock()
 		atom.Settings().ValueDict["NOCOLOR"] = "true"
 		atom.Settings().BackupChanges("NOCOLOR")
@@ -102,17 +106,17 @@ func main() {
 		pwd := os.Getenv("PWD")
 		if rp, _ := filepath.EvalSymlinks(pwd); pwd != "" && pwd != mycwd &&
 			rp == mycwd {
-			mycwd = atom.NormalizePath(pwd)
+			mycwd = util.NormalizePath(pwd)
 			ebuild = filepath.Join(mycwd, ebuild)
 		}
 	}
-	ebuild = atom.NormalizePath(ebuild)
+	ebuild = util.NormalizePath(ebuild)
 	ebuild_portdir, _ := filepath.EvalSymlinks(filepath.Dir(filepath.Dir(filepath.Dir(ebuild))))
 	ep := strings.Split(ebuild, string(os.PathSeparator))
 	ebuild = filepath.Join(ebuild_portdir, ep[len(ep)-3], ep[len(ep)-2], ep[len(ep)-2])
-	vdb_path, _ := filepath.EvalSymlinks(filepath.Join(atom.Settings().ValueDict["EROOT"], atom.VdbPath))
+	vdb_path, _ := filepath.EvalSymlinks(filepath.Join(atom.Settings().ValueDict["EROOT"], _const.VdbPath))
 	if ebuild_portdir != vdb_path &&
-		!atom.Ins(atom.Portdb().porttrees, ebuild_portdir) {
+		!myutil.Ins(atom.Portdb().porttrees, ebuild_portdir) {
 		portdir_overlay := atom.Settings().ValueDict["PORTDIR_OVERLAY"]
 		os.Setenv("PORTDIR_OVERLAY", portdir_overlay+" "+atom.ShellQuote(ebuild_portdir))
 
@@ -154,7 +158,7 @@ func main() {
 			err(fmt.Sprintf("%s: does not seem to have a valid PORTDIR structure", ebuild))
 		}
 	}
-	if len(pargs) > 1 && atom.Ins(pargs, "config"){
+	if len(pargs) > 1 && myutil.Ins(pargs, "config"){
 		other_phases := map[string]bool{}
 		for _, v := range pargs {
 			other_phases[v] = true
@@ -191,18 +195,18 @@ func main() {
 	}
 	if opts.skip_manifest ||
 		tmpsettings.Features.Features["digest"] ||
-		atom.Ins(pargs, "digest") ||
-		atom.Ins(pargs, "manifest") {
+		myutil.Ins(pargs, "digest") ||
+		myutil.Ins(pargs, "manifest") {
 		atom._doebuild_manifest_exempt_depend += 1
 	}
-	if atom.Ins(pargs, "test") {
+	if myutil.Ins(pargs, "test") {
 		tmpsettings.ValueDict["EBUILD_FORCE_TEST"] = "1"
 		tmpsettings.BackupChanges("EBUILD_FORCE_TEST")
 		tmpsettings.Features.Features["test"] = true
-		atom.WriteMsg(fmt.Sprintf("Forcing test.\n"), -1, nil)
+		util.WriteMsg(fmt.Sprintf("Forcing test.\n"), -1, nil)
 	}
 	tmpsettings.Features.Discard("fail-clean")
-	if atom.Ins(pargs, "merge") && tmpsettings.Features.Features["noauto"] {
+	if myutil.Ins(pargs, "merge") && tmpsettings.Features.Features["noauto"] {
 		print("Disabling noauto in features... merge disables it. (qmerge doesn't)")
 		tmpsettings.Features.Discard("noauto")
 	}
@@ -279,7 +283,7 @@ func main() {
 }
 
 func err(txt string) {
-	atom.WriteMsg(fmt.Sprintf("ebuild: %s\n" , txt ), -1, nil)
+	util.WriteMsg(fmt.Sprintf("ebuild: %s\n" , txt ), -1, nil)
 	os.Exit(1)
 }
 
@@ -313,7 +317,7 @@ func stale_env_warning(pargs []string, tmpsettings*atom.Config, build_dir_phases
 			inter[p] =true
 		}
 	}
-	if !atom.Ins(pargs, "clean") &&
+	if !myutil.Ins(pargs, "clean") &&
 		!tmpsettings.Features.Features["noauto"] &&
 		len(inter)>0 {
 		atom.doebuild_environment(ebuild, "setup", atom.Root(),
@@ -323,9 +327,9 @@ func stale_env_warning(pargs []string, tmpsettings*atom.Config, build_dir_phases
 			msg := fmt.Sprintf("Existing ${T}/environment for '%s' will be sourced. "+
 				"Run 'clean' to start with a fresh environment.",
 				tmpsettings.ValueDict["PF"], )
-			msgs := atom.SplitSubN(msg, 70)
+			msgs := myutil.SplitSubN(msg, 70)
 			for _, x := range msgs {
-				atom.WriteMsg(fmt.Sprintf(">>> %s\n", x), 0, nil)
+				util.WriteMsg(fmt.Sprintf(">>> %s\n", x), 0, nil)
 			}
 			if ebuild_changed{
 				f, err := os.OpenFile(filepath.Join(tmpsettings.ValueDict["PORTAGE_BUILDDIR"],

@@ -2,6 +2,11 @@ package main
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/data"
+	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/shlex"
 	"io/ioutil"
 	"os"
@@ -113,7 +118,7 @@ func init() {
 			for _, line := range lines {
 				cmd += fmt.Sprintf("%s %s ; ", elog_funcname, atom.ShellQuote(line))
 			}
-			c := exec.Command(atom.BashBinary, "-c", cmd)
+			c := exec.Command(_const.BashBinary, "-c", cmd)
 			c.Run()
 		}
 	} else {
@@ -130,7 +135,7 @@ func main() {
 	argv := os.Args[1:]
 	noColor := os.Getenv("NOCOLOR")
 	if noColor == "yes" || noColor == "true" {
-		atom.NoColor()
+		output.NoColor()
 	}
 	var opts Opts
 	pf := pflag.NewFlagSet("portageq", pflag.ExitOnError)
@@ -187,8 +192,8 @@ func main() {
 			os.Stderr.Write([]byte("Run portageq with --help for info\n"))
 			os.Exit(64)
 		}
-		eprefix := atom.TargetEprefix()
-		eroot := atom.NormalizePath(argv[2])
+		eprefix := data.TargetEprefix()
+		eroot := util.NormalizePath(argv[2])
 
 		root := ""
 		if eprefix != "" {
@@ -231,7 +236,7 @@ func hasVersion(argv  []string) int {
 	if err != nil {
 		//except portage.exception.InvalidAtom:
 		if atomValidateStrict {
-			atom.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n", argv[1]),
+			util.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n", argv[1]),
 				-1, nil)
 			return 2
 		} else {
@@ -281,7 +286,7 @@ func bestVersion(argv []string) int {
 	if err != nil {
 		//except portage.exception.InvalidAtom:
 		if atomValidateStrict {
-			atom.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n", argv[1]),
+			util.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n", argv[1]),
 				-1, nil)
 			return 2
 
@@ -357,7 +362,7 @@ func metadata(argv []string) int {
 	}
 	//try:
 	values := mydbapi.AuxGet(pkgspec, metakeys, repo)
-	atom.WriteMsgStdout(strings.Join(values, "\n")+"\n", -1)
+	util.WriteMsgStdout(strings.Join(values, "\n")+"\n", -1)
 	//except KeyError:
 	//print(fmt.Sprintf("Package not found: '%s'" % pkgspec, file=os.Stderr)
 	//return 1
@@ -380,7 +385,7 @@ func contents(argv []string) int {
 	cat, pkg := atom.catsplit(cpv)[0], atom.catsplit(cpv)[1]
 	db := atom.NewDblink(cat, pkg, root, vartree.settings,
 		"vartree", vartree, nil, nil, 0)
-	atom.WriteMsgStdout(strings.Join(sorted(db.getcontents()), "\n")+"\n", -1)
+	util.WriteMsgStdout(strings.Join(sorted(db.getcontents()), "\n")+"\n", -1)
 	return 0
 }
 
@@ -405,7 +410,7 @@ func owners(argv []string) int {
 	orphan_abs_paths := map[string]bool{}
 	orphan_basenames := map[string]bool{}
 	for _, f := range argv[1:] {
-		f = atom.NormalizePath(f)
+		f = util.NormalizePath(f)
 		is_basename := !strings.Contains(f, string(os.PathSeparator))
 		if !is_basename && f[:1] != string(os.PathSeparator) {
 			if cwd == "" {
@@ -413,7 +418,7 @@ func owners(argv []string) int {
 				return 2
 			}
 			f = filepath.Join(cwd, f)
-			f = atom.NormalizePath(f)
+			f = util.NormalizePath(f)
 		}
 		if !is_basename && !strings.HasPrefix(f, eroot) {
 			os.Stderr.Write([]byte(("ERROR: file paths must begin with <eroot>!\n")))
@@ -449,7 +454,7 @@ func owners(argv []string) int {
 		}
 	}
 
-	atom.WriteMsgStdout(strings.Join(msg, ""), -1)
+	util.WriteMsgStdout(strings.Join(msg, ""), -1)
 
 	if len(orphan_abs_paths) > 0 || len(orphan_basenames) > 0 {
 		orphans := []string{}
@@ -489,7 +494,7 @@ func is_protected(argv []string) int {
 		//except OSError:
 		//pass
 	}
-	f := atom.NormalizePath(filename)
+	f := util.NormalizePath(filename)
 	if !strings.HasPrefix(f, string(os.PathSeparator)) {
 		if cwd == "" {
 			err.Write([]byte("ERROR: cwd does not exist!\n"))
@@ -497,7 +502,7 @@ func is_protected(argv []string) int {
 			return 2
 		}
 		f = filepath.Join(cwd, f)
-		f = atom.NormalizePath(f)
+		f = util.NormalizePath(f)
 	}
 
 	if !strings.HasPrefix(f, root) {
@@ -509,7 +514,7 @@ func is_protected(argv []string) int {
 	protect, _ := shlex.Split(strings.NewReader(settings.ValueDict["CONFIG_PROTECT"]), false, true)
 	protect_mask, _ := shlex.Split(
 		strings.NewReader(settings.ValueDict["CONFIG_PROTECT_MASK"]), false, true)
-	protect_obj := atom.NewConfigProtect(root, protect, protect_mask,
+	protect_obj := util.NewConfigProtect(root, protect, protect_mask,
 		settings.Features.Features["case-insensitive-fs"])
 	if protect_obj.IsProtected(f) {
 		return 0
@@ -537,7 +542,7 @@ func filter_protected(argv []string) int {
 	protect, _ := shlex.Split(strings.NewReader(settings.ValueDict["CONFIG_PROTECT"]), false, true)
 	protect_mask, _ := shlex.Split(
 		strings.NewReader(settings.ValueDict["CONFIG_PROTECT_MASK"]), false, true)
-	protect_obj := atom.NewConfigProtect(root, protect, protect_mask,
+	protect_obj := util.NewConfigProtect(root, protect, protect_mask,
 		settings.Features.Features["case-insensitive-fs"])
 
 	errors := 0
@@ -545,7 +550,7 @@ func filter_protected(argv []string) int {
 	lines, _ := ioutil.ReadAll(os.Stdin)
 	for _, line := range strings.Split(string(lines), "\n") {
 		filename := strings.TrimRight(line, "\n")
-		f := atom.NormalizePath(filename)
+		f := util.NormalizePath(filename)
 		if !strings.HasPrefix(f, string(os.PathSeparator)) {
 			if cwd == "" {
 				err.Write([]byte("ERROR: cwd does not exist!\n"))
@@ -553,7 +558,7 @@ func filter_protected(argv []string) int {
 				continue
 			}
 			f = filepath.Join(cwd, f)
-			f = atom.NormalizePath(f)
+			f = util.NormalizePath(f)
 		}
 
 		if !strings.HasPrefix(f, root) {
@@ -578,7 +583,7 @@ func filter_protected(argv []string) int {
 func bestVisible(argv []string) int {
 
 	if len(argv) < 2 {
-		atom.WriteMsg("ERROR: insufficient parameters!\n", -1, nil)
+		util.WriteMsg("ERROR: insufficient parameters!\n", -1, nil)
 		return 2
 	}
 
@@ -597,7 +602,7 @@ func bestVisible(argv []string) int {
 		"installed": "vartree"}
 
 	if _, ok := type_map[pkgtype]; !ok {
-		atom.WriteMsg(fmt.Sprintf("Unrecognized package type: '%s'\n", pkgtype),
+		util.WriteMsg(fmt.Sprintf("Unrecognized package type: '%s'\n", pkgtype),
 			-1, nil)
 		return 2
 	}
@@ -631,7 +636,7 @@ func bestVisible(argv []string) int {
 
 	if len(cpv_list) > 0 {
 
-		atom.ReverseSlice(cpv_list)
+		myutil.ReverseSlice(cpv_list)
 
 		atom_set := atom.NewInternalPackageSet(initial_atoms = (atom2,))
 
@@ -661,14 +666,14 @@ func bestVisible(argv []string) int {
 				}
 
 				if pkg.visible {
-					atom.WriteMsgStdout(fmt.Sprintf("%s\n", pkg.cpv, ), -1)
+					util.WriteMsgStdout(fmt.Sprintf("%s\n", pkg.cpv, ), -1)
 					return 0
 				}
 			}
 		}
 	}
 
-	atom.WriteMsgStdout("\n", -1)
+	util.WriteMsgStdout("\n", -1)
 
 	return 1
 }
@@ -693,7 +698,7 @@ func massBestVisible(argv []string) int {
 		argv = argv[:len(argv)-1]
 	}
 	for _, pack := range argv {
-		atom.WriteMsgStdout(fmt.Sprintf("%s:", pack), -1)
+		util.WriteMsgStdout(fmt.Sprintf("%s:", pack), -1)
 		bestVisible([]string{root, pkgtype, pack})
 	}
 
@@ -780,7 +785,7 @@ func match(argv []string) int {
 func expand_virtual(argv []string) int    {
 
 	if len(argv) != 2{
-	atom.WriteMsg(fmt.Sprintf("ERROR: expected 2 parameters, got %d!\n" , len(argv)),
+	util.WriteMsg(fmt.Sprintf("ERROR: expected 2 parameters, got %d!\n" , len(argv)),
 		-1, nil)
 	return 2
 	}
@@ -791,21 +796,21 @@ try:
 	results = list(expand_new_virt(
 		atom.Db().Values()[root].VarTree().dbapi, atom1))
 	except portage.exception.InvalidAtom:
-	atom.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n" , atom1),
+	util.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n" , atom1),
 		-1)
 	return 2
 
 	results.sort()
 	for x in results:
 	if not x.blocker:
-	atom.WriteMsgStdout(fmt.Sprintf("%s\n" ,x,), 0)
+	util.WriteMsgStdout(fmt.Sprintf("%s\n" ,x,), 0)
 
 	return 0
 }
 
 func vdbPath(argv []string) int {
 	out := os.Stdout
-	out.Write([]byte(filepath.Join(atom.Settings().ValueDict["EROOT"], atom.VdbPath) + "\n"))
+	out.Write([]byte(filepath.Join(atom.Settings().ValueDict["EROOT"], _const.VdbPath) + "\n"))
 	return 0
 }
 
@@ -850,7 +855,7 @@ func distdir(argv []string) int {
 }
 
 func colormap([]string) int {
-	fmt.Println(atom.ColorMap())
+	fmt.Println(output.ColorMap())
 	return 0
 }
 
@@ -1046,7 +1051,7 @@ func list_preserved_libs(argv []string) int {
 		}
 		msg = append(msg, "\n")
 	}
-	atom.WriteMsgStdout(strings.Join(msg, ""), -1)
+	util.WriteMsgStdout(strings.Join(msg, ""), -1)
 	return rValue
 }
 
@@ -1102,7 +1107,7 @@ func pquery(opts Opts, args []string) int {
 		if !strings.Contains(strings.Split(arg, ":")[0], "/") {
 			atom1 = atom.insert_category_into_atom(arg, "*")
 			if atom1 == "" {
-				atom.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n", arg),
+				util.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n", arg),
 					-1, nil)
 				return 2
 			}
@@ -1114,7 +1119,7 @@ func pquery(opts Opts, args []string) int {
 		atom2, err := atom.NewAtom(atom1, nil, true, &t, nil, "", nil, nil)
 		if err != nil {
 			//except portage.exception.InvalidAtom:
-			atom.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n", arg),
+			util.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n", arg),
 				-1, nil)
 			return 2
 		}
@@ -1302,12 +1307,12 @@ func pquery(opts Opts, args []string) int {
 			}
 
 			if no_version {
-				atom.WriteMsgStdout(fmt.Sprintf("%s\n", cp, ), -1)
+				util.WriteMsgStdout(fmt.Sprintf("%s\n", cp, ), -1)
 			} else {
 				matches = list(set(matches))
 				portdb._cpv_sort_ascending(matches)
 				for _, cpv := range matches {
-					atom.WriteMsgStdout(fmt.Sprintf("%s\n", cpv, ), -1)
+					util.WriteMsgStdout(fmt.Sprintf("%s\n", cpv, ), -1)
 				}
 			}
 		}

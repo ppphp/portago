@@ -2,11 +2,12 @@ package atom
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/const"
 	"io/ioutil"
 )
 
 func IndexCategories() []string {
-	fs, err := ioutil.ReadDir(EbuildDir)
+	fs, err := ioutil.ReadDir(_const.EbuildDir)
 	if err != nil {
 		println(err.Error())
 		return nil
@@ -20,7 +21,7 @@ func IndexCategories() []string {
 }
 
 func IndexPackages(category string) []string {
-	fs, err := ioutil.ReadDir(EbuildDir + "/" + category)
+	fs, err := ioutil.ReadDir(_const.EbuildDir + "/" + category)
 	if err != nil {
 		println(err.Error())
 		return nil

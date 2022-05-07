@@ -3,6 +3,9 @@ package atom
 import (
 	"fmt"
 	"github.com/ppphp/configparser"
+	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/util"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -14,9 +17,9 @@ const SETPREFIX = "@"
 func get_boolean(options map[string]string, name string, defaultt bool) bool {
 	if _, ok := options[name]; !ok{
 		return defaultt
-	} else if  Ins([]string{"1", "yes", "on", "true"}, strings.ToLower(options[name])) {
+	} else if  myutil.Ins([]string{"1", "yes", "on", "true"}, strings.ToLower(options[name])) {
 		return true
-	} else if Ins([]string{"0", "no", "off", "false"}, strings.ToLower(options[name])) {
+	} else if myutil.Ins([]string{"0", "no", "off", "false"}, strings.ToLower(options[name])) {
 		return false
 	} else {
 		//raise SetConfigError(_("invalid value '%(value)s' for option '%(option)s'") %
@@ -89,10 +92,10 @@ func (s*SetConfig)_create_default_config() {
 	parser.GetSectionMap()["deprecated-live-rebuild"]["class"] = "portage.sets.dbapi.VariableSet"
 	parser.GetSectionMap()["deprecated-live-rebuild"]["variable"] = "INHERITED"
 	le := []string{}
-	for k := range LIVE_ECLASSES{
+	for k := range _const.LIVE_ECLASSES {
 		le = append(le, k)
 	}
-	parser.GetSectionMap()["deprecated-live-rebuild"]["includes"] = strings.Join(sorted(le), " ")
+	parser.GetSectionMap()["deprecated-live-rebuild"]["includes"] = strings.Join(myutil.sorted(le), " ")
 
 	delete(parser.GetSectionMap(),"module-rebuild")
 	parser.GetSectionMap()["module-rebuild"]= map[string]string{}
@@ -117,7 +120,7 @@ func (s*SetConfig) update(setname string, options map[string]string) {
 		options["name"] = setname
 		options["world-candidate"] = "false"
 
-		for Ins(parser.Sections(), setname) {
+		for myutil.Ins(parser.Sections(), setname) {
 			setname = fmt.Sprintf("%08d", rand.Int63n(10000000000))
 		}
 
@@ -185,7 +188,7 @@ func(s*SetConfig) _parse( update bool) {
 				for x
 					in
 				newsets {
-					if Inmss(s.psets,x) &&!update {
+					if myutil.Inmss(s.psets,x) &&!update {
 						s.errors = append(s.errors, fmt.Sprintf("Redefinition of set '%s' (sections: '%s', '%s')", x, s.psets[x].creator, sname))
 					}
 					newsets[x].creator = sname
@@ -235,7 +238,7 @@ func(s*SetConfig) _parse( update bool) {
 
 func (s*SetConfig) getSets() map[string]string{
 	s._parse(false)
-	return CopyMapSS(s.psets)
+	return myutil.CopyMapSS(s.psets)
 }
 
 // nil
@@ -284,8 +287,8 @@ func NewSetConfig(paths []string, settings *Config, trees *Tree)*SetConfig{
 	}
 	s._parser = configparser.NewConfigParser(agm)
 
-	if enableSetConfig {
-		readConfigs(s._parser, paths)
+	if _const.enableSetConfig {
+		util.readConfigs(s._parser, paths)
 	}else {
 		s._create_default_config()
 	}
@@ -301,16 +304,16 @@ func NewSetConfig(paths []string, settings *Config, trees *Tree)*SetConfig{
 
 func LoadDefaultConfig(settings *Config, trees *Tree) *SetConfig {
 
-	if !enableSetConfig {
+	if !_const.enableSetConfig {
 		return NewSetConfig(nil, settings, trees)
 	}
 
-	global_config_path := GlobalConfigPath
-	if EPREFIX != "" {
-		global_config_path = filepath.Join(EPREFIX,
-			strings.TrimLeft(GlobalConfigPath, string(os.PathSeparator)))
+	global_config_path := _const.GlobalConfigPath
+	if _const.EPREFIX != "" {
+		global_config_path = filepath.Join(_const.EPREFIX,
+			strings.TrimLeft(_const.GlobalConfigPath, string(os.PathSeparator)))
 	}
-	vcs_dirs := CopyMapSB(VcsDirs)
+	vcs_dirs := myutil.CopyMapSB(_const.VcsDirs)
 	_getfiles := func() []string {
 		ret := []string{}
 		filepath.Walk(filepath.Join(global_config_path, "sets"), func(path string, info os.FileInfo, err error) error {
@@ -332,7 +335,7 @@ func LoadDefaultConfig(settings *Config, trees *Tree) *SetConfig {
 			ret = append(ret, filepath.Join(path, "sets.conf"))
 		}
 
-		ret = append(ret, filepath.Join(settings.ValueDict["PORTAGE_CONFIGROOT"], UserConfigPath, "sets.conf"))
+		ret = append(ret, filepath.Join(settings.ValueDict["PORTAGE_CONFIGROOT"], _const.UserConfigPath, "sets.conf"))
 		return ret
 	}
 

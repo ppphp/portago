@@ -6,6 +6,11 @@ import (
 	"errors"
 	"fmt"
 	ogórek "github.com/kisielk/og-rek"
+	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/data"
+	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/shlex"
 	"golang.org/x/crypto/ssh/terminal"
 	"golang.org/x/sys/unix"
@@ -122,7 +127,7 @@ func (a *AbstractEbuildProcess)_start() {
 	if st, err := os.Stat(a.settings.ValueDict["PORTAGE_BUILDDIR"]); need_builddir && err != nil && !st.IsDir() {
 		msg := fmt.Sprintf("The ebuild phase '%s' has been aborted "+
 			"since PORTAGE_BUILDDIR does not exist: '%s'", a.phase, a.settings.ValueDict["PORTAGE_BUILDDIR"])
-		a._eerror(SplitSubN(msg, 72))
+		a._eerror(myutil.SplitSubN(msg, 72))
 		i := 1
 		a.returncode = &i
 		a._async_wait()
@@ -133,7 +138,7 @@ func (a *AbstractEbuildProcess)_start() {
 		cgroup_root := "/sys/fs/cgroup"
 		cgroup_portage := filepath.Join(cgroup_root, "portage")
 
-		mp, err := Mountpoint(cgroup_root)
+		mp, err := myutil.Mountpoint(cgroup_root)
 		if err == nil {
 			if mp != cgroup_root {
 				st, err1 := os.Stat(cgroup_root)
@@ -150,7 +155,7 @@ func (a *AbstractEbuildProcess)_start() {
 			}
 		}
 		if err == nil {
-			mp, err1 := Mountpoint(cgroup_portage)
+			mp, err1 := myutil.Mountpoint(cgroup_portage)
 			if err1 != nil {
 				err = err1
 			} else {
@@ -239,7 +244,7 @@ func (a *AbstractEbuildProcess)_start() {
 	start_ipc_daemon := false
 	if a._enable_ipc_daemon {
 		delete(a.settings.ValueDict, "PORTAGE_EBUILD_EXIT_FILE")
-		if !Ins(a._phases_without_builddir, a.phase) {
+		if !myutil.Ins(a._phases_without_builddir, a.phase) {
 			start_ipc_daemon = true
 			if _, ok := a.settings.ValueDict["PORTAGE_BUILDDIR_LOCKED"]; !ok {
 				a._build_dir = NewEbuildBuildDir(a.scheduler, a.settings)
@@ -255,7 +260,7 @@ func (a *AbstractEbuildProcess)_start() {
 		}
 	} else {
 		delete(a.settings.ValueDict, "PORTAGE_IPC_DAEMON")
-		if Ins(a._phases_without_builddir, a.phase) {
+		if myutil.Ins(a._phases_without_builddir, a.phase) {
 			exit_file := filepath.Join(
 				a.settings.ValueDict["PORTAGE_BUILDDIR"],
 				".exit_status")
@@ -299,8 +304,8 @@ func (a *AbstractEbuildProcess)_start_post_builddir_lock( lock_future IFuture , 
 	}
 	null_fd := 0
 	if _, ok := a.fd_pipes[0]; !ok &&
-		!Ins(a._phases_interactive_whitelist, a.phase) &&
-		!Ins(strings.Fields(a.settings.ValueDict["PROPERTIES"]), "interactive") {
+		!myutil.Ins(a._phases_interactive_whitelist, a.phase) &&
+		!myutil.Ins(strings.Fields(a.settings.ValueDict["PROPERTIES"]), "interactive") {
 		null_fd, _ := syscall.Open("/dev/null", os.O_RDWR, 0644)
 		a.fd_pipes[0] = null_fd
 	}
@@ -337,7 +342,7 @@ func (a *AbstractEbuildProcess)_init_ipc_fifos()(string,string) {
 				syscall.Mkfifo(p, 0755)
 			}
 		}
-		apply_secpass_permissions(p, uint32(os.Getuid()), *portage_gid, 0770, -1, st, true)
+		util.apply_secpass_permissions(p, uint32(os.Getuid()), *data.portage_gid, 0770, -1, st, true)
 	}
 
 	return input_fifo, output_fifo
@@ -395,7 +400,7 @@ func (a *AbstractEbuildProcess)_orphan_process_warn() {
 	msg := fmt.Sprintf("The ebuild phase '%s' with pid %s appears "+
 		"to have left an orphan process running in the background.", phase, a.pid)
 
-	a._eerror(SplitSubN(msg, 72))
+	a._eerror(myutil.SplitSubN(msg, 72))
 }
 
 func (a *AbstractEbuildProcess)_pipe( fd_pipes map[int]int) (int, int) {
@@ -414,7 +419,7 @@ func (a *AbstractEbuildProcess)_can_log( slave_fd int)bool {
 
 func (a *AbstractEbuildProcess)_killed_by_signal( signum int) {
 	msg := fmt.Sprintf("The ebuild phase '%s' has been killed by signal %s.", a.phase, signum)
-	a._eerror(SplitSubN(msg, 72))
+	a._eerror(myutil.SplitSubN(msg, 72))
 }
 
 func (a *AbstractEbuildProcess)_unexpected_exit() {
@@ -441,7 +446,7 @@ func (a *AbstractEbuildProcess)_unexpected_exit() {
 		"reproducible and you are sure that your bash binary and hardware "+
 		"are functioning properly.", phase)
 
-	a._eerror(SplitSubN(msg, 72))
+	a._eerror(myutil.SplitSubN(msg, 72))
 }
 
 func (a *AbstractEbuildProcess)_eerror( lines []string) {
@@ -458,19 +463,19 @@ func (a *AbstractEbuildProcess)_elog( elog_funcname string, lines []string) {
 		elog_func = eerror
 	}
 
-	global_havecolor := HaveColor
+	global_havecolor := output.HaveColor
 	//try{
 	nc, ok := a.settings.ValueDict["NOCOLOR"]
 	if !ok {
-		HaveColor = 1
+		output.HaveColor = 1
 	} else if strings.ToLower(nc) == "no" || strings.ToLower(nc) == "false" {
-		HaveColor = 0
+		output.HaveColor = 0
 	}
 	for _, line := range lines {
 		elog_func(line, phase, a.settings.mycpv.string, out)
 	}
 	//finally{
-	HaveColor = global_havecolor
+	output.HaveColor = global_havecolor
 	msg := out.String()
 	if msg != "" {
 		log_path := ""
@@ -864,7 +869,7 @@ AttributeError:
 
 	l.scheduler.add_reader(in_pr, l._output_handler)
 	l._registered = true
-	ev := ExpandEnv()
+	ev := util.ExpandEnv()
 	ev["PORTAGE_PYM_PATH"]=portage._pym_path
 	l._proc = NewSpawnProcess([]string{portage._python_interpreter,
 		filepath.Join(portage._bin_path, "lock-helper.py"), l.path},false,
@@ -891,7 +896,7 @@ func(l *_LockProcess) _proc_exit(proc) {
 	if proc.returncode != 0 {
 		if !l._acquire {
 			if !(l.cancelled || l._kill_test) {
-				WriteMsgLevel(fmt.Sprintf("_LockProcess: %s\n",
+				util.WriteMsgLevel(fmt.Sprintf("_LockProcess: %s\n",
 					fmt.Sprintf("failed to acquire lock on '%s'", l.path, )),
 					40, -1)
 			}
@@ -1238,7 +1243,7 @@ func (b *Binpkg) _start() {
 				"To view fetch progress, run in another terminal:",
 				fmt.Sprintf("tail -f %s", fetch_log),
 			}
-			out := NewEOutput(false)
+			out := output.NewEOutput(false)
 			for _, l := range msg {
 				out.einfo(l)
 			}
@@ -1417,7 +1422,7 @@ func (b *Binpkg) _unpack_metadata() IFuture {
 
 	dir_mode := os.FileMode(0755)
 	for _, mydir := range []string{dir_path, b._image_dir, infloc} {
-		ensureDirs(mydir, uint32(*portage_uid), *portage_gid, dir_mode, -1, nil, true)
+		util.ensureDirs(mydir, uint32(*data.portage_uid), *data.portage_gid, dir_mode, -1, nil, true)
 	}
 
 	prepare_build_dirs(b.settings, true)
@@ -1513,7 +1518,7 @@ func (b *Binpkg) _unpack_contents_exit( unpack_contents) {
 	}
 
 	if b._build_prefix == b.settings.ValueDict["EPREFIX"] {
-		ensureDirs(b.settings.ValueDict["ED"], -1, -1, -1, -1, nil, true)
+		util.ensureDirs(b.settings.ValueDict["ED"], -1, -1, -1, -1, nil, true)
 		b._current_task = nil
 		i := 0
 		b.returncode = &i
@@ -1547,15 +1552,15 @@ func (b *Binpkg) _chpathtool_exit( chpathtool) {
 		b.settings.ValueDict["PORTAGE_BUILDDIR"], "image_tmp")
 	build_d := strings.TrimLeft(filepath.Join(b.settings.ValueDict["D"],
 		strings.TrimLeft(b._build_prefix, string(os.PathSeparator))), string(os.PathSeparator))
-	if pathIsDir(build_d) {
+	if myutil.pathIsDir(build_d) {
 		os.RemoveAll(b._image_dir)
-		ensureDirs(b.settings.ValueDict["ED"], -1, -1, -1, -1, nil, true)
+		util.ensureDirs(b.settings.ValueDict["ED"], -1, -1, -1, -1, nil, true)
 	} else {
 		os.Rename(build_d, image_tmp_dir)
 		if build_d != b._image_dir {
 			os.RemoveAll(b._image_dir)
 		}
-		ensureDirs(strings.TrimRight(filepath.Dir(b.settings.ValueDict["ED"]), string(os.PathSeparator)), -1, -1, -1, -1, nil, true)
+		util.ensureDirs(strings.TrimRight(filepath.Dir(b.settings.ValueDict["ED"]), string(os.PathSeparator)), -1, -1, -1, -1, nil, true)
 		os.Rename(image_tmp_dir, b.settings.ValueDict["ED"])
 	}
 
@@ -1649,11 +1654,11 @@ type BinpkgEnvExtractor struct {
 }
 
 func(b *BinpkgEnvExtractor) saved_env_exists() bool {
-	return pathExists(b._get_saved_env_path())
+	return myutil.pathExists(b._get_saved_env_path())
 }
 
 func(b *BinpkgEnvExtractor) dest_env_exists() bool {
-	return pathExists(b._get_dest_env_path())
+	return myutil.pathExists(b._get_dest_env_path())
 }
 
 func(b *BinpkgEnvExtractor) _get_saved_env_path() string {
@@ -1671,7 +1676,7 @@ func(b *BinpkgEnvExtractor) _start() {
 	shell_cmd := fmt.Sprintf("${PORTAGE_BUNZIP2_COMMAND:-${PORTAGE_BZIP2_COMMAND} -d} -c -- %s > %s" ,
 		ShellQuote(saved_env_path),
 		ShellQuote(dest_env_path))
-	extractor_proc := NewSpawnProcess([]string{BashBinary, "-c", shell_cmd}, b.background, b.settings.environ(), nil, b.scheduler, b.settings.ValueDict["PORTAGE_LOG_FILE"])
+	extractor_proc := NewSpawnProcess([]string{_const.BashBinary, "-c", shell_cmd}, b.background, b.settings.environ(), nil, b.scheduler, b.settings.ValueDict["PORTAGE_LOG_FILE"])
 
 	b._start_task(extractor_proc, b._extractor_exit)
 }
@@ -1741,7 +1746,7 @@ func(b *BinpkgExtractorAsync) _start() {
 			tar_options = strings.Join(tar_options2, " ")
 		}
 	}
-	decomp := _compressors[compression_probe(b.pkg_path)]
+	decomp := util._compressors[util.compression_probe(b.pkg_path)]
 	decomp_cmd := ""
 	if decomp != nil {
 		decomp_cmd = decomp["decompress"]
@@ -1765,7 +1770,7 @@ func(b *BinpkgExtractorAsync) _start() {
 		return
 	}
 
-	dbs, _ := shlex.Split(strings.NewReader(varExpand(decomp_cmd, b.env, nil)), false, true)
+	dbs, _ := shlex.Split(strings.NewReader(util.varExpand(decomp_cmd, b.env, nil)), false, true)
 	decompression_binary := ""
 	if len(dbs) > 0 {
 		decompression_binary = dbs[0]
@@ -1775,7 +1780,7 @@ func(b *BinpkgExtractorAsync) _start() {
 		if decomp["decompress_alt"] != "" {
 			decomp_cmd = decomp["decompress_alt"]
 		}
-		dbs, _ := shlex.Split(strings.NewReader(varExpand(decomp_cmd, b.env, nil)), false, true)
+		dbs, _ := shlex.Split(strings.NewReader(util.varExpand(decomp_cmd, b.env, nil)), false, true)
 		decompression_binary = ""
 		if len(dbs) > 0 {
 			decompression_binary = dbs[0]
@@ -1785,7 +1790,7 @@ func(b *BinpkgExtractorAsync) _start() {
 			missing_package := decomp["package"]
 			b.scheduler.output(fmt.Sprintf("!!! %s\n",
 				fmt.Sprintf("File compression unsupported %s.\n Command was: %s.\n Maybe missing package: %s",
-					b.pkg_path, varExpand(decomp_cmd, b.env, nil), missing_package)), b.logfile,
+					b.pkg_path, util.varExpand(decomp_cmd, b.env, nil), missing_package)), b.logfile,
 				b.background, 40, -1)
 			i := 1
 			b.returncode = &i
@@ -1820,7 +1825,7 @@ func(b *BinpkgExtractorAsync) _start() {
 
 func NewBinpkgExtractorAsync(background bool, env map[string]string, features map[string]bool, image_dir string, pkg *PkgStr, pkg_path, logfile string, scheduler *SchedulerInterface) *BinpkgExtractorAsync{
 	b:= &BinpkgExtractorAsync{}
-	b._shell_binary=BashBinary
+	b._shell_binary= _const.BashBinary
 	b.SpawnProcess=NewSpawnProcess()
 
 	b.background=background
@@ -1850,7 +1855,7 @@ func (b *BinpkgFetcher) _start() {
 		b.pretend, b.scheduler)
 
 	if not b.pretend {
-		ensureDirs(filepath.Dir(b.pkg_path),-1,-1,-1,-1,nil,true)
+		util.ensureDirs(filepath.Dir(b.pkg_path),-1,-1,-1,-1,nil,true)
 		if "distlocks" in
 		b.pkg.root_config.settings.features
 		{
@@ -1940,7 +1945,7 @@ func (b *_BinpkgFetcherProcess) _start() {
 	settings := bintree.settings
 	pkg_path := b.pkg_path
 
-	exists := pathExists(pkg_path)
+	exists := myutil.pathExists(pkg_path)
 	resume := exists && filepath.Base(pkg_path)
 	in
 	bintree.invalids
@@ -1964,7 +1969,7 @@ func (b *_BinpkgFetcherProcess) _start() {
 	}
 
 	if pretend {
-		WriteMsgStdout(fmt.Sprintf("\n%s\n", uri), -1)
+		util.WriteMsgStdout(fmt.Sprintf("\n%s\n", uri), -1)
 		i := 0
 		b.returncode = &i
 		b._async_wait()
@@ -1997,7 +2002,7 @@ func (b *_BinpkgFetcherProcess) _start() {
 	fetch_args := []string{}
 	ss, _ := shlex.Split(strings.NewReader(fcmd), false, true)
 	for _, x := range ss {
-		fetch_args = append(fetch_args, varExpand(x, fcmd_vars, nil))
+		fetch_args = append(fetch_args, util.varExpand(x, fcmd_vars, nil))
 	}
 
 	if b.fd_pipes == nil {
@@ -2264,15 +2269,15 @@ func (b *BinpkgVerifier) _digester_exit(digester) {
 func (b *BinpkgVerifier) _display_success() {
 	stdout_orig := os.Stdout
 	stderr_orig := os.Stderr
-	global_havecolor := HaveColor
+	global_havecolor := output.HaveColor
 	out := &bytes.Buffer{}
 	os.Stdout = out
 	os.Stderr = out
-	if HaveColor!= 0 {
+	if output.HaveColor != 0 {
 		if b.background{
-			HaveColor = 1
+			output.HaveColor = 1
 		} else {
-			HaveColor = 0
+			output.HaveColor = 0
 		}
 	}
 
@@ -2280,14 +2285,14 @@ func (b *BinpkgVerifier) _display_success() {
 	if strings.HasSuffix(path,".partial") {
 		path = path[:-len(".partial")]
 	}
-	eout := NewEOutput(false)
+	eout := output.NewEOutput(false)
 	eout.ebegin(fmt.Sprintf("%s %s ;-)",filepath.Base(path),
-		" ".join(sorted(b._digests))))
+		" ".join(myutil.sorted(b._digests))))
 	eout.eend(0, "")
 
 	os.Stdout = stdout_orig
 	os.Stderr = stderr_orig
-	HaveColor = global_havecolor
+	output.HaveColor = global_havecolor
 
 	b.scheduler.output(out.String(),  b.logfile, b.background, 0, -1)
 }
@@ -2364,7 +2369,7 @@ func NewBlockerCache(myroot string, vardb *vardbapi)*BlockerCache {
 	b._cache_threshold = 5
 
 	b._vardb = vardb
-	b._cache_filename = filepath.Join(vardb.settings.ValueDict["EROOT"], CachePath, "vdb_blockers.pickle")
+	b._cache_filename = filepath.Join(vardb.settings.ValueDict["EROOT"], _const.CachePath, "vdb_blockers.pickle")
 	b._cache_version = "1"
 	b._cache_data = nil
 	b._modified = map[string]bool{}
@@ -2469,13 +2474,13 @@ func (b *BlockerCache) _load() {
 }
 
 func (b *BlockerCache) flush() {
-	if len(b._modified) >= b._cache_threshold && *secpass >= 2:
+	if len(b._modified) >= b._cache_threshold && *data.secpass >= 2:
 //try:
-	f := NewAtomic_ofstream(b._cache_filename, os.O_RDWR|os.O_TRUNC|os.O_CREATE, true)
+	f := util.NewAtomic_ofstream(b._cache_filename, os.O_RDWR|os.O_TRUNC|os.O_CREATE, true)
 	ogórek.NewEncoder(f).Encode(b._cache_data)
 	f.Close()
-	apply_secpass_permissions(
-		b._cache_filename, -1, *portage_gid, 0644, -1, nil, nil)
+	util.apply_secpass_permissions(
+		b._cache_filename, -1, *data.portage_gid, 0644, -1, nil, nil)
 	//except(IOError, OSError):
 	//pass
 	b._modified= map[string]bool{}
@@ -2565,8 +2570,8 @@ func (b *BlockerDB)findInstalledBlockers( new_pkg) {
 				inst_pkg.root, dep_check_trees)
 			if success == 0 {
 				pkg_location := filepath.Join(inst_pkg.root,
-					VdbPath, inst_pkg.category, inst_pkg.pf)
-				WriteMsg(fmt.Sprintf("!!! %s/*DEPEND: %s\n",
+					_const.VdbPath, inst_pkg.category, inst_pkg.pf)
+				util.WriteMsg(fmt.Sprintf("!!! %s/*DEPEND: %s\n",
 					pkg_location, atoms), -1, nil)
 				continue
 			}
@@ -2587,7 +2592,7 @@ func (b *BlockerDB)findInstalledBlockers( new_pkg) {
 	}
 	blocker_cache.flush()
 
-	blocker_parents := NewDigraph()
+	blocker_parents := util.NewDigraph()
 	blocker_atoms1 := []*Atom{}
 	for _, pkg := range installed_pkgs {
 		for blocker_atom
@@ -3024,7 +3029,7 @@ func(e *EbuildBuild) _start_with_metadata( aux_get_task) {
 				"To view fetch progress, run in another terminal:",
 				fmt.Sprintf("tail -f %s", fetch_log),
 			}
-			out := NewEOutput(false)
+			out := output.NewEOutput(false)
 			for _, l := range msg {
 				out.einfo(l)
 			}
@@ -3314,8 +3319,8 @@ func(e *EbuildBuild) _build_exit( build) {
 		t = "tar"
 	}
 	requested_binpkg_formats := strings.Fields(t)
-	for pkg_fmt := range SUPPORTED_BINPKG_FORMATS {
-		if Ins(
+	for pkg_fmt := range _const.SUPPORTED_BINPKG_FORMATS {
+		if myutil.Ins(
 			requested_binpkg_formats, pkg_fmt) {
 			if pkg_fmt == "rpm" {
 				binpkg_tasks.add(NewEbuildPhase(nil, e.background, "rpm", e.scheduler, e.settings, nil))
@@ -3562,7 +3567,7 @@ func (e*EbuildBuildDir) async_lock() IFuture {
 		}
 
 		//try:
-		ensureDirs(catdir, -1, *portage_gid, 070, 0, nil, true)
+		util.ensureDirs(catdir, -1, *data.portage_gid, 070, 0, nil, true)
 		//except PortageException as e:
 		//if ! filepath.Dir(catdir) {
 		//	result.set_exception(e)
@@ -3574,7 +3579,7 @@ func (e*EbuildBuildDir) async_lock() IFuture {
 	}
 
 	//try:
-	ensureDirs(filepath.Dir(catdir), -1, *portage_gid, 070, 0, nil, true)
+	util.ensureDirs(filepath.Dir(catdir), -1, *data.portage_gid, 070, 0, nil, true)
 	//except PortageException:
 	//if not filepath.Dir(filepath.Dir(catdir)):
 	//raise
@@ -3678,7 +3683,7 @@ func (e*EbuildExecuter) _setup_exit( setup_phase) {
 
 	unpack_phase := NewEbuildPhase(nil, e.background, "unpack", e.scheduler, e.settings, nil)
 
-	if Ins(strings.Fields(
+	if myutil.Ins(strings.Fields(
 		e.settings.ValueDict["PROPERTIES"]), "live") {
 
 		unpack_phase.addExitListener(e._unpack_exit)
@@ -3892,7 +3897,7 @@ None:
 	stderr_orig = sys.stderr
 	global_havecolor = portage.output.havecolor
 	out = io.StringIO()
-	eout = NewEOutput(false)
+	eout = output.NewEOutput(false)
 	eout.quiet = settings.get("PORTAGE_QUIET") == "1"
 	success = true
 try:
@@ -3987,9 +3992,9 @@ func(e*_EbuildFetcherProcess) _start() {
 func(e*_EbuildFetcherProcess) _run() {
 	h := !(e._settings.ValueDict["NOCOLOR"]== "yes" ||e._settings.ValueDict["NOCOLOR"]== "true")
 	if h {
-		HaveColor = 1
+		output.HaveColor = 1
 	} else {
-		HaveColor = 0
+		output.HaveColor = 0
 	}
 
 	if _want_userfetch(e._settings) {
@@ -4253,7 +4258,7 @@ func (e *EbuildIpcDaemon) _send_reply( reply) {
 		os.O_WRONLY|syscall.O_NONBLOCK, 0644)
 	if err != nil {
 		//except OSError as e:
-		WriteMsgLevel(fmt.Sprintf("!!! EbuildIpcDaemon %s: %s\n",
+		util.WriteMsgLevel(fmt.Sprintf("!!! EbuildIpcDaemon %s: %s\n",
 			"failed to send reply", e), 40, -1)
 	} else {
 		//try:
@@ -4516,7 +4521,7 @@ func(e *EbuildMetadataPhase) _async_waitpid_cb( *args, **kwargs) {
 		if len(auxdbkeys) != len(metadata_lines) {
 			metadata_valid = false
 		} else {
-			adk := sortedmsb(auxdbkeys)
+			adk := myutil.sortedmsb(auxdbkeys)
 			for i := range adk {
 				metadata[adk[i]] = metadata_lines[i]
 			}
@@ -4635,14 +4640,14 @@ func NewEbuildPhase(actionmap Actionmap, background bool, phase string, schedule
 
 func (e *EbuildPhase) _start() {
 
-	need_builddir := Ins(NewEbuildProcess(nil, false, nil, "", "", nil, nil)._phases_without_builddir, e.phase)
+	need_builddir := myutil.Ins(NewEbuildProcess(nil, false, nil, "", "", nil, nil)._phases_without_builddir, e.phase)
 
 	if need_builddir {
 		phase_completed_file :=
 			filepath.Join(
 				e.settings.ValueDict["PORTAGE_BUILDDIR"],
 				fmt.Sprintf(".%sed", strings.TrimRight(e.phase,"e")))
-		if ! pathExists(phase_completed_file) {
+		if ! myutil.pathExists(phase_completed_file) {
 
 			err := syscall.Unlink(filepath.Join(e.settings.ValueDict["T"],
 				"logging", e.phase))
@@ -4662,7 +4667,7 @@ func (e *EbuildPhase) _start() {
 		maint_str := ""
 		upstr_str := ""
 		metadata_xml_path := filepath.Join(filepath.Dir(e.settings.ValueDict["EBUILD"]), "metadata.xml")
-		if MetaDataXML != nil && pathIsFile(metadata_xml_path) {
+		if MetaDataXML != nil && myutil.pathIsFile(metadata_xml_path) {
 			herds_path := filepath.Join(e.settings.ValueDict["PORTDIR"],
 				"metadata/herds.xml")
 			//try{
@@ -4729,11 +4734,11 @@ func (e *EbuildPhase) _env_extractor_exit( env_extractor) {
 }
 
 func (e *EbuildPhase) _start_lock() {
-	if Ins(e._locked_phases, e.phase) &&
+	if myutil.Ins(e._locked_phases, e.phase) &&
 		e.settings.Features.Features["ebuild-locks"]{
 		eroot := e.settings.ValueDict["EROOT"]
-		lock_path := filepath.Join(eroot, VdbPath+"-ebuild")
-		if osAccess(filepath.Dir(lock_path), unix.W_OK) {
+		lock_path := filepath.Join(eroot, _const.VdbPath+"-ebuild")
+		if myutil.osAccess(filepath.Dir(lock_path), unix.W_OK) {
 			e._ebuild_lock = NewAsynchronousLock(lock_path, e.scheduler)
 			e._start_task(e._ebuild_lock, e._lock_exit)
 			return
@@ -4898,7 +4903,7 @@ func (e *EbuildPhase) _post_phase_exit( post_phase) {
 	}
 
 	if e._final_exit(post_phase) != 0 {
-		WriteMsg(fmt.Sprintf("!!! post %s failed; exiting.\n", e.phase),
+		util.WriteMsg(fmt.Sprintf("!!! post %s failed; exiting.\n", e.phase),
 			-1, nil)
 		e._die_hooks()
 		return
@@ -4999,18 +5004,18 @@ func (e *EbuildPhase) _elog( elog_funcname string, lines []string, background bo
 		elog_func = elog
 	}
 
-	global_havecolor := HaveColor
+	global_havecolor := output.HaveColor
 	//try{
-	if Ins([]string{"no", "false", ""}, strings.ToLower(e.settings.ValueDict["NOCOLOR"])) {
-		HaveColor = 1
+	if myutil.Ins([]string{"no", "false", ""}, strings.ToLower(e.settings.ValueDict["NOCOLOR"])) {
+		output.HaveColor = 1
 	}else {
-		HaveColor = 0
+		output.HaveColor = 0
 	}
 	for _, line := range lines {
 		elog_func(line, phase, e.settings.mycpv.string, out)
 	}
 	//finally{
-	HaveColor = global_havecolor
+	output.HaveColor = global_havecolor
 	msg := out.String()
 	if msg != "" {
 		log_path := ""
@@ -5117,7 +5122,7 @@ func(p*_PostPhaseCommands) _soname_deps_qa() IFuture{
 		unresolved.sort()
 		qa_msg := []string{"QA Notice: Unresolved soname dependencies:"}
 		qa_msg = append(qa_msg, "")
-		qa_msg =append(qa_msg, fmt.Sprintf("\t%s: %s", filename, strings.Join(sorted(soname_deps)), " "))
+		qa_msg =append(qa_msg, fmt.Sprintf("\t%s: %s", filename, strings.Join(myutil.sorted(soname_deps)), " "))
 		for filename, soname_deps
 			in
 		unresolved)
@@ -5207,7 +5212,7 @@ spawn_func = spawn_func, settings *Config, **keywords)*EbuildSpawnProcess {
 func FakeVardbGetPath(vardb *vardbapi)func(string, string)string {
 	return func(cpv, filename string) string {
 		settings := vardb.settings
-		path := filepath.Join(settings.ValueDict["EROOT"], VdbPath, cpv)
+		path := filepath.Join(settings.ValueDict["EROOT"], _const.VdbPath, cpv)
 		if filename != "" {
 			path = filepath.Join(path, filename)
 		}
@@ -5251,7 +5256,7 @@ dynamic_deps, ignore_built_slot_operator_deps, soname_deps bool)*FakeVartree{
 	portdb := root_config.trees["porttree"].dbapi
 	f.settings = real_vartree.settings
 	mykeys := list(real_vartree.dbapi._aux_cache_keys)
-	if  !　Ins(mykeys, "_mtime_"){
+	if  !　myutil.Ins(mykeys, "_mtime_"){
 		mykeys=append(mykeys, "_mtime_")
 	}
 	f._db_keys = mykeys
@@ -5386,7 +5391,7 @@ func(f*FakeVartree) cpv_discard( pkg) {
 func(f*FakeVartree) sync(acquire_lock int) {
 	locked := false
 //try:
-	if acquire_lock && osAccess(f._real_vardb._dbroot, os.O_RDONLY) {
+	if acquire_lock && myutil.osAccess(f._real_vardb._dbroot, os.O_RDONLY) {
 		f._real_vardb.lock()
 		locked = true
 	}
@@ -5479,7 +5484,7 @@ func grab_global_updates(portdb *portdbapi) map[string][][]string{
 	for _, repo_name := range portdb.getRepositories("") {
 		repo := portdb.getRepositoryPath(repo_name)
 		updpath := filepath.Join(repo, "profiles", "updates")
-		if !pathIsDir(updpath) {
+		if !myutil.pathIsDir(updpath) {
 			continue
 		}
 
@@ -5653,7 +5658,7 @@ func NewJobStatusDisplay(quiet, xterm_titles bool)*JobStatusDisplay{
 
 	width := 80
 	if j._isatty {
-		_, width, _ = get_term_size(0)
+		_, width, _ = output.get_term_size(0)
 	}
 	j._set_width(width)
 	return j
@@ -5855,11 +5860,11 @@ func(j*JobStatusDisplay) _display_status() {
 
 	color_output := &bytes.Buffer{}
 	plain_output := &bytes.Buffer{}
-	style_file := NewConsoleStylefile(color_output)
+	style_file := output.NewConsoleStylefile(color_output)
 	style_file.write_listener = plain_output
-	style_writer := &StyleWriter{File: style_file, maxcol: 9999}
+	style_writer := &output.StyleWriter{File: style_file, maxcol: 9999}
 	style_writer.style_listener = style_file.new_styles
-	f := &AbstractFormatter{Writer: style_writer}
+	f := &output.AbstractFormatter{Writer: style_writer}
 
 	number_style := "INFORM"
 	f.add_literal_data("Jobs: ")
@@ -5909,7 +5914,7 @@ func(j*JobStatusDisplay) _display_status() {
 		if hostname != "" {
 			title_str = fmt.Sprintf("%s: %s", hostname, title_str)
 		}
-		XtermTitle(title_str, false)
+		output.XtermTitle(title_str, false)
 	}
 }
 
@@ -5967,9 +5972,9 @@ func(m *MergeListItem) _start() {
 
 	msg := fmt.Sprintf("%s (%s of %s) %s",
 		action_desc,
-		colorize("MERGE_LIST_PROGRESS", str(pkg_count.curval)),
-		colorize("MERGE_LIST_PROGRESS", str(pkg_count.maxval)),
-		colorize(pkg_color, pkg.cpv+repoSeparator+pkg.repo))
+		output.colorize("MERGE_LIST_PROGRESS", str(pkg_count.curval)),
+		output.colorize("MERGE_LIST_PROGRESS", str(pkg_count.maxval)),
+		output.colorize(pkg_color, pkg.cpv+repoSeparator+pkg.repo))
 
 	if pkg.root_config.settings["ROOT"] != "/" {
 		msg += fmt.Sprintf(" %s %s", preposition, pkg.root)
@@ -6096,7 +6101,7 @@ func(m*MetadataRegen) _next_task() {
 func(m*MetadataRegen) _iter_every_cp() []string {
 	cp_all := m._portdb.cp_all
 	cps := []string{}
-	for _, category:= range sorted(m._portdb.categories()) {
+	for _, category:= range myutil.sorted(m._portdb.categories()) {
 		for _, cp := range cp_all(map[string]bool{category:true}, nil, false, true) {
 			cps = append(cps, cp)
 		}
@@ -6110,13 +6115,13 @@ func(m*MetadataRegen) _iter_metadata_processes() {
 	cp_set := m._cp_set
 	consumer := m._consumer
 
-	WriteMsgStdout("Regenerating cache entries...\n", 0)
+	util.WriteMsgStdout("Regenerating cache entries...\n", 0)
 	for _, cp := range m._cp_iter {
 		if m._terminated.is_set() {
 			break
 		}
 		cp_set.add(cp)
-		WriteMsgStdout(fmt.Sprintf("Processing %s\n", cp), 0)
+		util.WriteMsgStdout(fmt.Sprintf("Processing %s\n", cp), 0)
 		for _, mytree := range portdb.porttrees {
 			repo := portdb.repositories.getRepoForLocation(mytree)
 			cpv_list := portdb.cp_list(cp, 1, []string{repo.location})
@@ -6166,7 +6171,7 @@ func(m*MetadataRegen) _cleanup() {
 			CacheError
 			as
 		e:
-			WriteMsg(fmt.Sprintf("Error listing cache entries for " +
+			util.WriteMsg(fmt.Sprintf("Error listing cache entries for " +
 			"'%s': %s, continuing...\n" ,mytree, e), -1, nil)
 			del
 			e
@@ -6190,7 +6195,7 @@ func(m*MetadataRegen) _cleanup() {
 		CacheError
 		as
 	e:
-		WriteMsg(fmt.Sprintf("Error listing cache entries for "+
+		util.WriteMsg(fmt.Sprintf("Error listing cache entries for "+
 			"'%s': %s, continuing...\n", mytree, e), -1, nil)
 		del
 		e
@@ -6233,7 +6238,7 @@ func(m*MetadataRegen) _task_exit(metadata_process) {
 	if metadata_process.returncode != 0 {
 		m._valid_pkgs.discard(metadata_process.cpv)
 		if not m._terminated_tasks {
-			WriteMsg(fmt.Sprintf("Error processing %s, continuing...\n", metadata_process.cpv, ), -1, nil)
+			util.WriteMsg(fmt.Sprintf("Error processing %s, continuing...\n", metadata_process.cpv, ), -1, nil)
 		}
 	}
 
@@ -6258,7 +6263,7 @@ func (m *MiscFunctionsProcess)_start() {
 	settings := m.settings
 	portage_bin_path := settings.ValueDict["PORTAGE_BIN_PATH"]
 	misc_sh_binary := filepath.Join(portage_bin_path,
-		filepath.Base(MISC_SH_BINARY))
+		filepath.Base(_const.MISC_SH_BINARY))
 
 	m.args = append([]string{ShellQuote(misc_sh_binary)}, m.commands...)
 	if m.logfile == "" &&m.settings.ValueDict["PORTAGE_BACKGROUND"] != "subprocess" {
@@ -6571,11 +6576,11 @@ func (p *packageMetadataWrapper) definedPhases() map[string]bool {
 		}
 		return phases
 	}
-	return EBUILD_PHASES
+	return _const.EBUILD_PHASES
 }
 
 func NewPackageMetadataWrapper(pkg *Package, metadata map[string]string) *packageMetadataWrapper {
-	p := &packageMetadataWrapper{pkg: pkg, valueDict: make(map[string]string), useConditionalKeys: useConditionalKeys, wrappedKeys: wrappedKeys, allMetadataKeys: CopyMapSB(allMetadataKeys)}
+	p := &packageMetadataWrapper{pkg: pkg, valueDict: make(map[string]string), useConditionalKeys: useConditionalKeys, wrappedKeys: wrappedKeys, allMetadataKeys: myutil.CopyMapSB(allMetadataKeys)}
 	if !pkg.built {
 		p.valueDict["USE"] = ""
 	}
@@ -6632,12 +6637,12 @@ func (p *PackageMerge) _start() {
 		action_desc = "Installing"
 		preposition = "to"
 		counter_str = fmt.Sprintf("(%s of %s) ",
-			colorize("MERGE_LIST_PROGRESS", str(pkg_count.curval)),
-			colorize("MERGE_LIST_PROGRESS", str(pkg_count.maxval)))
+			output.colorize("MERGE_LIST_PROGRESS", str(pkg_count.curval)),
+			output.colorize("MERGE_LIST_PROGRESS", str(pkg_count.maxval)))
 	}
 
 	msg := fmt.Sprintf("%s %s%s", action_desc, counter_str,
-		colorize(pkg_color, pkg.cpv+repoSeparator+pkg.repo))
+		output.colorize(pkg_color, pkg.cpv+repoSeparator+pkg.repo))
 
 	if pkg.root_config.settings["ROOT"] != "/" {
 		msg += fmt.Sprintf(" %s %s", preposition, pkg.root)
@@ -6673,7 +6678,7 @@ type PackagePhase struct {
 	_shell_binary string
 
 	// slots
-	_pkg_install_mask *InstallMask
+	_pkg_install_mask *util.InstallMask
 	settings          *Config
 	fd_pipes          map[int]int
 	actionmap         Actionmap
@@ -6686,7 +6691,7 @@ func(p*PackagePhase) _start() {
 	if err != nil {
 		p._pkg_install_mask = nil
 	} else {
-		p._pkg_install_mask = NewInstallMask(string(f))
+		p._pkg_install_mask = util.NewInstallMask(string(f))
 	}
 	if p._pkg_install_mask != nil {
 		p._proot = filepath.Join(p.settings.ValueDict["T"], "packaging")
@@ -6708,7 +6713,7 @@ func(p*PackagePhase) _copy_proot_exit( proc) {
 		p.wait()
 	}else {
 		p._start_task(NewAsyncFunction(
-			install_mask_dir,
+			util.install_mask_dir,
 			 (filepath.Join(p._proot,
 			strings.TrimLeft(p.settings.ValueDict["EPREFIX"],string(filepath.Separator))),
 			p._pkg_install_mask)),
@@ -6754,7 +6759,7 @@ func NewPackagePhase(actionmap Actionmap, background bool, fd_pipes map[int]int,
 	logfile string, scheduler *SchedulerInterface, settings *Config)*PackagePhase {
 	p := &PackagePhase{}
 	p.CompositeTask = NewCompositeTask()
-	p._shell_binary = BashBinary
+	p._shell_binary = _const.BashBinary
 
 	p.actionmap = actionmap
 	p.background = background
@@ -6782,7 +6787,7 @@ func(p*PackageUninstall) _start() {
 
 	vardb := p.pkg.root_config.trees["vartree"].dbapi
 	dbdir := vardb.getpath(p.pkg.cpv)
-	if !pathExists(dbdir) {
+	if !myutil.pathExists(dbdir) {
 		i := 0
 		p.returncode = &i
 		p._async_wait()
@@ -6882,7 +6887,7 @@ func(p*PackageUninstall) _writemsg_level(msg string, level, noiselevel int) {
 
 	if log_path == "" {
 		if !(background && level < 30) {
-			WriteMsgLevel(msg, level, noiselevel)
+			util.WriteMsgLevel(msg, level, noiselevel)
 		}
 	}else {
 		p.scheduler.output(msg, log_path,false, level, noiselevel)
@@ -7042,7 +7047,7 @@ func(p*PackageVirtualDbapi) cp_list( mycp string, use_cache int) {
 // false
 func(p*PackageVirtualDbapi) cp_all( sort bool) {
 	if sort {
-		return sorted(p._cp_map)
+		return myutil.sorted(p._cp_map)
 	}else {
 		return list(p._cp_map)
 	}
@@ -7250,7 +7255,7 @@ func(p *ProgressHandler) display() {
 
 type RootConfig struct {
 	// slot
-	Mtimedb   *MtimeDB
+	Mtimedb   *util.MtimeDB
 	root      string
 	Settings  *Config
 	trees     *Tree
@@ -7564,14 +7569,14 @@ func NewScheduler(settings *Config, trees, mtimedb, myopts, spinner, mergelist, 
 	in
 	s.myopts):
 	if !features["distlocks"] {
-		WriteMsg(Red("!!!")+"\n", -1, nil)
-		WriteMsg(Red("!!!")+" parallel-fetching "+
+		util.WriteMsg(output.Red("!!!")+"\n", -1, nil)
+		util.WriteMsg(output.Red("!!!")+" parallel-fetching "+
 			"requires the distlocks feature enabled"+"\n",
 			-1, nil)
-		WriteMsg(Red("!!!")+" you have it disabled, "+
+		util.WriteMsg(output.Red("!!!")+" you have it disabled, "+
 			"thus parallel-fetching is being disabled"+"\n",
 			-1, nil)
-		WriteMsg(Red("!!!")+"\n", -1, nil)
+		util.WriteMsg(output.Red("!!!")+"\n", -1, nil)
 	} else if merge_count > 1 {
 		s._parallel_fetch = true
 	}
@@ -7653,7 +7658,7 @@ func (s*Scheduler) _init_graph( graph_config) {
 	s._set_graph_config(graph_config)
 	s._blocker_db = map[string]*BlockerDB{}
 	depgraph_params := create_depgraph_params(s.myopts, "")
-	dynamic_deps:= Inmss(depgraph_params, "dynamic_deps")
+	dynamic_deps:= myutil.Inmss(depgraph_params, "dynamic_deps")
 
 	ignore_built_slot_operator_deps := s.myopts.get(
 		"--ignore-built-slot-operator-deps", "n") == "y"
@@ -7701,30 +7706,30 @@ func (s*Scheduler) _background_mode() bool {
 		interactive_tasks := s._get_interactive_tasks()
 		if interactive_tasks{
 			background = false
-			WriteMsgLevel(">>> Sending package output to stdio due "+
+			util.WriteMsgLevel(">>> Sending package output to stdio due "+
 				"to interactive package(s):\n",
 				10, -1)
 			msg := []string{""}
 			for pkg
 				in
 			interactive_tasks {
-				pkg_str := "  " + colorize("INFORM", fmt.Sprint(pkg.cpv))
+				pkg_str := "  " + output.colorize("INFORM", fmt.Sprint(pkg.cpv))
 				if pkg.root_config.settings.ValueDict["ROOT"] != "/" {
 					pkg_str += " for " + pkg.root
 				}
 				msg= append(msg, pkg_str)
 			}
 			msg= append(msg, "")
-			WriteMsgLevel(strings.Join(msg, "\n")+"\n", 20, -1)
+			util.WriteMsgLevel(strings.Join(msg, "\n")+"\n", 20, -1)
 			if s._max_jobs is
 			true ||
 				s._max_jobs > 1
 			{
 				s._set_max_jobs(1)
-				WriteMsgLevel(">>> Setting --jobs=1 due "+
+				util.WriteMsgLevel(">>> Setting --jobs=1 due "+
 					"to the above interactive package(s)\n",
 					20, -1)
-				WriteMsgLevel(">>> In order to temporarily mask "+
+				util.WriteMsgLevel(">>> In order to temporarily mask "+
 					"interactive updates, you may\n"+
 					">>> specify --accept-properties=-interactive\n",
 					20, -1)
@@ -8001,7 +8006,7 @@ func (s *Scheduler) _generate_digests() int {
 	AssertionError("ebuild not found for '%s'" % x.cpv)
 	pkgsettings.ValueDict['O'] =  filepath.Dir(ebuild_path)
 	if digestgen(nil,  pkgsettings, portdb)==0 {
-		WriteMsgLevel(fmt.Sprintf("!!! Unable to generate manifest for '%s'.\n", x.cpv), 40,-1)
+		util.WriteMsgLevel(fmt.Sprintf("!!! Unable to generate manifest for '%s'.\n", x.cpv), 40,-1)
 		return FAILURE
 	}
 
@@ -8128,7 +8133,7 @@ func (s *Scheduler) _run_pkg_pretend()  int {
 			continue
 		}
 
-		if Ins([]string{"0", "1", "2", "3"}, x.eapi) {
+		if myutil.Ins([]string{"0", "1", "2", "3"}, x.eapi) {
 			continue
 		}
 
@@ -8138,8 +8143,8 @@ func (s *Scheduler) _run_pkg_pretend()  int {
 			continue
 		}
 
-		out_str := ">>> Running pre-merge checks for " + colorize("INFORM", x.cpv) + "\n"
-		WriteMsgStdout(out_str, -1)
+		out_str := ">>> Running pre-merge checks for " + output.colorize("INFORM", x.cpv) + "\n"
+		util.WriteMsgStdout(out_str, -1)
 
 		root_config := x.root_config
 		settings := s.pkgsettings[root_config.root]
@@ -8152,7 +8157,7 @@ func (s *Scheduler) _run_pkg_pretend()  int {
 
 		fpes, _ := filepath.EvalSymlinks(settings.ValueDict["PORTAGE_TMPDIR"])
 		build_dir_path := filepath.Join(fpes, "portage", x.category, x.pf)
-		existing_builddir := pathIsDir(build_dir_path)
+		existing_builddir := myutil.pathIsDir(build_dir_path)
 		settings.ValueDict["PORTAGE_BUILDDIR"] = build_dir_path
 		build_dir := NewEbuildBuildDir(sched_iface, settings)
 		sched_iface.run_until_complete(build_dir.async_lock())
@@ -8215,7 +8220,7 @@ func (s *Scheduler) _run_pkg_pretend()  int {
 			bintree.inject(x.cpv, filename = fetched)
 
 			infloc = filepath.Join(build_dir_path, "build-info")
-			ensureDirs(infloc)
+			util.ensureDirs(infloc)
 			s._sched_iface.run_until_complete(
 				bintree.dbapi.unpack_metadata(settings, infloc))
 			ebuild_path = filepath.Join(infloc, x.pf+".ebuild")
@@ -8284,8 +8289,8 @@ func (s *Scheduler) _run_pkg_pretend()  int {
 func (s *Scheduler) merge() int {
 	if "--resume" in
 	s.myopts{
-		WriteMsgStdout(
-			colorize("GOOD", "*** Resuming merge...\n"), -1)
+		util.WriteMsgStdout(
+			output.colorize("GOOD", "*** Resuming merge...\n"), -1)
 		s._logger.log(" *** Resuming merge...", "")
 	}
 
@@ -8307,13 +8312,13 @@ func (s *Scheduler) merge() int {
 		root_config = s.trees[root]["root_config"]
 
 		tmpdir := root_config.settings.ValueDict["PORTAGE_TMPDIR"]
-		if tmpdir == "" || !pathIsDir(tmpdir):
+		if tmpdir == "" || !myutil.pathIsDir(tmpdir):
 		msg := []string{
 			"The directory specified in your PORTAGE_TMPDIR variable does not exist:",
 			tmpdir,
 			"Please create this directory or correct your PORTAGE_TMPDIR setting.",
 		}
-		out := NewEOutput(false)
+		out := output.NewEOutput(false)
 		for _, l := range msg {
 			out.eerror(l)
 			return FAILURE
@@ -8358,7 +8363,7 @@ func (s *Scheduler) merge() int {
 		sighandler := func(signum int, frame) {
 			signal.signal(signal.SIGINT, signal.SIG_IGN)
 			signal.signal(signal.SIGTERM, signal.SIG_IGN)
-			WriteMsg(fmt.Sprintf("\n\nExiting on signal %s\n", signum), 0, nil)
+			util.WriteMsg(fmt.Sprintf("\n\nExiting on signal %s\n", signum), 0, nil)
 			s.terminate()
 			received_signal = append(received_signal, 128+signum)
 		}
@@ -8446,7 +8451,7 @@ func (s *Scheduler) merge() int {
 		failed_pkgs[:]
 	}
 
-	printer := NewEOutput(false)
+	printer := output.NewEOutput(false)
 	background := s._background
 	failure_log_shown := false
 	if background && len(s._failed_pkgs_all) == 1 &&
@@ -8473,12 +8478,12 @@ func (s *Scheduler) merge() int {
 		for line
 			in
 		log_file:
-		WriteMsgLevel(line, -1, 0)
+		util.WriteMsgLevel(line, -1, 0)
 		except
 		zlib.error
 		as
 	e:
-		WriteMsgLevel("%s\n"%(e, ), level = 40,
+		util.WriteMsgLevel("%s\n"%(e, ), level = 40,
 			noiselevel = -1)
 	finally:
 		log_file.close()
@@ -8503,9 +8508,9 @@ func (s *Scheduler) merge() int {
 			}
 			print()
 			printer.einfo("Error messages for package %s%s:"%
-				(colorize("INFORM", key), root_msg))
+				(output.colorize("INFORM", key), root_msg))
 			print()
-			for phase := range EBUILD_PHASES{
+			for phase := range _const.EBUILD_PHASES {
 				if phase not
 				in
 				logentries{
@@ -8545,7 +8550,7 @@ func (s *Scheduler) merge() int {
 		}
 
 		printer.eerror("")
-		for _, line := range SplitSubN(msg, 72) {
+		for _, line := range myutil.SplitSubN(msg, 72) {
 			printer.eerror(line)
 		}
 		printer.eerror("")
@@ -8560,7 +8565,7 @@ func (s *Scheduler) merge() int {
 			}
 			printer.eerror(msg)
 			if log_path != nil {
-				printer.eerror(fmt.Sprintf("  '%s'", colorize("INFORM", log_path)))
+				printer.eerror(fmt.Sprintf("  '%s'", output.colorize("INFORM", log_path)))
 			}
 		}
 		printer.eerror("")
@@ -9228,7 +9233,7 @@ func (s *Scheduler) _task( pkg) {
 func (s *Scheduler) _failed_pkg_msg(failed_pkg *_failed_pkg, action, preposition string) {
 	pkg := failed_pkg.pkg
 	msg := fmt.Sprintf(fmt.Sprintf("%s to %s %s",
-		bad("Failed"), action, colorize("INFORM", pkg.cpv)))
+		bad("Failed"), action, output.colorize("INFORM", pkg.cpv)))
 	if pkg.root_config.settings.ValueDict["ROOT"] != "/" {
 		msg += fmt.Sprintf(fmt.Sprintf(" %s %s", preposition, pkg.root))
 	}
@@ -9240,13 +9245,13 @@ func (s *Scheduler) _failed_pkg_msg(failed_pkg *_failed_pkg, action, preposition
 	}
 
 	if log_path != "" {
-		s._status_msg(fmt.Sprintf(" '%s'", colorize("INFORM", log_path), ))
+		s._status_msg(fmt.Sprintf(" '%s'", output.colorize("INFORM", log_path), ))
 	}
 }
 
 func (s *Scheduler) _status_msg( msg string) {
 	if !s._background {
-		WriteMsgLevel("\n", 0, 0)
+		util.WriteMsgLevel("\n", 0, 0)
 	}
 	s._status_display.displayMessage(msg)
 }
@@ -9276,7 +9281,7 @@ func (s *Scheduler) _save_resume_list() {
 }
 
 func (s *Scheduler) _calc_resume_list() {
-	print(colorize("GOOD", "*** Resuming merge..."))
+	print(output.colorize("GOOD", "*** Resuming merge..."))
 
 	s._destroy_graph()
 
@@ -9301,7 +9306,7 @@ exc:
 
 	unsatisfied_resume_dep_msg:= func(){
 		mydepgraph.display_problems()
-		out := NewEOutput(false)
+		out := output.NewEOutput(false)
 		out.eerror("One or more packages are either masked or " +
 			"have missing dependencies:")
 		out.eerror("")
@@ -9330,7 +9335,7 @@ exc:
 			"to skip the first package in the list and " +
 			"any other packages that may be " +
 			"masked or have missing dependencies."
-		for _, line:= range SplitSubN(msg, 72) {
+		for _, line:= range myutil.SplitSubN(msg, 72) {
 			out.eerror(line)
 		}
 	}
@@ -9366,7 +9371,7 @@ exc:
 	msg += " dropped because it requires %s" % ", ".join(atoms)
 	for line
 		in
-	SplitSubN(msg, msg_width):
+	myutil.SplitSubN(msg, msg_width):
 	eerror(line, "other", pkg.cpv, "", nil)
 	settings = s.pkgsettings.ValueDict[pkg.root]
 	settings.pop("T", nil)
@@ -9378,7 +9383,7 @@ exc:
 
 func (s *Scheduler) _show_list() bool {
 	myopts := s.myopts
-	if  !Inmss(myopts, "--quiet")&& Inmss(myopts, "--ask")||Inmss(myopts, "--tree")||Inmss(myopts, "--verbose") {
+	if  !myutil.Inmss(myopts, "--quiet")&& myutil.Inmss(myopts, "--ask")|| myutil.Inmss(myopts, "--tree")|| myutil.Inmss(myopts, "--verbose") {
 		return true
 	}
 	return false
@@ -9441,7 +9446,7 @@ try:
 		(pkg_count.curval, pkg_count.maxval, pkg.cpv))
 	world_set.add(atom)
 	else:
-	WriteMsgLevel("\n!!! Unable to record %s in \"world\"\n" %
+	util.WriteMsgLevel("\n!!! Unable to record %s in \"world\"\n" %
 		(atom,), level = logging.WARN, noiselevel=-1)
 finally:
 	if world_locked:
@@ -9711,8 +9716,8 @@ func(s *SpawnProcess) _spawn(args []string, **kwargs) {
 	if s._selinux_type != nil {
 		spawn_func = portage.selinux.spawn_wrapper(spawn_func,
 			s._selinux_type)
-		if args[0] != BashBinary {
-			args = append([]string{BashBinary, "-c", "exec \"$@\"", args[0]}, args...)
+		if args[0] != _const.BashBinary {
+			args = append([]string{_const.BashBinary, "-c", "exec \"$@\"", args[0]}, args...)
 		}
 	}
 
@@ -9766,7 +9771,7 @@ func(s *SpawnProcess) _cgroup_cleanup() {
 				if err != nil {
 					//except OSError as e:
 					if err == syscall.EPERM {
-						WriteMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n", p), 40, -1)
+						util.WriteMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n", p), 40, -1)
 					} else if err != syscall.ESRCH {
 						//raise
 					}
@@ -9810,7 +9815,7 @@ func(s *SpawnProcess) _elog(elog_funcname string, lines []string){
 	var elog_func func(string)
 	switch elog_funcname {
 	case "eerror":
-		elog_func = NewEOutput(false).eerror
+		elog_func = output.NewEOutput(false).eerror
 	}
 	for _, line := range lines{
 		elog_func(line)
@@ -9854,7 +9859,7 @@ func (s *SubProcess) _cancel() {
 		if err != nil {
 			//except OSError as e:
 			if err == syscall.EPERM {
-				WriteMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n", s.pid), 40, -1)
+				util.WriteMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n", s.pid), 40, -1)
 			} else if err != syscall.ESRCH {
 				//raise
 			}
@@ -10118,10 +10123,10 @@ func NewUseFlagDisplay( name string, enabled bool, forced string)*UseFlagDisplay
 func(u*UseFlagDisplay) __str__() string {
 	s := u.name
 	if u.enabled {
-		s = Red(s)
+		s = output.Red(s)
 	} else {
 		s = "-" + s
-		s = Blue(s)
+		s = output.Blue(s)
 	}
 	if u.forced != "" {
 		s = fmt.Sprintf("(%s)", s)
@@ -10180,7 +10185,7 @@ use {
 
 	var_order = set(use_enabled)
 	var_order.update(use_disabled)
-	var_order = sorted(var_order)
+	var_order = myutil.sorted(var_order)
 	var_order.insert(0, 'USE')
 	use.difference_update(use_expand_flags)
 	use_enabled['USE'] = list(&_flag_info{f, f}
@@ -10462,7 +10467,7 @@ try:
 	_close_fds()
 	_setup_pipes(fd_pipes, false)
 
-	HaveColor = m.settings.ValueDict["NOCOLOR"] == "yes" || m.settings.ValueDict["NOCOLOR"] == "true"
+	output.HaveColor = m.settings.ValueDict["NOCOLOR"] == "yes" || m.settings.ValueDict["NOCOLOR"] == "true"
 
 	m.vartree.dbapi._flush_cache_enabled = false
 
@@ -10513,7 +10518,7 @@ finally:
 
 func(m *MergeProcess) _async_waitpid_cb( *args, **kwargs){
 	m.ForkProcess._async_waitpid_cb( *args, **kwargs)
-	if *m.returncode == ReturncodePostinstFailure{
+	if *m.returncode == _const.ReturncodePostinstFailure {
 		m.postinst_failure = true
 		*m.returncode = syscall.F_OK
 	}
@@ -10710,11 +10715,11 @@ func(u*UserQuery) query(prompt string, enterInvalid bool, responses []string, co
 	if responses == nil {
 		responses = []string{"Yes", "No"}
 		colours = []func(string) string{
-			NewCreateColorFunc("PROMPT_CHOICE_DEFAULT"),
-			NewCreateColorFunc("PROMPT_CHOICE_OTHER"),
+			output.NewCreateColorFunc("PROMPT_CHOICE_DEFAULT"),
+			output.NewCreateColorFunc("PROMPT_CHOICE_OTHER"),
 		}
 	} else if colours == nil {
-		colours = []func(string) string{Bold}
+		colours = []func(string) string{output.Bold}
 	}
 	cs := []func(string) string{}
 	for i := range responses {
@@ -10724,7 +10729,7 @@ func(u*UserQuery) query(prompt string, enterInvalid bool, responses []string, co
 	if _, ok := u.myopts["--alert"]; ok {
 		prompt = "\a" + prompt
 	}
-	print(Bold(prompt) + " ")
+	print(output.Bold(prompt) + " ")
 	for {
 		rs := []string{}
 		for i := range responses {
@@ -10840,7 +10845,7 @@ func (s *SchedulerInterface) output( msg , log_path string, background bool, lev
 
 	msg_shown := false
 	if !background {
-		WriteMsgLevel(msg, level, noiselevel)
+		util.WriteMsgLevel(msg, level, noiselevel)
 		msg_shown = true
 	}
 
@@ -10852,7 +10857,7 @@ func (s *SchedulerInterface) output( msg , log_path string, background bool, lev
 				//raise
 			}
 			if !msg_shown {
-				WriteMsgLevel(msg, level, noiselevel)
+				util.WriteMsgLevel(msg, level, noiselevel)
 			}
 		} else {
 			if strings.HasSuffix(log_path, ".gz") {

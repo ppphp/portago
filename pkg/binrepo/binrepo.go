@@ -1,10 +1,13 @@
-package atom
+package binrepo
 
 import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
 	"github.com/ppphp/configparser"
+	"github.com/ppphp/portago/atom"
+	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/util"
 	"strconv"
 	"strings"
 )
@@ -12,12 +15,12 @@ import (
 type BinRepoConfig struct {
 	// slot
 	name, name_fallback, sync_uri string
-	priority *int
-	fetchcommand string
-	resumecommand string
+	priority                      *int
+	fetchcommand                  string
+	resumecommand                 string
 }
 
-func (b *BinRepoConfig)info_string() string {
+func (b *BinRepoConfig) info_string() string {
 	indent := "    "
 	repo_msg := []string{}
 	if b.name != "" {
@@ -49,51 +52,48 @@ func NewBinRepoConfig(opts map[string]string) *BinRepoConfig {
 	return b
 }
 
-
 type BinRepoConfigLoader struct {
-_data map[string]*BinRepoConfig
-}//(Mapping):
+	_data map[string]*BinRepoConfig
+} //(Mapping):
 
-
-func (b*BinRepoConfigLoader)_normalize_uri(uri string)string {
+func (b *BinRepoConfigLoader) _normalize_uri(uri string) string {
 	return strings.TrimRight(uri, "/")
 }
 
-func (b*BinRepoConfigLoader)_parse(paths []string, defaults map[string]string) configparser.ConfigParser {
+func (b *BinRepoConfigLoader) _parse(paths []string, defaults map[string]string) configparser.ConfigParser {
 	da := configparser.DefaultArgument
 	da.Defaults = defaults
 	parser := configparser.NewConfigParser(configparser.DefaultArgument)
 	recursive_paths := []string{}
 	for _, p := range paths {
 		//if isinstance(p, str):
-		recursive_paths = append(recursive_paths, RecursiveFileList(p)...)
+		recursive_paths = append(recursive_paths, util.RecursiveFileList(p)...)
 		//else:
 		//recursive_paths.append(p)
 	}
 
-	readConfigs(parser, recursive_paths)
+	util.ReadConfigs(parser, recursive_paths)
 	return parser
 }
 
-func (b*BinRepoConfigLoader)__iter__() {
+func (b *BinRepoConfigLoader) __iter__() {
 	//return iter(b._data)
 }
 
-func (b*BinRepoConfigLoader)__contains__( key string) bool {
+func (b *BinRepoConfigLoader) __contains__(key string) bool {
 	_, ok := b._data[key]
 	return ok
 }
 
-func (b*BinRepoConfigLoader)__getitem__(key string) *BinRepoConfig {
+func (b *BinRepoConfigLoader) __getitem__(key string) *BinRepoConfig {
 	return b._data[key]
 }
 
-func (b*BinRepoConfigLoader)__len__() int {
+func (b *BinRepoConfigLoader) __len__() int {
 	return len(b._data)
 }
 
-
-func NewBinRepoConfigLoader(paths []string, settings *Config) *BinRepoConfigLoader {
+func NewBinRepoConfigLoader(paths []string, settings *atom.Config) *BinRepoConfigLoader {
 	b := &BinRepoConfigLoader{}
 
 	parser_defaults := map[string]string{
@@ -113,43 +113,43 @@ func NewBinRepoConfigLoader(paths []string, settings *Config) *BinRepoConfigLoad
 
 	repos := []*BinRepoConfig{}
 	sync_uris := []string{}
-	for _, section_name:= range parser.Sections() {
+	for _, section_name := range parser.Sections() {
 		repo_data := parser.GetSectionMap()[section_name]
 		repo_data["name"] = section_name
 		repo := NewBinRepoConfig(repo_data)
 		if repo.sync_uri == "" {
-			WriteMsg(fmt.Sprintf("!!! Missing sync-uri setting for binrepo %s\n",repo.name, ), -1, nil)
+			util.WriteMsg(fmt.Sprintf("!!! Missing sync-uri setting for binrepo %s\n", repo.name), -1, nil)
 			continue
 		}
 
 		sync_uri := b._normalize_uri(repo.sync_uri)
-		sync_uris=append(sync_uris, sync_uri)
+		sync_uris = append(sync_uris, sync_uri)
 		repo.sync_uri = sync_uri
 		if repo.priority != nil {
-		//try:
-		//	repo.priority = strconv.Atoi(repo.priority)
-		//	except
-		//ValueError:
-		//	repo.priority = None
-			repos=append(repos,repo)
+			//try:
+			//	repo.priority = strconv.Atoi(repo.priority)
+			//	except
+			//ValueError:
+			//	repo.priority = None
+			repos = append(repos, repo)
 		}
 	}
 
 	sync_urisM := map[string]bool{}
-	for _, s := range sync_uris{
+	for _, s := range sync_uris {
 		sync_urisM[s] = true
 	}
 	current_priority := 0
-	for _, sync_uri:= range reversed(strings.Fields(settings.ValueDict["PORTAGE_BINHOST"])) {
+	for _, sync_uri := range myutil.Reversed(strings.Fields(settings.ValueDict["PORTAGE_BINHOST"])) {
 		sync_uri = b._normalize_uri(sync_uri)
 		if !sync_urisM[sync_uri] {
 			current_priority += 1
 			sync_urisM[sync_uri] = true
 			repos = append(repos, NewBinRepoConfig(map[string]string{
 				"name-fallback": b._digest_uri(sync_uri),
-				"name": "",
-				"priority": fmt.Sprint(current_priority),
-				"sync-uri": sync_uri,
+				"name":          "",
+				"priority":      fmt.Sprint(current_priority),
+				"sync-uri":      sync_uri,
 			}))
 		}
 	}
@@ -162,16 +162,16 @@ func NewBinRepoConfigLoader(paths []string, settings *Config) *BinRepoConfigLoad
 			b._data[repo.name_fallback] = repo
 		}
 	}
-		//OrderedDict((repo.name or repo.name_fallback, repo)
-		//for repo in sorted(
-		//	repos,
-		//	key = lambda repo: (repo.priority or 0, repo.name or repo.name_fallback)))
+	//OrderedDict((repo.name or repo.name_fallback, repo)
+	//for repo in sorted(
+	//	repos,
+	//	key = lambda repo: (repo.priority or 0, repo.name or repo.name_fallback)))
 
 	return b
 
 }
 
-func (b*BinRepoConfigLoader) _digest_uri(uri string) string {
+func (b *BinRepoConfigLoader) _digest_uri(uri string) string {
 	h := md5.New()
 	h.Write([]byte(uri))
 	return hex.EncodeToString(h.Sum(nil))

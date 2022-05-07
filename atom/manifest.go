@@ -2,6 +2,9 @@ package atom
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/util"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -23,7 +26,7 @@ type FileNotInManifestException struct {
 func manifest2AuxfileFilter(filename string)bool {
 	filename = strings.Trim(filename, string(os.PathSeparator))
 	mysplit := strings.Split(filename, string(os.PathSeparator))
-	if Ins(mysplit, "CVS") {
+	if myutil.Ins(mysplit, "CVS") {
 		return false
 	}
 	for _, x := range mysplit {
@@ -169,7 +172,7 @@ find_invalid_path_char func(string)int, strict_misc_digests bool)*Manifest {
 	m.required_hashes = map[string]bool{}
 
 	if hashes == nil {
-		hashes = MANIFEST2_HASH_DEFAULTS
+		hashes = _const.MANIFEST2_HASH_DEFAULTS
 	}
 	if required_hashes == nil {
 		required_hashes = hashes
@@ -198,7 +201,7 @@ find_invalid_path_char func(string)int, strict_misc_digests bool)*Manifest {
 		}
 	}
 
-	for t := range MANIFEST2_IDENTIFIERS {
+	for t := range _const.MANIFEST2_IDENTIFIERS {
 		m.fhashdict[t] = map[string]map[string]string{}
 	}
 	if ! from_scratch {
@@ -229,7 +232,7 @@ func (m*Manifest) getFullname() string {
 
 func (m*Manifest) getDigests() map[string]map[string]string {
 	rval := map[string]map[string]string{}
-	for t := range MANIFEST2_IDENTIFIERS {
+	for t := range _const.MANIFEST2_IDENTIFIERS {
 		for k, v := range m.fhashdict[t] {
 			rval[k] = v
 		}
@@ -307,7 +310,7 @@ func (m*Manifest) _parseDigests( mylines []string, myhashdict map[string]map[str
 }
 
 func (m*Manifest) _createManifestEntries() []*Manifest2Entry{
-	valid_hashes := CopyMapSB(getValidChecksumKeys())
+	valid_hashes := myutil.CopyMapSB(getValidChecksumKeys())
 	valid_hashes["size"] = true
 	mytypes := []string{}
 	for k := range m.fhashdict {
@@ -323,7 +326,7 @@ func (m*Manifest) _createManifestEntries() []*Manifest2Entry{
 		sort.Strings(myfiles)
 		for _, f := range myfiles {
 			myentry := NewManifest2Entry(
-				t, f, CopyMapSS(m.fhashdict[t][f]))
+				t, f, myutil.CopyMapSS(m.fhashdict[t][f]))
 			for h := range (myentry.hashes) {
 				if !valid_hashes[h] {
 					delete(myentry.hashes, h)
@@ -338,7 +341,7 @@ func (m*Manifest) _createManifestEntries() []*Manifest2Entry{
 func (m*Manifest) checkIntegrity() {
 	for t := range m.fhashdict {
 		for f := range m.fhashdict[t] {
-			diff := CopyMapSB(m.required_hashes)
+			diff := myutil.CopyMapSB(m.required_hashes)
 			for k := range m.fhashdict[t][f] {
 				delete(diff, k)
 			}
@@ -408,7 +411,7 @@ func (m*Manifest) write( sign, force bool) bool {
 				for _, myentry := range myentries {
 					ms = append(ms, fmt.Sprintf(myentry.__str__()))
 				}
-				write_atomic(m.getFullname(), strings.Join(ms, " "), os.O_RDWR|os.O_CREATE, true)
+				util.write_atomic(m.getFullname(), strings.Join(ms, " "), os.O_RDWR|os.O_CREATE, true)
 				m._apply_max_mtime(preserved_stats, myentries)
 				rval = true
 			} else {
@@ -485,7 +488,7 @@ func (m*Manifest) _apply_max_mtime( preserved_stats map[string]*syscall.Stat_t, 
 		for path := range preserved_stats {
 			if err := syscall.Utime(path, &syscall.Utimbuf{max_mtime, max_mtime}); err != nil {
 				//except OSError as e:
-				WriteMsgLevel(fmt.Sprintf("!!! utime('%s', (%s, %s)): %s\n",
+				util.WriteMsgLevel(fmt.Sprintf("!!! utime('%s', (%s, %s)): %s\n",
 					path, max_mtime, max_mtime, err),
 				30, -1)
 			}
@@ -506,10 +509,10 @@ func (m*Manifest) addFile( ftype, fname string, hashdict map[string]string, igno
 	if ftype == "AUX" && !strings.HasPrefix(fname, "files/") {
 		fname = filepath.Join("files", fname)
 	}
-	if !pathExists(m.pkgdir+fname) && !ignoreMissing {
+	if !myutil.pathExists(m.pkgdir+fname) && !ignoreMissing {
 		//raise FileNotFound(fname)
 	}
-	if !MANIFEST2_IDENTIFIERS[ftype] {
+	if !_const.MANIFEST2_IDENTIFIERS[ftype] {
 		//raise InvalidDataType(ftype)
 	}
 	if ftype == "AUX" && strings.HasPrefix(fname, "files") {
@@ -521,7 +524,7 @@ func (m*Manifest) addFile( ftype, fname string, hashdict map[string]string, igno
 			m.fhashdict[ftype][fname][k]=v
 		}
 	}
-	mrh := CopyMapSB(m.required_hashes)
+	mrh := myutil.CopyMapSB(m.required_hashes)
 	for k := range m.fhashdict[ftype][fname]{
 		delete(mrh, k)
 	}
@@ -540,7 +543,7 @@ func (m*Manifest) hasFile( ftype, fname string) bool{
 }
 
 func (m*Manifest) findFile( fname string) string {
-	for t := range MANIFEST2_IDENTIFIERS {
+	for t := range _const.MANIFEST2_IDENTIFIERS {
 		if _, ok := m.fhashdict[t][fname]; ok {
 			return t
 		}
@@ -585,7 +588,7 @@ assumeDistHashesAlways bool, requiredDistfiles map[string]bool) {
 	if requiredDistfiles == nil {
 		requiredDistfiles = map[string]bool{}
 	} else if len(requiredDistfiles) == 0 {
-		requiredDistfiles = CopyMapSB(distlist)
+		requiredDistfiles = myutil.CopyMapSB(distlist)
 	}
 	required_hash_types := map[string]bool{}
 	required_hash_types["size"] = true
@@ -601,7 +604,7 @@ assumeDistHashesAlways bool, requiredDistfiles map[string]bool) {
 			//	pass
 		}
 		_, ok := distfilehashes[f]
-		rht := CopyMapSB(required_hash_types)
+		rht := myutil.CopyMapSB(required_hash_types)
 		for k := range distfilehashes[f] {
 			delete(rht, k)
 		}
@@ -762,7 +765,7 @@ func (m*Manifest) _getAbsname( ftype, fname string) string {
 
 // false
 func (m*Manifest) checkAllHashes( ignoreMissingFiles bool) {
-	for t := range MANIFEST2_IDENTIFIERS{
+	for t := range _const.MANIFEST2_IDENTIFIERS {
 		m.checkTypeHashes(t, ignoreMissingFiles, nil)
 	}
 }
@@ -843,7 +846,7 @@ func (m*Manifest) updateFileHashes( ftype, fname string, checkExisting, ignoreMi
 	}
 	if reuseExisting {
 		for h := range m.fhashdict[ftype][fname] {
-			if Ins(myhashkeys, h) {
+			if myutil.Ins(myhashkeys, h) {
 				an := []string{}
 				for _, v := range myhashkeys {
 					if v != h {
@@ -869,7 +872,7 @@ func (m*Manifest) updateTypeHashes( idtype string, checkExisting , ignoreMissing
 
 // false, true
 func (m*Manifest) updateAllHashes( checkExisting, ignoreMissingFiles bool) {
-	for idtype:= range MANIFEST2_IDENTIFIERS{
+	for idtype:= range _const.MANIFEST2_IDENTIFIERS {
 		m.updateTypeHashes(idtype,  checkExisting, ignoreMissingFiles)
 	}
 }
@@ -908,14 +911,14 @@ func (m*Manifest) getFileData( ftype, fname, key string) string {
 func (m*Manifest) getVersions() []int {
 	rVal := []int{}
 	mfname := m.getFullname()
-	if !pathExists(mfname) {
+	if !myutil.pathExists(mfname) {
 		return rVal
 	}
 	f, _ := ioutil.ReadFile(mfname)
 
 	for _, l := range strings.Split(string(f), "\n") {
 		mysplit := strings.Fields(l)
-		if len(mysplit) > 4 && MANIFEST2_IDENTIFIERS[mysplit[0]] && ((len(mysplit)-3)%2) == 0 && !Ini(rVal,2){
+		if len(mysplit) > 4 && _const.MANIFEST2_IDENTIFIERS[mysplit[0]] && ((len(mysplit)-3)%2) == 0 && !myutil.Ini(rVal,2){
 			rVal=append(rVal, 2)
 		}
 	}

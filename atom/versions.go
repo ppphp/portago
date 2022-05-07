@@ -3,6 +3,7 @@ package atom
 import (
 	"errors"
 	"fmt"
+	"github.com/ppphp/portago/pkg/myutil"
 	"math/big"
 	"regexp"
 	"strconv"
@@ -143,7 +144,7 @@ func NewVersion(ver string) (*Version, error) {
 	if !verRegexp.MatchString(ver) {
 		return nil, fmt.Errorf("!!! syntax error in version: %s", ver)
 	}
-	major := getNamedRegexp(verRegexp, ver, "major")
+	major := myutil.getNamedRegexp(verRegexp, ver, "major")
 	if major != "" {
 		v.Major.Exists = true
 		v.Major.Value = major
@@ -191,13 +192,13 @@ func verCmp(ver1, ver2 string) (int, error) {
 	list1 := []string{v1}
 	list2 := []string{v2}
 
-	if getNamedRegexp(verRegexp, ver1, "minors") != "" || getNamedRegexp(verRegexp, ver2, "minors") != "" {
-		g1 := getNamedRegexp(verRegexp, ver1, "minors")
+	if myutil.getNamedRegexp(verRegexp, ver1, "minors") != "" || myutil.getNamedRegexp(verRegexp, ver2, "minors") != "" {
+		g1 := myutil.getNamedRegexp(verRegexp, ver1, "minors")
 		if len(g1) >= 1 {
 			g1 = g1[1:]
 		}
 		vlist1 := strings.Split(g1, ".")
-		g2 := getNamedRegexp(verRegexp, ver2, "minors")
+		g2 := myutil.getNamedRegexp(verRegexp, ver2, "minors")
 		if len(g2) >= 1 {
 			g2 = g2[1:]
 		}
@@ -243,11 +244,11 @@ func verCmp(ver1, ver2 string) (int, error) {
 			}
 		}
 	}
-	if getNamedRegexp(verRegexp, ver1, "letter") != "" {
-		list1 = append(list1, string(getNamedRegexp(verRegexp, ver1, "letter")[0]))
+	if myutil.getNamedRegexp(verRegexp, ver1, "letter") != "" {
+		list1 = append(list1, string(myutil.getNamedRegexp(verRegexp, ver1, "letter")[0]))
 	}
-	if getNamedRegexp(verRegexp, ver2, "letter") != "" {
-		list2 = append(list2, string(getNamedRegexp(verRegexp, ver2, "letter")[0]))
+	if myutil.getNamedRegexp(verRegexp, ver2, "letter") != "" {
+		list2 = append(list2, string(myutil.getNamedRegexp(verRegexp, ver2, "letter")[0]))
 	}
 	for i := 0; i < len(list1) || i < len(list2); i++ {
 		if len(list1) <= i {
@@ -264,12 +265,12 @@ func verCmp(ver1, ver2 string) (int, error) {
 			}
 		}
 	}
-	g1 := getNamedRegexp(verRegexp, ver1, "suffix")
+	g1 := myutil.getNamedRegexp(verRegexp, ver1, "suffix")
 	if len(g1) >= 1 {
 		g1 = g1[1:]
 	}
 	l1 := strings.Split(g1, "_")
-	g2 := getNamedRegexp(verRegexp, ver2, "suffix")
+	g2 := myutil.getNamedRegexp(verRegexp, ver2, "suffix")
 	if len(g2) >= 1 {
 		g2 = g2[1:]
 	}
@@ -295,8 +296,8 @@ func verCmp(ver1, ver2 string) (int, error) {
 			return n1 - n2, nil
 		}
 	}
-	n1, _ := strconv.Atoi(getNamedRegexp(verRegexp, ver1, "revision"))
-	n2, _ := strconv.Atoi(getNamedRegexp(verRegexp, ver2, "revision"))
+	n1, _ := strconv.Atoi(myutil.getNamedRegexp(verRegexp, ver1, "revision"))
+	n2, _ := strconv.Atoi(myutil.getNamedRegexp(verRegexp, ver2, "revision"))
 	if n1 > n2 {
 		return 1, nil
 	} else if n1 == n2 {
@@ -320,15 +321,15 @@ func pkgSplit(mypkg, eapi string) [3]string {
 		return [3]string{}
 	}
 	re := getPvRe(getEapiAttrs(eapi))
-	if getNamedRegexp(re, mypkg, "pn_inval") != "" {
+	if myutil.getNamedRegexp(re, mypkg, "pn_inval") != "" {
 		return [3]string{}
 	}
-	rev := getNamedRegexp(re, mypkg, "rev")
+	rev := myutil.getNamedRegexp(re, mypkg, "rev")
 	if rev == "" {
 		rev = "0"
 	}
 	rev = "r" + rev
-	return [3]string{getNamedRegexp(re, mypkg, "pn"), getNamedRegexp(re, mypkg, "ver"), rev}
+	return [3]string{myutil.getNamedRegexp(re, mypkg, "pn"), myutil.getNamedRegexp(re, mypkg, "ver"), rev}
 }
 
 var (

@@ -1,6 +1,10 @@
-package atom
+package data
 
 import (
+	"github.com/ppphp/portago/atom"
+	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/util"
 	"os"
 	"runtime"
 	"syscall"
@@ -8,20 +12,20 @@ import (
 
 func TargetEprefix() string {
 	if a := os.Getenv("EPREFIX"); a != "" {
-		return NormalizePath(a)
+		return util.NormalizePath(a)
 	}
-	return EPREFIX
+	return _const.EPREFIX
 }
 
 func targetRoot() string {
 	if a := os.Getenv("ROOT"); a != "" {
-		return NormalizePath(a)
+		return util.NormalizePath(a)
 	}
 	return string(os.PathSeparator)
 }
 
 func portageGroupWarining() {
-	warnPrefix := colorize("BAD", "*** WARNING ***  ")
+	warnPrefix := output.Colorize("BAD", "*** WARNING ***  ")
 	mylines := []string{
 		"For security reasons, only system administrators should be",
 		"allowed in the portage group.  Untrusted users or processes",
@@ -29,11 +33,11 @@ func portageGroupWarining() {
 		"local privilege escalation.",
 	}
 	for _, x := range mylines {
-		WriteMsg(warnPrefix, -1, nil)
-		WriteMsg(x, -1, nil)
-		WriteMsg("\n", -1, nil)
+		util.WriteMsg(warnPrefix, -1, nil)
+		util.WriteMsg(x, -1, nil)
+		util.WriteMsg("\n", -1, nil)
 	}
-	WriteMsg("\n", -1, nil)
+	util.WriteMsg("\n", -1, nil)
 }
 
 var userpriv_groups []int
@@ -42,7 +46,7 @@ var portage_gid *uint32
 var portage_uid, secpass *int
 var uid = os.Geteuid()
 
-func data_init(settings *Config) {
+func data_init(settings *atom.Config) {
 	if portage_gid == nil && _portage_username == nil {
 		v := ""
 		if w, ok := settings.ValueDict["PORTAGE_GRPNAME"]; ok {

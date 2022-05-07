@@ -2,6 +2,9 @@ package atom
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/data"
+	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/util"
 	"os"
 	"path/filepath"
 	"time"
@@ -19,7 +22,7 @@ func emergelog(xterm_titles bool, mystr string, short_msg string) {
 		if h, ok := os.LookupEnv("HOSTNAME"); ok {
 			short_msg = h + ": " + short_msg
 		}
-		XtermTitle(short_msg, false)
+		output.XtermTitle(short_msg, false)
 	}
 
 	//try:
@@ -28,8 +31,8 @@ func emergelog(xterm_titles bool, mystr string, short_msg string) {
 	existing_log := err != nil
 	mylogfile, _ := os.OpenFile(file_path, os.O_APPEND|os.O_WRONLY, 0644)
 	if !existing_log {
-		apply_secpass_permissions(
-			file_path, uint32(*portage_uid), *portage_gid, 0660, -1, nil, true,
+		util.apply_secpass_permissions(
+			file_path, uint32(*data.portage_uid), *data.portage_gid, 0660, -1, nil, true,
 		)
 	}
 	mylock, _ := Lockfile(file_path, false, false, "", 0)

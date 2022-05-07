@@ -2,6 +2,7 @@ package atom
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/myutil"
 	"os"
 	"strings"
 
@@ -68,14 +69,14 @@ func usage(module_controller) string {
 		"for additional information about the following commands:"
 
 	_usage += "\n\n"
-	for _, line := range SplitSubN(desc, 65) {
+	for _, line := range myutil.SplitSubN(desc, 65) {
 		_usage += fmt.Sprintf("%s\n", line)
 		_usage += "\nCommands:\n"
 		_usage += fmt.Sprintf("  %s", fmt.Sprintf("%15s", "all")) +
 			"Perform all supported commands\n"
 		subsequent_indent := fmt.Sprintf("%17s", " ")
 		for _, mod := range module_controller.module_names {
-			desc := SplitSubN(module_controller.get_description(mod), 65)
+			desc := myutil.SplitSubN(module_controller.get_description(mod), 65)
 			_usage += fmt.Sprintf("  %s%s\n", fmt.Sprintf("%15s", mod), desc[0])
 			for _, d := range desc[1:] {
 				_usage += subsequent_indent + fmt.Sprintf("  %s%s\n", fmt.Sprintf("%15s", " "), d)

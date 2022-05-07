@@ -1,6 +1,8 @@
 package atom
 
 import (
+	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/myutil"
 	"os"
 	"strings"
 )
@@ -22,7 +24,7 @@ func(s*SpawnNofetchWithoutBuilddir) _start() {
 		settings = s.portdb.settings
 	}
 
-	if Inmss(settings.ValueDict, "PORTAGE_PARALLEL_FETCHONLY") {
+	if myutil.Inmss(settings.ValueDict, "PORTAGE_PARALLEL_FETCHONLY") {
 		i := 0
 		s.returncode = &i
 		s._async_wait()
@@ -33,7 +35,7 @@ func(s*SpawnNofetchWithoutBuilddir) _start() {
 	settings = s.settings
 
 	portage_tmpdir := settings.ValueDict["PORTAGE_TMPDIR"]
-	if portage_tmpdir == "" || osAccess(portage_tmpdir, 0) {
+	if portage_tmpdir == "" || myutil.osAccess(portage_tmpdir, 0) {
 		portage_tmpdir = ""
 	}
 
@@ -48,12 +50,12 @@ func(s*SpawnNofetchWithoutBuilddir) _start() {
 	restrict := strings.Fields(settings.ValueDict["PORTAGE_RESTRICT"])
 	defined_phases := strings.Fields(settings.ValueDict["DEFINED_PHASES"])
 	if len(defined_phases) == 0 {
-		for k := range EBUILD_PHASES {
+		for k := range _const.EBUILD_PHASES {
 			defined_phases = append(defined_phases, k)
 		}
 	}
 
-	if !Ins(restrict, "fetch") && !Ins(defined_phases, "nofetch") {
+	if !myutil.Ins(restrict, "fetch") && !myutil.Ins(defined_phases, "nofetch") {
 		i := 0
 		s.returncode = &i
 		s._async_wait()

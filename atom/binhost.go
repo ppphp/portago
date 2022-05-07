@@ -2,6 +2,7 @@ package atom
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/util"
 	"os"
 	"sort"
 	"syscall"
@@ -183,7 +184,7 @@ func (b *BinhostHandler) fix(onProgress func(int, int)) (bool, []string) {
 			d := bintree._pkgindex_entry(cpv)
 			if err := bintree._eval_use_flags(d); err != nil {
 				//except portage.exception.InvalidDependString:
-				WriteMsg(fmt.Sprintf("!!! Invalid binary package: \"%s\"\n", bintree.getname(cpv)), -1, nil)
+				util.WriteMsg(fmt.Sprintf("!!! Invalid binary package: \"%s\"\n", bintree.getname(cpv)), -1, nil)
 			} else {
 				metadata[_instance_key(cpv, false).string] = d
 			}

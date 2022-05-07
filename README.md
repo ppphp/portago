@@ -1,3 +1,7 @@
+# Restarted
+
+Since go1.18 brings the type parameter, I continue.
+
 # portago
 
 This is a package management tool written in go and copied from portage shamelessly.

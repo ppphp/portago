@@ -2,6 +2,10 @@ package atom
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/util"
 	"golang.org/x/crypto/ssh/terminal"
 	"os"
 	"path/filepath"
@@ -29,7 +33,7 @@ func action_search() {}
 
 func actionSync(emerge_config *EmergeConfig) int {
 	syncer := NewSyncRepos(emerge_config, false)
-	return_messages := !Inmss(emerge_config.opts, "--quiet")
+	return_messages := !myutil.Inmss(emerge_config.opts, "--quiet")
 	options := map[string]interface{}{"return-messages": return_messages}
 	var success bool
 	var msgs []string
@@ -42,7 +46,7 @@ func actionSync(emerge_config *EmergeConfig) int {
 	if return_messages {
 		print_results(msgs)
 	} else if len(msgs) > 0 && !success {
-		WriteMsgLevel(strings.Join(msgs, "\n")+"\n", 40, -1)
+		util.WriteMsgLevel(strings.Join(msgs, "\n")+"\n", 40, -1)
 	}
 
 	if success {
@@ -55,11 +59,11 @@ func actionSync(emerge_config *EmergeConfig) int {
 func action_uninstall() {}
 
 func adjust_configs(myopts map[string]string, trees *TreesDict) {
-	for myroot, mytrees := range trees.Values(){
+	for myroot, mytrees := range trees.Values() {
 		mysettings := trees.valueDict[myroot].VarTree().settings
 		mysettings.Unlock()
 
-		if _, ok := myopts["--usepkgonly"];ok && mytrees.BinTree()._propagate_config(mysettings){
+		if _, ok := myopts["--usepkgonly"]; ok && mytrees.BinTree()._propagate_config(mysettings) {
 			mytrees.PortTree().dbapi.doebuild_settings = NewConfig(mysettings, nil, "", nil, "", "", "", "", true, nil, false, nil)
 		}
 
@@ -87,8 +91,8 @@ func adjust_config(myopts map[string]string, settings *Config) {
 	if s, ok := settings.ValueDict["CLEAN_DELAY"]; ok {
 		if v, err := strconv.Atoi(s); err != nil {
 			//except ValueError as e:
-			WriteMsg(fmt.Sprintf("!!! %v\n", err), -1, nil)
-			WriteMsg(fmt.Sprintf("!!! Unable to parse integer: CLEAN_DELAY='%s'\n", settings.ValueDict["CLEAN_DELAY"]), -1, nil)
+			util.WriteMsg(fmt.Sprintf("!!! %v\n", err), -1, nil)
+			util.WriteMsg(fmt.Sprintf("!!! Unable to parse integer: CLEAN_DELAY='%s'\n", settings.ValueDict["CLEAN_DELAY"]), -1, nil)
 		} else {
 			CLEAN_DELAY = v
 		}
@@ -101,8 +105,8 @@ func adjust_config(myopts map[string]string, settings *Config) {
 	if s, ok := settings.ValueDict["EMERGE_WARNING_DELAY"]; ok {
 		if v, err := strconv.Atoi(s); err != nil {
 			//except ValueError as e:
-			WriteMsg(fmt.Sprintf("!!! %v\n", err), -1, nil)
-			WriteMsg(fmt.Sprintf("!!! Unable to parse integer: EMERGE_WARNING_DELAY='%s'\n", settings.ValueDict["EMERGE_WARNING_DELAY"]), -1, nil)
+			util.WriteMsg(fmt.Sprintf("!!! %v\n", err), -1, nil)
+			util.WriteMsg(fmt.Sprintf("!!! Unable to parse integer: EMERGE_WARNING_DELAY='%s'\n", settings.ValueDict["EMERGE_WARNING_DELAY"]), -1, nil)
 		} else {
 			EMERGE_WARNING_DELAY = v
 		}
@@ -136,11 +140,11 @@ func adjust_config(myopts map[string]string, settings *Config) {
 	if s, ok := settings.ValueDict["PORTAGE_DEBUG"]; ok {
 		if v, err := strconv.Atoi(s); err != nil {
 			//except ValueError as e:
-			WriteMsg(fmt.Sprintf("!!! %v\n", err), -1, nil)
-			WriteMsg(fmt.Sprintf("!!! Unable to parse integer: PORTAGE_DEBUG='%s'\n", settings.ValueDict["EMERGE_WARNING_DELAY"]), -1, nil)
+			util.WriteMsg(fmt.Sprintf("!!! %v\n", err), -1, nil)
+			util.WriteMsg(fmt.Sprintf("!!! Unable to parse integer: PORTAGE_DEBUG='%s'\n", settings.ValueDict["EMERGE_WARNING_DELAY"]), -1, nil)
 		} else if v != 0 && v != 1 {
-			WriteMsg(fmt.Sprintf("!!! Invalid value: PORTAGE_DEBUG='%i'\n", PORTAGE_DEBUG), -1, nil)
-			WriteMsg("!!! PORTAGE_DEBUG must be either 0 or 1\n", -1, nil)
+			util.WriteMsg(fmt.Sprintf("!!! Invalid value: PORTAGE_DEBUG='%i'\n", PORTAGE_DEBUG), -1, nil)
+			util.WriteMsg("!!! PORTAGE_DEBUG must be either 0 or 1\n", -1, nil)
 			PORTAGE_DEBUG = 0
 		} else {
 			PORTAGE_DEBUG = v
@@ -153,21 +157,21 @@ func adjust_config(myopts map[string]string, settings *Config) {
 	}
 
 	if settings.ValueDict["NOCOLOR"] != "yes" && settings.ValueDict["NOCOLOR"] != "true" {
-		HaveColor = 1
+		output.HaveColor = 1
 	}
 
 	if _, ok := myopts["--color"]; ok {
 		if "y" == myopts["--color"] {
-			HaveColor = 1
+			output.HaveColor = 1
 			settings.ValueDict["NOCOLOR"] = "false"
 		} else {
-			HaveColor = 0
+			output.HaveColor = 0
 			settings.ValueDict["NOCOLOR"] = "true"
 		}
 		settings.BackupChanges("NOCOLOR")
 	} else if settings.ValueDict["TERM"] == "dumb" ||
 		terminal.IsTerminal(int(os.Stdout.Fd())) {
-		HaveColor = 0
+		output.HaveColor = 0
 		settings.ValueDict["NOCOLOR"] = "true"
 		settings.BackupChanges("NOCOLOR")
 	}
@@ -203,9 +207,9 @@ func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, action 
 		emergeConfig = NewEmergeConfig(action, args, opts)
 	}
 	if env == nil {
-		env = ExpandEnv()
+		env = util.ExpandEnv()
 	}
-	emergeConfig.Trees = CreateTrees(env["PORTAGE_CONFIGROOT"], env["ROOT"], emergeConfig.Trees, ExpandEnv(), env["SYSROOT"], env["EPREFIX"])
+	emergeConfig.Trees = CreateTrees(env["PORTAGE_CONFIGROOT"], env["ROOT"], emergeConfig.Trees, util.ExpandEnv(), env["SYSROOT"], env["EPREFIX"])
 
 	for _, root_trees := range emergeConfig.Trees.Values() {
 		settings := root_trees.VarTree().settings
@@ -221,8 +225,8 @@ func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, action 
 
 	target_eroot := emergeConfig.Trees._target_eroot
 	emergeConfig.targetConfig = emergeConfig.Trees.Values()[target_eroot].RootConfig
-	emergeConfig.targetConfig.Mtimedb = NewMtimeDB(
-		filepath.Join(target_eroot, CachePath, "mtimedb"))
+	emergeConfig.targetConfig.Mtimedb = util.NewMtimeDB(
+		filepath.Join(target_eroot, _const.CachePath, "mtimedb"))
 	emergeConfig.runningConfig = emergeConfig.Trees.Values()[emergeConfig.Trees._running_eroot].RootConfig
 	QueryCommand_db = emergeConfig.Trees
 
@@ -261,21 +265,21 @@ func runAction(emergeConfig *EmergeConfig) int {
 	if map[string]bool{"help": true, "info": true, "sync": true, "version": true}[emergeConfig.action] && emergeConfig.opts["--package-moves"] != "n" &&
 		Global_updates(emergeConfig.Trees,
 			emergeConfig.targetConfig.Mtimedb.dict["updates"].(map[string]string),
-			Inmss(emergeConfig.opts, "--quiet"), false) {
+			myutil.Inmss(emergeConfig.opts, "--quiet"), false) {
 		emergeConfig.targetConfig.Mtimedb.Commit()
 		LoadEmergeConfig(emergeConfig, nil, "", nil, nil)
 	}
 
 	_, xterm_titles := emergeConfig.targetConfig.Settings.Features.Features["notitles"]
 	if xterm_titles {
-		XtermTitle("emerge", false)
+		output.XtermTitle("emerge", false)
 	}
 
-	if Inmss(emergeConfig.opts, "--digest") {
+	if myutil.Inmss(emergeConfig.opts, "--digest") {
 		os.Setenv("FEATURES", os.Getenv("FEATURES")+" digest")
 		LoadEmergeConfig(emergeConfig, nil, "", nil, nil)
 	}
-	if Inmss(emergeConfig.opts, "--buildpkgonly") {
+	if myutil.Inmss(emergeConfig.opts, "--buildpkgonly") {
 		emergeConfig.opts["--buildpkg"] = "true"
 	}
 
@@ -283,19 +287,19 @@ func runAction(emergeConfig *EmergeConfig) int {
 		emergeConfig.opts["--getbinpkg"] = "true"
 	}
 
-	if Inmss(emergeConfig.opts, "--getbinpkgonly") {
+	if myutil.Inmss(emergeConfig.opts, "--getbinpkgonly") {
 		emergeConfig.opts["--getbinpkg"] = "true"
 	}
 
-	if Inmss(emergeConfig.opts, "--getbinpkgonly") {
+	if myutil.Inmss(emergeConfig.opts, "--getbinpkgonly") {
 		emergeConfig.opts["--usepkgonly"] = "true"
 	}
 
-	if Inmss(emergeConfig.opts, "--getbinpkg") {
+	if myutil.Inmss(emergeConfig.opts, "--getbinpkg") {
 		emergeConfig.opts["--usepkg"] = "true"
 	}
 
-	if Inmss(emergeConfig.opts, "--usepkgonly") {
+	if myutil.Inmss(emergeConfig.opts, "--usepkgonly") {
 		emergeConfig.opts["--usepkg"] = "true"
 	}
 	//	if (emerge_config.action in ('search', None) and
@@ -593,18 +597,18 @@ func runAction(emergeConfig *EmergeConfig) int {
 	//	signal.signal(signal.SIGTERM, emergeexitsig)
 	//
 	emergeexit := func() {
-		if _, ok := emergeConfig.opts["--pretend"];!ok{
+		if _, ok := emergeConfig.opts["--pretend"]; !ok {
 			emergelog(xterm_titles, " *** terminating.", "")
 		}
 		if xterm_titles {
-			xtermTitleReset()
+			output.xtermTitleReset()
 		}
 	}
 	atexit_register(emergeexit)
 
 	switch emergeConfig.action {
 	case "config", "metadata", "regen", "sync":
-		if Inmss(emergeConfig.opts, "--pretend") {
+		if myutil.Inmss(emergeConfig.opts, "--pretend") {
 			os.Stderr.Write([]byte(fmt.Sprintf("emerge: The '%s' action does "+
 				"not support '--pretend'.\n", emergeConfig.action)))
 			return 1
@@ -614,135 +618,135 @@ func runAction(emergeConfig *EmergeConfig) int {
 		return actionSync(emergeConfig)
 	}
 
-//	if "metadata" == emerge_config.action:
-//	action_metadata(emerge_config.target_config.settings,
-//		emerge_config.target_config.trees['porttree'].dbapi,
-//		emerge_config.opts)
-//	elif emerge_config.action=="regen":
-//	validate_ebuild_environment(emerge_config.trees)
-//	return action_regen(emerge_config.target_config.settings,
-//		emerge_config.target_config.trees['porttree'].dbapi,
-//		emerge_config.opts.get("--jobs"),
-//		emerge_config.opts.get("--load-average"))
-//	# HELP action
-//	elif "config" == emerge_config.action:
-//	validate_ebuild_environment(emerge_config.trees)
-//	return action_config(emerge_config.target_config.settings,
-//		emerge_config.trees, emerge_config.opts, emerge_config.args)
-//
-//	# SEARCH action
-//	elif "search" == emerge_config.action:
-//	validate_ebuild_environment(emerge_config.trees)
-//	action_search(emerge_config.target_config,
-//		emerge_config.opts, emerge_config.args, spinner)
-//
-//	elif emerge_config.action in \
-//	('clean', 'depclean', 'deselect', 'prune', 'unmerge', 'rage-clean'):
-//	validate_ebuild_environment(emerge_config.trees)
-//	rval = action_uninstall(emerge_config.target_config.settings,
-//		emerge_config.trees, emerge_config.target_config.mtimedb["ldpath"],
-//		emerge_config.opts, emerge_config.action,
-//		emerge_config.args, spinner)
-//	if not (emerge_config.action == 'deselect' or
-//	buildpkgonly or fetchonly or pretend):
-//	post_emerge(emerge_config.action, emerge_config.opts,
-//		emerge_config.args, emerge_config.target_config.root,
-//		emerge_config.trees, emerge_config.target_config.mtimedb, rval)
-//	return rval
-//
-//	elif emerge_config.action == 'info':
-//
-//	# Ensure atoms are valid before calling unmerge().
-//		vardb = emerge_config.target_config.trees['vartree'].dbapi
-//	portdb = emerge_config.target_config.trees['porttree'].dbapi
-//	bindb = emerge_config.target_config.trees['bintree'].dbapi
-//	valid_atoms = []
-//	for x in emerge_config.args:
-//	if is_valid_package_atom(x, allow_repo=True):
-//try:
-//	#look at the installed files first, if there is no match
-//	#look at the ebuilds, since EAPI 4 allows running pkg_info
-//	#on non-installed packages
-//	valid_atom = dep_expand(x, mydb=vardb)
-//	if valid_atom.cp.split("/")[0] == "null":
-//	valid_atom = dep_expand(x, mydb=portdb)
-//
-//	if valid_atom.cp.split("/")[0] == "null" and \
-//	"--usepkg" in emerge_config.opts:
-//	valid_atom = dep_expand(x, mydb=bindb)
-//
-//	valid_atoms.append(valid_atom)
-//
-//	except portage.exception.AmbiguousPackageName as e:
-//	msg = "The short ebuild name \"" + x + \
-//	"\" is ambiguous.  Please specify " + \
-//	"one of the following " + \
-//	"fully-qualified ebuild names instead:"
-//	for line in textwrap.wrap(msg, 70):
-//	writemsg_level("!!! %s\n" % (line,),
-//		level=logging.ERROR, noiselevel=-1)
-//	for i in e.args[0]:
-//	writemsg_level("    %s\n" % colorize("INFORM", i),
-//		level=logging.ERROR, noiselevel=-1)
-//	writemsg_level("\n", level=logging.ERROR, noiselevel=-1)
-//	return 1
-//	continue
-//	msg = []
-//	msg.append("'%s' is not a valid package atom." % (x,))
-//	msg.append("Please check ebuild(5) for full details.")
-//	writemsg_level("".join("!!! %s\n" % line for line in msg),
-//	level=logging.ERROR, noiselevel=-1)
-//	return 1
-//
-//	return action_info(emerge_config.target_config.settings,
-//		emerge_config.trees, emerge_config.opts, valid_atoms)
-//
-//	# "update", "system", or just process files:
-//	else:
-//	validate_ebuild_environment(emerge_config.trees)
-//
-//	for x in emerge_config.args:
-//	if x.startswith(SETPREFIX) or \
-//	is_valid_package_atom(x, allow_repo=True):
-//	continue
-//	if x[:1] == os.sep:
-//	continue
-//try:
-//	os.lstat(x)
-//	continue
-//	except OSError:
-//	pass
-//	msg = []
-//	msg.append("'%s' is not a valid package atom." % (x,))
-//	msg.append("Please check ebuild(5) for full details.")
-//	writemsg_level("".join("!!! %s\n" % line for line in msg),
-//	level=logging.ERROR, noiselevel=-1)
-//	return 1
-//
-//	# GLEP 42 says to display news *after* an emerge --pretend
-//	if "--pretend" not in emerge_config.opts:
-//	uq = UserQuery(emerge_config.opts)
-//	if display_news_notification(emerge_config.target_config,
-//		emerge_config.opts) \
-//	and "--ask" in emerge_config.opts \
-//	and "--read-news" in emerge_config.opts \
-//	and uq.query("Would you like to read the news items while " \
-//	"calculating dependencies?",
-//		'--ask-enter-invalid' in emerge_config.opts) == "Yes":
-//try:
-//	subprocess.call(['eselect', 'news', 'read'])
-//	# If eselect is not installed, Python <3.3 will throw an
-//	# OSError. >=3.3 will throw a FileNotFoundError, which is a
-//	# subclass of OSError.
-//	except OSError:
-//	writemsg("Please install eselect to use this feature.\n",
-//	noiselevel=-1)
-//	retval = action_build(emerge_config, spinner=spinner)
-//	post_emerge(emerge_config.action, emerge_config.opts,
-//	emerge_config.args, emerge_config.target_config.root,
-//	emerge_config.trees, emerge_config.target_config.mtimedb, retval)
-//
-//	return retval
+	//	if "metadata" == emerge_config.action:
+	//	action_metadata(emerge_config.target_config.settings,
+	//		emerge_config.target_config.trees['porttree'].dbapi,
+	//		emerge_config.opts)
+	//	elif emerge_config.action=="regen":
+	//	validate_ebuild_environment(emerge_config.trees)
+	//	return action_regen(emerge_config.target_config.settings,
+	//		emerge_config.target_config.trees['porttree'].dbapi,
+	//		emerge_config.opts.get("--jobs"),
+	//		emerge_config.opts.get("--load-average"))
+	//	# HELP action
+	//	elif "config" == emerge_config.action:
+	//	validate_ebuild_environment(emerge_config.trees)
+	//	return action_config(emerge_config.target_config.settings,
+	//		emerge_config.trees, emerge_config.opts, emerge_config.args)
+	//
+	//	# SEARCH action
+	//	elif "search" == emerge_config.action:
+	//	validate_ebuild_environment(emerge_config.trees)
+	//	action_search(emerge_config.target_config,
+	//		emerge_config.opts, emerge_config.args, spinner)
+	//
+	//	elif emerge_config.action in \
+	//	('clean', 'depclean', 'deselect', 'prune', 'unmerge', 'rage-clean'):
+	//	validate_ebuild_environment(emerge_config.trees)
+	//	rval = action_uninstall(emerge_config.target_config.settings,
+	//		emerge_config.trees, emerge_config.target_config.mtimedb["ldpath"],
+	//		emerge_config.opts, emerge_config.action,
+	//		emerge_config.args, spinner)
+	//	if not (emerge_config.action == 'deselect' or
+	//	buildpkgonly or fetchonly or pretend):
+	//	post_emerge(emerge_config.action, emerge_config.opts,
+	//		emerge_config.args, emerge_config.target_config.root,
+	//		emerge_config.trees, emerge_config.target_config.mtimedb, rval)
+	//	return rval
+	//
+	//	elif emerge_config.action == 'info':
+	//
+	//	# Ensure atoms are valid before calling unmerge().
+	//		vardb = emerge_config.target_config.trees['vartree'].dbapi
+	//	portdb = emerge_config.target_config.trees['porttree'].dbapi
+	//	bindb = emerge_config.target_config.trees['bintree'].dbapi
+	//	valid_atoms = []
+	//	for x in emerge_config.args:
+	//	if is_valid_package_atom(x, allow_repo=True):
+	//try:
+	//	#look at the installed files first, if there is no match
+	//	#look at the ebuilds, since EAPI 4 allows running pkg_info
+	//	#on non-installed packages
+	//	valid_atom = dep_expand(x, mydb=vardb)
+	//	if valid_atom.cp.split("/")[0] == "null":
+	//	valid_atom = dep_expand(x, mydb=portdb)
+	//
+	//	if valid_atom.cp.split("/")[0] == "null" and \
+	//	"--usepkg" in emerge_config.opts:
+	//	valid_atom = dep_expand(x, mydb=bindb)
+	//
+	//	valid_atoms.append(valid_atom)
+	//
+	//	except portage.exception.AmbiguousPackageName as e:
+	//	msg = "The short ebuild name \"" + x + \
+	//	"\" is ambiguous.  Please specify " + \
+	//	"one of the following " + \
+	//	"fully-qualified ebuild names instead:"
+	//	for line in textwrap.wrap(msg, 70):
+	//	writemsg_level("!!! %s\n" % (line,),
+	//		level=logging.ERROR, noiselevel=-1)
+	//	for i in e.args[0]:
+	//	writemsg_level("    %s\n" % colorize("INFORM", i),
+	//		level=logging.ERROR, noiselevel=-1)
+	//	writemsg_level("\n", level=logging.ERROR, noiselevel=-1)
+	//	return 1
+	//	continue
+	//	msg = []
+	//	msg.append("'%s' is not a valid package atom." % (x,))
+	//	msg.append("Please check ebuild(5) for full details.")
+	//	writemsg_level("".join("!!! %s\n" % line for line in msg),
+	//	level=logging.ERROR, noiselevel=-1)
+	//	return 1
+	//
+	//	return action_info(emerge_config.target_config.settings,
+	//		emerge_config.trees, emerge_config.opts, valid_atoms)
+	//
+	//	# "update", "system", or just process files:
+	//	else:
+	//	validate_ebuild_environment(emerge_config.trees)
+	//
+	//	for x in emerge_config.args:
+	//	if x.startswith(SETPREFIX) or \
+	//	is_valid_package_atom(x, allow_repo=True):
+	//	continue
+	//	if x[:1] == os.sep:
+	//	continue
+	//try:
+	//	os.lstat(x)
+	//	continue
+	//	except OSError:
+	//	pass
+	//	msg = []
+	//	msg.append("'%s' is not a valid package atom." % (x,))
+	//	msg.append("Please check ebuild(5) for full details.")
+	//	writemsg_level("".join("!!! %s\n" % line for line in msg),
+	//	level=logging.ERROR, noiselevel=-1)
+	//	return 1
+	//
+	//	# GLEP 42 says to display news *after* an emerge --pretend
+	//	if "--pretend" not in emerge_config.opts:
+	//	uq = UserQuery(emerge_config.opts)
+	//	if display_news_notification(emerge_config.target_config,
+	//		emerge_config.opts) \
+	//	and "--ask" in emerge_config.opts \
+	//	and "--read-news" in emerge_config.opts \
+	//	and uq.query("Would you like to read the news items while " \
+	//	"calculating dependencies?",
+	//		'--ask-enter-invalid' in emerge_config.opts) == "Yes":
+	//try:
+	//	subprocess.call(['eselect', 'news', 'read'])
+	//	# If eselect is not installed, Python <3.3 will throw an
+	//	# OSError. >=3.3 will throw a FileNotFoundError, which is a
+	//	# subclass of OSError.
+	//	except OSError:
+	//	writemsg("Please install eselect to use this feature.\n",
+	//	noiselevel=-1)
+	//	retval = action_build(emerge_config, spinner=spinner)
+	//	post_emerge(emerge_config.action, emerge_config.opts,
+	//	emerge_config.args, emerge_config.target_config.root,
+	//	emerge_config.trees, emerge_config.target_config.mtimedb, retval)
+	//
+	//	return retval
 
 	return 0
 }

@@ -2,6 +2,7 @@ package atom
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/myutil"
 	"io"
 	"io/ioutil"
 	"sort"
@@ -56,7 +57,7 @@ func (p *PackageIndex) _readpkgindex(pkgfile io.Reader, pkg_entry bool) map[stri
 		if v, ok := p._read_translation_map[k]; ok {
 			k = v
 		}
-		if allowed_keys!= nil && !Ins(allowed_keys, k){
+		if allowed_keys != nil && !myutil.Ins(allowed_keys, k) {
 			continue
 		}
 		d[k] = v
@@ -140,7 +141,7 @@ func (p *PackageIndex) write(pkgfile io.Writer) {
 		return _cmp_cpv(p.packages[i], p.packages[j]) < 0
 	})
 	for _, metadata := range p.packages {
-		metadata = CopyMapSS(metadata)
+		metadata = myutil.CopyMapSS(metadata)
 		if len(p._inherited_keys) != 0 {
 			for _, k := range p._inherited_keys {
 				v := p.header[k]

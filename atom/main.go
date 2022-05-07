@@ -2,6 +2,8 @@ package atom
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/util"
 	"os"
 	"runtime"
 	"strconv"
@@ -943,7 +945,7 @@ func EmergeMain(args []string) int { // nil
 		args = os.Args[1:]
 	}
 	// TODO: set locale
-	HaveColor = 0
+	output.HaveColor = 0
 
 	myAction, myOpts, myFiles := ParseOpts(args, true)
 	if _, ok := myOpts["--debug"]; ok {
@@ -980,13 +982,13 @@ func EmergeMain(args []string) int { // nil
 	}
 	dnst, err := os.Stat(os.DevNull)
 	if err != nil {
-		WriteMsgLevel("Failed to validate a sane '/dev'.\n"+
+		util.WriteMsgLevel("Failed to validate a sane '/dev'.\n"+
 			"'/dev/null' does not exist.\n",
 			40, -1)
 		return 1
 	}
 	if dnst.Sys().(syscall.Stat_t).Rdev == 0 {
-		WriteMsgLevel("Failed to validate a sane '/dev'.\n"+
+		util.WriteMsgLevel("Failed to validate a sane '/dev'.\n"+
 			"'/dev/null' is not a device file.\n",
 			40, -1)
 		return 1
@@ -998,7 +1000,7 @@ func EmergeMain(args []string) int { // nil
 		2: int(devNull.Fd()),
 	}
 	if pids, err := spawn_bash("[[ $(< <(echo foo) ) == foo ]]", false, "", fd_pipes); err == nil || (len(pids) > 0 && pids[0] != 0) {
-		WriteMsgLevel("Failed to validate a sane '/dev'.\n"+
+		util.WriteMsgLevel("Failed to validate a sane '/dev'.\n"+
 			"bash process substitution doesn't work; this may be an "+
 			"indication of a broken '/dev/fd'.\n",
 			40, -1)

@@ -2,6 +2,10 @@ package atom
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/shlex"
 	"golang.org/x/sys/unix"
 	"os"
@@ -27,7 +31,7 @@ func (s *syncBase) hasBin() bool {
 		msg := []string{fmt.Sprintf("Command not found: %s", s.binCommand),
 			fmt.Sprintf("Type \"emerge %s\" to enable %s support.", s.binPkg, s.binCommand)}
 		for _, l := range msg {
-			WriteMsgLevel(fmt.Sprintf("!!! %s", l), -40, -1)
+			util.WriteMsgLevel(fmt.Sprintf("!!! %s", l), -40, -1)
 		}
 		return false
 	}
@@ -193,7 +197,7 @@ func (s *SyncRepos) _get_repos(auto_sync_only bool, match_repos []string) (bool,
 				}
 			}
 			if len(missing) > 0 {
-				msgs = append(msgs, fmt.Sprintf(Red(" * ")+"The specified repo(s) were not found: %s",
+				msgs = append(msgs, fmt.Sprintf(output.Red(" * ")+"The specified repo(s) were not found: %s",
 					strings.Join(missing, " ")+
 						"\n   ...returning"))
 				return false, repos, msgs
@@ -218,7 +222,7 @@ func (s *SyncRepos) _get_repos(auto_sync_only bool, match_repos []string) (bool,
 			}
 		}
 		if match_repos != nil {
-			msgs = append(msgs, Red(" * ")+fmt.Sprintf("The specified repo(s) have sync disabled: %s",
+			msgs = append(msgs, output.Red(" * ")+fmt.Sprintf("The specified repo(s) have sync disabled: %s",
 				strings.Join(sync_disabled, " ")+
 					"\n   ...returning"))
 			return false, rs, msgs
@@ -238,7 +242,7 @@ func (s *SyncRepos) _get_repos(auto_sync_only bool, match_repos []string) (bool,
 				rs = append(rs, repo)
 			}
 		}
-		msgs = append(msgs, fmt.Sprintf(Red(" * ")+"The specified repo(s) are missing sync-uri: %s",
+		msgs = append(msgs, fmt.Sprintf(output.Red(" * ")+"The specified repo(s) are missing sync-uri: %s",
 			strings.Join(missing_sync_uri, " ")+
 				"\n   ...returning"))
 		return false, rs, msgs
@@ -339,7 +343,7 @@ func (s *SyncRepos) _sync(selected_repos []*RepoConfig, return_messages bool, em
 func (s *SyncRepos) _do_pkg_moves() {
 	if s.emerge_config.opts["--package-moves"] != "n" && Global_updates(s.emerge_config.Trees,
 		s.emerge_config.targetConfig.Mtimedb.dict["updates"],
-		Inmss(s.emerge_config.opts, "--quiet"), true) {
+		myutil.Inmss(s.emerge_config.opts, "--quiet"), true) {
 		s.emerge_config.targetConfig.Mtimedb.Commit()
 		s._reload_config()
 	}
@@ -509,7 +513,7 @@ func (s *SyncManager) perform_post_sync_hook() {}
 
 func (s *SyncManager) pre_sync(repo *RepoConfig) int {
 	msg := fmt.Sprintf(">>> Syncing repository '%s' into '%s'...", repo.Name, repo.Location)
-	WriteMsgLevel(msg+"\n", 0, 0)
+	util.WriteMsgLevel(msg+"\n", 0, 0)
 	return 0
 }
 
@@ -545,14 +549,14 @@ func NewSyncManager(settings *Config, logger func(bool, string, string)) *SyncMa
 	s.hooks = map[string]map[string]string{}
 	for _, _dir := range []string{"repo.postsync.d", "postsync.d"} {
 		postsync_dir := filepath.Join(s.settings.ValueDict["PORTAGE_CONFIGROOT"],
-			UserConfigPath, _dir)
+			_const.UserConfigPath, _dir)
 		hooks := map[string]string{}
-		for _, filepath := range RecursiveFileList(postsync_dir) {
+		for _, filepath := range util.RecursiveFileList(postsync_dir) {
 			name := strings.TrimLeft(strings.Split(filepath, postsync_dir)[1], string(os.PathSeparator))
 			if st, _ := os.Stat(filepath); st != nil && st.Mode()&unix.X_OK != 0 {
 				hooks[filepath] = name
 			} else {
-				WriteMsgLevel(fmt.Sprintf(" %s %s hook: '%s' is not executable\n", Warn("*"), _dir, name), 30, 2)
+				util.WriteMsgLevel(fmt.Sprintf(" %s %s hook: '%s' is not executable\n", Warn("*"), _dir, name), 30, 2)
 			}
 		}
 		s.hooks[_dir] = hooks

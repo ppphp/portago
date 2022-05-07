@@ -2,6 +2,7 @@ package atom
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/util"
 	"io"
 	"io/ioutil"
 	"os"
@@ -13,7 +14,7 @@ import (
 )
 
 func addtolist(mylist []string, curdir string) {
-	curdir = NormalizePath(curdir)
+	curdir = util.NormalizePath(curdir)
 	filepath.Walk(curdir, func(path string, info os.FileInfo, err error) error {
 		parent := filepath.Dir(path)
 		if parent != curdir {
@@ -205,7 +206,7 @@ func getitem(myid []string, myitem string) string {
 }
 
 func xpand(myid []string, mydest string) {
-	mydest = NormalizePath(mydest) + string(filepath.Separator)
+	mydest = util.NormalizePath(mydest) + string(filepath.Separator)
 	myindex := myid[0]
 	mydata := myid[1]
 	myindexlen := len(myindex)
@@ -216,7 +217,7 @@ func xpand(myid []string, mydest string) {
 		datalen := decodeint(myindex[startpos+8+namelen : startpos+12+namelen])
 		myname := myindex[startpos+4 : startpos+4+namelen]
 		filename := filepath.Join(mydest, strings.TrimLeft(myname, string(filepath.Separator)))
-		filename = NormalizePath(filename)
+		filename = util.NormalizePath(filename)
 		if !strings.HasPrefix(filename, mydest) {
 			continue
 		}
@@ -289,8 +290,8 @@ func (t *tbz2) recompose_mem(xpdata string, break_hardlinks bool) int {
 
 	if break_hardlinks && t.filestat != nil && t.filestat.Sys().(*syscall.Stat_t).Nlink > 1 {
 		tmp_fname := fmt.Sprintf("%s.%d", t.file, os.Getpid())
-		copyfile(t.file, tmp_fname)
-		if ok := apply_stat_permissions(t.file, t.filestat, -1, nil, true); !ok {
+		util.copyfile(t.file, tmp_fname)
+		if ok := util.apply_stat_permissions(t.file, t.filestat, -1, nil, true); !ok {
 			//except portage.exception.OperationNotPermitted{
 			//	pass
 		}
@@ -440,7 +441,7 @@ func (t *tbz2) unpackinfo(mydest string) int {
 	if t.scan() == 0 {
 		return 0
 	}
-	mydest = NormalizePath(mydest) + string(filepath.Separator)
+	mydest = util.NormalizePath(mydest) + string(filepath.Separator)
 	a, _ := os.Open(t.file)
 	if _, err := os.Stat(mydest); err == os.ErrNotExist {
 		os.MkdirAll(mydest, 0755)
@@ -452,7 +453,7 @@ func (t *tbz2) unpackinfo(mydest string) int {
 		datalen := decodeint(t.index[startpos+8+namelen : startpos+12+namelen])
 		myname := t.index[startpos+4 : startpos+4+namelen]
 		filename := filepath.Join(mydest, strings.TrimLeft(myname, string(os.PathSeparator)))
-		filename = NormalizePath(filename)
+		filename = util.NormalizePath(filename)
 		if !strings.HasPrefix(filename, mydest) {
 			continue
 		}
