@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/data"
+	eapi2 "github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/util"
@@ -182,7 +183,7 @@ func (q *QueryCommand) __call__( argv []string) (string,string,int) {
 
 	var atom1 *Atom
 	if cmd == "best_version" || cmd == "has_version" {
-		allow_repo := EapiHasRepoDeps(eapi)
+		allow_repo := eapi2.EapiHasRepoDeps(eapi)
 		var err error
 		atom1, err = NewAtom(args[0], nil, false, &allow_repo, nil, "", nil, nil)
 		if err != nil {
@@ -987,11 +988,11 @@ debug bool, use_cache=None, db IDbApi) {
 	eapi := mysettings.configDict["pkg"]["EAPI"]
 	_doebuild_path(mysettings, eapi)
 
-	if !eapiIsSupported(eapi) {
+	if !eapi2.eapiIsSupported(eapi) {
 		//raise UnsupportedAPIException(mycpv, eapi)
 	}
 
-	if _, ok :=mysettings.configDict["pkg"]["PORTAGE_REPO_NAME"]; eapiExportsRepository(eapi) &&  ok{
+	if _, ok :=mysettings.configDict["pkg"]["PORTAGE_REPO_NAME"]; eapi2.eapiExportsRepository(eapi) &&  ok{
 		mysettings.configDict["pkg"]["REPOSITORY"] = mysettings.configDict["pkg"]["PORTAGE_REPO_NAME"]
 	}
 
@@ -1090,7 +1091,7 @@ debug bool, use_cache=None, db IDbApi) {
 			}
 		}
 
-		if !eapiExportsKv(eapi) {
+		if !eapi2.eapiExportsKv(eapi) {
 			delete(mysettings.ValueDict, "KV")
 		} else if _, ok := mysettings.ValueDict["KV"]; !ok &&
 			myutil.Ins([]string{"compile", "config", "configure", "info",
@@ -1551,7 +1552,7 @@ fd_pipes map[int]int, returnpid bool) int {
 		}
 	}
 
-	if eapiExportsMergeType(mysettings.ValueDict["EAPI"]) &&
+	if eapi2.eapiExportsMergeType(mysettings.ValueDict["EAPI"]) &&
 		!myutil.Inmss(mysettings.configDict["pkg"], "MERGE_TYPE") {
 		if tree == "porttree" {
 			mysettings.configDict["pkg"]["MERGE_TYPE"] = "source"
@@ -1566,7 +1567,7 @@ fd_pipes map[int]int, returnpid bool) int {
 		mysettings.configDict["pkg"]["EMERGE_FROM"] = "binary"
 	}
 
-	if eapiExportsReplaceVars(mysettings.ValueDict["EAPI"]) &&
+	if eapi2.eapiExportsReplaceVars(mysettings.ValueDict["EAPI"]) &&
 		(myutil.Ins([]string{"postinst", "preinst", "pretend", "setup"}, mydo) ||
 			(!features["noauto"] && !returnpid &&
 				(myutil.Inmsss(actionmap_deps, mydo) || myutil.Ins([]string{"merge", "package", "qmerge"}, mydo)))) {
@@ -2016,7 +2017,7 @@ func _validate_deps(mysettings *Config, myroot, mydo string, mydbapi IDbApi)int 
 	if !pkg.built &&
 		!myutil.Ins([]string{"digest", "help", "manifest"}, mydo) &&
 		pkg.metadata.valueDict["REQUIRED_USE"] != "" &&
-		eapiHasRequiredUse(pkg.eapi()) {
+		eapi2.eapiHasRequiredUse(pkg.eapi()) {
 		result = check_required_use(pkg._metadata["REQUIRED_USE"],
 			pkg.use.enabled, pkg.iuse.is_valid_flag, eapi = pkg.eapi)
 		if !result {
@@ -2256,11 +2257,11 @@ logfile string, fd_pipes map[int]int, returnpid bool) int {
 
 	eapi := mysettings.ValueDict["EAPI"]
 
-	if (mydo == "configure" || mydo == "prepare") && !eapiHasSrcPrepareAndSrcConfigure(eapi) {
+	if (mydo == "configure" || mydo == "prepare") && !eapi2.eapiHasSrcPrepareAndSrcConfigure(eapi) {
 		return 0
 	}
 
-	if mydo == "pretend" && !eapiHasPkgPretend(eapi) {
+	if mydo == "pretend" && !eapi2.eapiHasPkgPretend(eapi) {
 		return 0
 	}
 
@@ -2535,7 +2536,7 @@ func _check_build_log(mysettings *Config, out io.Writer) {
 
 func _post_src_install_write_metadata(settings *Config){
 
-eapi_attrs := getEapiAttrs(settings.configDict["pkg"]["EAPI"])
+eapi_attrs := eapi2.getEapiAttrs(settings.configDict["pkg"]["EAPI"])
 
 build_info_dir := filepath.Join(settings.ValueDict["PORTAGE_BUILDDIR"], "build-info")
 

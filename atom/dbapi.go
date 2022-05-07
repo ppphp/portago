@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/xattr"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/data"
+	eapi2 "github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/util"
@@ -350,7 +351,7 @@ func (d *dbapi) _iter_match_use(atom *Atom, cpvIter []*PkgStr) []*PkgStr {
 }
 
 func (d *dbapi) _repoman_iuse_implicit_cnstr(pkg, metadata map[string]string) func(flag string) bool {
-	eapiAttrs := getEapiAttrs(metadata["EAPI"])
+	eapiAttrs := eapi2.getEapiAttrs(metadata["EAPI"])
 	var iUseImplicitMatch func(flag string) bool = nil
 	if eapiAttrs.iuseEffective {
 		iUseImplicitMatch = func(flag string) bool {
@@ -365,7 +366,7 @@ func (d *dbapi) _repoman_iuse_implicit_cnstr(pkg, metadata map[string]string) fu
 }
 
 func (d *dbapi) _iuse_implicit_cnstr(pkg *PkgStr, metadata map[string]string) func(string) bool {
-	eapiAttrs := getEapiAttrs(metadata["EAPI"])
+	eapiAttrs := eapi2.getEapiAttrs(metadata["EAPI"])
 	var iUseImplicitMatch func(string) bool
 	if eapiAttrs.iuseEffective {
 		iUseImplicitMatch = d.settings.iuseEffectiveMatch
@@ -1577,7 +1578,7 @@ func (v *vardbapi) aux_get(myCpv string, wants map[string]bool, myRepo string) [
 		}
 	}
 
-	eapiAttrs := getEapiAttrs(myData["EAPI"])
+	eapiAttrs := eapi2.getEapiAttrs(myData["EAPI"])
 	if !getSlotRe(eapiAttrs).MatchString(myData["SLOT"]) {
 		myData["SLOT"] = "0"
 	}
@@ -8768,7 +8769,7 @@ func (p *portdbapi) _aux_get_return(future IFuture, mycpv, mylist, myebuild, ebu
 		eapi = "0"
 		mydata["EAPI"] = eapi
 	}
-	if eapiIsSupported(eapi) {
+	if eapi2.eapiIsSupported(eapi) {
 		mydata["INHERITED"] = " ".join(mydata["_eclasses_"])
 	}
 
@@ -8821,7 +8822,7 @@ func (p *portdbapi) async_fetch_map(mypkg, useflags []string, mytree string, loo
 
 		eapi, myuris = aux_get_future.result()
 
-		if !eapiIsSupported(eapi) {
+		if !eapi2.eapiIsSupported(eapi) {
 			result.set_exception(portage.exception.InvalidDependString(
 				"getFetchMap(): '%s' has unsupported EAPI: '%s'"%
 					(mypkg, eapi)))
@@ -9278,10 +9279,10 @@ func (p *portdbapi) match(mydep  *Atom, use_cache int)[]*PkgStr {
 
 func (p *portdbapi) _visible(cpv *PkgStr, metadata map[string]string) bool {
 	eapi := metadata["EAPI"]
-	if !eapiIsSupported(eapi) {
+	if !eapi2.eapiIsSupported(eapi) {
 		return false
 	}
-	if eapiIsDeprecated(eapi) {
+	if eapi2.eapiIsDeprecated(eapi) {
 		return false
 	}
 	if metadata["SLOT"] == "" {

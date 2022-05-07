@@ -3,6 +3,7 @@ package atom
 import (
 	"errors"
 	"fmt"
+	"github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/myutil"
 	"math/big"
 	"regexp"
@@ -45,7 +46,7 @@ var (
 	pvReCache   = map[bool]*regexp.Regexp{}
 )
 
-func getSlotRe(eapiAttrs eapiAttrs) *regexp.Regexp {
+func getSlotRe(eapiAttrs eapi.eapiAttrs) *regexp.Regexp {
 
 	cacheKey := eapiAttrs.SlotOperator
 	slotRe, ok := slotReCache[cacheKey]
@@ -67,7 +68,7 @@ func getSlotRe(eapiAttrs eapiAttrs) *regexp.Regexp {
 	return slotRe
 }
 
-func getPvRe(eapiAttrs eapiAttrs) *regexp.Regexp {
+func getPvRe(eapiAttrs eapi.eapiAttrs) *regexp.Regexp {
 
 	cacheKey := eapiAttrs.DotsInPn
 	pvRe, ok := pvReCache[cacheKey]
@@ -317,10 +318,10 @@ func pkgCmp(pkg1, pkg2 [3]string) (int, error) {
 
 // ""
 func pkgSplit(mypkg, eapi string) [3]string {
-	if !getPvRe(getEapiAttrs(eapi)).MatchString(mypkg) {
+	if !getPvRe(eapi.getEapiAttrs(eapi)).MatchString(mypkg) {
 		return [3]string{}
 	}
-	re := getPvRe(getEapiAttrs(eapi))
+	re := getPvRe(eapi.getEapiAttrs(eapi))
 	if myutil.getNamedRegexp(re, mypkg, "pn_inval") != "" {
 		return [3]string{}
 	}
@@ -434,7 +435,7 @@ func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, r
 	}
 	p.cpv = p
 	if slot != "" {
-		eapiAttrs := getEapiAttrs(eapi)
+		eapiAttrs := eapi.getEapiAttrs(eapi)
 		slotMatch := getSlotRe(eapiAttrs).FindAllString(slot, -1)
 		if len(slotMatch) == 0 {
 			p.slot = "0"

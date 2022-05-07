@@ -3,6 +3,7 @@ package atom
 import (
 	"errors"
 	"fmt"
+	"github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/util"
 	"golang.org/x/net/html/atom"
@@ -34,7 +35,7 @@ var (
 	useflagReCache      = map[bool]*regexp.Regexp{}
 )
 
-func getSlotDepRe(attrs eapiAttrs) *regexp.Regexp {
+func getSlotDepRe(attrs eapi.eapiAttrs) *regexp.Regexp {
 	cacheKey := attrs.SlotOperator
 	slotRe, ok := slotDepReCache[cacheKey]
 	if ok {
@@ -51,7 +52,7 @@ func getSlotDepRe(attrs eapiAttrs) *regexp.Regexp {
 	return slotRe
 }
 
-func getAtomRe(attrs eapiAttrs) *regexp.Regexp {
+func getAtomRe(attrs eapi.eapiAttrs) *regexp.Regexp {
 	cacheKey := attrs.DotsInPn
 	atomRe, ok := atomReCache[cacheKey]
 	if ok {
@@ -77,7 +78,7 @@ func getAtomRe(attrs eapiAttrs) *regexp.Regexp {
 	return atomRe
 }
 
-func getAtomWildcardRe(attrs eapiAttrs) *regexp.Regexp {
+func getAtomWildcardRe(attrs eapi.eapiAttrs) *regexp.Regexp {
 	cacheKey := attrs.DotsInPn
 	atomRe, ok := atomWildcardReCache[cacheKey]
 	if ok {
@@ -98,7 +99,7 @@ func getAtomWildcardRe(attrs eapiAttrs) *regexp.Regexp {
 	return atomRe
 }
 
-func getUsedepRe(attrs eapiAttrs) *regexp.Regexp {
+func getUsedepRe(attrs eapi.eapiAttrs) *regexp.Regexp {
 	cacheKey := attrs.dotsInUseFlags
 	useDepRe, ok := usedepReCache[cacheKey]
 	if ok {
@@ -117,7 +118,7 @@ func getUsedepRe(attrs eapiAttrs) *regexp.Regexp {
 }
 
 func getUseflagRe(eapi string) *regexp.Regexp {
-	attrs := getEapiAttrs(eapi)
+	attrs := eapi.getEapiAttrs(eapi)
 	cacheKey := attrs.dotsInUseFlags
 	useflagRe, ok := useflagReCache[cacheKey]
 	if ok {
@@ -196,7 +197,7 @@ func useReduce(depstr string, uselist map[string]bool, masklist []string, matcha
 	if matchall && matchnone {
 		// ValueError("portage.dep.use_reduce: 'opconvert' and 'flat' are mutually exclusive")
 	}
-	eapiAttrs := getEapiAttrs(eapi)
+	eapiAttrs := eapi.getEapiAttrs(eapi)
 	useFlagRe := getUseflagRe(eapi)
 
 	isActive := func(conditional string) bool {
@@ -480,7 +481,7 @@ var conditionalStrings = map[string]string{
 }
 
 type useDep struct {
-	eapiAttrs                                                    *eapiAttrs
+	eapiAttrs                                                    *eapi.eapiAttrs
 	missingEnabled, missingDisabled, disabled, enabled, required map[string]bool
 	conditional                                                  *conditionalClass
 	tokens                                                       []string
@@ -764,7 +765,7 @@ func (u *useDep) evalQaConditionals(useMask, useForce map[string]bool) *useDep {
 	return NewUseDep(tokens, u.eapiAttrs, enabledFlags, disabledFlags, u.missingEnabled, u.missingDisabled, nil, u.required)
 }
 
-func NewUseDep(use []string, eapiAttrs *eapiAttrs, enabledFlags, disabledFlags, missingEnabled, missingDisabled map[string]bool, conditional map[string]map[string]bool, required map[string]bool) *useDep { // none
+func NewUseDep(use []string, eapiAttrs *eapi.eapiAttrs, enabledFlags, disabledFlags, missingEnabled, missingDisabled map[string]bool, conditional map[string]map[string]bool, required map[string]bool) *useDep { // none
 	u := &useDep{conditionalStrings: conditionalStrings}
 	u.eapiAttrs = eapiAttrs
 	if enabledFlags != nil {
@@ -1107,7 +1108,7 @@ func (a *Atom) match(pkg *PkgStr) bool {
 //s, nil, false, nil, nil, "", nil, nil
 func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *bool, _use *useDep, eapi string, isValidFlag func(string) bool, allowBuildId *bool) (*Atom, error) {
 	a := &Atom{value: s, ispackage: true, soname: false}
-	eapiAttrs := getEapiAttrs(eapi)
+	eapiAttrs := eapi.getEapiAttrs(eapi)
 	atomRe := getAtomRe(eapiAttrs)
 	a.eapi = eapi
 	if eapi != "" {
@@ -2035,7 +2036,7 @@ func humanReadableRequiredUse(requiredUse string) string {
 }
 
 func get_required_use_flags(requiredUse, eapi string) map[string]bool { //n
-	eapiAttrs := getEapiAttrs(eapi)
+	eapiAttrs := eapi.getEapiAttrs(eapi)
 	validOperators := map[string]bool{}
 	if eapiAttrs.requiredUseAtMostOneOf {
 		validOperators = map[string]bool{"||": true, "^^": true, "??": true}

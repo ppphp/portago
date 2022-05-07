@@ -8,6 +8,7 @@ import (
 	ogórek "github.com/kisielk/og-rek"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/data"
+	eapi2 "github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/util"
@@ -1221,7 +1222,7 @@ func (b *Binpkg) _start() {
 	settings.configDict["pkg"]["EMERGE_FROM"] = "binary"
 	settings.configDict["pkg"]["MERGE_TYPE"] = "binary"
 
-	if eapiExportsReplaceVars(settings.ValueDict["EAPI"]) {
+	if eapi2.eapiExportsReplaceVars(settings.ValueDict["EAPI"]) {
 		vardb := b.pkg.root_config.trees["vartree"].dbapi
 		settings.ValueDict["REPLACING_VERSIONS"] = " ".join(
 			set(cpvGetVersion(x, "")
@@ -3657,7 +3658,7 @@ func (e*EbuildExecuter)_start() {
 	cleanup := 0
 	prepare_build_dirs(settings, cleanup!=0)
 
-	if eapiExportsReplaceVars(settings.ValueDict["EAPI"]) {
+	if eapi2.eapiExportsReplaceVars(settings.ValueDict["EAPI"]) {
 		vardb := pkg.root_config.trees['vartree'].dbapi
 		settings.ValueDict["REPLACING_VERSIONS"] = " ".join(
 			set(cpvGetVersion(match, "") \
@@ -3707,7 +3708,7 @@ func (e*EbuildExecuter) _unpack_exit( unpack_phase) {
 	pkg = e.pkg
 	phases := e._phases
 	eapi := pkg.eapi
-	if ! eapiHasSrcPrepareAndSrcConfigure(eapi) {
+	if ! eapi2.eapiHasSrcPrepareAndSrcConfigure(eapi) {
 		phases = phases[2:]
 	}
 
@@ -4406,7 +4407,7 @@ func(e *EbuildMetadataPhase) _start() {
 		return
 	}
 
-	e.eapi_supported = eapiIsSupported(parsed_eapi)
+	e.eapi_supported = eapi2.eapiIsSupported(parsed_eapi)
 	if ! e.eapi_supported {
 		e.metadata =map[string]string{
 			"EAPI": parsed_eapi,
@@ -4529,7 +4530,7 @@ func(e *EbuildMetadataPhase) _async_waitpid_cb( *args, **kwargs) {
 			if parsed_eapi == "" {
 				parsed_eapi = "0"
 			}
-			e.eapi_supported = eapiIsSupported(metadata["EAPI"])
+			e.eapi_supported = eapi2.eapiIsSupported(metadata["EAPI"])
 			if (metadata["EAPI"] == "" || e.eapi_supported) && metadata["EAPI"] != parsed_eapi {
 				e._eapi_invalid(metadata)
 				metadata_valid = false
@@ -4549,7 +4550,7 @@ func(e *EbuildMetadataPhase) _async_waitpid_cb( *args, **kwargs) {
 				}
 				delete(metadata, "INHERITED")
 
-				if eapiHasAutomaticUnpackDependencies(metadata["EAPI"]) {
+				if eapi2.eapiHasAutomaticUnpackDependencies(metadata["EAPI"]) {
 					repo := e.portdb.repositories.getNameForLocation(e.repo_path)
 					unpackers := e.settings.unpackDependencies[repo][metadata["EAPI"]]
 					unpack_dependencies := extractUnpackDependencies(metadata["SRC_URI"], unpackers)
@@ -5322,13 +5323,13 @@ try:
 		raise
 		_DynamicDepsNotApplicable()
 	}
-	if !(eapiIsSupported(live_metadata["EAPI"]) && eapiIsSupported(pkg.eapi)) {
+	if !(eapi2.eapiIsSupported(live_metadata["EAPI"]) && eapi2.eapiIsSupported(pkg.eapi)) {
 		raise
 		_DynamicDepsNotApplicable()
 	}
 
 	built_slot_operator_atoms = None
-	if ! f._ignore_built_slot_operator_deps && getEapiAttrs(pkg.eapi).slotOperator {
+	if ! f._ignore_built_slot_operator_deps && eapi2.getEapiAttrs(pkg.eapi).slotOperator {
 	try:
 		built_slot_operator_atoms = \
 		find_built_slot_operator_atoms(pkg)
@@ -6374,7 +6375,7 @@ func NewIUse(pkg string, tokens []string, iuseImplicitMatch func(string) bool, a
 	enabledAliases := []string{}
 	disabledAliases := []string{}
 	otherAliases := []string{}
-	aliasesSupported := eapiHasUseAliases(eapi)
+	aliasesSupported := eapi2.eapiHasUseAliases(eapi)
 	i.aliasMapping = map[string][]string{}
 	for _, x := range tokens {
 		prefix := x[:1]

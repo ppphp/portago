@@ -242,7 +242,7 @@ func getNamedRegexp(re *regexp.Regexp, target, name string) string {
 	return ""
 }
 
-func toi(s string) int {
+func Toi(s string) int {
 	i, _ := strconv.Atoi(s)
 	return i
 }
@@ -265,4 +265,15 @@ func listDir(path string) ([]string, error) {
 		rs = append(rs, s.Name())
 	}
 	return rs, nil
+}
+
+// --------------------copy
+func Getcwd() string {
+	s, err := os.Getwd()
+	if err != nil {
+		os.Chdir("/")
+		return "/"
+	} else {
+		return s
+	}
 }

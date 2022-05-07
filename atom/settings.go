@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/data"
+	"github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/util"
@@ -40,7 +41,7 @@ func lazyIuseRegex(s []string) string {
 	return str
 }
 
-func getFeatureFlags(attrs eapiAttrs) map[string]bool {
+func getFeatureFlags(attrs eapi.eapiAttrs) map[string]bool {
 	flags := map[string]bool{}
 	if attrs.featureFlagTest {
 		flags["test"] = true
@@ -482,7 +483,7 @@ func (c *Config) SetCpv(mycpv *PkgStr, mydb *vardbapi) {
 		pkgInternalUse = strings.Join(pkgInternalUseList, " ")
 	}
 
-	eapiAttrs := getEapiAttrs(eapi)
+	eapiAttrs := eapi.getEapiAttrs(eapi)
 	if pkgInternalUse != c.configDict["pkginternal"]["USE"] {
 		c.configDict["pkginternal"]["USE"] = pkgInternalUse
 		hasChanged = true
@@ -1667,7 +1668,7 @@ func (c *Config) environ() map[string]string {
 	environ_filter := c.environFilter
 
 	eapi := c.ValueDict["EAPI"]
-	eapi_attrs := getEapiAttrs(eapi)
+	eapi_attrs := eapi.getEapiAttrs(eapi)
 	phase := c.ValueDict["EBUILD_PHASE"]
 	emerge_from := c.ValueDict["EMERGE_FROM"]
 	filter_calling_env := false
@@ -1716,11 +1717,11 @@ func (c *Config) environ() map[string]string {
 
 	mydict["USE"] = c.ValueDict["PORTAGE_USE"]
 
-	if !eapiExportsAa(eapi) {
+	if !eapi.eapiExportsAa(eapi) {
 		delete(mydict, "AA")
 	}
 
-	if !eapiExportsMergeType(eapi) {
+	if !eapi.eapiExportsMergeType(eapi) {
 		delete(mydict, "MERGE_TYPE")
 	}
 
@@ -1734,18 +1735,18 @@ func (c *Config) environ() map[string]string {
 		delete(mydict, "BROOT")
 	}
 
-	if phase == "depend" || (!c.Features.Features["force-prefix"] && eapi != "" && !eapiSupportsPrefix(eapi)) {
+	if phase == "depend" || (!c.Features.Features["force-prefix"] && eapi != "" && !eapi.eapiSupportsPrefix(eapi)) {
 		delete(mydict, "ED")
 		delete(mydict, "EPREFIX")
 		delete(mydict, "EROOT")
 		delete(mydict, "ESYSROOT")
 	}
 
-	if !myutil.Ins([]string{"pretend", "setup", "preinst", "postinst"}, phase) || !eapiExportsReplaceVars(eapi) {
+	if !myutil.Ins([]string{"pretend", "setup", "preinst", "postinst"}, phase) || !eapi.eapiExportsReplaceVars(eapi) {
 		delete(mydict, "REPLACING_VERSIONS")
 	}
 
-	if !myutil.Ins([]string{"prerm", "postrm"}, phase) || !eapiExportsReplaceVars(eapi) {
+	if !myutil.Ins([]string{"prerm", "postrm"}, phase) || !eapi.eapiExportsReplaceVars(eapi) {
 		delete(mydict, "REPLACED_BY_VERSION")
 	}
 
@@ -2496,7 +2497,7 @@ func NewConfig(clone *Config, mycpv *PkgStr, configProfilePath string, configInc
 		for _, x := range profilesComplex {
 			provPath := path.Join(x.location, "package.provided")
 			if _, err := os.Stat(provPath); err == nil {
-				if getEapiAttrs(x.eapi).allowsPackageProvided {
+				if eapi.getEapiAttrs(x.eapi).allowsPackageProvided {
 					ppl = append(ppl, util.grabFile(provPath, 1, x.portage1Directories, false))
 				}
 			}
@@ -2939,7 +2940,7 @@ func (l *locationsManager) addProfile(currentPath string, repositories *repoConf
 		l, _, err := bd.ReadLine()
 		if err == nil {
 			eapi = strings.TrimSpace(string(l))
-			if !eapiIsSupported(eapi) {
+			if !eapi.eapiIsSupported(eapi) {
 				//raise ParseError(_(
 				//	"Profile contains unsupported "
 				//"EAPI '%s': '%s'") % \
@@ -2956,9 +2957,9 @@ func (l *locationsManager) addProfile(currentPath string, repositories *repoConf
 			}
 		}
 		if !allowDirectories {
-			allowDirectories = eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi)
+			allowDirectories = eapi.eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi)
 		}
-		compatMode = !eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi) && len(layoutData["profile-formats"]) == 1 && layoutData["profile-formats"][0] == "portage-1-compat"
+		compatMode = !eapi.eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi) && len(layoutData["profile-formats"]) == 1 && layoutData["profile-formats"][0] == "portage-1-compat"
 		for _, x := range layoutData["profile-formats"] {
 			if "portage-2" == x {
 				allowParentColon = true
@@ -3593,7 +3594,7 @@ func (u *useManager) getUseForce(pkg *PkgStr, stable *bool) map[*Atom]string { /
 }
 
 func (u *useManager) getUseAliases(pkg *PkgStr) map[string][]string {
-	if pkg.eapi != "" && !eapiHasUseAliases(pkg.eapi) {
+	if pkg.eapi != "" && !eapi.eapiHasUseAliases(pkg.eapi) {
 		return map[string][]string{}
 	}
 	cp := pkg.cp
@@ -3737,24 +3738,24 @@ func NewUseManager(repositories *repoConfigLoader, profiles []*profileNode, absU
 	u.userConfig = userConfig
 	u.isStable = isStable
 	u.repoUsemaskDict = u.parseRepositoryFilesToDictOfTuples("use.mask", repositories, nil)
-	u.repoUsestablemaskDict = u.parseRepositoryFilesToDictOfTuples("use.stable.mask", repositories, eapiSupportsStableUseForcingAndMasking)
+	u.repoUsestablemaskDict = u.parseRepositoryFilesToDictOfTuples("use.stable.mask", repositories, eapi.eapiSupportsStableUseForcingAndMasking)
 	u.repoUseforceDict = u.parseRepositoryFilesToDictOfTuples("use.force", repositories, nil)
-	u.repoUsestableforceDict = u.parseRepositoryFilesToDictOfTuples("use.stable.force", repositories, eapiSupportsStableUseForcingAndMasking)
+	u.repoUsestableforceDict = u.parseRepositoryFilesToDictOfTuples("use.stable.force", repositories, eapi.eapiSupportsStableUseForcingAndMasking)
 	u.repoPusemaskDict = u.parseRepositoryFilesToDictOfDicts("package.use.mask", repositories, nil)
-	u.repoPusestablemaskDict = u.parseRepositoryFilesToDictOfDicts("package.use.stable.mask", repositories, eapiSupportsStableUseForcingAndMasking)
+	u.repoPusestablemaskDict = u.parseRepositoryFilesToDictOfDicts("package.use.stable.mask", repositories, eapi.eapiSupportsStableUseForcingAndMasking)
 	u.repoPuseforceDict = u.parseRepositoryFilesToDictOfDicts("package.use.force", repositories, nil)
-	u.repoPusestableforceDict = u.parseRepositoryFilesToDictOfDicts("package.use.stable.force", repositories, eapiSupportsStableUseForcingAndMasking)
+	u.repoPusestableforceDict = u.parseRepositoryFilesToDictOfDicts("package.use.stable.force", repositories, eapi.eapiSupportsStableUseForcingAndMasking)
 	u.repoPuseDict = u.parseRepositoryFilesToDictOfDicts("package.use", repositories, nil)
 
 	u.usemaskList = u.parseProfileFilesToTupleOfTuples("use.mask", profiles, nil)
-	u.usestablemaskList = u.parseProfileFilesToTupleOfTuples("use.stable.mask", profiles, eapiSupportsStableUseForcingAndMasking)
+	u.usestablemaskList = u.parseProfileFilesToTupleOfTuples("use.stable.mask", profiles, eapi.eapiSupportsStableUseForcingAndMasking)
 	u.useforceList = u.parseProfileFilesToTupleOfTuples("use.force", profiles, nil)
-	u.usestableforceList = u.parseProfileFilesToTupleOfTuples("use.stable.force", profiles, eapiSupportsStableUseForcingAndMasking)
+	u.usestableforceList = u.parseProfileFilesToTupleOfTuples("use.stable.force", profiles, eapi.eapiSupportsStableUseForcingAndMasking)
 	u.pusemaskList = u.parseProfileFilesToTupleOfDicts("package.use.mask", profiles, false, nil)
-	u.pusestablemaskList = u.parseProfileFilesToTupleOfDicts("package.use.stable.mask", profiles, false, eapiSupportsStableUseForcingAndMasking)
+	u.pusestablemaskList = u.parseProfileFilesToTupleOfDicts("package.use.stable.mask", profiles, false, eapi.eapiSupportsStableUseForcingAndMasking)
 	u.pkgprofileuse = u.parseProfileFilesToTupleOfDicts("package.use", profiles, true, nil)
 	u.puseforceList = u.parseProfileFilesToTupleOfDicts("package.use.force", profiles, false, nil)
-	u.pusestableforceList = u.parseProfileFilesToTupleOfDicts("package.use.stable.force", profiles, false, eapiSupportsStableUseForcingAndMasking)
+	u.pusestableforceList = u.parseProfileFilesToTupleOfDicts("package.use.stable.force", profiles, false, eapi.eapiSupportsStableUseForcingAndMasking)
 
 	u.pUseDict = u.parseUserFilesToExtatomdict("package.use", absUserConfig, userConfig)
 
@@ -4624,8 +4625,8 @@ func NewVirtualManager(profiles []string) *virtualManager {
 func loadUnpackDependenciesConfiguration(repositories *repoConfigLoader) map[string]map[string]map[string]string {
 	repoDict := map[string]map[string]map[string]string{}
 	for _, repo := range repositories.reposWithProfiles() {
-		for eapi := range supportedEapis {
-			if eapiHasAutomaticUnpackDependencies(eapi) {
+		for eapi := range eapi.supportedEapis {
+			if eapi.eapiHasAutomaticUnpackDependencies(eapi) {
 				fileName := path.Join(repo.Location, "profiles", "unpack_dependencies", eapi)
 				lines := util.grabFile(fileName, 0, true, false)
 				for _, line := range lines {

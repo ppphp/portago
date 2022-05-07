@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/data"
+	eapi2 "github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/util"
@@ -231,7 +232,7 @@ func hasVersion(argv  []string) int {
 
 	warnings := []string{}
 
-	allow_repo := !atomValidateStrict || atom.EapiHasRepoDeps(eapi)
+	allow_repo := !atomValidateStrict || eapi2.EapiHasRepoDeps(eapi)
 	atom1, err := atom.NewAtom(argv[1], nil, false, &allow_repo, nil, "", nil, nil)
 	if err != nil {
 		//except portage.exception.InvalidAtom:
@@ -280,7 +281,7 @@ func bestVersion(argv []string) int {
 
 	warnings := []string{}
 
-	allow_repo := !atomValidateStrict || atom.EapiHasRepoDeps(eapi)
+	allow_repo := !atomValidateStrict || eapi2.EapiHasRepoDeps(eapi)
 
 	atom1, err := atom.NewAtom(argv[1], nil, false, &allow_repo, nil, "", nil, nil)
 	if err != nil {

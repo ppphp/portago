@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/ppphp/portago/pkg/const"
+	eapi2 "github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/util"
 	"os"
@@ -484,14 +485,14 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *R
 		}
 
 		eapi := util.readCorrespondingEapiFile(path.Join(r.Location, _const.RepoNameLoc), r.eapi)
-		r.portage1Profiles = eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi)
+		r.portage1Profiles = eapi2.eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi)
 		for _, v := range layoutData["profile-formats"] {
 			if portage1ProfilesAllowDirectories[v] {
 				r.portage1Profiles = true
 				break
 			}
 		}
-		r.portage1ProfilesCompat = !eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi) && len(layoutData["profile-formats"]) == 1 && layoutData["profile-formats"][0] == "portage-1-compat"
+		r.portage1ProfilesCompat = !eapi2.eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi) && len(layoutData["profile-formats"]) == 1 && layoutData["profile-formats"][0] == "portage-1-compat"
 		r.eapisBanned = map[string]bool{}
 		for _, v := range layoutData["eapis-banned"] {
 			r.eapisBanned[v] = true
@@ -1317,7 +1318,7 @@ func parseLayoutConf(repoLocation, repoName string) (map[string][]string, map[st
 
 	rawFormats := layoutData["profile-formats"]
 	if rawFormats == nil {
-		if eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi) {
+		if eapi2.eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi) {
 			rawFormats = []string{"portage-1"}
 		} else {
 
@@ -1365,7 +1366,7 @@ func parseLayoutConf(repoLocation, repoName string) (map[string][]string, map[st
 			//dict(repo_name=repo_name or 'unspecified',
 			//layout_filename=layout_filename)),
 			//SyntaxWarning)
-		} else if !eapiIsSupported(eapi) {
+		} else if !eapi2.eapiIsSupported(eapi) {
 			//warnings.warn((_("Repository named '%(repo_name)s' has "
 			//"unsupported EAPI '%(eapi)s' setting in "
 			//"'%(layout_filename)s'; please upgrade portage.") %

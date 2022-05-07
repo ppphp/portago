@@ -1,6 +1,11 @@
-package atom
+package eapi
 
-import "strings"
+import (
+	"fmt"
+	cons "github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/myutil"
+	"strings"
+)
 
 func eapiHasIuseDefaults(eapi string) bool {
 	return eapi != "0"
@@ -71,10 +76,6 @@ func eapiExportsEclassdir(eapi string) bool {
 	return map[string]bool{"0": true, "1": true, "2": true, "3": true, "4": true, "4-python": true, "4-slot-abi": true, "5": true, "5-progress": true, "6": true}[eapi]
 }
 
-func eapiExportsRepository(eapi string) bool {
-	return map[string]bool{"4-python": true, "5-progress": true}[eapi]
-}
-
 func eapiHasPkgPretend(eapi string) bool {
 	return !map[string]bool{"0": true, "1": true, "2": true, "3": true}[eapi]
 }
@@ -107,28 +108,12 @@ func EapiHasRepoDeps(eapi string) bool {
 	return map[string]bool{"4-python": true, "5-progress": true}[eapi]
 }
 
-func eapiAllowsDotsInPn(eapi string) bool {
-	return map[string]bool{"4-python": true, "5-progress": true}[eapi]
-}
-
-func eapiAllowsDotsInUseFlags(eapi string) bool {
-	return map[string]bool{"4-python": true, "5-progress": true}[eapi]
-}
-
 func eapiSupportsStableUseForcingAndMasking(eapi string) bool {
 	return !map[string]bool{"0": true, "1": true, "2": true, "3": true, "4": true, "4-python": true, "4-slot-abi": true}[eapi]
 }
 
 func eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi string) bool {
 	return !map[string]bool{"0": true, "1": true, "2": true, "3": true, "4": true, "4-slot-abi": true, "5": true, "6": true}[eapi]
-}
-
-func eapiHasUseAliases(eapi string) bool {
-	return map[string]bool{"4-python": true, "5-progress": true}[eapi]
-}
-
-func eapiHasAutomaticUnpackDependencies(eapi string) bool {
-	return map[string]bool{"5-progress": true}[eapi]
 }
 
 func eapiAllowsPackageProvided(eapi string) bool {
@@ -143,7 +128,7 @@ func eapiHasIdepend(eapi string) bool {
 	return !map[string]bool{"0": true, "1": true, "2": true, "3": true, "4": true, "4-python": true, "4-slot-abi": true, "5": true, "5-progress": true, "6": true, "7": true}[eapi]
 }
 
-func eapiEmptyGroupsAlwaysTrue(eapi string) bool {
+func eapiEmptyGroupsAlwaystrue(eapi string) bool {
 	return map[string]bool{"0": true, "1": true, "2": true, "3": true, "4": true, "4-python": true, "4-slot-abi": true, "5": true, "5-progress": true, "6": true}[eapi]
 }
 
@@ -160,75 +145,138 @@ func eapiHasSysroot(eapi string) bool {
 }
 
 var (
-	testingEapis    = map[string]bool{"4-python": true, "4-slot-abi": true, "5-progress": true, "5-hdepend": true, "7_pre1": true, "7": true}
-	deprecatedEapis = map[string]bool{"4_pre1": true, "3_pre2": true, "3_pre1": true, "5_pre1": true, "5_pre2": true, "6_pre1": true}
-	supportedEapis  = map[string]bool{"0": true, "1": true, "2": true, "3": true, "4": true, "5": true, "6": true,
-		"4-python": true, "4-slot-abi": true, "5-progress": true, "5-hdepend": true, "7_pre1": true, "7": true,
-		"4_pre1": true, "3_pre2": true, "3_pre1": true, "5_pre1": true, "5_pre2": true, "6_pre1": true}
+	testingEapis    = map[string]bool{}
+	deprecatedEapis = map[string]bool{"3_pre1": true, "3_pre2": true, "4_pre1": true, "4-slot-abi": true, "5_pre1": true, "5_pre2": true, "6_pre1": true, "7_pre1": true}
+	supportedEapis  = myutil.CopyMapSB(deprecatedEapis)
 )
+
+func init() {
+	for x := 0; x <= cons.EAPI; x++ {
+		supportedEapis[fmt.Sprint(x)] = true
+	}
+}
 
 func eapiIsDeprecated(eapi string) bool {
 	return deprecatedEapis[eapi]
 }
+
 func eapiIsSupported(eapi string) bool {
 	return supportedEapis[strings.TrimSpace(eapi)]
 }
 
 type eapiAttrs struct {
-	allowsPackageProvided, bdepend, broot, DotsInPn, dotsInUseFlags,
-	emptyGroupsAlwaysTrue, exportsAa, exportsEbuildPhaseFunc,
+	allowsPackageProvided, bdepend, broot, exportsAa, exportsEbuildPhaseFunc,
 	exportsEclassdir, exportsKv, exportsMergeType, exportsPortdir,
 	exportsReplaceVars, featureFlagTest, idepend, iuseDefaults,
 	iuseEffective, posixishLocale, pathVariablesEndWithTrailingSlash,
 	prefix, repoDeps, requiredUse, requiredUseAtMostOneOf,
 	selectiveSrcUriRestriction, slotOperator, slotDeps, srcUriArrows,
-	strongBlocks, useDeps, useDepDefaults, sysroot bool
+	strongBlocks, useDeps, useDepDefaults, emptyGroupsAlwaysTrue, sysroot bool
 }
 
-var eapiAttrsCache = map[string]eapiAttrs{}
+type Eapi struct {
+	_eapi_val int
 
-func getEapiAttrs(eapi string) eapiAttrs {
-	if e, ok := eapiAttrsCache[eapi]; ok {
-		return e
+	ALL_EAPIS []string
+}
+
+func NewEapi(eapi_string string) *Eapi {
+	e := &Eapi{_eapi_val: -1}
+	ALL_EAPIS := []string{
+		"0",
+		"1",
+		"2",
+		"3",
+		"4",
+		"4-slot-abi",
+		"5",
+		"6",
+		"7",
+		"8"}
+
+	if !myutil.Ins(ALL_EAPIS, eapi_string) {
+		//raise ValueError(f"'{eapi_string}' not recognized as a valid EAPI")
 	}
-	if eapi != "" && !eapiIsSupported(eapi) {
-		e := eapiAttrs{}
-		eapiAttrsCache[eapi] = e
-		return e
-	}
-	e := eapiAttrs{
-		eapi == "" || eapiAllowsPackageProvided(eapi),
-		eapi != "" && eapiHasBdepend(eapi),
-		eapi == "" || eapiHasBroot(eapi),
-		eapi == "" || eapiAllowsDotsInPn(eapi),
-		eapi == "" || eapiAllowsDotsInUseFlags(eapi),
-		eapi != "" && eapiHasUseDepDefaults(eapi),
-		eapi != "" && eapiEmptyGroupsAlwaysTrue(eapi),
-		eapi == "" || eapiExportsEbuildPhaseFunc(eapi),
-		eapi != "" && eapiExportsEclassdir(eapi),
-		eapi != "" && eapiExportsKv(eapi),
-		eapi == "" || eapiExportsMergeType(eapi),
-		eapi == "" || eapiExportsPortdir(eapi),
-		eapi == "" || eapiExportsReplaceVars(eapi),
-		false,
-		eapi != "" && eapiHasIdepend(eapi),
-		eapi == "" || eapiHasIuseDefaults(eapi),
-		eapi != "" && eapiHasIuseEffective(eapi),
-		eapi != "" && eapiRequiresPosixishLocale(eapi),
-		eapi != "" && eapiPathVariablesEndWithTrailingSlash(eapi),
-		eapi == "" || eapiSupportsPrefix(eapi),
-		eapi == "" || EapiHasRepoDeps(eapi),
-		eapi == "" || eapiHasRequiredUse(eapi),
-		eapi == "" || eapiHasRequiredUseAtMostOneOf(eapi),
-		eapi == "" || eapiHasSelectiveSrcUriRestriction(eapi),
-		eapi == "" || eapiHasSlotOperator(eapi),
-		eapi == "" || eapiHasSlotDeps(eapi),
-		eapi == "" || eapiHasSrcUriArrows(eapi),
-		eapi == "" || eapiHasStrongBlocks(eapi),
-		eapi == "" || eapiHasUseDeps(eapi),
-		eapi == "" || eapiHasUseDepDefaults(eapi),
-		eapi == "" || eapiHasSysroot(eapi),
-	}
-	eapiAttrsCache[eapi] = e
+	e._eapi_val = myutil.Toi(strings.Split(eapi_string, "-")[0])
+
 	return e
+}
+
+func (e *Eapi) ge(other *Eapi) bool {
+	return e._eapi_val >= other._eapi_val
+}
+
+func (e *Eapi) le(other *Eapi) bool {
+	return e._eapi_val <= other._eapi_val
+}
+
+// ""
+func GetEapiAttrs(eapi_str string) *eapiAttrs {
+	//logging.info("cache info: {}".format(_get_eapi_attrs.cache_info()))
+	if eapi_str == "" || !eapiIsSupported(eapi_str) {
+		return &eapiAttrs{
+			true,
+			false,
+			true,
+			false,
+			true,
+			false,
+			false,
+			true,
+			true,
+			true,
+			false,
+			false,
+			true,
+			false,
+			false,
+			false,
+			true,
+			true,
+			true,
+			true,
+			true,
+			true,
+			true,
+			true,
+			true,
+			true,
+			true,
+			false,
+			true,
+		}
+	} else {
+		eapi := NewEapi(eapi_str)
+		return &eapiAttrs{
+			eapi.le(NewEapi("6")),
+			eapi.ge(NewEapi("7")),
+			eapi.ge(NewEapi("7")),
+			eapi.le(NewEapi("3")),
+			eapi.ge(NewEapi("5")),
+			eapi.le(NewEapi("6")),
+			eapi.le(NewEapi("3")),
+			eapi.ge(NewEapi("4")),
+			eapi.le(NewEapi("6")),
+			eapi.ge(NewEapi("4")),
+			false,
+			eapi.ge(NewEapi("8")),
+			eapi.ge(NewEapi("1")),
+			eapi.ge(NewEapi("5")),
+			eapi.ge(NewEapi("6")),
+			eapi.le(NewEapi("6")),
+			eapi.ge(NewEapi("3")),
+			false,
+			eapi.ge(NewEapi("4")),
+			eapi.ge(NewEapi("5")),
+			eapi.ge(NewEapi("8")),
+			eapi.ge(NewEapi("5")),
+			eapi.ge(NewEapi("1")),
+			eapi.ge(NewEapi("2")),
+			eapi.ge(NewEapi("2")),
+			eapi.ge(NewEapi("2")),
+			eapi.ge(NewEapi("4")),
+			eapi.le(NewEapi("6")),
+			eapi.ge(NewEapi("7")),
+		}
+	}
 }

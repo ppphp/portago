@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/data"
+	"github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/util"
@@ -62,6 +63,7 @@ func getcwd() string {
 		return s
 	}
 }
+
 func init() {
 	getcwd()
 }
@@ -585,7 +587,7 @@ func grab_updates(updpath string, prev_mtimes map[string]string) []struct{p stri
 }
 
 func parse_updates(mycontent string) ([][]string, []string) {
-	eapi_attrs := getEapiAttrs("")
+	eapi_attrs := eapi.getEapiAttrs("")
 	slot_re := getSlotRe(eapi_attrs)
 	myupd := [][]string{}
 	errors := []string{}
