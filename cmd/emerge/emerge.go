@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/ppphp/portago/pkg/process"
 	"os"
 	"os/signal"
 	"syscall"
@@ -30,7 +31,7 @@ func init() {
 }
 
 func main() {
-	atom.SanitizeFds()
+	process.SanitizeFds()
 	retval := atom.EmergeMain(nil)
 	os.Exit(retval)
 }

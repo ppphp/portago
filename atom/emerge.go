@@ -11,6 +11,7 @@ import (
 	eapi2 "github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/shlex"
 	"golang.org/x/crypto/ssh/terminal"
@@ -1777,7 +1778,7 @@ func(b *BinpkgExtractorAsync) _start() {
 		decompression_binary = dbs[0]
 	}
 
-	if FindBinary(decompression_binary) == "" {
+	if process.FindBinary(decompression_binary) == "" {
 		if decomp["decompress_alt"] != "" {
 			decomp_cmd = decomp["decompress_alt"]
 		}
@@ -1787,7 +1788,7 @@ func(b *BinpkgExtractorAsync) _start() {
 			decompression_binary = dbs[0]
 		}
 
-		if FindBinary(decompression_binary) == "" {
+		if process.FindBinary(decompression_binary) == "" {
 			missing_package := decomp["package"]
 			b.scheduler.output(fmt.Sprintf("!!! %s\n",
 				fmt.Sprintf("File compression unsupported %s.\n Command was: %s.\n Maybe missing package: %s",
@@ -9712,7 +9713,7 @@ func(s *SpawnProcess) _pipe()(int, int){
 }
 
 func(s *SpawnProcess) _spawn(args []string, **kwargs) {
-	spawn_func := spawn
+	spawn_func := process.spawn
 
 	if s._selinux_type != nil {
 		spawn_func = portage.selinux.spawn_wrapper(spawn_func,
@@ -10466,7 +10467,7 @@ try:
 	pass
 
 	_close_fds()
-	_setup_pipes(fd_pipes, false)
+	process._setup_pipes(fd_pipes, false)
 
 	output.HaveColor = m.settings.ValueDict["NOCOLOR"] == "yes" || m.settings.ValueDict["NOCOLOR"] == "true"
 

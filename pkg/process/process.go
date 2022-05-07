@@ -1,4 +1,4 @@
-package atom
+package process
 
 import (
 	"errors"
@@ -58,7 +58,7 @@ func init() {
 			}
 			return r
 		}
-	} else if myutil.pathIsDir(fmt.Sprintf("/proc/%v/fd", os.Getpid())) {
+	} else if myutil.PathIsDir(fmt.Sprintf("/proc/%v/fd", os.Getpid())) {
 		get_open_fds = func() []int {
 			m, _ := filepath.Glob(fmt.Sprintf("/proc/%v/fd/*", os.Getpid()))
 			r := []int{}
@@ -106,7 +106,7 @@ func spawn_bash(mycommand string, debug bool, opt_name string, fd_pipes map[int]
 	}
 	args = append(args, "-c")
 	args = append(args, mycommand)
-	return spawn(args, nil, opt_name, fd_pipes, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "", **keywords)
+	return Spawn(args, nil, opt_name, fd_pipes, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "", **keywords)
 }
 
 // ""
@@ -119,7 +119,7 @@ func spawn_sandbox(mycommand, opt_name string, **keywords) ([]int, error) {
 		opt_name = filepath.Base(strings.Fields(mycommand)[0])
 	}
 	args = append(args, mycommand)
-	return spawn(args, nil, opt_name, nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "", **keywords)
+	return Spawn(args, nil, opt_name, nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "", **keywords)
 }
 
 // "", ""
@@ -142,7 +142,7 @@ func spawn_fakeroot(mycommand, fakeroot_state, opt_name string, **keywords) ([]i
 	args = append(args, _const.BashBinary)
 	args = append(args, "-c")
 	args = append(args, mycommand)
-	return spawn(args, nil, opt_name, nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "", **keywords)
+	return Spawn(args, nil, opt_name, nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "", **keywords)
 }
 
 var _exithandlers []func()
@@ -169,7 +169,7 @@ func init() {
 }
 
 // nil, "", nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, ""
-func spawn(mycommand []string, env map[string]string, opt_name string, fd_pipes map[int]uintptr, returnpid bool,
+func Spawn(mycommand []string, env map[string]string, opt_name string, fd_pipes map[int]uintptr, returnpid bool,
 	uid, gid int, groups []int, umask int, cwd, logfile string, path_lookup bool, pre_exec func(),
 	close_fds, unshare_net, unshare_ipc, unshare_mount, unshare_pid bool, cgroup string) ([]int, error) {
 	if env == nil {
@@ -187,7 +187,7 @@ func spawn(mycommand []string, env map[string]string, opt_name string, fd_pipes 
 
 	if fd_pipes == nil {
 		fd_pipes = map[int]uintptr{
-			0: getStdin().Fd(),
+			0: myutil.GetStdin().Fd(),
 			1: os.Stdout.Fd(),
 			2: os.Stderr.Fd(),
 		}
@@ -202,7 +202,7 @@ func spawn(mycommand []string, env map[string]string, opt_name string, fd_pipes 
 			return nil, errors.New("ValueError(fd_pipes)")
 		}
 		pr, pw, _ = os.Pipe()
-		s, _ := spawn([]string{"tee", "-i", "-a", logfile}, nil, "", map[int]uintptr{0: pr.Fd(), 1: fd_pipes[1], 2: fd_pipes[2]}, true, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
+		s, _ := Spawn([]string{"tee", "-i", "-a", logfile}, nil, "", map[int]uintptr{0: pr.Fd(), 1: fd_pipes[1], 2: fd_pipes[2]}, true, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
 		mypids = append(mypids, s...)
 		pr.Close()
 		fd_pipes[1] = pw.Fd()

@@ -5,6 +5,7 @@ import (
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
 	"golang.org/x/crypto/ssh/terminal"
 	"os"
@@ -604,7 +605,7 @@ func runAction(emergeConfig *EmergeConfig) int {
 			output.xtermTitleReset()
 		}
 	}
-	atexit_register(emergeexit)
+	process.atexit_register(emergeexit)
 
 	switch emergeConfig.action {
 	case "config", "metadata", "regen", "sync":

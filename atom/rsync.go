@@ -6,6 +6,7 @@ import (
 	"github.com/ppphp/portago/pkg/data"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/shlex"
 	"io/ioutil"
@@ -664,7 +665,7 @@ try:
 			r.rsync_initial_timeout)
 	}
 
-	pds, _ := spawn(
+	pds, _ := process.spawn(
 		command, returnpid = true,
 		**r.spawn_kwargs)
 	pids = append(pids, pds...)
@@ -754,7 +755,7 @@ finally:
 
 			command = append(command, r.downloadDir)
 
-			exitcode := spawn(command,
+			exitcode := process.spawn(command,
 				**r.spawn_kwargs)
 			if exitcode is
 		None{

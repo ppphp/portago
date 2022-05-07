@@ -3,6 +3,7 @@ package atom
 import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
 	"os"
 	"runtime"
@@ -999,7 +1000,7 @@ func EmergeMain(args []string) int { // nil
 		1: int(devNull.Fd()),
 		2: int(devNull.Fd()),
 	}
-	if pids, err := spawn_bash("[[ $(< <(echo foo) ) == foo ]]", false, "", fd_pipes); err == nil || (len(pids) > 0 && pids[0] != 0) {
+	if pids, err := process.spawn_bash("[[ $(< <(echo foo) ) == foo ]]", false, "", fd_pipes); err == nil || (len(pids) > 0 && pids[0] != 0) {
 		util.WriteMsgLevel("Failed to validate a sane '/dev'.\n"+
 			"bash process substitution doesn't work; this may be an "+
 			"indication of a broken '/dev/fd'.\n",

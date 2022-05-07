@@ -181,7 +181,7 @@ func pathExists(filename string) bool {
 	return st != nil
 }
 
-func pathIsDir(filename string) bool {
+func PathIsDir(filename string) bool {
 	st, _ := os.Stat(filename)
 	return st != nil && st.IsDir()
 }
@@ -276,4 +276,8 @@ func Getcwd() string {
 	} else {
 		return s
 	}
+}
+
+func GetStdin() *os.File {
+	return os.Stdin
 }

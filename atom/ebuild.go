@@ -10,6 +10,7 @@ import (
 	eapi2 "github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/shlex"
 	"golang.org/x/sys/unix"
@@ -1126,7 +1127,7 @@ debug bool, use_cache=None, db IDbApi) {
 		//except IndexError as e{
 		//WriteMsg(fmt.Sprintf("Warning: Invalid or unsupported compression method: %s\n" % e.args[0])
 		//}else{
-		if FindBinary(compression_binary) == "" {
+		if process.FindBinary(compression_binary) == "" {
 			missing_package := compression["package"]
 			util.WriteMsg(fmt.Sprintf("Warning: File compression unsupported %s. Missing package: %s\n", binpkg_compression, missing_package), 0, nil)
 			//}else{
@@ -1902,7 +1903,7 @@ func _spawn_actionmap(settings *Config) Actionmap {
 			!myutil.Ins(restrict, "userpriv") &&
 			!myutil.Ins(restrict, "nouserpriv")
 
-	if !sandbox_capable {
+	if !process.sandbox_capable {
 		nosandbox = true
 	}
 
@@ -2086,7 +2087,7 @@ sesandbox, fakeroot, networked, ipc, mountns, pidns bool, fd_pipes map[int]int, 
 		}
 	}
 
-	fakeroot = fakeroot && data.uid != 0 && fakeroot_capable
+	fakeroot = fakeroot && data.uid != 0 && process.fakeroot_capable
 	portage_build_uid := os.Getuid()
 	portage_build_gid := os.Getgid()
 	logname := ""
@@ -2173,7 +2174,7 @@ sesandbox, fakeroot, networked, ipc, mountns, pidns bool, fd_pipes map[int]int, 
 		free = (droppriv && !features["usersandbox"]) || (!droppriv && !features["sandbox"] && !features["usersandbox"] && !fakeroot)
 	}
 
-	if !free && !(fakeroot || sandbox_capable) {
+	if !free && !(fakeroot || process.sandbox_capable) {
 		free = true
 	}
 
@@ -2185,7 +2186,7 @@ sesandbox, fakeroot, networked, ipc, mountns, pidns bool, fd_pipes map[int]int, 
 
 	if _, ok := os.LookupEnv("SANDBOX_ACTIVE"); free || ok {
 		keywords["opt_name"] += " bash"
-		spawn_func = spawn_bash
+		spawn_func = process.spawn_bash
 	} else if fakeroot {
 		keywords["opt_name"] += " fakeroot"
 		keywords["fakeroot_state"] = filepath.Join(mysettings.ValueDict["T"], "fakeroot.state")
@@ -2655,7 +2656,7 @@ _preinst_bsdflags(mysettings)
 destdir := mysettings.ValueDict["D"]
 ed_len := len(mysettings.ValueDict["ED"])
 unicode_errors := []string{}
-desktop_file_validate := FindBinary("desktop-file-validate") != ""
+desktop_file_validate := process.FindBinary("desktop-file-validate") != ""
 xdg_dirs := strings.Split(mysettings.ValueDict["XDG_DATA_DIRS"],":")
 if len(xdg_dirs) == 0 {
 	xdg_dirs = []string{"/usr/share"}
@@ -3108,7 +3109,7 @@ func _prepare_self_update(settings *Config) {
 	util.ensureDirs(build_prefix,-1,-1,-1,-1,nil,true)
 	base_path_tmp := ioutil.TempDir(
 		filepath.Join("", "._portage_reinstall_."), build_prefix)
-	atexit_register(func() {
+	process.atexit_register(func() {
 		os.RemoveAll(base_path_tmp)
 	})
 

@@ -3,8 +3,8 @@ package output
 import (
 	"bufio"
 	"fmt"
-	"github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
 	"io"
 	"io/ioutil"
@@ -256,11 +256,11 @@ func xtermTitleReset() {
 				shell := os.Getenv("SHELL")
 				st, err := os.Stat(shell)
 				if shell == "" || (err != nil && st.Mode()&syscall.O_EXCL != 0) {
-					shell = atom.FindBinary("sh")
+					shell = process.FindBinary("sh")
 				}
 				if shell != "" {
-					atom.spawn([]string{shell, "-c", promptCommand}, nil, "", map[int]uintptr{
-						0: atom.getStdin().Fd(),
+					process.Spawn([]string{shell, "-c", promptCommand}, nil, "", map[int]uintptr{
+						0: os.Stdin.Fd(),
 						1: os.Stderr.Fd(),
 						2: os.Stderr.Fd(),
 					}, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
@@ -429,7 +429,7 @@ func get_term_size(fd int) (int, int, error) {
 }
 
 func set_term_size(lines, columns, fd int) error {
-	_, err := atom.spawn([]string{"stty", "rows", string(lines), "columns", string(columns)}, nil, "", map[int]uintptr{0: uintptr(fd)}, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
+	_, err := process.Spawn([]string{"stty", "rows", string(lines), "columns", string(columns)}, nil, "", map[int]uintptr{0: uintptr(fd)}, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
 	return err
 }
 

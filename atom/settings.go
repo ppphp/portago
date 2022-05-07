@@ -9,6 +9,7 @@ import (
 	"github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
 	"os"
 	"os/user"
@@ -306,14 +307,14 @@ func (c *Config) Validate() {
 		util.WriteMsg(fmt.Sprintf("!!! It should point into a profile within %s/profiles/\n", c.ValueDict["PORTDIR"]), 0, nil)
 		util.WriteMsg(fmt.Sprintf("!!! (You can safely ignore this message when syncing. It's harmless.)\n\n\n"), 0, nil)
 	}
-	if !sandbox_capable && (c.Features.Features["sandbox"] || c.Features.Features["usersandbox"]) {
+	if !process.sandbox_capable && (c.Features.Features["sandbox"] || c.Features.Features["usersandbox"]) {
 		cp, _ := filepath.EvalSymlinks(c.profilePath)
 		pp, _ := filepath.EvalSymlinks(path.Join(c.ValueDict["PORTAGE_CONFIGROOT"], _const.ProfilePath))
 		if c.profilePath != "" && cp == pp {
 			util.WriteMsg(output.colorize("BAD", fmt.Sprintf("!!! Problem with sandbox binary. Disabling...\n\n")), -1, nil)
 		}
 	}
-	if c.Features.Features["fakeroot"] && !fakeroot_capable {
+	if c.Features.Features["fakeroot"] && !process.fakeroot_capable {
 		util.WriteMsg(fmt.Sprintf("!!! FEATURES=fakeroot is enabled, but the fakeroot binary is not installed.\n"), -1, nil)
 	}
 
@@ -327,7 +328,7 @@ func (c *Config) Validate() {
 				util.WriteMsg(fmt.Sprintf("!!! BINPKG_COMPRESS contains invalid or unsupported compression method: %s", compression["compress"]), -1, nil)
 			} else {
 				compressionBinary := cs[0]
-				if FindBinary(compressionBinary) == "" {
+				if process.FindBinary(compressionBinary) == "" {
 					missingPackage := compression["package"]
 					util.WriteMsg(fmt.Sprintf("!!! BINPKG_COMPRESS unsupported %s. Missing package: %s", binpkgCompression, missingPackage), -1, nil)
 				}
@@ -4682,7 +4683,7 @@ func validateCmdVar(v string) (bool, []string) {
 	} else if path.IsAbs(vSplit[0]) {
 		s, _ := os.Stat(vSplit[0])
 		invalid = s.Mode()&0111 == 0
-	} else if FindBinary(vSplit[0]) == "" {
+	} else if process.FindBinary(vSplit[0]) == "" {
 		invalid = true
 	}
 	return !invalid, vSplit

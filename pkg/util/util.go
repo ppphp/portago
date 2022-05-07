@@ -7,6 +7,7 @@ import (
 	"github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/process"
 	"golang.org/x/sys/unix"
 	"io"
 	"io/ioutil"
@@ -752,10 +753,10 @@ func findUpdatedConfigFiles(targetRoot string, configProtect []string) []sss {
 			}
 			myCommand += " ! -name '.*~' ! -iname '.*.bak' -print0"
 			cmd, _ := shlex.Split(strings.NewReader(myCommand), false, false)
-			if atom.FindBinary(cmd[0]) == "" {
+			if process.FindBinary(cmd[0]) == "" {
 				return nil
 			}
-			c := exec.Command(atom.FindBinary(cmd[0]), cmd[1:]...)
+			c := exec.Command(process.FindBinary(cmd[0]), cmd[1:]...)
 			var out, err bytes.Buffer
 			c.Stdout = &out
 			c.Stderr = &err
@@ -4214,7 +4215,7 @@ writemsg_level func(string, int, int)) {
 
 	ldconfig := ""
 	if myutil.Inmss(settings.ValueDict, "CHOST") && myutil.Inmss(settings.ValueDict, "CBUILD") && settings["CHOST"] != settings["CBUILD"] {
-		ldconfig = atom.FindBinary(fmt.Sprintf("%s-ldconfig", settings.ValueDict["CHOST"]))
+		ldconfig = process.FindBinary(fmt.Sprintf("%s-ldconfig", settings.ValueDict["CHOST"]))
 	} else {
 		ldconfig = filepath.Join(eroot, "sbin", "ldconfig")
 	}

@@ -6,6 +6,7 @@ import (
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/shlex"
 	"github.com/spf13/pflag"
@@ -38,7 +39,7 @@ func exithandler() {
 func main() {
 	go exithandler()
 
-	atom.SanitizeFds()
+	process.SanitizeFds()
 
 	//description := "See the ebuild(1) man page for more info"
 	//usage := "Usage: ebuild <ebuild file> <command> [command] ..."

@@ -14,6 +14,7 @@ import (
 	eapi2 "github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/shlex"
 	"github.com/spf13/pflag"
@@ -6070,7 +6071,7 @@ func (d *dblink) _quickpkg_dblink(backup_dblink *dblink, background bool, logfil
 	quickpkg_binary := filepath.Join(d.settings.ValueDict["PORTAGE_BIN_PATH"], "quickpkg")
 
 	if st, _ := os.Stat(quickpkg_binary); st == nil || st.Mode()&0111 == 0 {
-		quickpkg_binary := FindBinary("quickpkg")
+		quickpkg_binary := process.FindBinary("quickpkg")
 		if quickpkg_binary == "" {
 			d._display_merge(fmt.Sprintf("%s: command not found", "quickpkg"),
 				40, -1)

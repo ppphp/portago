@@ -8,6 +8,7 @@ import (
 	"github.com/ppphp/portago/pkg/data"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/shlex"
 	"golang.org/x/sys/unix"
@@ -78,7 +79,7 @@ kwargs:
 		logname = data._portage_username
 	}
 
-	spawn_func := spawn
+	spawn_func := process.spawn
 
 	if settings.selinux_enabled() {
 		spawn_func = selinux.spawn_wrapper(spawn_func, settings.ValueDict["PORTAGE_FETCH_T"])

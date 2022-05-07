@@ -5,6 +5,7 @@ import (
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/shlex"
 	"golang.org/x/sys/unix"
@@ -41,7 +42,7 @@ func (s *syncBase) hasBin() bool {
 
 func NewSyncBase(binCommand, binPkg string) *syncBase {
 	if binCommand != "" {
-		binCommand = FindBinary(binCommand)
+		binCommand = process.FindBinary(binCommand)
 	}
 	s := &syncBase{}
 	s.binCommand = binCommand

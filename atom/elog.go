@@ -6,6 +6,7 @@ import (
 	"github.com/ppphp/portago/pkg/data"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
 	"io"
 	"io/ioutil"
@@ -261,7 +262,7 @@ func elog_process(cpv string, mysettings *Config, phasefilter []string) {
 				in
 		_elog_atexit_handlers:
 			_elog_atexit_handlers = append(_elog_atexit_handlers, m.finalize)
-			atexit_register(m.finalize)
+			process.atexit_register(m.finalize)
 			except(ImportError, AttributeError)
 			as
 		e:

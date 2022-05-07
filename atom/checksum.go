@@ -8,6 +8,7 @@ import (
 	"crypto/sha512"
 	"fmt"
 	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/process"
 	"hash"
 	"io/ioutil"
 	"os"
@@ -305,7 +306,7 @@ func performChecksum(fname, hashname string, calcPrelink bool) ([]byte, int) {
 		var retval []int
 		if err == nil {
 			prelinkTmpFile = tmpFileFd.Name()
-			retval, err = spawn([]string{_const.PrelinkBinary, "--verify", fname}, nil, "", map[int]uintptr{1: tmpFileFd.Fd()}, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
+			retval, err = process.spawn([]string{_const.PrelinkBinary, "--verify", fname}, nil, "", map[int]uintptr{1: tmpFileFd.Fd()}, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
 		}
 		if err == nil {
 			tmpFileFd.Close()
