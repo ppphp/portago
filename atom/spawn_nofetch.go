@@ -2,6 +2,7 @@ package atom
 
 import (
 	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/elog"
 	"github.com/ppphp/portago/pkg/myutil"
 	"os"
 	"strings"
@@ -72,7 +73,7 @@ func(s*SpawnNofetchWithoutBuilddir) _start() {
 
 func(s*SpawnNofetchWithoutBuilddir) _nofetch_exit(ebuild_phase) {
 	s._final_exit(ebuild_phase)
-	elog_process(s.settings.mycpv, s.settings)
+	elog.elog_process(s.settings.mycpv, s.settings)
 	shutil.rmtree(s._private_tmpdir)
 	s._async_wait()
 }

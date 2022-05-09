@@ -3,6 +3,7 @@ package atom
 import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/versions"
 	"strings"
 )
 
@@ -36,12 +37,12 @@ func NewTemplateDatabase( location, label string, auxdbkeys map[string]bool, rea
 	return d
 }
 
-func (d *templateDatabase) __getitem__(cpv) {
+func (d *templateDatabase) __getitem__(versions.cpv) {
 	if d.updates > d.sync_rate {
 		d.commit()
 		d.updates = 0
 	}
-	d1 := d._getitem(cpv)
+	d1 := d._getitem(versions.cpv)
 
 try:
 	chf_types := d.chf_types
@@ -53,13 +54,13 @@ try:
 	if '_%s_' % chf_type not in d:
 	continue
 try:
-	d["_eclasses_"] = reconstruct_eclasses(cpv, d["_eclasses_"],
+	d["_eclasses_"] = reconstruct_eclasses(versions.cpv, d["_eclasses_"],
 		chf_type, paths = d.store_eclass_paths)
 	except cache_errors.CacheCorruption:
 	if chf_type is chf_types[-1]:
 	raise else:
 	break else:
-	raise cache_errors.CacheCorruption(cpv,
+	raise cache_errors.CacheCorruption(versions.cpv,
 		'entry does not contain a recognized chf_type')
 
 	elif "_eclasses_" not in d:
@@ -72,19 +73,19 @@ try:
 	mtime = d.get('_mtime_')
 	if not mtime:
 	if mtime_required:
-	raise cache_errors.CacheCorruption(cpv,
+	raise cache_errors.CacheCorruption(versions.cpv,
 		'_mtime_ field is missing')
 	d.pop('_mtime_', None) else:
 try:
 	mtime = long(mtime)
 	except ValueError:
-	raise cache_errors.CacheCorruption(cpv,
+	raise cache_errors.CacheCorruption(versions.cpv,
 		'_mtime_ conversion to long failed: %s'%(mtime, ))
 	d['_mtime_'] = mtime
 	return d
 }
 
-func (d *templateDatabase) _getitem(cpv) {
+func (d *templateDatabase) _getitem(versions.cpv) {
 	panic("")
 	//raise NotImplementedError
 }
@@ -96,34 +97,34 @@ func (d *templateDatabase) _internal_eclasses(extern_ec_dict, chf_type, paths) {
 	}
 	chf_getter := operator.attrgetter(chf_type)
 	if paths {
-		intern_ec_dict = dict((k, (v.eclass_dir, chf_getter(v)))
-		for k, v
+		intern_ec_dict = dict((k, (versions.v.eclass_dir, chf_getter(versions.v)))
+		for k, versions.v
 			in
 		extern_ec_dict.items())
 	} else {
-		intern_ec_dict = dict((k, chf_getter(v))
-		for k, v
+		intern_ec_dict = dict((k, chf_getter(versions.v))
+		for k, versions.v
 			in
 		extern_ec_dict.items())
 	}
 	return intern_ec_dict
 }
 
-func (d *templateDatabase) __setitem__(cpv, values) {
+func (d *templateDatabase) __setitem__(versions.cpv, values) {
 	if d.readonly {
 		//raise cache_errors.ReadOnlyRestriction()
 	}
 	d1 = None
 	if d.cleanse_keys {
 		d1 = ProtectedDict(values)
-		for k, v
+		for k, versions.v
 			in
 		list(item
 		for item
 			in
 		d1.items()
 		if item[0] != "_eclasses_"):
-		if not v:
+		if not versions.v:
 		del
 		d1[k]
 	}
@@ -142,7 +143,7 @@ None:
 	is
 None:
 	d1 = values
-	d._setitem(cpv, d1)
+	d._setitem(versions.cpv, d1)
 	if not d.autocommits:
 	d.updates += 1
 	if d.updates > d.sync_rate:
@@ -155,27 +156,27 @@ func (d *templateDatabase) _setitem( name, values) {
 	//raise NotImplementedError
 }
 
-func (d *templateDatabase) __delitem__(cpv) {
+func (d *templateDatabase) __delitem__(versions.cpv) {
 	if d.readonly {
 		//raise cache_errors.ReadOnlyRestriction()
 	}
 	if ! d.autocommits {
 		d.updates += 1
 	}
-	d._delitem(cpv)
+	d._delitem(versions.cpv)
 	if d.updates > d.sync_rate {
 		d.commit()
 		d.updates = 0
 	}
 }
 
-func (d *templateDatabase) _delitem(cpv) {
+func (d *templateDatabase) _delitem(versions.cpv) {
 	panic("")
 	//raise NotImplementedError
 }
 
-func (d *templateDatabase) has_key(cpv) {
-	return cpv
+func (d *templateDatabase) has_key(versions.cpv) {
+	return versions.cpv
 	in
 	d
 }
@@ -210,7 +211,7 @@ func (d *templateDatabase) __del__() {
 	d.sync()
 }
 
-func (d *templateDatabase) __contains__(cpv) {
+func (d *templateDatabase) __contains__(versions.cpv) {
 	if d.has_key is
 	database.has_key{
 		panic(""),
@@ -219,7 +220,7 @@ func (d *templateDatabase) __contains__(cpv) {
 	//warnings.warn("portage.cache.template.database.has_key() is "
 	//"deprecated, override __contains__ instead",
 	//	DeprecationWarning)
-	return d.has_key(cpv)
+	return d.has_key(versions.cpv)
 }
 
 func (d *templateDatabase) __iter__() {
@@ -299,11 +300,11 @@ e:
 	raise
 	InvalidRestriction(key, match, "Key isn't valid")
 
-	for cpv
+	for versions.cpv
 	in
 d:
 	cont = true
-	vals = d[cpv]
+	vals = d[versions.cpv]
 	for key, match
 	in
 	restricts.items():
@@ -312,7 +313,7 @@ d:
 	break
 	if cont:
 	yield
-	cpv
+	versions.cpv
 
 	if sys.hexversion >= 0x3000000:
 	keys = __iter__
@@ -328,13 +329,13 @@ func serialize_eclasses(eclass_dict, chf_type string, paths bool) string {
 	}
 	getter = operator.attrgetter(chf_type)
 	if paths {
-		return "\t".join("%s\t%s\t%s"%(k, v.eclass_dir, getter(v))
-		for k, v
+		return "\t".join("%s\t%s\t%s"%(k, versions.v.eclass_dir, getter(versions.v))
+		for k, versions.v
 			in
 		myutil.sorted(eclass_dict.items(), key = _keysorter))
 	}
-	return "\t".join("%s\t%s"%(k, getter(v))
-	for k, v
+	return "\t".join("%s\t%s"%(k, getter(versions.v))
+	for k, versions.v
 	in
 	myutil.sorted(eclass_dict.items(), key = _keysorter))
 }
@@ -432,8 +433,8 @@ func(v*VolatileDatabase) _setitem(name string, values) {
 	v._data[name] = copy.deepcopy(values)
 }
 
-func(v*VolatileDatabase) __getitem__( cpv) {
-	return copy.deepcopy(v._data[cpv])
+func(v*VolatileDatabase) __getitem__(versions.cpv) {
+	return copy.deepcopy(v._data[versions.cpv])
 }
 
 func(v*VolatileDatabase) __iter__() {

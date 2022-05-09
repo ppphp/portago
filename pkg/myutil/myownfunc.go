@@ -232,7 +232,7 @@ func sortedmss(a map[string]string) []string {
 	return b
 }
 
-func getNamedRegexp(re *regexp.Regexp, target, name string) string {
+func GetNamedRegexp(re *regexp.Regexp, target, name string) string {
 	match := re.FindStringSubmatch(target)
 	for i, n := range re.SubexpNames() {
 		if i > 0 && i <= len(match) && n == name {
@@ -255,7 +255,7 @@ func joinMB(s map[string]bool, sep string) string {
 	return strings.Join(r, sep)
 }
 
-func listDir(path string) ([]string, error) {
+func ListDir(path string) ([]string, error) {
 	ss, err := ioutil.ReadDir(path)
 	if err != nil {
 		return nil, err

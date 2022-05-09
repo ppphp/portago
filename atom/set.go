@@ -6,6 +6,7 @@ import (
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/versions"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -468,12 +469,12 @@ func (p*PackageSet) load() {
 	NotImplementedError()
 }
 
-func (p*PackageSet) containsCPV( cpv) {
+func (p*PackageSet) containsCPV(versions.cpv) {
 	p._load()
 	for a
 	in
 	p._atoms:
-	if match_from_list(a, [cpv]):
+	if match_from_list(a, [versions.cpv]):
 	return true
 	return false
 }
@@ -496,7 +497,7 @@ atoms:
 }
 
 // nil
-func (p*PackageSet) findAtomForPackage(pkg, modified_use=None) {
+func (p*PackageSet) findAtomForPackage(versions.pkg, modified_use=None) {
 
 	if modified_use is
 	not
@@ -505,17 +506,17 @@ func (p*PackageSet) findAtomForPackage(pkg, modified_use=None) {
 	modified_use
 	is
 	not
-	pkg.use.enabled:
-	pkg = pkg.copy()
-	pkg._metadata["USE"] = " ".join(modified_use)
+	versions.pkg.use.enabled:
+	versions.pkg = versions.pkg.copy()
+	versions.pkg._metadata["USE"] = " ".join(modified_use)
 
 	rev_transform =
 	{
 	}
 	for atom
 	in
-	p.iterAtomsForPackage(pkg):
-	if atom.cp == pkg.cp:
+	p.iterAtomsForPackage(versions.pkg):
+	if atom.cp == versions.pkg.cp:
 	rev_transform[atom] = atom
 	else:
 	rev_transform
@@ -526,7 +527,7 @@ return rev_transform[best_match]
 return None
 }
 
-func (p*PackageSet) iterAtomsForPackage( pkg) {
+func (p*PackageSet) iterAtomsForPackage(versions.pkg) {
 	cpv_slot_list = [pkg]
 	cp = cpv_getkey(pkg.cpv)
 	p._load()
@@ -602,12 +603,12 @@ func(p*EditablePackageSet) remove(atom) {
 	p.write()
 }
 
-func(p*EditablePackageSet) removePackageAtoms( cp) {
+func(p*EditablePackageSet) removePackageAtoms(versions.cp) {
 	p._load()
 	for a
 	in
 	list(p._atoms):
-	if a.cp == cp:
+	if a.cp == versions.cp:
 	p.remove(a)
 	p.write()
 }

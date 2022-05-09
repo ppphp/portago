@@ -3,6 +3,7 @@ package atom
 import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/versions"
 	"os"
 	"sort"
 	"syscall"
@@ -85,10 +86,10 @@ func (b *BinhostHandler) check(onProgress func(int, int)) (bool, []string) {
 	}
 	pkgindex := b._pkgindex
 	missing := []string{}
-	stale := []*PkgStr{}
+	stale := []*versions.PkgStr{}
 	metadata := map[string]string{}
 	for _, d := range pkgindex.packages {
-		cpv := NewPkgStr(d["CPV"], d, bintree.settings, "", "", "", 0, "", "", 0, nil)
+		cpv := versions.NewPkgStr(d["CPV"], d, bintree.settings, "", "", "", 0, "", "", 0, nil)
 		d["CPV"] = cpv.string
 		metadata[_instance_key(cpv, false).string] = d
 		if !bintree.dbapi.cpv_exists(cpv) {
@@ -130,11 +131,11 @@ func (b *BinhostHandler) fix(onProgress func(int, int)) (bool, []string) {
 		onProgress(maxval, 0)
 	}
 	pkgindex := b._pkgindex
-	missing := []*PkgStr{}
-	stale := []*PkgStr{}
+	missing := []*versions.PkgStr{}
+	stale := []*versions.PkgStr{}
 	metadata := map[string]map[string]string{}
 	for _, d := range pkgindex.packages {
-		cpv := NewPkgStr(d["CPV"], d, bintree.settings, "", "", "", 0, "", "", 0, nil)
+		cpv := versions.NewPkgStr(d["CPV"], d, bintree.settings, "", "", "", 0, "", "", 0, nil)
 		d["CPV"] = cpv.string
 		metadata[_instance_key(cpv, false).string] = d
 		if !bintree.dbapi.cpv_exists(cpv) {
@@ -160,11 +161,11 @@ func (b *BinhostHandler) fix(onProgress func(int, int)) (bool, []string) {
 		cpv_all = b._bintree.dbapi.cpv_all()
 		sort.Strings(cpv_all)
 
-		missing = []*PkgStr{}
-		stale = []*PkgStr{}
+		missing = []*versions.PkgStr{}
+		stale = []*versions.PkgStr{}
 		metadata = map[string]map[string]string{}
 		for _, d := range pkgindex.packages {
-			cpv := NewPkgStr(d["CPV"], d, bintree.settings, "", "", "", 0, "", "", 0, nil)
+			cpv := versions.NewPkgStr(d["CPV"], d, bintree.settings, "", "", "", 0, "", "", 0, nil)
 			d["CPV"] = cpv.string
 			metadata[_instance_key(cpv, false).string] = d
 			if !bintree.dbapi.cpv_exists(cpv) {

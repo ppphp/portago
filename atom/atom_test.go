@@ -1,6 +1,7 @@
 package atom
 
 import (
+	"github.com/ppphp/portago/pkg/versions"
 	"testing"
 )
 
@@ -18,7 +19,7 @@ func TestVerCmpGreater(t *testing.T) {
 		{"1b_p1", "1_p1"},
 		{"1.1b", "1.1"},
 		{"12.2.5", "12.2b"}} {
-		if ans, err := verCmp(test[0], test[1]); err != nil {
+		if ans, err := versions.verCmp(test[0], test[1]); err != nil {
 			t.Fatalf("vercmp error (%v)\n", err)
 		} else if ans <= 0 {
 			t.Errorf("vercmp wrong, %v < %v? Wrong!\n", test[0], test[1])
@@ -42,7 +43,7 @@ func TestVerCmpLess(t *testing.T) {
 		{"1", "1b"},
 		{"1.1", "1.1b"},
 		{"12.2b", "12.2.5"}} {
-		if ans, err := verCmp(test[0], test[1]); err != nil {
+		if ans, err := versions.verCmp(test[0], test[1]); err != nil {
 			t.Fatalf("vercmp error (%v)\n", err)
 		} else if ans >= 0 {
 			t.Errorf("vercmp wrong, %v >= %v\n", test[0], test[1])
@@ -58,7 +59,7 @@ func TestVerCmpEqual(t *testing.T) {
 		{"1.0", "1.0-r0"},
 		{"1.0-r0", "1.0-r0"},
 		{"1.0-r1", "1.0-r1"}} {
-		if ans, err := verCmp(test[0], test[1]); err != nil {
+		if ans, err := versions.verCmp(test[0], test[1]); err != nil {
 			t.Fatalf("vercmp error (%v)\n", err)
 		} else if ans != 0 {
 			t.Errorf("vercmp wrong, %v != %v\n", test[0], test[1])
@@ -79,7 +80,7 @@ func TestVerNotEqual(t *testing.T) {
 		{"1b", "1"},
 		{"1.1b", "1.1"},
 		{"12.2b", "12.2"}} {
-		if ans, err := verCmp(test[0], test[1]); err != nil {
+		if ans, err := versions.verCmp(test[0], test[1]); err != nil {
 			t.Fatalf("vercmp error (%v)\n", err)
 		} else if ans == 0 {
 			t.Errorf("vercmp wrong, %v == %v\n", test[0], test[1])

@@ -6,13 +6,17 @@ import (
 	"errors"
 	"fmt"
 	ogórek "github.com/kisielk/og-rek"
+	"github.com/ppphp/portago/pkg/checksum"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/data"
 	eapi2 "github.com/ppphp/portago/pkg/eapi"
+	"github.com/ppphp/portago/pkg/elog"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/versions"
+	"github.com/ppphp/portago/pkg/xpak"
 	"github.com/ppphp/shlex"
 	"golang.org/x/crypto/ssh/terminal"
 	"golang.org/x/sys/unix"
@@ -462,7 +466,7 @@ func (a *AbstractEbuildProcess)_elog( elog_funcname string, lines []string) {
 	var elog_func func(string, string, string, io.Writer)
 	switch elog_funcname {
 	case "error":
-		elog_func = eerror
+		elog_func = elog.eerror
 	}
 
 	global_havecolor := output.HaveColor
@@ -1185,7 +1189,7 @@ type Binpkg struct {
 	world_atom func()
 	_build_prefix, _ebuild_path, _image_dir, _infloc, _pkg_path, _tree, _verify string
 	settings                                                                    *Config
-	pkg                                                                         *PkgStr
+	pkg                                                                         *versions.PkgStr
 	_build_dir                                                                  *EbuildBuildDir
 	_bintree                                                                    *BinaryTree
 	find_blockers,
@@ -1226,7 +1230,7 @@ func (b *Binpkg) _start() {
 	if eapi2.eapiExportsReplaceVars(settings.ValueDict["EAPI"]) {
 		vardb := b.pkg.root_config.trees["vartree"].dbapi
 		settings.ValueDict["REPLACING_VERSIONS"] = " ".join(
-			set(cpvGetVersion(x, "")
+			set(versions.cpvGetVersion(x, "")
 		for x
 			in
 		vardb.match(b.pkg.slot_atom) +
@@ -1433,22 +1437,22 @@ func (b *Binpkg) _unpack_metadata() IFuture {
 	yield
 	b._bintree.dbapi.unpack_metadata(b.settings, infloc)
 	check_missing_metadata := []string{"CATEGORY", "PF"}
-	for k, v
+	for k, versions.v
 		in
 	zip(check_missing_metadata,
 		b._bintree.dbapi.aux_get(b.pkg.cpv, check_missing_metadata)) {
-		if v {
+		if versions.v {
 			continue
 		} else if k == "CATEGORY" {
-			v = pkg.category
+			versions.v = pkg.category
 		} else if k == "PF" {
-			v = pkg.pf
+			versions.v = pkg.pf
 		} else {
 			continue
 		}
 
 		f, _ := os.OpenFile(filepath.Join(infloc, k), os.O_RDWR|os.O_CREATE, 0644)
-		f.Write(v)
+		f.Write(versions.v)
 		f.Write([]byte("\n"))
 		f.Close()
 	}
@@ -1456,7 +1460,7 @@ func (b *Binpkg) _unpack_metadata() IFuture {
 	if pkg_path != "" {
 		md5sum := b._bintree.dbapi.aux_get(b.pkg.cpv, map[string]string{"MD5": ""})[0]
 		if len(md5sum) == 0 {
-			md5sum = string(performMd5(pkg_path, false))
+			md5sum = string(checksum.performMd5(pkg_path, false))
 		}
 		f, _ := os.OpenFile(filepath.Join(infloc, "BINPKGMD5"), os.O_RDWR|os.O_CREATE, 0644)
 		f.Write([]byte(md5sum))
@@ -1581,7 +1585,7 @@ func (b *Binpkg) _async_unlock_builddir(returncode *int) {
 	if returncode != nil {
 		b.returncode = nil
 	}
-	elog_process(b.pkg.cpv.string, b.settings, nil)
+	elog.elog_process(b.pkg.cpv.string, b.settings, nil)
 	b._start_task(
 		NewAsyncTaskFuture(b._build_dir.async_unlock()),
 	func(unlock_task) {
@@ -1631,7 +1635,7 @@ func (b *Binpkg) _install_exit(task) {
 }
 
 func NewBinpkg(background bool, find_blockers , ldpath_mtimes, logger*_emerge_log_class,
-	opts *_binpkg_opts_class, pkg *PkgStr, pkg_count*_pkg_count_class, prefetcher ,
+	opts *_binpkg_opts_class, pkg *versions.PkgStr, pkg_count*_pkg_count_class, prefetcher ,
 	settings *Config, scheduler *SchedulerInterface,
 	world_atom func())*Binpkg {
 	b := &Binpkg{}
@@ -1724,7 +1728,7 @@ type BinpkgExtractorAsync struct {
 
 	// slot
 	features  map[string]bool
-	pkg       *PkgStr
+	pkg       *versions.PkgStr
 	pkg_path  string
 	image_dir string
 }
@@ -1801,7 +1805,7 @@ func(b *BinpkgExtractorAsync) _start() {
 		}
 	}
 
-	pkg_xpak := NewTbz2(b.pkg_path)
+	pkg_xpak := xpak.NewTbz2(b.pkg_path)
 	pkg_xpak.scan()
 
 	b.args = []string{b._shell_binary, "-c",
@@ -1825,7 +1829,7 @@ func(b *BinpkgExtractorAsync) _start() {
 	b.SpawnProcess._start()
 }
 
-func NewBinpkgExtractorAsync(background bool, env map[string]string, features map[string]bool, image_dir string, pkg *PkgStr, pkg_path, logfile string, scheduler *SchedulerInterface) *BinpkgExtractorAsync{
+func NewBinpkgExtractorAsync(background bool, env map[string]string, features map[string]bool, image_dir string, pkg *versions.PkgStr, pkg_path, logfile string, scheduler *SchedulerInterface) *BinpkgExtractorAsync{
 	b:= &BinpkgExtractorAsync{}
 	b._shell_binary= _const.BashBinary
 	b.SpawnProcess=NewSpawnProcess()
@@ -1847,7 +1851,7 @@ type BinpkgFetcher struct {
 	*CompositeTask
 
 	// slot
-	pkg *PkgStr
+	pkg *versions.PkgStr
 	pretend,logfile,pkg_path string
 }
 
@@ -1915,7 +1919,7 @@ func (b *BinpkgFetcher) _fetcher_exit_unlocked(fetcher, unlock_task=None) {
 	b._async_wait()
 }
 
-func NewBinpkgFetcher(background bool, logfile string, pkg *PkgStr, pretend interface{}, scheduler *SchedulerInterface, **kwargs)*BinpkgFetcher {
+func NewBinpkgFetcher(background bool, logfile string, pkg *versions.PkgStr, pretend interface{}, scheduler *SchedulerInterface, **kwargs)*BinpkgFetcher {
 	b :=&BinpkgFetcher{}
 	b.CompositeTask= NewCompositeTask()
 	b.background = background
@@ -2105,7 +2109,7 @@ func (b *_BinpkgFetcherProcess) async_unlock()IFuture {
 }
 
 func NewBinpkgFetcherProcess(background bool,
-	logfile string, pkg *PkgStr, pkg_path string,
+	logfile string, pkg *versions.PkgStr, pkg_path string,
 	pretend interface{}, scheduler *SchedulerInterface)*_BinpkgFetcherProcess {
 	b := &_BinpkgFetcherProcess{}
 	b.SpawnProcess = NewSpawnProcess(nil, background, nil, nil, scheduler,
@@ -2125,7 +2129,7 @@ type BinpkgPrefetcher struct {
 	*CompositeTask
 
 	// slot
-	pkg *PkgStr
+	pkg *versions.PkgStr
 	pkg_path string
 	_bintree *BinaryTree
 }
@@ -2165,7 +2169,7 @@ func (b *BinpkgPrefetcher) _verifier_exit(verifier ) {
 	b.wait()
 }
 
-func NewBinpkgPrefetcher(background bool, pkg *PkgStr, scheduler *SchedulerInterface)*BinpkgPrefetcher{
+func NewBinpkgPrefetcher(background bool, pkg *versions.PkgStr, scheduler *SchedulerInterface)*BinpkgPrefetcher{
 	b := &BinpkgPrefetcher{}
 	b.CompositeTask = NewCompositeTask()
 	b.background = background
@@ -2180,7 +2184,7 @@ type BinpkgVerifier struct {
 
 	// slot
 	logfile,  _digests, _pkg_path string
-	pkg *PkgStr
+	pkg *versions.PkgStr
 }
 
 func (b *BinpkgVerifier) _start() {
@@ -2196,11 +2200,11 @@ digests{
 	return
 }
 
-	digests = filterUnaccelaratedHashes(digests)
-	hash_filter := NewHashFilter(
+	digests = checksum.filterUnaccelaratedHashes(digests)
+	hash_filter := checksum.NewHashFilter(
 		bintree.settings.ValueDict["PORTAGE_CHECKSUM_FILTER"])
 	if ! hash_filter.trasparent {
-		digests = applyHashFilter(digests, hash_filter)
+		digests = checksum.applyHashFilter(digests, hash_filter)
 	}
 
 	b._digests = digests
@@ -2315,7 +2319,7 @@ func (b *BinpkgVerifier) _digest_exception( name, value, expected string) {
 	b.logfile, b.background, 0, -1)
 }
 
-func NewBinpkgVerifier(background bool, logfile string, pkg *PkgStr, scheduler *SchedulerInterface, pkg_path string) *BinpkgVerifier {
+func NewBinpkgVerifier(background bool, logfile string, pkg *versions.PkgStr, scheduler *SchedulerInterface, pkg_path string) *BinpkgVerifier {
 	b := &BinpkgVerifier{}
 	b.CompositeTask = NewCompositeTask()
 
@@ -2407,14 +2411,14 @@ func (b *BlockerCache) _load() {
 		isinstance(b._cache_data.get("blockers"), dict)
 	if cache_valid {
 		invalid_items := map[string]bool{}
-		for k, v
+		for k, versions.v
 			in
 		b._cache_data["blockers"].items() {
 			//if not isinstance(k, basestring):
 			//invalid_items.add(k)
 			//continue
 		//try:
-			if CatPkgSplit(k,1, "") == [4]string{} {
+			if versions.CatPkgSplit(k,1, "") == [4]string{} {
 				invalid_items[k] = true
 				continue
 			}
@@ -2425,7 +2429,7 @@ func (b *BlockerCache) _load() {
 			//	invalid_items[k] = true
 			//	continue
 			//}
-			counter, atoms = v
+			counter, atoms = versions.v
 			if not isinstance(counter, (int, long)){
 				invalid_items[k] = true
 				continue
@@ -2508,12 +2512,12 @@ func (b *BlockerCache)  __len__() int {
 	return len(b._cache_data["blockers"])
 }
 
-func (b *BlockerCache)  __delitem__( cpv) {
-	delete(b._cache_data["blockers"],cpv)
+func (b *BlockerCache)  __delitem__(versions.cpv) {
+	delete(b._cache_data["blockers"], versions.cpv)
 }
 
-func (b *BlockerCache)  __getitem__(cpv) *BlockerData {
-	return NewBlockerData(*b._cache_data["blockers"][cpv])
+func (b *BlockerCache)  __getitem__(versions.cpv) *BlockerData {
+	return NewBlockerData(*b._cache_data["blockers"][versions.cpv])
 }
 
 type BlockerDB struct{
@@ -2647,21 +2651,21 @@ next(blocker_atoms.iterAtomsForPackage(inst_pkg))
 return blocking_pkgs
 }
 
-func (b *BlockerDB)discardBlocker( pkg) {
-	a, _ := NewAtom(fmt.Sprintf("=%s", pkg.cpv, ), nil, false, nil, nil, "", nil, nil)
+func (b *BlockerDB)discardBlocker(versions.pkg) {
+	a, _ := NewAtom(fmt.Sprintf("=%s", versions.pkg.cpv, ), nil, false, nil, nil, "", nil, nil)
 	for cpv_match
 		in
 	b._fake_vartree.dbapi.match_pkgs(a)
 	{
-		if cpv_match.cp == pkg.cp {
+		if cpv_match.cp == versions.pkg.cp {
 			b._fake_vartree.cpv_discard(cpv_match)
 		}
 	}
 	for slot_match
 		in
-	b._fake_vartree.dbapi.match_pkgs(pkg.slot_atom)
+	b._fake_vartree.dbapi.match_pkgs(versions.pkg.slot_atom)
 	{
-		if slot_match.cp == pkg.cp {
+		if slot_match.cp == versions.pkg.cp {
 			b._fake_vartree.cpv_discard(slot_match)
 		}
 	}
@@ -2894,7 +2898,7 @@ type EbuildBinpkg struct {
 	// slot
 	settings *Config
 	_binpkg_tmpfile string
-	pkg, _binpkg_info
+	versions.pkg, _binpkg_info
 }
 
 func (e *EbuildBinpkg) _start() {
@@ -2940,7 +2944,7 @@ func (e *EbuildBinpkg) get_binpkg_info() {
 	return e._binpkg_info
 }
 
-func NewEbuildBinpkg(background bool, pkg *PkgStr, scheduler *SchedulerInterface, settings *Config)*EbuildBinpkg{
+func NewEbuildBinpkg(background bool, pkg *versions.PkgStr, scheduler *SchedulerInterface, settings *Config)*EbuildBinpkg{
 	e := &EbuildBinpkg{}
 	e.CompositeTask = NewCompositeTask()
 	e.background = background
@@ -2957,7 +2961,7 @@ type EbuildBuild struct {
 
 	// slot
 	_tree, _ebuild_path string
-	pkg                 *PkgStr
+	pkg                 *versions.PkgStr
 	_build_dir          *EbuildBuildDir
 	_buildpkg,_issyspkg bool
 	args_set, config_pool, find_blockers,
@@ -3270,7 +3274,7 @@ func(e *EbuildBuild) _async_unlock_builddir( returncode *int) {
 	if returncode != nil {
 		e.returncode = nil
 	}
-	elog_process(e.pkg.cpv, e.settings, nil)
+	elog.elog_process(e.pkg.cpv, e.settings, nil)
 	e._start_task(
 		NewAsyncTaskFuture(e._build_dir.async_unlock()),
 	func(unlock_task) {
@@ -3408,7 +3412,7 @@ func (r *EbuildBuild) _record_binpkg_info( task) {
 func (r *EbuildBuild) _buildpkgonly_success_hook_exit( success_hooks) {
 	r._default_exit(success_hooks)
 	r.returncode = nil
-	elog_process(r.pkg.cpv.string, r.settings, nil)
+	elog.elog_process(r.pkg.cpv.string, r.settings, nil)
 	phase := "clean"
 	clean_phase := NewEbuildPhase(nil, r.background, phase,r.scheduler, r.settings, nil)
 	r._start_task(clean_phase, r._clean_exit)
@@ -3465,7 +3469,7 @@ func NewEbuildBuild(args_set = args_set,
 	config_pool=m.config_pool,
 	find_blockers = find_blockers,
 	ldpath_mtimes=ldpath_mtimes, logger = logger,
-	opts=build_opts, pkg = pkg, pkg_count=pkg_count,
+	opts=build_opts, versions.pkg = pkg, pkg_count=pkg_count,
 	prefetcher = m.prefetcher, scheduler=scheduler,
 	settings = settings, world_atom=world_atom)*EbuildBuild{
 	e := &EbuildBuild{}
@@ -3646,7 +3650,7 @@ type AlreadyLocked struct {
 type EbuildExecuter struct {
 	*CompositeTask
 	// slot
-	pkg *PkgStr
+	pkg *versions.PkgStr
 	settings *Config
 }
 
@@ -3662,7 +3666,7 @@ func (e*EbuildExecuter)_start() {
 	if eapi2.eapiExportsReplaceVars(settings.ValueDict["EAPI"]) {
 		vardb := pkg.root_config.trees['vartree'].dbapi
 		settings.ValueDict["REPLACING_VERSIONS"] = " ".join(
-			set(cpvGetVersion(match, "") \
+			set(versions.cpvGetVersion(match, "") \
 		for match
 			in
 		vardb.match(pkg.slot_atom) + \
@@ -3706,9 +3710,9 @@ func (e*EbuildExecuter) _unpack_exit( unpack_phase) {
 
 	ebuild_phases := NewTaskSequence(e.scheduler)
 
-	pkg = e.pkg
+	versions.pkg = e.pkg
 	phases := e._phases
-	eapi := pkg.eapi
+	eapi := versions.pkg.eapi
 	if ! eapi2.eapiHasSrcPrepareAndSrcConfigure(eapi) {
 		phases = phases[2:]
 	}
@@ -3722,7 +3726,7 @@ phases {
 	e._start_task(ebuild_phases, e._default_final_exit)
 }
 
-func NewEbuildExecuter(background bool, pkg *PkgStr, scheduler *SchedulerInterface, settings *Config)*EbuildExecuter{
+func NewEbuildExecuter(background bool, pkg *versions.PkgStr, scheduler *SchedulerInterface, settings *Config)*EbuildExecuter{
 	e := &EbuildExecuter{}
 	e.CompositeTask = NewCompositeTask()
 	e.background = background
@@ -3826,7 +3830,7 @@ type _EbuildFetcherProcess struct {
 	_settings *Config
 	config_pool *_ConfigPool
 	src_uri string
-	pkg *PkgStr
+	pkg *versions.PkgStr
 	fetchonly, fetchall,
 	 prefetch,
 	_uri_map
@@ -4130,7 +4134,7 @@ func(e*_EbuildFetcherProcess) _pipe(fd_pipes) {
 func(e*_EbuildFetcherProcess) _eerror( lines []string) {
 	out := &bytes.Buffer{}
 	for _, line:= range lines {
-		eerror(line, "unpack", e.pkg.cpv.string, out)
+		elog.eerror(line, "unpack", e.pkg.cpv.string, out)
 	}
 	msg := out.String()
 	if msg!= "" {
@@ -4162,7 +4166,7 @@ func NewEbuildFetcherProcess()*_EbuildFetcherProcess{
 type EbuildFetchonly struct {
 	settings *Config
 	pretend int
-	pkg *PkgStr
+	pkg *versions.PkgStr
 	fetch_all,
 }
 
@@ -4182,12 +4186,12 @@ func (e *EbuildFetchonly) execute() int {
 
 	if rval != 1 && e.pretend == 0{
 		msg := fmt.Sprintf("Fetch failed for '%s'" ,pkg.cpv, )
-		eerror(msg, "unpack", pkg.cpv.string, nil)
+		elog.eerror(msg, "unpack", pkg.cpv.string, nil)
 	}
 	return rval
 }
 
-func NewEbuildFetchonly(fetch_all , pkg *PkgStr, pretend int, settings *Config)*EbuildFetchonly {
+func NewEbuildFetchonly(fetch_all , pkg *versions.PkgStr, pretend int, settings *Config)*EbuildFetchonly {
 	e := &EbuildFetchonly{}
 	e.settings = settings
 
@@ -4386,7 +4390,7 @@ type EbuildMetadataPhase struct {
 	fd_pipes map[int]int
 	portdb *portdbapi
 	_raw_metadata []string
-	cpv, ebuild_hash,   write_auxdb
+	versions.cpv, ebuild_hash,   write_auxdb
 }
 
 func(e *EbuildMetadataPhase) _start() {
@@ -4970,7 +4974,7 @@ func (e *EbuildPhase) _die_hooks_exit( die_hooks) {
 
 func (e *EbuildPhase) _fail_clean() {
 	e.returncode = nil
-	elog_process(e.settings.mycpv.string, e.settings, nil)
+	elog.elog_process(e.settings.mycpv.string, e.settings, nil)
 	phase := "clean"
 	clean_phase := NewEbuildPhase(nil, e.background, phase,  e.scheduler,
 		e.settings, e.fd_pipes,)
@@ -4995,15 +4999,15 @@ func (e *EbuildPhase) _elog( elog_funcname string, lines []string, background bo
 	var elog_func func(msg string, phase string, key string, out io.Writer)
 	switch elog_funcname {
 	case "eerror":
-		elog_func = eerror
+		elog_func = elog.eerror
 	case "eqawarn":
-		elog_func = eqawarn
+		elog_func = elog.eqawarn
 	case "einfo":
-		elog_func = einfo
+		elog_func = elog.einfo
 	case "ewarn":
-		elog_func = ewarn
+		elog_func = elog.ewarn
 	case "elog":
-		elog_func = elog
+		elog_func = elog.elog
 	}
 
 	global_havecolor := output.HaveColor
@@ -5296,44 +5300,44 @@ func(f*FakeVartree) _match_wrapper(cpv, use_cache int) {
 	return matches
 }
 
-func(f*FakeVartree) _aux_get_wrapper( cpv, wants, myrepo=None) {
-	if cpv in
+func(f*FakeVartree) _aux_get_wrapper(versions.cpv, wants, myrepo=None) {
+	if versions.cpv in
 	f._aux_get_history{
 		return f._aux_get(cpv, wants)
 	}
-	f._aux_get_history.add(cpv)
+	f._aux_get_history.add(versions.cpv)
 
-	pkg = f.dbapi._cpv_map[cpv]
+	versions.pkg = f.dbapi._cpv_map[versions.cpv]
 
 try:
 	live_metadata = dict(zip(f._portdb_keys,
-		f._portdb.aux_get(cpv, f._portdb_keys,
-			myrepo = pkg.repo)))
+		f._portdb.aux_get(versions.cpv, f._portdb_keys,
+			myrepo = versions.pkg.repo)))
 	except(KeyError, portage.exception.PortageException):
 	live_metadata = None
 
-	f._apply_dynamic_deps(pkg, live_metadata)
+	f._apply_dynamic_deps(versions.pkg, live_metadata)
 
-	return f._aux_get(cpv, wants)
+	return f._aux_get(versions.cpv, wants)
 }
 
-func(f*FakeVartree) _apply_dynamic_deps(pkg, live_metadata) {
+func(f*FakeVartree) _apply_dynamic_deps(versions.pkg, live_metadata) {
 
 try:
 	if live_metadata  ==nil {
 		raise
 		_DynamicDepsNotApplicable()
 	}
-	if !(eapi2.eapiIsSupported(live_metadata["EAPI"]) && eapi2.eapiIsSupported(pkg.eapi)) {
+	if !(eapi2.eapiIsSupported(live_metadata["EAPI"]) && eapi2.eapiIsSupported(versions.pkg.eapi)) {
 		raise
 		_DynamicDepsNotApplicable()
 	}
 
 	built_slot_operator_atoms = None
-	if ! f._ignore_built_slot_operator_deps && eapi2.getEapiAttrs(pkg.eapi).slotOperator {
+	if ! f._ignore_built_slot_operator_deps && eapi2.getEapiAttrs(versions.pkg.eapi).slotOperator {
 	try:
 		built_slot_operator_atoms = \
-		find_built_slot_operator_atoms(pkg)
+		find_built_slot_operator_atoms(versions.pkg)
 		except
 	InvalidDependString:
 		pass
@@ -5345,18 +5349,18 @@ try:
 		raise
 		_DynamicDepsNotApplicable()
 	}
-	for k, v
+	for k, versions.v
 	in
 	built_slot_operator_atoms.items(){
 	live_metadata[k] += (" " +
 		" ".join(_unicode(atom)
 		for atom
 			in
-		v))
+		versions.v))
 	}
 	}
 
-	f.dbapi.aux_update(pkg.cpv, live_metadata)
+	f.dbapi.aux_update(versions.pkg.cpv, live_metadata)
 	except
 _DynamicDepsNotApplicable:
 	if f._global_updates == nil {
@@ -5364,24 +5368,24 @@ _DynamicDepsNotApplicable:
 	}
 
 	aux_keys = Package._dep_keys + f.dbapi._pkg_str_aux_keys
-	aux_dict = dict(zip(aux_keys, f._aux_get(pkg.cpv, aux_keys)))
+	aux_dict = dict(zip(aux_keys, f._aux_get(versions.pkg.cpv, aux_keys)))
 	perform_global_updates(
-		pkg.cpv, aux_dict, f.dbapi, f._global_updates)
+		versions.pkg.cpv, aux_dict, f.dbapi, f._global_updates)
 }
 
-func(f*FakeVartree) dynamic_deps_preload(pkg, metadata) {
+func(f*FakeVartree) dynamic_deps_preload(versions.pkg, metadata) {
 	if metadata != nil {
 		metadata = dict((k, metadata.get(k, ''))
 		for k
 			in
 		f._portdb_keys)
 	}
-	f._apply_dynamic_deps(pkg, metadata)
-	f._aux_get_history.add(pkg.cpv)
+	f._apply_dynamic_deps(versions.pkg, metadata)
+	f._aux_get_history.add(versions.pkg.cpv)
 }
 
-func(f*FakeVartree) cpv_discard( pkg) {
-	old_pkg := f.dbapi.get(pkg)
+func(f*FakeVartree) cpv_discard(versions.pkg) {
+	old_pkg := f.dbapi.get(versions.pkg)
 	if old_pkg != nil {
 		f.dbapi.cpv_remove(old_pkg)
 		f._pkg_cache.pop(old_pkg, None)
@@ -5418,13 +5422,13 @@ func(f*FakeVartree) _sync() {
 	current_cpv_set := frozenset(real_vardb.cpv_all())
 	pkg_vardb := f.dbapi
 
-	for pkg
+	for versions.pkg
 		in
 	list(pkg_vardb) {
-		if pkg.cpv not
+		if versions.pkg.cpv not
 		in
 		current_cpv_set{
-			f.cpv_discard(pkg)
+			f.cpv_discard(versions.pkg)
 		}
 	}
 
@@ -5438,8 +5442,8 @@ func(f*FakeVartree) _sync() {
 		pkg_hash_key := &Package{}._gen_hash_key(cpv = cpv,
 			installed = true, root_config = root_config,
 			type_name = "installed")
-		pkg = pkg_vardb.get(pkg_hash_key)
-		if pkg != nil {
+		versions.pkg = pkg_vardb.get(pkg_hash_key)
+		if versions.pkg != nil {
 			counter, mtime = real_vardb.aux_get(cpv, validation_keys)
 		try:
 			counter = long(counter)
@@ -5447,31 +5451,31 @@ func(f*FakeVartree) _sync() {
 		ValueError:
 			counter = 0
 
-			if counter != pkg.counter || mtime != pkg.mtime {
-				f.cpv_discard(pkg)
-				pkg = nil
+			if counter != versions.pkg.counter || mtime != versions.pkg.mtime {
+				f.cpv_discard(versions.pkg)
+				versions.pkg = nil
 			}
 		}
 
-		if pkg == nil {
-			pkg = f._pkg(cpv)
+		if versions.pkg == nil {
+			versions.pkg = f._pkg(cpv)
 		}
 
-		other_counter := slot_counters.get(pkg.slot_atom)
+		other_counter := slot_counters.get(versions.pkg.slot_atom)
 		if other_counter != nil {
-			if other_counter > pkg.counter {
+			if other_counter > versions.pkg.counter {
 				continue
 			}
 		}
 
-		slot_counters[pkg.slot_atom] = pkg.counter
-		pkg_vardb.cpv_inject(pkg)
+		slot_counters[versions.pkg.slot_atom] = versions.pkg.counter
+		pkg_vardb.cpv_inject(versions.pkg)
 	}
 
 	real_vardb.flush_cache()
 }
 
-func(f*FakeVartree) _pkg(cpv *PkgStr) *Package {
+func(f*FakeVartree) _pkg(cpv *versions.PkgStr) *Package {
 	pkg := NewPackage(true,  cpv, true,
 		zip(f._db_keys, f._real_vardb.aux_get(cpv, f._db_keys)),
 		f._pkg_root_config, "installed")
@@ -5514,7 +5518,7 @@ func grab_global_updates(portdb *portdbapi) map[string][][]string{
 func perform_global_updates(mycpv string, aux_dict map[string]string, mydb IDbApi, myupdates map[string][][]string) {
 
 	//try:
-	pkg := NewPkgStr(mycpv, aux_dict, mydb.settings, "", "", "", 0, 0, "", 0, nil)
+	pkg := versions.NewPkgStr(mycpv, aux_dict, mydb.settings, "", "", "", 0, 0, "", 0, nil)
 	//except InvalidData:
 	//return
 	aux_dict2 := map[string]string{}
@@ -6187,11 +6191,11 @@ func(m*MetadataRegen) _cleanup() {
 			in
 		portdb.porttrees:
 	try:
-		dead_nodes[mytree] = set(cpv
-		for cpv
+		dead_nodes[mytree] = set(versions.cpv
+		for versions.cpv
 		in \
 		portdb.auxdb[mytree] \
-		if cpv_getkey(cpv) in
+		if cpv_getkey(versions.cpv) in
 		cp_set)
 		except
 		CacheError
@@ -6438,7 +6442,7 @@ type Package struct {
 	depKeys                                                                                                                                                                                          []string
 	UnknownRepo                                                                                                                                                                                      string
 	built, installed                                                                                                                                                                                 bool
-	cpv                                                                                                                                                                                              *PkgStr
+	cpv                                                                                                                                                                                              *versions.PkgStr
 	counter, mtime                                                                                                                                                                                   int
 	metadata                                                                                                                                                                                         *packageMetadataWrapper
 	_raw_metadata                                                                                                                                                                                    map[string]string
@@ -6470,7 +6474,7 @@ func (p *Package) masks() {
 	}
 }
 
-func NewPackage(built bool, cpv *PkgStr, installed bool, metadata map[string]string, root_config *RootConfig, type_name string) *Package {
+func NewPackage(built bool, cpv *versions.PkgStr, installed bool, metadata map[string]string, root_config *RootConfig, type_name string) *Package {
 	p := &Package{metadataKeys: map[string]bool{
 		"BDEPEND": true, "BUILD_ID": true, "BUILD_TIME": true, "CHOST": true, "COUNTER": true, "DEFINED_PHASES": true,
 		"DEPEND": true, "EAPI": true, "HDEPEND": true, "INHERITED": true, "IUSE": true, "KEYWORDS": true,
@@ -6480,7 +6484,7 @@ func NewPackage(built bool, cpv *PkgStr, installed bool, metadata map[string]str
 		buildtimeKeys:          map[string]bool{"BDEPEND": true, "DEPEND": true, "HDEPEND": true},
 		runtimeKeys:            map[string]bool{"PDEPEND": true, "RDEPEND": true},
 		useConditionalMiscKeys: map[string]bool{"LICENSE": true, "PROPERTIES": true, "RESTRICT": true},
-		UnknownRepo:            unknownRepo}
+		UnknownRepo:            versions.unknownRepo}
 	p.built = built
 	p.cpv = cpv
 	p.installed = installed
@@ -6778,7 +6782,7 @@ type PackageUninstall struct{
 
 	// slot
 	settings *Config
-	pkg *PkgStr
+	pkg *versions.PkgStr
 	_builddir_lock *EbuildBuildDir
 	world_atom
 	ldpath_mtimes
@@ -6797,7 +6801,7 @@ func(p*PackageUninstall) _start() {
 	}
 
 	p.settings.SetCpv(p.pkg, nil)
-	cat, pf := catsplit(p.pkg.cpv.string)[0], catsplit(p.pkg.cpv.string)[1]
+	cat, pf := versions.catsplit(p.pkg.cpv.string)[0], versions.catsplit(p.pkg.cpv.string)[1]
 	myebuildpath := filepath.Join(dbdir, pf+".ebuild")
 
 	//try:
@@ -6832,7 +6836,7 @@ func(p*PackageUninstall) _start_unmerge( lock_task) {
 	p._writemsg_level(fmt.Sprintf(">>> Unmerging %s...\n" ,p.pkg.cpv, ), -1, 0)
 	p._emergelog(fmt.Sprintf("=== Unmerging... (%s)" ,p.pkg.cpv, ))
 
-	cat, pf := catsplit(p.pkg.cpv.string)[0],catsplit(p.pkg.cpv.string)[1]
+	cat, pf := versions.catsplit(p.pkg.cpv.string)[0], versions.catsplit(p.pkg.cpv.string)[1]
 	unmerge_task := NewMergeProcess(
 		cat, pf, p.settings, "vartree", p.pkg.root_config.trees["vartree"],
 		 p.scheduler, p.background, nil, "","","",
@@ -6897,7 +6901,7 @@ func(p*PackageUninstall) _writemsg_level(msg string, level, noiselevel int) {
 }
 
 func NewPackageUninstall(background bool, ldpath_mtimes = ldpath_mtimes, opts=m.emerge_opts,
-	pkg *PkgStr, scheduler *SchedulerInterface, settings *Config, world_atom=world_atom)*PackageUninstall{
+	pkg *versions.PkgStr, scheduler *SchedulerInterface, settings *Config, world_atom=world_atom)*PackageUninstall{
 	p := &PackageUninstall{}
 	p.CompositeTask = NewCompositeTask()
 	p.background = background
@@ -6942,10 +6946,10 @@ func(p*PackageVirtualDbapi) copy() {
 	obj := NewPackageVirtualDbapi(p.settings)
 	obj._match_cache = p._match_cache.copy()
 	obj._cp_map = p._cp_map.copy()
-	for k, v
+	for k, versions.v
 	in
 	obj._cp_map.items() {
-		obj._cp_map[k] = v[:]
+		obj._cp_map[k] = versions.v[:]
 	}
 	obj._cpv_map = p._cpv_map.copy()
 	return obj
@@ -6969,15 +6973,15 @@ func(p*PackageVirtualDbapi) __contains__( item) bool {
 
 // nil
 func(p*PackageVirtualDbapi) get( item, default1=None) {
-	cpv = getattr(item, "cpv", None)
-	if cpv == nil {
+	versions.cpv = getattr(item, "cpv", None)
+	if versions.cpv == nil {
 		if len(item) != 5 {
 			return default1
 		}
 	}
-	type_name, root, cpv, operation, repo_key = item
+	type_name, root, versions.cpv, operation, repo_key = item
 
-	existing := p._cpv_map.get(cpv)
+	existing := p._cpv_map.get(versions.cpv)
 	if existing != nil &&
 		existing == item {
 		return existing
@@ -7017,8 +7021,8 @@ func(p*PackageVirtualDbapi) match( origdep *Atom, use_cache int) {
 }
 
 // nil
-func(p*PackageVirtualDbapi) cpv_exists( cpv, myrepo=None) int {
-	return cpv
+func(p*PackageVirtualDbapi) cpv_exists(versions.cpv, myrepo=None) int {
+	return versions.cpv
 	in
 	p._cpv_map
 }
@@ -7035,10 +7039,10 @@ func(p*PackageVirtualDbapi) cp_list( mycp string, use_cache int) {
 		cpv_list = []string{}
 	} else {
 		cpv_list = []string{}
-		for pkg
+		for versions.pkg
 			in
 		cpv_list {
-			cpv_list = append(pkg.cpv)
+			cpv_list = append(versions.pkg.cpv)
 		}
 	}
 	p._cpv_sort_ascending(cpv_list)
@@ -7059,15 +7063,15 @@ func(p*PackageVirtualDbapi) cpv_all() {
 	return list(p._cpv_map)
 }
 
-func(p*PackageVirtualDbapi) cpv_inject( pkg) {
-	cp_list := p._cp_map.get(pkg.cp)
+func(p*PackageVirtualDbapi) cpv_inject(versions.pkg) {
+	cp_list := p._cp_map.get(versions.pkg.cp)
 	if cp_list == nil {
 		cp_list = []string{}
-		p._cp_map[pkg.cp] = cp_list
+		p._cp_map[versions.pkg.cp] = cp_list
 	}
-	e_pkg := p._cpv_map.get(pkg.cpv)
+	e_pkg := p._cpv_map.get(versions.pkg.cpv)
 	if e_pkg != nil {
-		if e_pkg == pkg {
+		if e_pkg == versions.pkg {
 			return
 		}
 	}
@@ -7075,42 +7079,42 @@ func(p*PackageVirtualDbapi) cpv_inject( pkg) {
 	for e_pkg
 		in
 	cp_list {
-		if e_pkg.slot_atom == pkg.slot_atom {
-			if e_pkg == pkg {
+		if e_pkg.slot_atom == versions.pkg.slot_atom {
+			if e_pkg == versions.pkg {
 				return
 			}
 			p.cpv_remove(e_pkg)
 			break
 		}
 	}
-	cp_list = append(cp_list, pkg)
-	p._cpv_map[pkg.cpv] = pkg
+	cp_list = append(cp_list, versions.pkg)
+	p._cpv_map[versions.pkg.cpv] = versions.pkg
 	p._clear_cache()
 }
 
-func(p*PackageVirtualDbapi) cpv_remove( pkg) {
-	old_pkg := p._cpv_map.get(pkg.cpv)
-	if old_pkg != pkg {
+func(p*PackageVirtualDbapi) cpv_remove(versions.pkg) {
+	old_pkg := p._cpv_map.get(versions.pkg.cpv)
+	if old_pkg != versions.pkg {
 		raise
-		KeyError(pkg)
+		KeyError(versions.pkg)
 	}
-	p._cp_map[pkg.cp].remove(pkg)
+	p._cp_map[versions.pkg.cp].remove(versions.pkg)
 	del
-	p._cpv_map[pkg.cpv]
+	p._cpv_map[versions.pkg.cpv]
 	p._clear_cache()
 }
 
 // nil
-func(p*PackageVirtualDbapi) aux_get( cpv, wants, myrepo=None) {
-	metadata := p._cpv_map[cpv]._metadata
+func(p*PackageVirtualDbapi) aux_get(versions.cpv, wants, myrepo=None) {
+	metadata := p._cpv_map[versions.cpv]._metadata
 	return [metadata.get(x, "")
 	for x
 	in
 	wants]
 }
 
-func(p*PackageVirtualDbapi) aux_update(cpv, values) {
-	p._cpv_map[cpv]._metadata.update(values)
+func(p*PackageVirtualDbapi) aux_update(versions.cpv, values) {
+	p._cpv_map[versions.cpv]._metadata.update(values)
 	p._clear_cache()
 }
 
@@ -7622,7 +7626,7 @@ func (s *Scheduler) _handle_self_update() int {
 		if x.root != s._running_root.root {
 			continue
 		}
-		if len( matchFromList(PORTAGE_PACKAGE_ATOM, []*PkgStr{x}))==0 {
+		if len( matchFromList(PORTAGE_PACKAGE_ATOM, []*versions.PkgStr{x}))==0 {
 			continue
 		}
 		rval := _check_temp_dir(s.settings)
@@ -7712,12 +7716,12 @@ func (s*Scheduler) _background_mode() bool {
 				"to interactive package(s):\n",
 				10, -1)
 			msg := []string{""}
-			for pkg
+			for versions.pkg
 				in
 			interactive_tasks {
-				pkg_str := "  " + output.colorize("INFORM", fmt.Sprint(pkg.cpv))
-				if pkg.root_config.settings.ValueDict["ROOT"] != "/" {
-					pkg_str += " for " + pkg.root
+				pkg_str := "  " + output.colorize("INFORM", fmt.Sprint(versions.pkg.cpv))
+				if versions.pkg.root_config.settings.ValueDict["ROOT"] != "/" {
+					pkg_str += " for " + versions.pkg.root
 				}
 				msg= append(msg, pkg_str)
 			}
@@ -7838,11 +7842,11 @@ func (s *Scheduler) _find_system_deps() {
 	deep_system_deps = map[string]string{}
 	deep_system_deps.update(
 		_find_deep_system_runtime_deps(s._digraph))
-	deep_system_deps.difference_update([pkg
-	for pkg
+	deep_system_deps.difference_update([versions.pkg
+	for versions.pkg
 		in
 	deep_system_deps
-	if pkg.operation != "merge"])
+	if versions.pkg.operation != "merge"])
 }
 
 func (s *Scheduler) _prune_digraph() {
@@ -7871,28 +7875,28 @@ func (s *Scheduler) _prevent_builddir_collisions() {
 	cpv_map :=
 	{
 	}
-	for pkg
+	for versions.pkg
 		in
 	s._mergelist {
-		if not isinstance(pkg, Package) {
+		if not isinstance(versions.pkg, Package) {
 			continue
 		}
-		if pkg.installed {
+		if versions.pkg.installed {
 			continue
 		}
-		if pkg.cpv not
+		if versions.pkg.cpv not
 		in
 		cpv_map{
-			cpv_map[pkg.cpv] = [pkg]
+			cpv_map[versions.pkg.cpv] = [pkg]
 			continue
 		}
 		for earlier_pkg
 			in
-		cpv_map[pkg.cpv] {
-			s._digraph.add(earlier_pkg, pkg,
+		cpv_map[versions.pkg.cpv] {
+			s._digraph.add(earlier_pkg, versions.pkg,
 				priority = NewDepPriority(true))
 		}
-		cpv_map[pkg.cpv].append(pkg)
+		cpv_map[versions.pkg.cpv].append(versions.pkg)
 	}
 }
 
@@ -8083,16 +8087,16 @@ func (s *Scheduler) _add_prefetchers() {
 	if s._parallel_fetch {
 		prefetchers := s._prefetchers
 
-		for pkg
+		for versions.pkg
 			in
 		s._mergelist {
-			if not isinstance(pkg, Package) ||
-				pkg.operation == "uninstall" {
+			if not isinstance(versions.pkg, Package) ||
+				versions.pkg.operation == "uninstall" {
 				continue
 			}
-			prefetcher = s._create_prefetcher(pkg)
+			prefetcher = s._create_prefetcher(versions.pkg)
 			if prefetcher != nil {
-				prefetchers[pkg] = prefetcher
+				prefetchers[versions.pkg] = prefetcher
 				s._task_queues.fetch.add(prefetcher)
 			}
 		}
@@ -8264,7 +8268,7 @@ func (s *Scheduler) _run_pkg_pretend()  int {
 		if ret != 0 {
 			failures += 1
 		}
-		elog_process(x.cpv, settings, nil)
+		elog.elog_process(x.cpv, settings, nil)
 	finally:
 
 		if current_task != nil {
@@ -8580,7 +8584,7 @@ func (s *Scheduler) merge() int {
 }
 
 func (s *Scheduler) _elog_listener(mysettings *Config, key, logentries logentries map[string][][2]string, fulltext) {
-	errors := filter_loglevels(logentries, map[string]bool{"ERROR":true})
+	errors := elog.filter_loglevels(logentries, map[string]bool{"ERROR": true})
 	if len(errors) > 0 {
 		s._failed_pkgs_die_msgs = append(s._failed_pkgs_die_msgs,
 			(mysettings, key, errors))
@@ -8614,13 +8618,13 @@ func (s *Scheduler) _locate_failure_log( failed_pkg *_failed_pkg) string {
 
 func (s *Scheduler) _add_packages() {
 	pkg_queue := s._pkg_queue
-	for pkg
+	for versions.pkg
 		in
 	s._mergelist {
-		if isinstance(pkg, Package) {
-			pkg_queue.append(pkg)
+		if isinstance(versions.pkg, Package) {
+			pkg_queue.append(versions.pkg)
 		}else if
-		isinstance(pkg, Blocker) {
+		isinstance(versions.pkg, Blocker) {
 			//pass
 		}
 	}
@@ -8631,9 +8635,9 @@ func (s *Scheduler) _system_merge_started(merge) {
 	if graph == nil {
 		return
 	}
-	pkg = merge.merge.pkg
+	versions.pkg = merge.merge.pkg
 
-	if pkg.root_config.settings.ValueDict["ROOT"] != "/" {
+	if versions.pkg.root_config.settings.ValueDict["ROOT"] != "/" {
 		return
 	}
 
@@ -8654,7 +8658,7 @@ func (s *Scheduler) _system_merge_started(merge) {
 
 	for child
 		in
-	graph.child_nodes(pkg,
+	graph.child_nodes(versions.pkg,
 		ignore_priority = ignore_non_runtime_or_satisfied):
 	if not isinstance(child, Package) ||
 		child.operation == "uninstall":
@@ -8689,7 +8693,7 @@ func (s *Scheduler) _merge_exit(merge) {
 }
 
 func (s *Scheduler) _do_merge_exit( merge) {
-	pkg = merge.merge.pkg
+	versions.pkg = merge.merge.pkg
 	if merge.returncode != 0 {
 		settings := merge.merge.settings
 		build_dir := settings.ValueDict["PORTAGE_BUILDDIR"]
@@ -8697,7 +8701,7 @@ func (s *Scheduler) _do_merge_exit( merge) {
 
 		s._failed_pkgs = append(s._failed_pkgs, &_failed_pkg{
 			build_dir, build_log,
-			pkg, nil,
+			versions.pkg, nil,
 			merge.returncode})
 		if ! s._terminated_tasks {
 			s._failed_pkg_msg(s._failed_pkgs[len(s._failed_pkgs)-1], "install", "to")
@@ -8710,12 +8714,12 @@ func (s *Scheduler) _do_merge_exit( merge) {
 		s._failed_pkgs_all = append(s._failed_pkgs_all, &_failed_pkg{
 			merge.merge.settings.ValueDict["PORTAGE_BUILDDIR"],
 			merge.merge.settings.ValueDict["PORTAGE_LOG_FILE"],
-			pkg, true, merge.returncode})
+			versions.pkg, true, merge.returncode})
 		s._failed_pkg_msg(s._failed_pkgs_all[len(s._failed_pkgs_all)-1],
 			"execute postinst for", "for")
 	}
 
-	s._task_complete(pkg)
+	s._task_complete(versions.pkg)
 	pkg_to_replace = merge.merge.pkg_to_replace
 	if pkg_to_replace != nil:
 	if s._digraph != nil&&
@@ -8731,11 +8735,11 @@ ValueError:
 	else:
 	s._pkg_cache.pop(pkg_to_replace, nil)
 
-	if pkg.installed:
+	if versions.pkg.installed:
 	return
 
 	mtimedb = s._mtimedb
-	mtimedb["resume"]["mergelist"].remove(list(pkg))
+	mtimedb["resume"]["mergelist"].remove(list(versions.pkg))
 	if not mtimedb["resume"]["mergelist"]:
 	del
 	mtimedb["resume"]
@@ -8786,12 +8790,12 @@ func (s *Scheduler) _extract_exit( build) {
 	s._build_exit(build)
 }
 
-func (s *Scheduler) _task_complete(pkg) {
-	s._completed_tasks.add(pkg)
-	s._unsatisfied_system_deps.discard(pkg)
+func (s *Scheduler) _task_complete(versions.pkg) {
+	s._completed_tasks.add(versions.pkg)
+	s._unsatisfied_system_deps.discard(versions.pkg)
 	s._choose_pkg_return_early = false
-	blocker_db := s._blocker_db[pkg.root]
-	blocker_db.discardBlocker(pkg)
+	blocker_db := s._blocker_db[versions.pkg.root]
+	blocker_db.discardBlocker(versions.pkg)
 }
 
 func (s *Scheduler) _main_loop() {
@@ -8821,7 +8825,7 @@ func (s *Scheduler) _merge() int {
 	s._add_packages()
 	failed_pkgs := s._failed_pkgs
 	quiet := s._background
-	add_listener(s._elog_listener)
+	elog.add_listener(s._elog_listener)
 
 
 	display_callback:=func() {
@@ -8842,7 +8846,7 @@ try:
 finally:
 	s._main_loop_cleanup()
 	quiet = false
-	remove_listener(s._elog_listener)
+	elog.remove_listener(s._elog_listener)
 	if display_callback.handle != nil {
 		display_callback.handle.cancel()
 	}
@@ -8903,23 +8907,23 @@ func (s *Scheduler) _choose_pkg() {
 	chosen_pkg = nil
 
 	graph = s._digraph
-	for pkg
+	for versions.pkg
 		in
 	s._pkg_queue:
-	if pkg.operation == "uninstall" &&
+	if versions.pkg.operation == "uninstall" &&
 		not
-		graph.child_nodes(pkg):
-	chosen_pkg = pkg
+		graph.child_nodes(versions.pkg):
+	chosen_pkg = versions.pkg
 	break
 
 	if chosen_pkg == nil:
 	later = set(s._pkg_queue)
-	for pkg
+	for versions.pkg
 		in
 	s._pkg_queue:
-	later.remove(pkg)
-	if not s._dependent_on_scheduled_merges(pkg, later):
-	chosen_pkg = pkg
+	later.remove(versions.pkg)
+	if not s._dependent_on_scheduled_merges(versions.pkg, later):
+	chosen_pkg = versions.pkg
 	break
 
 	if chosen_pkg != nil:
@@ -8931,14 +8935,14 @@ func (s *Scheduler) _choose_pkg() {
 	return chosen_pkg
 }
 
-func (s *Scheduler) _dependent_on_scheduled_merges( pkg, later) {
+func (s *Scheduler) _dependent_on_scheduled_merges(versions.pkg, later) {
 
 	graph := s._digraph
 	completed_tasks := s._completed_tasks
 
 	dependent := false
-	traversed_nodes := map[string]bool{pkg:true}
-	direct_deps := graph.child_nodes(pkg)
+	traversed_nodes := map[string]bool{versions.pkg: true}
+	direct_deps := graph.child_nodes(versions.pkg)
 	node_stack := direct_deps
 	direct_deps := frozenset(direct_deps)
 	for len(node_stack) >  0 {
@@ -9179,9 +9183,9 @@ func (s *Scheduler) _schedule_tasks_imp() bool{
 	return state_change!= 0
 }
 
-func (s *Scheduler) _get_prefetcher(pkg) {
+func (s *Scheduler) _get_prefetcher(versions.pkg) {
 //try:
-	prefetcher := s._prefetchers.pop(pkg, None)
+	prefetcher := s._prefetchers.pop(versions.pkg, None)
 	//except KeyError:
 	prefetcher = nil
 	if prefetcher != nil&&!prefetcher.isAlive() {
@@ -9194,39 +9198,39 @@ func (s *Scheduler) _get_prefetcher(pkg) {
 	return prefetcher
 }
 
-func (s *Scheduler) _task( pkg) {
+func (s *Scheduler) _task(versions.pkg) {
 
 	var pkg_to_replace = nil
-	if pkg.operation != "uninstall" {
-		vardb := pkg.root_config.trees["vartree"].dbapi
-		previous_cpv := []*PkgStr{}
+	if versions.pkg.operation != "uninstall" {
+		vardb := versions.pkg.root_config.trees["vartree"].dbapi
+		previous_cpv := []*versions.PkgStr{}
 		for x
 			in
-		vardb.match(pkg.slot_atom) {
-			if cpvGetKey(x, "") == pkg.cp {
+		vardb.match(versions.pkg.slot_atom) {
+			if versions.cpvGetKey(x, "") == versions.pkg.cp {
 				previous_cpv = append(previous_cpv, x)
 			}
 		}
-		if len(previous_cpv) == 0 && vardb.cpv_exists(pkg.cpv) {
-			previous_cpv = []*PkgStr{pkg.cpv}
+		if len(previous_cpv) == 0 && vardb.cpv_exists(versions.pkg.cpv) {
+			previous_cpv = []*versions.PkgStr{versions.pkg.cpv}
 		}
 		if len(previous_cpv) != 0 {
 			pc := previous_cpv[len(previous_cpv)-1]
 			previous_cpv = previous_cpv[:len(previous_cpv)-1]
 			pkg_to_replace = s._pkg(pc,
-				"installed", pkg.root_config, true,
+				"installed", versions.pkg.root_config, true,
 				"uninstall")
 		}
 	}
 
-	prefetcher := s._get_prefetcher(pkg)
+	prefetcher := s._get_prefetcher(versions.pkg)
 
 	pc := *s._pkg_count
 	task := NewMergeListItem(s._args_set, s._background, s._binpkg_opts,
-		s._build_opts, NewConfigPool(pkg.root, s._allocate_config,
-			s._deallocate_config), s.myopts, s._find_blockers(pkg),
-		s._logger, s._mtimedb, pkg, &pc, pkg_to_replace,
-		prefetcher, s._sched_iface, s._allocate_config(pkg.root),
+		s._build_opts, NewConfigPool(versions.pkg.root, s._allocate_config,
+			s._deallocate_config), s.myopts, s._find_blockers(versions.pkg),
+		s._logger, s._mtimedb, versions.pkg, &pc, pkg_to_replace,
+		prefetcher, s._sched_iface, s._allocate_config(versions.pkg.root),
 		s._status_msg, s._world_atom)
 
 	return task
@@ -9362,11 +9366,11 @@ exc:
 	if not(isinstance(task, Package) &&
 		task.operation == "merge"):
 	continue
-	pkg = task
+	versions.pkg = task
 	msg = "emerge --keep-going:" +
-		" %s" % (pkg.cpv,)
-	if pkg.root_config.settings.ValueDict["ROOT"] != "/":
-	msg += " for %s" % (pkg.root,)
+		" %s" % (versions.pkg.cpv,)
+	if versions.pkg.root_config.settings.ValueDict["ROOT"] != "/":
+	msg += " for %s" % (versions.pkg.root,)
 	if not atoms:
 	msg += " dropped because it is masked or unavailable"
 	else:
@@ -9374,11 +9378,11 @@ exc:
 	for line
 		in
 	myutil.SplitSubN(msg, msg_width):
-	eerror(line, "other", pkg.cpv, "", nil)
-	settings = s.pkgsettings.ValueDict[pkg.root]
+	elog.eerror(line, "other", versions.pkg.cpv, "", nil)
+	settings = s.pkgsettings.ValueDict[versions.pkg.root]
 	settings.pop("T", nil)
-	portage.elog.elog_process(pkg.cpv, settings)
-	s._failed_pkgs_all=append(s._failed_pkgs_all, &_failed_pkg{pkg: pkg})
+	portage.elog.elog_process(versions.pkg.cpv, settings)
+	s._failed_pkgs_all=append(s._failed_pkgs_all, &_failed_pkg{pkg: versions.pkg})
 
 	return true
 }
@@ -9391,7 +9395,7 @@ func (s *Scheduler) _show_list() bool {
 	return false
 }
 
-func (s *Scheduler) _world_atom( pkg) {
+func (s *Scheduler) _world_atom(versions.pkg) {
 
 	if set(("--buildpkgonly", "--fetchonly",
 		"--fetch-all-uri",
@@ -9401,24 +9405,24 @@ func (s *Scheduler) _world_atom( pkg) {
 		return
 	}
 
-	if pkg.root != s.target_root {
+	if versions.pkg.root != s.target_root {
 		return
 	}
 
 	args_set := s._args_set
-	if not args_set.findAtomForPackage(pkg, nil) {
+	if not args_set.findAtomForPackage(versions.pkg, nil) {
 		return
 	}
 
 	logger := s._logger
 	pkg_count := s._pkg_count
-	root_config := pkg.root_config
+	root_config := versions.pkg.root_config
 	world_set := root_config.sets["selected"]
 	world_locked := false
 	atom = nil
 
-	if pkg.operation != "uninstall" {
-		atom = s._world_atoms.get(pkg)
+	if versions.pkg.operation != "uninstall" {
+		atom = s._world_atoms.get(versions.pkg)
 	}
 
 try:
@@ -9430,14 +9434,14 @@ try:
 	if hasattr(world_set, "load"):
 	world_set.load()
 
-	if pkg.operation == "uninstall":
+	if versions.pkg.operation == "uninstall":
 	if hasattr(world_set, "cleanPackage"):
-	world_set.cleanPackage(pkg.root_config.trees["vartree"].dbapi,
-		pkg.cpv)
+	world_set.cleanPackage(versions.pkg.root_config.trees["vartree"].dbapi,
+		versions.pkg.cpv)
 	if hasattr(world_set, "remove"):
 	for s
 		in
-	pkg.root_config.setconfig.active:
+	versions.pkg.root_config.setconfig.active:
 	world_set.remove(SETPREFIX + s)
 	else:
 	if atom != nil:
@@ -9445,7 +9449,7 @@ try:
 	s._status_msg(("Recording %s in \"world\" " +
 		"favorites file...") % atom)
 	logger.log(" === (%s of %s) Updating world file (%s)" %
-		(pkg_count.curval, pkg_count.maxval, pkg.cpv))
+		(pkg_count.curval, pkg_count.maxval, versions.pkg.cpv))
 	world_set.add(atom)
 	else:
 	util.WriteMsgLevel("\n!!! Unable to record %s in \"world\"\n" %
@@ -9456,15 +9460,15 @@ finally:
 }
 
 // false, "", nil
-func (s *Scheduler) _pkg( cpv *PkgStr, type_name string, root_config *RootConfig, installed bool,
+func (s *Scheduler) _pkg( cpv *versions.PkgStr, type_name string, root_config *RootConfig, installed bool,
 	operation string, myrepo=nil) *Package {
 
-	pkg = s._pkg_cache.get(NewPackage()._gen_hash_key(cpv = cpv,
+	versions.pkg = s._pkg_cache.get(NewPackage()._gen_hash_key(cpv = cpv,
 		type_name = type_name, repo_name=myrepo, root_config = root_config,
 		installed=installed, operation = operation))
 
-	if pkg != nil {
-		return pkg
+	if versions.pkg != nil {
+		return versions.pkg
 	}
 
 	tree_type = depgraph.pkg_tree_map[type_name]
@@ -9655,7 +9659,7 @@ func(s *SpawnProcess) _start(){
 
 	kwargs = {}
 	for k in s._spawn_kwarg_names{
-		v = getattr(s, k)
+		versions.v = getattr(s, k)
 		if v != nil{
 		kwargs[k] = v
 	}
@@ -10327,7 +10331,7 @@ func(m *MergeProcess)  _start() {
 	if _, ok := settings.configDict["pkg"]["EAPI"]; cpv != settings.mycpv.string || !ok {
 		settings.reload()
 		settings.reset(0)
-		settings.SetCpv(NewPkgStr(cpv, nil, nil, "", "", "", 0, 0, "", 0, nil), m.mydbapi)
+		settings.SetCpv(versions.NewPkgStr(cpv, nil, nil, "", "", "", 0, 0, "", 0, nil), m.mydbapi)
 	}
 
 	if _, ok := settings.Features.Features["merge-sync"]; runtime.GOOS == "Linux" && ok {
@@ -10380,15 +10384,15 @@ func(m *MergeProcess) _elog_output_handler() bool {
 				var reporter func(msg string, phase string, key string, out io.Writer)
 				switch funcname {
 				case "eerror":
-					reporter = eerror
+					reporter = elog.eerror
 				case "eqawarn":
-					reporter = eqawarn
+					reporter = elog.eqawarn
 				case "einfo":
-					reporter = einfo
+					reporter = elog.einfo
 				case "ewarn":
-					reporter = ewarn
+					reporter = elog.ewarn
 				case "elog":
-					reporter = elog
+					reporter = elog.elog
 				}
 				reporter(msg, phase, key, out)
 			}
@@ -10441,7 +10445,7 @@ try:
 		m._elog_reader_fd = elog_reader_fd
 		m._buf = ""
 		m._elog_keys = map[string]bool{}
-		collect_messages(mylink.mycpv.string, nil)
+		elog.collect_messages(mylink.mycpv.string, nil)
 
 		if m.vartree.dbapi._categories != nil {
 			m.vartree.dbapi._categories = nil
@@ -10542,7 +10546,7 @@ func(m *MergeProcess) _unregister() {
 	}
 	if m._elog_keys != nil {
 		for key := range m._elog_keys {
-			elog_process(key, m.settings, []string{"prerm", "postrm"})
+			elog.elog_process(key, m.settings, []string{"prerm", "postrm"})
 		}
 		m._elog_keys = nil
 	}
@@ -11086,7 +11090,7 @@ func (f*FileDigester) _start() {
 }
 
 func (f*FileDigester) _run() int {
-	digests := performMultipleChecksums(f.file_path, f.hash_names, false)
+	digests := checksum.performMultipleChecksums(f.file_path, f.hash_names, false)
 
 	bs := []string{}
 	for k,v := range digests {

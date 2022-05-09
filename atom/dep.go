@@ -6,6 +6,7 @@ import (
 	"github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/versions"
 	"golang.org/x/net/html/atom"
 	"reflect"
 	"regexp"
@@ -43,9 +44,9 @@ func getSlotDepRe(attrs eapi.eapiAttrs) *regexp.Regexp {
 	}
 	s := ""
 	if attrs.SlotOperator {
-		s = slot + "?(\\*|=|/" + slot + "=?)?"
+		s = versions.slot + "?(\\*|=|/" + versions.slot + "=?)?"
 	} else {
-		s = slot
+		s = versions.slot
 	}
 	slotRe = regexp.MustCompile("^" + s + "$")
 	slotDepReCache[cacheKey] = slotRe
@@ -61,11 +62,11 @@ func getAtomRe(attrs eapi.eapiAttrs) *regexp.Regexp {
 	cps := ""
 	cpvs := ""
 	if attrs.DotsInPn {
-		cps = cp["dots_allowed_in_PN"]
-		cpvs = cpv["dots_allowed_in_PN"]
+		cps = versions.cp["dots_allowed_in_PN"]
+		cpvs = versions.cpv["dots_allowed_in_PN"]
 	} else {
-		cps = cp["dots_disallowed_in_PN"]
-		cpvs = cpv["dots_disallowed_in_PN"]
+		cps = versions.cp["dots_disallowed_in_PN"]
+		cpvs = versions.cpv["dots_disallowed_in_PN"]
 	}
 	mc := "^(?P<without_use>(?:" +
 		"(?P<op>" + op + cpvs + ")|" +
@@ -91,7 +92,7 @@ func getAtomWildcardRe(attrs eapi.eapiAttrs) *regexp.Regexp {
 		s = "[\\w+*][\\w+*-]*?"
 	}
 	atomRe = regexp.MustCompile("((?P<simple>(" +
-		extendedCat + ")/(" + s + "(-" + vr + ")?))" +
+		extendedCat + ")/(" + s + "(-" + versions.vr + ")?))" +
 		"|(?P<star>=((" + extendedCat + ")/(" + s + "))-(?P<version>\\*\\w+\\*)))" +
 		"(:(?P<slot>" + slotLoose + "))?(" +
 		repoSeparator + "(?P<repo>" + repoName + "))?$")
@@ -136,14 +137,14 @@ func getUseflagRe(eapi string) *regexp.Regexp {
 }
 
 func cpvequal(cpv1, cpv2 string) bool {
-	c1 := NewPkgStr(cpv1, nil, nil, "", "", "", 0, 0, "", 0, nil)
+	c1 := versions.NewPkgStr(cpv1, nil, nil, "", "", "", 0, 0, "", 0, nil)
 	split1 := c1.cpvSplit
-	c2 := NewPkgStr(cpv2, nil, nil, "", "", "", 0, 0, "", 0, nil)
+	c2 := versions.NewPkgStr(cpv2, nil, nil, "", "", "", 0, 0, "", 0, nil)
 	split2 := c2.cpvSplit
 	if split1[0] != split2[0] || split1[1] != split2[1] {
 		return false
 	}
-	v, _ := verCmp(cpv1, cpv2)
+	v, _ := versions.verCmp(cpv1, cpv2)
 	return v == 0
 }
 
@@ -178,7 +179,7 @@ func parenEncloses(myList []string, unevaluatedAtom, opconvert bool) string {
 	return strings.Join(myStrParts, " ")
 }
 
-func matchSlot(atom *Atom, pkg *PkgStr) bool {
+func matchSlot(atom *Atom, pkg *versions.PkgStr) bool {
 	if pkg.slot == atom.slot {
 		if atom.subSlot == "" {
 			return true
@@ -939,7 +940,7 @@ type Atom struct {
 	buildId                                                        int
 	Blocker                                                        *blocker
 	slotOperator, subSlot, repo, slot, eapi, cp, version, Operator string
-	cpv                                                            *PkgStr
+	cpv                                                            *versions.PkgStr
 	Use                                                            *useDep
 	withoutUse, unevaluatedAtom                                    *Atom
 }
@@ -1101,8 +1102,8 @@ func (a *Atom) deepcopy() *Atom { // memo=None, memo[id(self)] = self
 	return a
 }
 
-func (a *Atom) match(pkg *PkgStr) bool {
-	return len(matchFromList(a, []*PkgStr{pkg})) > 0
+func (a *Atom) match(pkg *versions.PkgStr) bool {
+	return len(matchFromList(a, []*versions.PkgStr{pkg})) > 0
 }
 
 //s, nil, false, nil, nil, "", nil, nil
@@ -1255,7 +1256,7 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 		return nil, fmt.Errorf("required group!found in Atom: '%v'", a)
 	}
 	a.cp = cp
-	a.cpv = NewPkgStr(cpv, nil, nil, "", "", "", 0, 0, "", 0, nil)
+	a.cpv = versions.NewPkgStr(cpv, nil, nil, "", "", "", 0, 0, "", 0, nil)
 	a.version = extendedVersion
 	a.version = a.cpv.version
 	a.repo = repo
@@ -1565,7 +1566,7 @@ func getOperator(mydep string) string {
 	return a.Operator
 }
 
-func depGetcpv(mydep string) *PkgStr {
+func depGetcpv(mydep string) *versions.PkgStr {
 	a, _ := NewAtom(mydep, nil, false, nil, nil, "", nil, nil)
 	return a.cpv
 }
@@ -1649,7 +1650,7 @@ func isJustName(mypkg string) bool {
 	}
 	p := strings.Split(mypkg, "-")
 	for _, x := range  p[len(p)-2:] {
-		if verVerify(x, 1) {
+		if versions.verVerify(x, 1) {
 			return false
 		}
 	}
@@ -1669,10 +1670,10 @@ func depGetKey(mydep string) string {
 	return a.cp
 }
 
-func matchToList(mypkg *PkgStr, mylist []*Atom) []*Atom {
+func matchToList(mypkg *versions.PkgStr, mylist []*Atom) []*Atom {
 	matches := map[*Atom]bool{}
 	result := []*Atom{}
-	pkgs := []*PkgStr{mypkg}
+	pkgs := []*versions.PkgStr{mypkg}
 	for _, x := range  mylist {
 		if !matches[x] && len(matchFromList(x, pkgs)) > 0 {
 			matches[x] = true
@@ -1682,11 +1683,11 @@ func matchToList(mypkg *PkgStr, mylist []*Atom) []*Atom {
 	return result
 }
 
-func bestMatchToList(mypkg *PkgStr, mylist []*Atom) *Atom {
+func bestMatchToList(mypkg *versions.PkgStr, mylist []*Atom) *Atom {
 	operatorValues := map[string]int{"=": 6, "~": 5, "=*": 4, ">": 2, "<": 2, ">=": 2, "<=": 2, "": 1}
 	maxvalue := -99
 	var bestm *Atom = nil
-	var mypkgCpv *PkgStr = nil
+	var mypkgCpv *versions.PkgStr = nil
 	for _, x := range  matchToList(mypkg, mylist) {
 		if x.extendedSyntax {
 			if x.Operator == "=*" {
@@ -1722,15 +1723,15 @@ func bestMatchToList(mypkg *PkgStr, mylist []*Atom) *Atom {
 				mypkgCpv = mypkg.cpv
 			}
 			if mypkgCpv == nil {
-				mypkgCpv = NewPkgStr(RemoveSlot(mypkg.string), nil, nil, "", "", "", 0, 0, "", 0, nil)
+				mypkgCpv = versions.NewPkgStr(RemoveSlot(mypkg.string), nil, nil, "", "", "", 0, 0, "", 0, nil)
 			}
 			if bestm.cpv == mypkgCpv || bestm.cpv == x.cpv {
 			} else if x.cpv == mypkgCpv {
 				bestm = x
 			} else {
-				cpvList := []*PkgStr{bestm.cpv, mypkgCpv, x.cpv}
+				cpvList := []*versions.PkgStr{bestm.cpv, mypkgCpv, x.cpv}
 				sort.Slice(cpvList, func(i, j int) bool {
-					b, _ := verCmp(cpvList[i].version, cpvList[j].version)
+					b, _ := versions.verCmp(cpvList[i].version, cpvList[j].version)
 					return b < 0
 				})
 				if cpvList[0] == mypkgCpv || cpvList[len(cpvList)-1] == mypkgCpv {
@@ -1746,9 +1747,9 @@ func bestMatchToList(mypkg *PkgStr, mylist []*Atom) *Atom {
 
 }
 
-func matchFromList(mydep *Atom, candidateList []*PkgStr) []*PkgStr {
+func matchFromList(mydep *Atom, candidateList []*versions.PkgStr) []*versions.PkgStr {
 	if len(candidateList) == 0 {
-		return []*PkgStr{}
+		return []*versions.PkgStr{}
 	}
 	mydepA := mydep
 	if "!" == mydep.value[:1] {
@@ -1763,13 +1764,13 @@ func matchFromList(mydep *Atom, candidateList []*PkgStr) []*PkgStr {
 	}
 
 	mycpv := mydepA.cpv
-	mycpvCps := CatPkgSplit(mycpv.string, 0, "")
+	mycpvCps := versions.CatPkgSplit(mycpv.string, 0, "")
 	//slot      := mydepA.slot
 	buildId := mydepA.buildId
 
 	_, _, ver, rev := "", "", "", ""
 	if mycpvCps == [4]string{} {
-		cp := catsplit(mycpv.string)
+		cp := versions.catsplit(mycpv.string)
 		_ = cp[0]
 		_ = cp[1]
 		ver = ""
@@ -1788,16 +1789,16 @@ func matchFromList(mydep *Atom, candidateList []*PkgStr) []*PkgStr {
 		if operator == "" {
 			util.WriteMsg(fmt.Sprintf("!!! Invalid Atom: %s\n", mydep.value), -1, nil)
 		}
-		return []*PkgStr{}
+		return []*versions.PkgStr{}
 	} else {
 		operator = ""
 	}
-	mylist := []*PkgStr{}
+	mylist := []*versions.PkgStr{}
 	if mydepA.extendedSyntax {
 		for _, x := range  candidateList {
 			cp := x.cp
 			if cp == "" {
-				mysplit := CatPkgSplit(RemoveSlot(x.string), 1, "")
+				mysplit := versions.CatPkgSplit(RemoveSlot(x.string), 1, "")
 				if mysplit != [4]string{} {
 					cp = mysplit[0] + "/" + mysplit[1]
 				}
@@ -1811,12 +1812,12 @@ func matchFromList(mydep *Atom, candidateList []*PkgStr) []*PkgStr {
 		}
 		if len(mylist) > 0 && mydepA.Operator == "=*" {
 			candidateList = mylist
-			mylist = []*PkgStr{}
+			mylist = []*versions.PkgStr{}
 			ver = mydepA.version[1 : len(mydepA.version)-1]
 			for _, x := range  candidateList {
 				xVer := x.version
 				if xVer == "" {
-					xs := CatPkgSplit(RemoveSlot(x.string), 1, "")
+					xs := versions.CatPkgSplit(RemoveSlot(x.string), 1, "")
 					if xs == [4]string{} {
 						continue
 					}
@@ -1831,7 +1832,7 @@ func matchFromList(mydep *Atom, candidateList []*PkgStr) []*PkgStr {
 		for _, x := range  candidateList {
 			cp := x.cp
 			if cp == "" {
-				mysplit := CatPkgSplit(RemoveSlot(x.string), 1, "")
+				mysplit := versions.CatPkgSplit(RemoveSlot(x.string), 1, "")
 				if mysplit != [4]string{} {
 					cp = mysplit[0] + "/" + mysplit[1]
 				}
@@ -1847,7 +1848,7 @@ func matchFromList(mydep *Atom, candidateList []*PkgStr) []*PkgStr {
 		for _, x := range  candidateList {
 			xcpv := x.cpv
 			if xcpv == nil {
-				xcpv = &PkgStr{string: RemoveSlot(x.string)}
+				xcpv = &versions.PkgStr{string: RemoveSlot(x.string)}
 			}
 			if !cpvequal(xcpv.string, mycpv.string) {
 				continue
@@ -1871,7 +1872,7 @@ func matchFromList(mydep *Atom, candidateList []*PkgStr) []*PkgStr {
 		for _, x := range  candidateList {
 			pkg := x
 			if pkg.cp == "" {
-				pkg = NewPkgStr(RemoveSlot(x.string), nil, nil, "", "", "", 0, 0, "", 0, nil)
+				pkg = versions.NewPkgStr(RemoveSlot(x.string), nil, nil, "", "", "", 0, 0, "", 0, nil)
 			}
 			xs := pkg.cpvSplit
 			myver := strings.TrimPrefix(xs[2], "0")
@@ -1895,7 +1896,7 @@ func matchFromList(mydep *Atom, candidateList []*PkgStr) []*PkgStr {
 		for _, x := range  candidateList {
 			xs := x.cpvSplit
 			if xs == [4]string{} {
-				xs = CatPkgSplit(RemoveSlot(x.string), 1, "")
+				xs = versions.CatPkgSplit(RemoveSlot(x.string), 1, "")
 			}
 			if xs == [4]string{} {
 				//raise InvalidData(x)
@@ -1912,13 +1913,13 @@ func matchFromList(mydep *Atom, candidateList []*PkgStr) []*PkgStr {
 		for _, x := range  candidateList {
 			pkg := x
 			if x.cp == "" {
-				pkg = NewPkgStr(RemoveSlot(x.string), nil, nil, "", "", "", 0, 0, "", 0, nil)
+				pkg = versions.NewPkgStr(RemoveSlot(x.string), nil, nil, "", "", "", 0, 0, "", 0, nil)
 			}
 
 			if pkg.cp != mydepA.cp {
 				continue
 			}
-			result, err := verCmp(pkg.version, mydepA.version)
+			result, err := versions.verCmp(pkg.version, mydepA.version)
 			if err != nil {
 				util.WriteMsg(fmt.Sprintf("\nInvalid package name: %v\n", x), -1, nil)
 				//raise
@@ -1949,13 +1950,13 @@ func matchFromList(mydep *Atom, candidateList []*PkgStr) []*PkgStr {
 
 	if mydepA.slot != "" {
 		candidateList = mylist
-		mylist = []*PkgStr{}
+		mylist = []*versions.PkgStr{}
 		for _, x := range  candidateList {
 			xPkg := x
 			if xPkg.cpv == nil {
 				xslot := depGetslot(x.string)
 				if xslot != "" {
-					xPkg = NewPkgStr(RemoveSlot(x.string), nil, nil, "", "", xslot, 0, 0, "", 0, nil)
+					xPkg = versions.NewPkgStr(RemoveSlot(x.string), nil, nil, "", "", xslot, 0, 0, "", 0, nil)
 				} else {
 					continue
 				}
@@ -1977,7 +1978,7 @@ func matchFromList(mydep *Atom, candidateList []*PkgStr) []*PkgStr {
 
 	if mydepA.unevaluatedAtom.Use != nil {
 		candidateList = mylist
-		mylist = []*PkgStr{}
+		mylist = []*versions.PkgStr{}
 		for _, x := range  candidateList {
 			//Use = getattr(x, "Use", None)
 			//if Use != nil{
@@ -2015,13 +2016,13 @@ func matchFromList(mydep *Atom, candidateList []*PkgStr) []*PkgStr {
 
 	if mydepA.repo != "" {
 		candidateList = mylist
-		mylist = []*PkgStr{}
+		mylist = []*versions.PkgStr{}
 		for _, x := range  candidateList {
 			repo := x.repo
 			if repo == "" {
 				repo = DepGetrepo(x.string)
 			}
-			if repo != "" && repo != unknownRepo && repo != mydepA.repo {
+			if repo != "" && repo != versions.unknownRepo && repo != mydepA.repo {
 				continue
 			}
 			mylist = append(mylist, x)
@@ -2266,7 +2267,8 @@ if!(len(pkgs)>0 || len(mychoices) > 0) {
 }
 
 a := []string{}
-for pkg in pkgs{
+for versions.pkg
+	in pkgs{
 virt_atom := "=" + pkg.cpv
 if x.unevaluated_atom.use{
 virt_atom += str(x.unevaluated_atom.use)
@@ -3030,22 +3032,22 @@ x:
 
 	traversed := map[string]bool{}
 	overlap := false
-	for cp
+	for versions.cp
 	in
 	overlap_graph{
-		if cp in traversed{
+		if versions.cp in traversed{
 		continue
 	}
 		disjunctions = map[string]bool{}
-		stack = []string{cp}
+		stack = []string{versions.cp}
 		for len(stack) > 0{
-		cp = stack.pop()
-		traversed.add(cp)
-		for _, x := range cp_map[cp]{
+		versions.cp = stack.pop()
+		traversed.add(versions.cp)
+		for _, x := range cp_map[versions.cp]{
 		disjunctions[id(x)] = x
 	}
-		for other_cp in itertools.chain(overlap_graph.child_nodes(cp),
-		overlap_graph.parent_nodes(cp)){
+		for other_cp in itertools.chain(overlap_graph.child_nodes(versions.cp),
+		overlap_graph.parent_nodes(versions.cp)){
 		if other_cp!in traversed{
 		stack = append(stack, other_cp)
 	}

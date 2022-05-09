@@ -11,6 +11,7 @@ import (
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/versions"
 	"os"
 	"os/user"
 	"path"
@@ -103,9 +104,9 @@ type Config struct {
 	locked                                                                                                          int
 	acceptChostRe                                                                                                   *regexp.Regexp
 	penv, modifiedkeys                                                                                              []string
-	mycpv                                                                                                           *PkgStr
+	mycpv                                                                                                           *versions.PkgStr
 	setcpvArgsHash                                                                                                  struct {
-		cpv  *PkgStr
+		cpv  *versions.PkgStr
 		mydb *vardbapi
 	}
 	sonameProvided                                                                                                                       map[*sonameAtom]bool
@@ -373,7 +374,7 @@ func (c *Config) reset(keeping_pkg int) {
 	if keeping_pkg == 0 {
 		c.mycpv = nil
 		c.setcpvArgsHash = struct {
-			cpv  *PkgStr
+			cpv  *versions.PkgStr
 			mydb *vardbapi
 		}{}
 		c.puse = ""
@@ -390,7 +391,7 @@ func (c *Config) reset(keeping_pkg int) {
 }
 
 // nil
-func (c *Config) SetCpv(mycpv *PkgStr, mydb *vardbapi) {
+func (c *Config) SetCpv(mycpv *versions.PkgStr, mydb *vardbapi) {
 	if c.setCpvActive {
 		//AssertionError('setcpv recursion detected')
 	}
@@ -398,7 +399,7 @@ func (c *Config) SetCpv(mycpv *PkgStr, mydb *vardbapi) {
 	defer func() { c.setCpvActive = false }()
 	c.modifying()
 
-	var pkg *PkgStr = nil
+	var pkg *versions.PkgStr = nil
 	var explicitIUse map[string]bool = nil
 	var builtUse []string = nil
 	if mycpv == c.setcpvArgsHash.cpv && mydb == c.setcpvArgsHash.mydb {
@@ -409,10 +410,10 @@ func (c *Config) SetCpv(mycpv *PkgStr, mydb *vardbapi) {
 
 	hasChanged := false
 	c.mycpv = mycpv
-	s := catsplit(mycpv.string)
+	s := versions.catsplit(mycpv.string)
 	cat := s[0]
 	pf := s[1]
-	cp := cpvGetKey(mycpv.string, "")
+	cp := versions.cpvGetKey(mycpv.string, "")
 	cpvSlot := c.mycpv
 	pkgInternalUse := ""
 	pkgInternalUseList := []string{}
@@ -469,7 +470,7 @@ func (c *Config) SetCpv(mycpv *PkgStr, mydb *vardbapi) {
 		}
 		iUse = pkgConfigDict["IUSE"]
 		if pkg == nil {
-			c.mycpv = NewPkgStr(c.mycpv.string, pkgConfigDict, c, "", "", "", 0, 0, "", 0, nil)
+			c.mycpv = versions.NewPkgStr(c.mycpv.string, pkgConfigDict, c, "", "", "", 0, 0, "", 0, nil)
 			cpvSlot = c.mycpv
 		} else {
 			cpvSlot = pkg
@@ -1085,50 +1086,50 @@ func (c *Config) getImplicitIuse() map[string]bool {
 	return iuseImplicit
 }
 
-func (c *Config) _getUseMask(pkg *PkgStr, stable *bool) map[*Atom]string {
+func (c *Config) _getUseMask(pkg *versions.PkgStr, stable *bool) map[*Atom]string {
 	return c.useManager.getUseMask(pkg, stable)
 }
 
-func (c *Config) _getUseForce(pkg *PkgStr, stable *bool) map[*Atom]string {
+func (c *Config) _getUseForce(pkg *versions.PkgStr, stable *bool) map[*Atom]string {
 	return c.useManager.getUseForce(pkg, stable)
 }
 
-func (c *Config) _getMaskAtom(cpv *PkgStr, metadata map[string]string) *Atom {
+func (c *Config) _getMaskAtom(cpv *versions.PkgStr, metadata map[string]string) *Atom {
 	return c.maskManager().getMaskAtom(cpv, metadata["SLOT"], metadata["repository"])
 }
 
-func (c *Config) _getRawMaskAtom(cpv *PkgStr, metadata map[string]string) *Atom {
+func (c *Config) _getRawMaskAtom(cpv *versions.PkgStr, metadata map[string]string) *Atom {
 	return c.maskManager().getRawMaskAtom(cpv, metadata["SLOT"], metadata["repository"])
 }
 
-func (c *Config) isStable(pkg *PkgStr) bool {
+func (c *Config) isStable(pkg *versions.PkgStr) bool {
 	return c.keywordsManager().isStable(pkg, c.ValueDict["ACCEPT_KEYWORDS"], c.configDict["backupenv"]["ACCEPT_KEYWORDS"])
 }
 
-func (c *Config) _getKeywords(cpv *PkgStr, metadata map[string]string) map[*Atom]string {
+func (c *Config) _getKeywords(cpv *versions.PkgStr, metadata map[string]string) map[*Atom]string {
 	return c.keywordsManager().getKeywords(cpv, metadata["SLOT"], metadata["KEYWORDS"], metadata["repository"])
 }
 
-func (c *Config) _getMissingKeywords(cpv *PkgStr, metadata map[string]string) map[*Atom]string {
+func (c *Config) _getMissingKeywords(cpv *versions.PkgStr, metadata map[string]string) map[*Atom]string {
 	backupedAcceptKeywords := c.configDict["backupenv"]["ACCEPT_KEYWORDS"]
 	globalAcceptKeywords := c.ValueDict["ACCEPT_KEYWORDS"]
 	return c.keywordsManager().GetMissingKeywords(cpv, metadata["SLOT"], metadata["KEYWORDS"], metadata["repository"], globalAcceptKeywords, backupedAcceptKeywords)
 }
 
-func (c *Config) _getRawMissingKeywords(cpv *PkgStr, metadata map[string]string) map[*Atom]string {
+func (c *Config) _getRawMissingKeywords(cpv *versions.PkgStr, metadata map[string]string) map[*Atom]string {
 	return c.keywordsManager().getRawMissingKeywords(cpv, metadata["SLOT"], metadata["KEYWORDS"], metadata["repository"], c.ValueDict["ACCEPT_KEYWORDS"])
 }
 
-func (c *Config) _getPKeywords(cpv *PkgStr, metadata map[string]string) []string {
+func (c *Config) _getPKeywords(cpv *versions.PkgStr, metadata map[string]string) []string {
 	globalAcceptKeywords := c.ValueDict["ACCEPT_KEYWORDS"]
 	return c.keywordsManager().getPKeywords(cpv, metadata["SLOT"], metadata["repository"], globalAcceptKeywords)
 }
 
-func (c *Config) _getMissingLicenses(cpv *PkgStr, metadata map[string]string) []string {
+func (c *Config) _getMissingLicenses(cpv *versions.PkgStr, metadata map[string]string) []string {
 	return c.licenseManager.getMissingLicenses(cpv, metadata["USE"], metadata["LICENSE"], metadata["SLOT"], metadata["repository"])
 }
 
-func (c *Config) _getMissingProperties(cpv *PkgStr, metadata map[string]string) []string {
+func (c *Config) _getMissingProperties(cpv *versions.PkgStr, metadata map[string]string) []string {
 
 	accept_properties := []string{}
 	for k := range c.acceptProperties{
@@ -1138,7 +1139,7 @@ func (c *Config) _getMissingProperties(cpv *PkgStr, metadata map[string]string) 
 	//	cpv.slot
 	//	except AttributeError:
 	//	cpv = _pkg_str(cpv, metadata=metadata, settings=c)
-	cp := cpvGetKey(cpv.string, "")
+	cp := versions.cpvGetKey(cpv.string, "")
 	cpdict := c.ppropertiesdict[cp]
 	if len(cpdict) > 0 {
 		pproperties_list := orderedByAtomSpecificity(cpdict, cpv, "")
@@ -1192,7 +1193,7 @@ func (c *Config) _getMissingProperties(cpv *PkgStr, metadata map[string]string) 
 	return ret
 }
 
-func (c *Config) _getMissingRestrict(cpv *PkgStr, metadata map[string]string) []string {
+func (c *Config) _getMissingRestrict(cpv *versions.PkgStr, metadata map[string]string) []string {
 
 	accept_restrict := []string{}
 	for _, k := range c.acceptRestrict{
@@ -1202,7 +1203,7 @@ func (c *Config) _getMissingRestrict(cpv *PkgStr, metadata map[string]string) []
 	//	cpv.slot
 	//	except AttributeError:
 	//	cpv = _pkg_str(cpv, metadata=metadata, settings=c)
-	cp := cpvGetKey(cpv.string, "")
+	cp := versions.cpvGetKey(cpv.string, "")
 	cpdict := c.pacceptRestrict[cp]
 	if len(cpdict) > 0 {
 		paccept_restrict_list := orderedByAtomSpecificity(cpdict, cpv, "")
@@ -1845,7 +1846,7 @@ func (c *Config) selinux_enabled() bool {
 var eapiCache = map[string]bool{}
 
 // nil, nil, "", nil, "","","","",true, nil, false, nil
-func NewConfig(clone *Config, mycpv *PkgStr, configProfilePath string, configIncrementals []string, configRoot, targetRoot, sysroot, eprefix string, localConfig bool, env map[string]string, unmatchedRemoval bool, repositories *repoConfigLoader) *Config {
+func NewConfig(clone *Config, mycpv *versions.PkgStr, configProfilePath string, configIncrementals []string, configRoot, targetRoot, sysroot, eprefix string, localConfig bool, env map[string]string, unmatchedRemoval bool, repositories *repoConfigLoader) *Config {
 	eapiCache = make(map[string]bool)
 	tolerant := initializingGlobals == nil
 	c := &Config{
@@ -2523,7 +2524,7 @@ func NewConfig(clone *Config, mycpv *PkgStr, configProfilePath string, configInc
 				pkgProvidedLines = p
 				continue
 			}
-			cpvr := CatPkgSplit(pkgProvidedLines[x], 1, "")
+			cpvr := versions.CatPkgSplit(pkgProvidedLines[x], 1, "")
 			if cpvr == [4]string{} || cpvr[0] == "null" {
 				util.WriteMsg("Invalid package name in package.provided: "+pkgProvidedLines[x]+"\n", -1, nil)
 				hasInvalidData = true
@@ -2542,11 +2543,11 @@ func NewConfig(clone *Config, mycpv *PkgStr, configProfilePath string, configInc
 		}
 		c.pprovideddict = map[string][]string{}
 		for _, x := range pkgProvidedLines {
-			x_split := CatPkgSplit(x, 1, "")
+			x_split := versions.CatPkgSplit(x, 1, "")
 			if x_split == [4]string{} {
 				continue
 			}
-			mycatpkg := cpvGetKey(x, "")
+			mycatpkg := versions.cpvGetKey(x, "")
 			if _, ok := c.pprovideddict[mycatpkg]; ok {
 				c.pprovideddict[mycatpkg] = append(c.pprovideddict[mycatpkg], x)
 			} else {
@@ -2744,8 +2745,8 @@ func (f *featuresSet) remove(k string) {
 
 func (f *featuresSet) Discard(k string) {
 	f.settings.modifying()
-	f.settings.featuresOverrides = append(f.settings.featuresOverrides, "-"+v)
-	if f.Features[v] {
+	f.settings.featuresOverrides = append(f.settings.featuresOverrides, "-"+versions.v)
+	if f.Features[versions.v] {
 		delete(f.Features, k)
 	}
 	f.syncEnvVar()
@@ -3139,7 +3140,7 @@ func NewLocationsManager(configRoot, eprefix, configProfilePath string, localCon
 
 type useManager struct {
 	userConfig                                                                                         bool
-	isStable                                                                                           func(*PkgStr) bool
+	isStable                                                                                           func(*versions.PkgStr) bool
 	repoUsemaskDict, repoUsestablemaskDict, repoUseforceDict, repoUsestableforceDict                   map[string][]string
 	repoPusemaskDict, repoPusestablemaskDict, repoPuseforceDict, repoPusestableforceDict, repoPuseDict map[string]map[string]map[*Atom][]string
 	usemaskList, usestablemaskList, useforceList, usestableforceList                                   [][]string
@@ -3421,7 +3422,7 @@ func (u *useManager) parseRepositoryPackageusealiases(repositorires *repoConfigL
 	return ret
 }
 
-func (u *useManager) _isStable(pkg *PkgStr) bool {
+func (u *useManager) _isStable(pkg *versions.PkgStr) bool {
 	if u.userConfig {
 		return pkg.stable()
 	}
@@ -3431,7 +3432,7 @@ func (u *useManager) _isStable(pkg *PkgStr) bool {
 	return u.isStable(pkg)
 }
 
-func (u *useManager) getUseMask(pkg *PkgStr, stable *bool) map[*Atom]string { //nn
+func (u *useManager) getUseMask(pkg *versions.PkgStr, stable *bool) map[*Atom]string { //nn
 	if pkg == nil {
 		p := [][][2]string{}
 		for _, v := range u.usemaskList {
@@ -3449,7 +3450,7 @@ func (u *useManager) getUseMask(pkg *PkgStr, stable *bool) map[*Atom]string { //
 		*stable = u.isStable(pkg)
 	}
 	useMask := [][]string{}
-	if pkg.repo != "" && pkg.repo != unknownRepo {
+	if pkg.repo != "" && pkg.repo != versions.unknownRepo {
 		repos := []string{}
 		for range u.repositories.getitem(pkg.repo).masters {
 		}
@@ -3512,7 +3513,7 @@ func (u *useManager) getUseMask(pkg *PkgStr, stable *bool) map[*Atom]string { //
 	return util.stackLists(p, 1, false, false, false, false)
 }
 
-func (u *useManager) getUseForce(pkg *PkgStr, stable *bool) map[*Atom]string { //n
+func (u *useManager) getUseForce(pkg *versions.PkgStr, stable *bool) map[*Atom]string { //n
 
 	if pkg == nil {
 		p := [][][2]string{}
@@ -3531,7 +3532,7 @@ func (u *useManager) getUseForce(pkg *PkgStr, stable *bool) map[*Atom]string { /
 		*stable = u.isStable(pkg)
 	}
 	useForce := [][]string{}
-	if pkg.repo != "" && pkg.repo != unknownRepo {
+	if pkg.repo != "" && pkg.repo != versions.unknownRepo {
 		repos := []string{}
 		for range u.repositories.getitem(pkg.repo).masters {
 		}
@@ -3594,7 +3595,7 @@ func (u *useManager) getUseForce(pkg *PkgStr, stable *bool) map[*Atom]string { /
 	return util.stackLists(p, 1, false, false, false, false)
 }
 
-func (u *useManager) getUseAliases(pkg *PkgStr) map[string][]string {
+func (u *useManager) getUseAliases(pkg *versions.PkgStr) map[string][]string {
 	if pkg.eapi != "" && !eapi.eapiHasUseAliases(pkg.eapi) {
 		return map[string][]string{}
 	}
@@ -3602,11 +3603,11 @@ func (u *useManager) getUseAliases(pkg *PkgStr) map[string][]string {
 	if cp == "" {
 		slot := depGetslot(pkg.string)
 		repo := DepGetrepo(pkg.string)
-		pkg := NewPkgStr(RemoveSlot(pkg.string), nil, nil, "", repo, slot, 0, 0, "", 0, nil)
+		pkg := versions.NewPkgStr(RemoveSlot(pkg.string), nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 		cp = pkg.cp
 	}
 	useAliases := map[string][]string{}
-	if pkg.repo != "" && pkg.repo != unknownRepo {
+	if pkg.repo != "" && pkg.repo != versions.unknownRepo {
 		repos := []string{}
 		for _, repo := range u.repositories.Prepos[pkg.repo].masters {
 			repos = append(repos, repo)
@@ -3685,12 +3686,12 @@ func (u *useManager) getUseAliases(pkg *PkgStr) map[string][]string {
 	return useAliases
 }
 
-func (u *useManager) getPUSE(pkg *PkgStr) string {
+func (u *useManager) getPUSE(pkg *versions.PkgStr) string {
 	cp := pkg.cp
 	if cp == "" {
 		slot := depGetslot(pkg.string)
 		repo := DepGetrepo(pkg.string)
-		pkg := NewPkgStr(RemoveSlot(pkg.string), nil, nil, "", repo, slot, 0, 0, "", 0, nil)
+		pkg := versions.NewPkgStr(RemoveSlot(pkg.string), nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 		cp = pkg.cp
 	}
 	ret := ""
@@ -3734,7 +3735,7 @@ func (u *useManager) extract_global_USE_changes(old string) string { //""
 	return ret
 }
 
-func NewUseManager(repositories *repoConfigLoader, profiles []*profileNode, absUserConfig string, isStable func(*PkgStr) bool, userConfig bool) *useManager { // t
+func NewUseManager(repositories *repoConfigLoader, profiles []*profileNode, absUserConfig string, isStable func(*versions.PkgStr) bool, userConfig bool) *useManager { // t
 	u := &useManager{}
 	u.userConfig = userConfig
 	u.isStable = isStable
@@ -3771,16 +3772,16 @@ type maskManager struct {
 	_punmaskdict, _pmaskdict, _pmaskdict_raw map[string][]*Atom
 }
 
-func (m *maskManager) _getMaskAtom(cpv *PkgStr, slot, repo string, unmask_atoms []*Atom) *Atom { // nil
-	var pkg *PkgStr = nil
+func (m *maskManager) _getMaskAtom(cpv *versions.PkgStr, slot, repo string, unmask_atoms []*Atom) *Atom { // nil
+	var pkg *versions.PkgStr = nil
 	if cpv.slot == "" {
-		pkg = NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
+		pkg = versions.NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 	} else {
 		pkg = cpv
 	}
 	maskAtoms := m._punmaskdict[pkg.cp]
 	if len(maskAtoms) > 0 {
-		pkgList := []*PkgStr{pkg}
+		pkgList := []*versions.PkgStr{pkg}
 		for _, x := range maskAtoms {
 			if len(matchFromList(x, pkgList)) == 0 {
 				continue
@@ -3798,17 +3799,17 @@ func (m *maskManager) _getMaskAtom(cpv *PkgStr, slot, repo string, unmask_atoms 
 	return nil
 }
 
-func (m *maskManager) getMaskAtom(cpv *PkgStr, slot, repo string) *Atom {
-	var pkg *PkgStr = nil
+func (m *maskManager) getMaskAtom(cpv *versions.PkgStr, slot, repo string) *Atom {
+	var pkg *versions.PkgStr = nil
 	if cpv.slot == "" {
-		pkg = NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
+		pkg = versions.NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 	} else {
 		pkg = cpv
 	}
 	return m._getMaskAtom(pkg, slot, repo, m._punmaskdict[pkg.cp])
 }
 
-func (m *maskManager) getRawMaskAtom(cpv *PkgStr, slot, repo string) *Atom {
+func (m *maskManager) getRawMaskAtom(cpv *versions.PkgStr, slot, repo string) *Atom {
 	return m._getMaskAtom(cpv, slot, repo, nil)
 }
 
@@ -3953,7 +3954,7 @@ type keywordsManager struct {
 	pkeywordsDict                  map[string]map[*Atom][]string
 }
 
-func (k *keywordsManager) getKeywords(cpv *PkgStr, slot, keywords, repo string) map[*Atom]string {
+func (k *keywordsManager) getKeywords(cpv *versions.PkgStr, slot, keywords, repo string) map[*Atom]string {
 	pkg := cpv
 	cp := pkg.cp
 	kw := [][][2]string{{}}
@@ -3980,7 +3981,7 @@ func (k *keywordsManager) getKeywords(cpv *PkgStr, slot, keywords, repo string) 
 	return util.stackLists(kw, 1, false, false, false, false)
 }
 
-func (k *keywordsManager) isStable(pkg *PkgStr, globalAcceptKeywords, backupedAcceptKeywords string) bool {
+func (k *keywordsManager) isStable(pkg *versions.PkgStr, globalAcceptKeywords, backupedAcceptKeywords string) bool {
 	myGroups := k.getKeywords(pkg, "", pkg.metadata["KEYWORDS"], "")
 	pGroups := strings.Fields(globalAcceptKeywords)
 	unmaskGroups := k.getPKeywords(pkg, "", "", globalAcceptKeywords)
@@ -4007,7 +4008,7 @@ func (k *keywordsManager) isStable(pkg *PkgStr, globalAcceptKeywords, backupedAc
 	return len(k._getMissingKeywords(pkg, pgroups, unstable)) > 0
 }
 
-func (k *keywordsManager) GetMissingKeywords(cpv *PkgStr, slot, keywords, repo, globalAcceptKeywords, backupedAcceptKeywords string) map[*Atom]string {
+func (k *keywordsManager) GetMissingKeywords(cpv *versions.PkgStr, slot, keywords, repo, globalAcceptKeywords, backupedAcceptKeywords string) map[*Atom]string {
 	mygroups := k.getKeywords(cpv, slot, keywords, repo)
 	pGroups := strings.Fields(globalAcceptKeywords)
 	unmaskGroups := k.getPKeywords(cpv, slot, repo, globalAcceptKeywords)
@@ -4024,7 +4025,7 @@ func (k *keywordsManager) GetMissingKeywords(cpv *PkgStr, slot, keywords, repo, 
 	return k._getMissingKeywords(cpv, pgroups, mygroups)
 }
 
-func (k *keywordsManager) getRawMissingKeywords(cpv *PkgStr, slot, keywords, repo, globalAcceptKeywords string) map[*Atom]string {
+func (k *keywordsManager) getRawMissingKeywords(cpv *versions.PkgStr, slot, keywords, repo, globalAcceptKeywords string) map[*Atom]string {
 	mygroups := k.getKeywords(cpv, slot, keywords, repo)
 	pGroups := strings.Fields(globalAcceptKeywords)
 	pgroups := map[string]bool{}
@@ -4052,7 +4053,7 @@ func (k *keywordsManager) getEgroups(egroups, mygroups []string) map[string]bool
 	return incPGroups
 }
 
-func (k *keywordsManager) _getMissingKeywords(cpv *PkgStr, pgroups map[string]bool, mygroups map[*Atom]string) map[*Atom]string {
+func (k *keywordsManager) _getMissingKeywords(cpv *versions.PkgStr, pgroups map[string]bool, mygroups map[*Atom]string) map[*Atom]string {
 	match := false
 	hasstable := false
 	hastesting := false
@@ -4093,7 +4094,7 @@ func (k *keywordsManager) _getMissingKeywords(cpv *PkgStr, pgroups map[string]bo
 	}
 }
 
-func (k *keywordsManager) getPKeywords(cpv *PkgStr, slot, repo, globalAcceptKeywords string) []string {
+func (k *keywordsManager) getPKeywords(cpv *versions.PkgStr, slot, repo, globalAcceptKeywords string) []string {
 	pgroups := strings.Fields(globalAcceptKeywords)
 	cp := cpv.cp
 	unmaskGroups := []string{}
@@ -4312,13 +4313,13 @@ func (l *licenseManager) _expandLicenseToken(token string, traversedGroups map[s
 	return rValue
 }
 
-func (l *licenseManager) _getPkgAcceptLicense(cpv *PkgStr, slot, repo string) []string {
+func (l *licenseManager) _getPkgAcceptLicense(cpv *versions.PkgStr, slot, repo string) []string {
 	acceptLicense := l.acceptLicense
-	cp := cpvGetKey(cpv.string, "")
+	cp := versions.cpvGetKey(cpv.string, "")
 	cpdict := l._plicensedict[cp]
 	if len(cpdict) > 0 {
 		if cpv.slot == "" {
-			cpv = NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
+			cpv = versions.NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 		}
 		plicenceList := orderedByAtomSpecificity(cpdict, cpv, "")
 		if len(plicenceList) > 0 {
@@ -4331,7 +4332,7 @@ func (l *licenseManager) _getPkgAcceptLicense(cpv *PkgStr, slot, repo string) []
 	return acceptLicense
 }
 
-func (l *licenseManager) getPrunnedAcceptLicense(cpv *PkgStr, use map[string]bool, lic, slot, repo string) string {
+func (l *licenseManager) getPrunnedAcceptLicense(cpv *versions.PkgStr, use map[string]bool, lic, slot, repo string) string {
 	licenses := map[string]bool{}
 	for _, u := range useReduce(lic, use, nil, false, nil, false, "", false, true, nil, nil, false) {
 		licenses[u] = true
@@ -4362,7 +4363,7 @@ func (l *licenseManager) getPrunnedAcceptLicense(cpv *PkgStr, use map[string]boo
 	return strings.Join(licensesS, " ")
 }
 
-func (l *licenseManager) getMissingLicenses(cpv *PkgStr, use, lic, slot, repo string) []string {
+func (l *licenseManager) getMissingLicenses(cpv *versions.PkgStr, use, lic, slot, repo string) []string {
 	licenses := map[string]bool{}
 	for _, u := range useReduce(lic, nil, nil, true, nil, false, "", false, true, nil, nil, false) {
 		licenses[u] = true
@@ -4590,7 +4591,7 @@ func (v *virtualManager) add_depgraph_virtuals(mycpv string, virts []string) {
 	}
 
 	modified := false
-	cp, _ := NewAtom(cpvGetKey(mycpv, ""), nil, false, nil, nil, "", nil, nil)
+	cp, _ := NewAtom(versions.cpvGetKey(mycpv, ""), nil, false, nil, nil, "", nil, nil)
 	for _, virt := range virts {
 		a, err := NewAtom(virt, nil, false, nil, nil, "", nil, nil)
 		if err != nil {
@@ -4689,8 +4690,8 @@ func validateCmdVar(v string) (bool, []string) {
 	return !invalid, vSplit
 }
 
-func orderedByAtomSpecificity(cpdict map[*Atom][]string, pkg *PkgStr, repo string) [][]string {
-	if pkg.repo == "" && repo != "" && repo != unknownRepo {
+func orderedByAtomSpecificity(cpdict map[*Atom][]string, pkg *versions.PkgStr, repo string) [][]string {
+	if pkg.repo == "" && repo != "" && repo != versions.unknownRepo {
 		//pkg = pkg +repoSeparator+repo
 	}
 	results := [][]string{}
@@ -4723,8 +4724,8 @@ func orderedByAtomSpecificity(cpdict map[*Atom][]string, pkg *PkgStr, repo strin
 	return results
 }
 
-func orderedByAtomSpecificity2(cpdict map[*Atom]map[string][]string, pkg *PkgStr, repo string) []map[string][]string {
-	if pkg.repo == "" && repo != "" && repo != unknownRepo {
+func orderedByAtomSpecificity2(cpdict map[*Atom]map[string][]string, pkg *versions.PkgStr, repo string) []map[string][]string {
+	if pkg.repo == "" && repo != "" && repo != versions.unknownRepo {
 		//pkg = pkg +repoSeparator+repo
 	}
 	results := []map[string][]string{}

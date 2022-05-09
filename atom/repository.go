@@ -3,6 +3,7 @@ package atom
 import (
 	"bufio"
 	"fmt"
+	"github.com/ppphp/portago/pkg/checksum"
 	"github.com/ppphp/portago/pkg/const"
 	eapi2 "github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/myutil"
@@ -1289,7 +1290,7 @@ func parseLayoutConf(repoLocation, repoName string) (map[string][]string, map[st
 		}
 		unsupported_hashes := []string{}
 		for _, v := range manifestHashes {
-			if !getValidChecksumKeys()[v] {
+			if !checksum.getValidChecksumKeys()[v] {
 				unsupported_hashes = append(unsupported_hashes, v)
 			}
 		}

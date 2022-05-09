@@ -8,6 +8,7 @@ import (
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/versions"
 	"github.com/ppphp/shlex"
 	"github.com/spf13/pflag"
 	"golang.org/x/crypto/ssh/terminal"
@@ -139,7 +140,7 @@ func main() {
 	if eapi == "" {
 		eapi = "0"
 	}
-	if atom.CatPkgSplit(cpv, 1, eapi) == [4]string{} {
+	if versions.CatPkgSplit(cpv, 1, eapi) == [4]string{} {
 		err(fmt.Sprintf("%s: %s: does not follow correct package syntax", ebuild, cpv))
 	}
 	print(vdb_path)

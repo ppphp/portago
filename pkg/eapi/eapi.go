@@ -164,13 +164,13 @@ func eapiIsSupported(eapi string) bool {
 	return supportedEapis[strings.TrimSpace(eapi)]
 }
 
-type eapiAttrs struct {
+type EapiAttrs struct {
 	allowsPackageProvided, bdepend, broot, exportsAa, exportsEbuildPhaseFunc,
 	exportsEclassdir, exportsKv, exportsMergeType, exportsPortdir,
 	exportsReplaceVars, featureFlagTest, idepend, iuseDefaults,
 	iuseEffective, posixishLocale, pathVariablesEndWithTrailingSlash,
 	prefix, repoDeps, requiredUse, requiredUseAtMostOneOf,
-	selectiveSrcUriRestriction, slotOperator, slotDeps, srcUriArrows,
+	selectiveSrcUriRestriction, SlotOperator, slotDeps, srcUriArrows,
 	strongBlocks, useDeps, useDepDefaults, emptyGroupsAlwaysTrue, sysroot bool
 }
 
@@ -211,10 +211,10 @@ func (e *Eapi) le(other *Eapi) bool {
 }
 
 // ""
-func GetEapiAttrs(eapi_str string) *eapiAttrs {
+func GetEapiAttrs(eapi_str string) EapiAttrs {
 	//logging.info("cache info: {}".format(_get_eapi_attrs.cache_info()))
 	if eapi_str == "" || !eapiIsSupported(eapi_str) {
-		return &eapiAttrs{
+		return EapiAttrs{
 			true,
 			false,
 			true,
@@ -247,7 +247,7 @@ func GetEapiAttrs(eapi_str string) *eapiAttrs {
 		}
 	} else {
 		eapi := NewEapi(eapi_str)
-		return &eapiAttrs{
+		return EapiAttrs{
 			eapi.le(NewEapi("6")),
 			eapi.ge(NewEapi("7")),
 			eapi.ge(NewEapi("7")),

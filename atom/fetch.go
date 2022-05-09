@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/ppphp/configparser"
+	"github.com/ppphp/portago/pkg/checksum"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/data"
 	"github.com/ppphp/portago/pkg/myutil"
@@ -205,11 +206,11 @@ func _checksum_failure_temp_file(settings *Config, distdir, basename string) str
 			continue
 		}
 		//try:
-		temp_checksum := performMd5(temp_filename, false)
+		temp_checksum := checksum.performMd5(temp_filename, false)
 		//except FileNotFound:
 		//continue
 		if checksum == nil {
-			checksum = performMd5(filename, false)
+			checksum = checksum.performMd5(filename, false)
 		}
 		if string(checksum) == string(temp_checksum) {
 			syscall.Unlink(filename)
@@ -226,7 +227,7 @@ func _checksum_failure_temp_file(settings *Config, distdir, basename string) str
 
 // 1
 func _check_digests(filename string, digests map[string]string, show_errors int) bool {
-	verified_ok, reason0, reason1, reason2 := verifyAll(filename, digests, false, 0)
+	verified_ok, reason0, reason1, reason2 := checksum.verifyAll(filename, digests, false, 0)
 	if !verified_ok {
 		if show_errors != 0 {
 			util.WriteMsg(fmt.Sprintf("!!! Previously fetched"+
@@ -241,7 +242,7 @@ func _check_digests(filename string, digests map[string]string, show_errors int)
 }
 
 // 1, nil
-func _check_distfile(filename string, digests map[string]string, eout *output.eOutput, show_errors int, hash_filter *hashFilter) (bool, os.FileInfo) {
+func _check_distfile(filename string, digests map[string]string, eout *output.eOutput, show_errors int, hash_filter *checksum.hashFilter) (bool, os.FileInfo) {
 	if digests == nil {
 		digests = map[string]string{}
 	}
@@ -266,9 +267,9 @@ func _check_distfile(filename string, digests map[string]string, eout *output.eO
 			return false, st
 		}
 	} else {
-		digests = filterUnaccelaratedHashes(digests)
+		digests = checksum.filterUnaccelaratedHashes(digests)
 		if hash_filter != nil {
-			digests = applyHashFilter(digests, hash_filter)
+			digests = checksum.applyHashFilter(digests, hash_filter)
 		}
 		if _check_digests(filename, digests, show_errors) {
 			eout.ebegin(fmt.Sprintf("%s %s ;-)", filepath.Base(filename), strings.Join(myutil.sortedmss(digests), " ")))
@@ -363,7 +364,7 @@ func NewFilenameHashLayout(algo, cutoffs string) *FilenameHashLayout {
 }
 
 func (f *FilenameHashLayout) get_path(filename string) string {
-	fnhash := string(checksumStr(filename, f.algo))
+	fnhash := string(checksum.checksumStr(filename, f.algo))
 	ret := ""
 	for _, c := range f.cutoffs {
 		//assert c%4 == 0
@@ -395,7 +396,7 @@ func (f *FilenameHashLayout) verify_args(args []string) bool {
 	if len(args) != 3 {
 		return false
 	}
-	if !getValidChecksumKeys()[args[1]] {
+	if !checksum.getValidChecksumKeys()[args[1]] {
 		return false
 	}
 	done := true
@@ -750,7 +751,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 		}
 	}
 
-	hash_filter := NewHashFilter(mysettings.ValueDict["PORTAGE_CHECKSUM_FILTER"])
+	hash_filter := checksum.NewHashFilter(mysettings.ValueDict["PORTAGE_CHECKSUM_FILTER"])
 	if hash_filter.trasparent {
 		hash_filter = nil
 	}
@@ -959,7 +960,7 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 	distdir_writable = can_fetch && fetch_to_ro == 0
 	failed_files := map[string]bool{}
 	restrict_fetch_msg := false
-	valid_hashes := myutil.CopyMapSB(getValidChecksumKeys())
+	valid_hashes := myutil.CopyMapSB(checksum.getValidChecksumKeys())
 	delete(valid_hashes, "size")
 
 	for myfile := range filedict {
@@ -1291,11 +1292,11 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 							cont = true
 							return
 						} else {
-							digests = filterUnaccelaratedHashes(mydigests[myfile])
+							digests = checksum.filterUnaccelaratedHashes(mydigests[myfile])
 							if hash_filter != nil {
-								digests = applyHashFilter(digests, hash_filter)
+								digests = checksum.applyHashFilter(digests, hash_filter)
 							}
-							verified_ok, r0, r1, r2 := verifyAll(download_path, digests, false, 0)
+							verified_ok, r0, r1, r2 := checksum.verifyAll(download_path, digests, false, 0)
 							if !verified_ok {
 								util.WriteMsg(
 									fmt.Sprintf("!!! Previously fetched file: '%s'\n", myfile), -1, nil)
@@ -1612,11 +1613,11 @@ func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
 								fetched = 1
 								continue
 							}
-							digests = filterUnaccelaratedHashes(mydigests[myfile])
+							digests = checksum.filterUnaccelaratedHashes(mydigests[myfile])
 							if hash_filter != nil {
-								digests = applyHashFilter(digests, hash_filter)
+								digests = checksum.applyHashFilter(digests, hash_filter)
 							}
-							verified_ok, r0, r1, r2 := verifyAll(download_path, digests)
+							verified_ok, r0, r1, r2 := checksum.verifyAll(download_path, digests)
 							if !verified_ok {
 								util.WriteMsg(fmt.Sprintf("!!! Fetched file: %s VERIFY FAILED!\n", myfile), -1, nil)
 								util.WriteMsg(fmt.Sprintf("!!! Reason: %s\n", r0), -1, nil)

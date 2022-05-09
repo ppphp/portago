@@ -1,4 +1,4 @@
-package atom
+package checksum
 
 import (
 	"encoding/hex"

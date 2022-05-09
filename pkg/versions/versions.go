@@ -1,8 +1,9 @@
-package atom
+package versions
 
 import (
 	"errors"
 	"fmt"
+	"github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/myutil"
 	"math/big"
@@ -15,38 +16,25 @@ const (
 	unknownRepo = "__unknown__"
 	slot        = `([\w+][\w+.-]*)`
 	cat         = `[\w+][\w+.-]*`
+	pkg         = `[\w+][\w+-]*?`
 	v           = `(?P<major>\d+)(?P<minors>(?P<minor>\.\d+)*)(?P<letter>[a-z]?)(?P<additional>(?P<suffix>_(?P<status>pre|p|beta|alpha|rc)\d*)*)`
 	rev         = `\d+`
 	vr          = v + "(?P<revision>-r(" + rev + "))?"
-	ver         = "^" + vr + "$"
+	cp          = "(" + cat + "/" + pkg + "(-" + vr + ")?)"
+	cpv         = "(" + cp + "-" + vr + ")"
+	pv          = "(?P<pn>" + pkg + "(?P<pn_inval>-" + vr + ")?)" + "-(?P<ver>" + v + ")(-r(?P<rev>" + rev + "))?"
 )
 
 var (
-	pkg = map[string]string{
-		"dots_disallowed_in_PN": `[\w+][\w+-]*?`,
-		"dots_allowed_in_PN":    `[\w+][\w+.-]*?`,
-	}
-	cp = map[string]string{
-		"dots_disallowed_in_PN": "(" + cat + "/" + pkg["dots_disallowed_in_PN"] + "(-" + vr + ")?)",
-		"dots_allowed_in_PN":    "(" + cat + "/" + pkg["dots_allowed_in_PN"] + "(-" + vr + ")?)",
-	}
-	cpv = map[string]string{
-		"dots_disallowed_in_PN": "(" + cp["dots_disallowed_in_PN"] + "-" + vr + ")",
-		"dots_allowed_in_PN":    "(" + cp["dots_allowed_in_PN"] + "-" + vr + ")",
-	}
-	pv = map[string]string{
-		"dots_disallowed_in_PN": "(?P<pn>" + pkg["dots_disallowed_in_PN"] + "(?P<pn_inval>-" + vr + ")?)" + "-(?P<ver>" + v + ")(-r(?P<rev>" + rev + "))?",
-		"dots_allowed_in_PN":    "(?P<pn>" + pkg["dots_allowed_in_PN"] + "(?P<pn_inval>-" + vr + ")?)" + "-(?P<ver>" + v + ")(-r(?P<rev>" + rev + "))?",
-	}
-	verRegexp      = regexp.MustCompile(ver)
+	verRegexp      = regexp.MustCompile(vr)
 	suffixRegexp   = regexp.MustCompile("^(alpha|beta|rc|pre|p)(\\d*)$")
+	suffix_value   = map[string]int{"pre": -2, "p": 0, "alpha": -4, "beta": -3, "rc": -1}
 	endversionKeys = []string{"pre", "p", "alpha", "beta", "rc"}
 
 	slotReCache = map[bool]*regexp.Regexp{}
-	pvReCache   = map[bool]*regexp.Regexp{}
 )
 
-func getSlotRe(eapiAttrs eapi.eapiAttrs) *regexp.Regexp {
+func getSlotRe(eapiAttrs eapi.EapiAttrs) *regexp.Regexp {
 
 	cacheKey := eapiAttrs.SlotOperator
 	slotRe, ok := slotReCache[cacheKey]
@@ -68,24 +56,14 @@ func getSlotRe(eapiAttrs eapi.eapiAttrs) *regexp.Regexp {
 	return slotRe
 }
 
-func getPvRe(eapiAttrs eapi.eapiAttrs) *regexp.Regexp {
+var pvRe *regexp.Regexp
 
-	cacheKey := eapiAttrs.DotsInPn
-	pvRe, ok := pvReCache[cacheKey]
-	if ok {
+func getPvRe(eapiAttrs eapi.EapiAttrs) *regexp.Regexp {
+	if pvRe != nil {
 		return pvRe
 	}
 
-	p := ""
-	if eapiAttrs.DotsInPn {
-		p = pv["dots_allowed_in_PN"]
-	} else {
-		p = pv["dots_disallowed_in_PN"]
-	}
-
-	pvRe = regexp.MustCompile("^" + p + "$")
-
-	pvReCache[cacheKey] = pvRe
+	pvRe = regexp.MustCompile("^" + pv + "$")
 	return pvRe
 }
 
@@ -145,7 +123,7 @@ func NewVersion(ver string) (*Version, error) {
 	if !verRegexp.MatchString(ver) {
 		return nil, fmt.Errorf("!!! syntax error in version: %s", ver)
 	}
-	major := myutil.getNamedRegexp(verRegexp, ver, "major")
+	major := myutil.GetNamedRegexp(verRegexp, ver, "major")
 	if major != "" {
 		v.Major.Exists = true
 		v.Major.Value = major
@@ -193,13 +171,13 @@ func verCmp(ver1, ver2 string) (int, error) {
 	list1 := []string{v1}
 	list2 := []string{v2}
 
-	if myutil.getNamedRegexp(verRegexp, ver1, "minors") != "" || myutil.getNamedRegexp(verRegexp, ver2, "minors") != "" {
-		g1 := myutil.getNamedRegexp(verRegexp, ver1, "minors")
+	if myutil.GetNamedRegexp(verRegexp, ver1, "minors") != "" || myutil.GetNamedRegexp(verRegexp, ver2, "minors") != "" {
+		g1 := myutil.GetNamedRegexp(verRegexp, ver1, "minors")
 		if len(g1) >= 1 {
 			g1 = g1[1:]
 		}
 		vlist1 := strings.Split(g1, ".")
-		g2 := myutil.getNamedRegexp(verRegexp, ver2, "minors")
+		g2 := myutil.GetNamedRegexp(verRegexp, ver2, "minors")
 		if len(g2) >= 1 {
 			g2 = g2[1:]
 		}
@@ -245,11 +223,11 @@ func verCmp(ver1, ver2 string) (int, error) {
 			}
 		}
 	}
-	if myutil.getNamedRegexp(verRegexp, ver1, "letter") != "" {
-		list1 = append(list1, string(myutil.getNamedRegexp(verRegexp, ver1, "letter")[0]))
+	if myutil.GetNamedRegexp(verRegexp, ver1, "letter") != "" {
+		list1 = append(list1, string(myutil.GetNamedRegexp(verRegexp, ver1, "letter")[0]))
 	}
-	if myutil.getNamedRegexp(verRegexp, ver2, "letter") != "" {
-		list2 = append(list2, string(myutil.getNamedRegexp(verRegexp, ver2, "letter")[0]))
+	if myutil.GetNamedRegexp(verRegexp, ver2, "letter") != "" {
+		list2 = append(list2, string(myutil.GetNamedRegexp(verRegexp, ver2, "letter")[0]))
 	}
 	for i := 0; i < len(list1) || i < len(list2); i++ {
 		if len(list1) <= i {
@@ -266,12 +244,12 @@ func verCmp(ver1, ver2 string) (int, error) {
 			}
 		}
 	}
-	g1 := myutil.getNamedRegexp(verRegexp, ver1, "suffix")
+	g1 := myutil.GetNamedRegexp(verRegexp, ver1, "suffix")
 	if len(g1) >= 1 {
 		g1 = g1[1:]
 	}
 	l1 := strings.Split(g1, "_")
-	g2 := myutil.getNamedRegexp(verRegexp, ver2, "suffix")
+	g2 := myutil.GetNamedRegexp(verRegexp, ver2, "suffix")
 	if len(g2) >= 1 {
 		g2 = g2[1:]
 	}
@@ -297,8 +275,8 @@ func verCmp(ver1, ver2 string) (int, error) {
 			return n1 - n2, nil
 		}
 	}
-	n1, _ := strconv.Atoi(myutil.getNamedRegexp(verRegexp, ver1, "revision"))
-	n2, _ := strconv.Atoi(myutil.getNamedRegexp(verRegexp, ver2, "revision"))
+	n1, _ := strconv.Atoi(myutil.GetNamedRegexp(verRegexp, ver1, "revision"))
+	n2, _ := strconv.Atoi(myutil.GetNamedRegexp(verRegexp, ver2, "revision"))
 	if n1 > n2 {
 		return 1, nil
 	} else if n1 == n2 {
@@ -317,20 +295,20 @@ func pkgCmp(pkg1, pkg2 [3]string) (int, error) {
 }
 
 // ""
-func pkgSplit(mypkg, eapi string) [3]string {
-	if !getPvRe(eapi.getEapiAttrs(eapi)).MatchString(mypkg) {
+func pkgSplit(mypkg, eapi1 string) [3]string {
+	if !getPvRe(eapi.GetEapiAttrs(eapi1)).MatchString(mypkg) {
 		return [3]string{}
 	}
-	re := getPvRe(eapi.getEapiAttrs(eapi))
-	if myutil.getNamedRegexp(re, mypkg, "pn_inval") != "" {
+	re := getPvRe(eapi.GetEapiAttrs(eapi1))
+	if myutil.GetNamedRegexp(re, mypkg, "pn_inval") != "" {
 		return [3]string{}
 	}
-	rev := myutil.getNamedRegexp(re, mypkg, "rev")
+	rev := myutil.GetNamedRegexp(re, mypkg, "rev")
 	if rev == "" {
 		rev = "0"
 	}
 	rev = "r" + rev
-	return [3]string{myutil.getNamedRegexp(re, mypkg, "pn"), myutil.getNamedRegexp(re, mypkg, "ver"), rev}
+	return [3]string{myutil.GetNamedRegexp(re, mypkg, "pn"), myutil.GetNamedRegexp(re, mypkg, "ver"), rev}
 }
 
 var (
@@ -362,10 +340,10 @@ func CatPkgSplit(mydata string, silent int, eapi string) [4]string {
 type PkgStr struct {
 	string
 	metadata                                                      map[string]string
-	settings                                                      *Config
+	settings                                                      *atom.Config
 	eapi, repo, slot, fileSize, cp, version, subSlot, slotInvalid string
 
-	db                        *dbapi
+	db                        *atom.dbapi
 	buildId, buildTime, mtime int
 	_stable                   *bool
 	cpvSplit                  [4]string
@@ -386,7 +364,7 @@ func (p *PkgStr) stable() bool {
 }
 
 // nil, nil, "", "", "", 0, 0, "", 0, nil
-func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, repo, slot string, build_time, build_id int, file_size string, mtime int, db *dbapi) *PkgStr {
+func NewPkgStr(cpv string, metadata map[string]string, settings *atom.Config, eapi1, repo, slot string, build_time, build_id int, file_size string, mtime int, db *atom.dbapi) *PkgStr {
 	p := &PkgStr{string: cpv}
 	if len(metadata) != 0 {
 		p.metadata = metadata
@@ -420,13 +398,13 @@ func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, r
 		p.db = db
 	}
 	if eapi != "" {
-		p.eapi = eapi
+		p.eapi = eapi1
 	}
 	p.buildTime = build_time // int
 	p.fileSize = file_size   // int
 	p.buildId = build_id
 	p.mtime = mtime // int
-	p.cpvSplit = CatPkgSplit(cpv, 1, eapi)
+	p.cpvSplit = CatPkgSplit(cpv, 1, eapi1)
 	p.cp = p.cpvSplit[0] + "/" + p.cpvSplit[1]
 	if p.cpvSplit[len(p.cpvSplit)-1] == "r0" && cpv[len(cpv)-3:] != "-r0" {
 		p.version = strings.Join(p.cpvSplit[2:4], "-")
@@ -435,7 +413,7 @@ func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, r
 	}
 	p.cpv = p
 	if slot != "" {
-		eapiAttrs := eapi.getEapiAttrs(eapi)
+		eapiAttrs := eapi.GetEapiAttrs(eapi1)
 		slotMatch := getSlotRe(eapiAttrs).FindAllString(slot, -1)
 		if len(slotMatch) == 0 {
 			p.slot = "0"
@@ -456,7 +434,7 @@ func NewPkgStr(cpv string, metadata map[string]string, settings *Config, eapi, r
 			}
 		}
 		if repo != "" {
-			repo = genValidRepo(repo)
+			repo = atom.genValidRepo(repo)
 			if repo == "" {
 				repo = unknownRepo
 			}

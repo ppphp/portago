@@ -5,13 +5,16 @@ import (
 	"bytes"
 	"compress/gzip"
 	"fmt"
+	"github.com/ppphp/portago/pkg/checksum"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/data"
 	eapi2 "github.com/ppphp/portago/pkg/eapi"
+	"github.com/ppphp/portago/pkg/elog"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/versions"
 	"github.com/ppphp/shlex"
 	"golang.org/x/sys/unix"
 	"io"
@@ -225,7 +228,7 @@ func (q *QueryCommand) __call__( argv []string) (string,string,int) {
 		for _, p := range vardb.match(atom1.value, 1) {
 			ps = append(ps, p.string)
 		}
-		m := Best(ps, "")
+		m := versions.Best(ps, "")
 		return fmt.Sprintf("%s\n", m), warnings_str, 0
 	} else if myutil.Ins([]string{"master_repositories", "repository_path", "available_eclasses", "eclass_path", "license_path"}, cmd) {
 		if !repoNameRe.MatchString(args[0]) {
@@ -282,7 +285,7 @@ func (q *QueryCommand) _elog( elog_funcname string, lines []string) string {
 	var elog_func func(msg string, phase string, key string, out io.Writer)
 	switch elog_funcname {
 	case "eqawarn":
-		elog_func = eqawarn
+		elog_func = elog.eqawarn
 	}
 	global_havecolor := output.HaveColor
 	//try:
@@ -407,7 +410,7 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *portdbapi) 
 					all_restrict[k] = true
 			}
 
-			cat, pf := catsplit(cpv)[0], catsplit(cpv)[1]
+			cat, pf := versions.catsplit(cpv)[0], versions.catsplit(cpv)[1]
 			mysettings.ValueDict["CATEGORY"] = cat
 			mysettings.ValueDict["PF"] = pf
 		}
@@ -426,7 +429,7 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *portdbapi) 
 			uris
 		}, mysettings):
 		myebuild := filepath.Join(mysettings.ValueDict["O"],
-			catsplit(cpv)[1]+".ebuild")
+			versions.catsplit(versions.cpv)[1]+".ebuild")
 		spawn_nofetch(myportdb, myebuild, nil, nil)
 		util.WriteMsg(fmt.Sprintf("!!! Fetch failed for %s, can't update Manifest\n",
 		 myfile),  -1, nil)
@@ -501,7 +504,7 @@ func digestcheck(myfiles []string, mysettings *Config, strict bool, mf *Manifest
 		return 1
 	}
 	pkgdir := mysettings.ValueDict["O"]
-	hash_filter := NewHashFilter(mysettings.ValueDict["PORTAGE_CHECKSUM_FILTER"])
+	hash_filter := checksum.NewHashFilter(mysettings.ValueDict["PORTAGE_CHECKSUM_FILTER"])
 	if hash_filter.trasparent {
 		hash_filter = nil
 	}
@@ -853,7 +856,7 @@ debug bool, use_cache=None, db IDbApi) {
 	pkg_dir := filepath.Dir(ebuild_path)
 	mytree := filepath.Dir(filepath.Dir(pkg_dir))
 	mypv := filepath.Base(ebuild_path)[:len(filepath.Base(ebuild_path))-7]
-	mysplit := pkgSplit(mypv, mysettings.configDict["pkg"]["EAPI"])
+	mysplit := versions.pkgSplit(mypv, mysettings.configDict["pkg"]["EAPI"])
 	if mysplit == [3]string{} {
 		//raise IncorrectParameter(
 		//_("Invalid ebuild path: '%s'") % myebuild)
@@ -1581,7 +1584,7 @@ fd_pipes map[int]int, returnpid bool) int {
 			cpv_slot := fmt.Sprintf("%s%s%s", cpv.cp, slotSeparator, cpv.slot)
 			matches := map[string]bool{}
 			for _, match := range append(vardb.match(cpv_slot, 1), vardb.match("="+cpv.string, 1)...) {
-				matches[cpvGetVersion(match.string, "")] = true
+				matches[versions.cpvGetVersion(match.string, "")] = true
 			}
 
 			mysettings.ValueDict["REPLACING_VERSIONS"] = myutil.joinMB(matches, " ")
@@ -1812,7 +1815,7 @@ fd_pipes map[int]int, returnpid bool) int {
 	} else if mydo == "merge" {
 		retval = spawnebuild("install", actionmap, mysettings, debug, 1, logfile, fd_pipes, returnpid)
 		if retval != 0 {
-			elog_process(mysettings.mycpv.string, mysettings, nil)
+			elog.elog_process(mysettings.mycpv.string, mysettings, nil)
 		}
 		if retval == 0 {
 			_handle_self_update(mysettings)
@@ -1991,13 +1994,13 @@ func _validate_deps(mysettings *Config, myroot, mydo string, mydbapi IDbApi)int 
 
 	msgs := []string{}
 	if pkg.invalid {
-		for k, v
+		for k, versions.v
 		in
 		pkg.invalid.items()
 		{
 			for msg
 			in
-			v{
+			versions.v {
 				msgs = append(msgs, fmt.Sprintf("  %s\n", msg, ))
 			}
 		}
@@ -2422,7 +2425,7 @@ func _check_build_log(mysettings *Config, out io.Writer) {
 
 	_eerror := func(lines []string) {
 		for _, line := range lines {
-			eerror(line, "install", mysettings.mycpv.string, out)
+			elog.eerror(line, "install", mysettings.mycpv.string, out)
 		}
 	}
 
@@ -2467,7 +2470,7 @@ func _check_build_log(mysettings *Config, out io.Writer) {
 
 	_eqawarn := func(lines []string) {
 		for _, line := range lines {
-			eqawarn(line, "install", mysettings.mycpv.string, out)
+			elog.eqawarn(line, "install", mysettings.mycpv.string, out)
 		}
 	}
 	wrap_width := 70
@@ -2605,9 +2608,10 @@ for _, k := range _vdb_use_conditional_keys {
 
 if eapi_attrs.SlotOperator{
 deps = evaluate_slot_operator_equal_deps(settings, use, QueryCommand.get_db())
-for k, v in deps.items(){
+for k, versions.v
+	in deps.items(){
 filename = filepath.Join(build_info_dir, k)
-if ! v {
+if !versions.v {
 	if err := syscall.Unlink(filename); err != nil {
 		//}except OSError{
 		//	pass
@@ -2618,7 +2622,7 @@ with io.open(_unicode_encode(filepath.Join(build_info_dir,
 k), encoding=_encodings["fs"], errors="strict"),
 mode="w", encoding=_encodings["repo.content"],
 errors="strict") as f{
-f.Write([]byte(fmt.Sprintf("%s\n" , v)))
+f.Write([]byte(fmt.Sprintf("%s\n" , versions.v)))
 	}
 }
 	}
@@ -3039,7 +3043,7 @@ func _post_src_install_soname_symlinks(mysettings *Config, out io.Writer) {
 		}
 		qa_msg = append(qa_msg, "")
 		for _, line := range qa_msg {
-			eqawarn(line, "other", mysettings.mycpv.string, out)
+			elog.eqawarn(line, "other", mysettings.mycpv.string, out)
 		}
 	}
 
@@ -3057,7 +3061,7 @@ func _post_src_install_soname_symlinks(mysettings *Config, out io.Writer) {
 	}
 	qa_msg = append(qa_msg, "")
 	for _, line := range qa_msg {
-		eqawarn(line, "other", mysettings.mycpv.string, out)
+		elog.eqawarn(line, "other", mysettings.mycpv.string, out)
 	}
 }
 
@@ -3102,7 +3106,7 @@ func _prepare_self_update(settings *Config) {
 		return
 	}
 
-	_preload_elog_modules(settings)
+	elog._preload_elog_modules(settings)
 	portage.proxy.lazyimport._preload_portage_submodules()
 
 	build_prefix := filepath.Join(settings.ValueDict["PORTAGE_TMPDIR"], "portage")
@@ -3134,7 +3138,7 @@ func _prepare_self_update(settings *Config) {
 func _handle_self_update(settings *Config) bool {
 	cpv := settings.mycpv
 	a, _ := NewAtom(_const.PortagePackageAtom, nil, false, nil, nil, "", nil, nil)
-	if settings.ValueDict["ROOT"] == "/" && len(matchFromList(a, []*PkgStr{cpv})) > 0 {
+	if settings.ValueDict["ROOT"] == "/" && len(matchFromList(a, []*versions.PkgStr{cpv})) > 0 {
 		_prepare_self_update(settings)
 		return true
 	}

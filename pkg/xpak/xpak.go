@@ -1,4 +1,4 @@
-package atom
+package xpak
 
 import (
 	"fmt"
@@ -290,8 +290,8 @@ func (t *tbz2) recompose_mem(xpdata string, break_hardlinks bool) int {
 
 	if break_hardlinks && t.filestat != nil && t.filestat.Sys().(*syscall.Stat_t).Nlink > 1 {
 		tmp_fname := fmt.Sprintf("%s.%d", t.file, os.Getpid())
-		util.copyfile(t.file, tmp_fname)
-		if ok := util.apply_stat_permissions(t.file, t.filestat, -1, nil, true); !ok {
+		util.Copyfile(t.file, tmp_fname)
+		if ok := util.Apply_stat_permissions(t.file, t.filestat, -1, nil, true); !ok {
 			//except portage.exception.OperationNotPermitted{
 			//	pass
 		}

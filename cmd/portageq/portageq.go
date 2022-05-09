@@ -8,6 +8,7 @@ import (
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/versions"
 	"github.com/ppphp/shlex"
 	"io/ioutil"
 	"os"
@@ -311,7 +312,7 @@ func bestVersion(argv []string) int {
 
 	//try:
 	mylist := atom.Db().Values()[argv[0]].VarTree().dbapi.match(atom)
-	print(atom.Best(mylist, ""))
+	print(versions.Best(mylist, ""))
 	return 0
 	//except KeyError:
 	//return 1
@@ -325,7 +326,7 @@ func massBestVersion(argv []string) int {
 	//try:
 	for _, pack := range argv[1:] {
 		mylist := atom.Db().Values()[argv[0]].VarTree().dbapi.match(pack)
-		print(fmt.Sprintf("%s:%s", pack, atom.Best(mylist, "")))
+		print(fmt.Sprintf("%s:%s", pack, versions.Best(mylist, "")))
 	}
 	//except KeyError:
 	//return 1
@@ -716,7 +717,7 @@ func allBestVisible(argv []string) int {
 	}
 
 	for _, pkg := range atom.Db().Values()[argv[0]].PortTree().dbapi.cp_all() {
-		mybest := atom.Best(atom.Db().Values()[argv[0]].PortTree().dbapi.match(pkg), "")
+		mybest := versions.Best(atom.Db().Values()[argv[0]].PortTree().dbapi.match(pkg), "")
 		if mybest != "" {
 			print(mybest)
 		}
@@ -754,7 +755,7 @@ func match(argv []string) int {
 			}
 			for _, cpv := range vardb.cpv_all() {
 
-				if !atom.matchFromList(atom, []*atom.PkgStr{cpv}) {
+				if !atom.matchFromList(atom, []*versions.PkgStr{cpv}) {
 					continue
 				}
 
@@ -763,7 +764,7 @@ func match(argv []string) int {
 					cpv := vardb._pkg_str(cpv, atom.repo)
 					//except (KeyError, portage.exception.InvalidData):
 					//continue
-					if len(atom.matchFromList(atom, []*atom.PkgStr{cpv})) == 0 {
+					if len(atom.matchFromList(atom, []*versions.PkgStr{cpv})) == 0 {
 						continue
 					}
 				}
@@ -1084,7 +1085,7 @@ func pquery(opts Opts, args []string) int {
 	root_config := atom.NewRootConfig(portdb.settings,
 		atom.Db().Values()[atom.Root()], nil)
 
-	_pkg := func(cpv *atom.PkgStr, repo_name string) *atom.Package {
+	_pkg := func(cpv *versions.PkgStr, repo_name string) *atom.Package {
 		metadata := map[string]string{}
 		//try:
 		for i := range atom.NewPackage(false, nil, false, nil, nil, "").metadata_keys {
@@ -1224,7 +1225,7 @@ func pquery(opts Opts, args []string) int {
 			}
 		}
 		for _, cp := range cp_list {
-			matches := []*atom.PkgStr{}
+			matches := []*versions.PkgStr{}
 			for _, repo := range repos {
 				match := true
 				if len(xml_matchers) > 0 {

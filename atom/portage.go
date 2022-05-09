@@ -8,6 +8,7 @@ import (
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/versions"
 	"github.com/ppphp/shlex"
 	"io/ioutil"
 	"os"
@@ -425,7 +426,7 @@ func DisableLegacyGlobals() {
 
 var ignored_dbentries = map[string]bool{"CONTENTS": true, "environment.bz2": true}
 
-func update_dbentry(updateCmd []string, mycontent string, eapi string, parent *PkgStr) string { // "", nil
+func update_dbentry(updateCmd []string, mycontent string, eapi string, parent *versions.PkgStr) string { // "", nil
 	if parent != nil {
 		eapi = parent.eapi
 	}
@@ -447,7 +448,7 @@ func update_dbentry(updateCmd []string, mycontent string, eapi string, parent *P
 					continue
 				}
 				newAtom, _ := NewAtom(strings.Replace(token, oldValue, newValue.value, 1), nil, false, nil, nil, eapi, nil, nil)
-				if newAtom.Blocker != nil && parent != nil && parent.cp == newAtom.cp && len(matchFromList(newAtom, []*PkgStr{parent})) > 0 {
+				if newAtom.Blocker != nil && parent != nil && parent.cp == newAtom.cp && len(matchFromList(newAtom, []*versions.PkgStr{parent})) > 0 {
 					continue
 				}
 				splitContent[i] = newAtom.value
@@ -504,7 +505,7 @@ func update_dbentry(updateCmd []string, mycontent string, eapi string, parent *P
 }
 
 // "", nil
-func update_dbentries(updateIter [][]string, mydata map[string]string, eapi string, parent *PkgStr) map[string]string {
+func update_dbentries(updateIter [][]string, mydata map[string]string, eapi string, parent *versions.PkgStr) map[string]string {
 	updatedItems := map[string]string{}
 	for k, mycontent := range mydata {
 		if !ignored_dbentries[k] {
@@ -588,7 +589,7 @@ func grab_updates(updpath string, prev_mtimes map[string]string) []struct{p stri
 
 func parse_updates(mycontent string) ([][]string, []string) {
 	eapi_attrs := eapi.getEapiAttrs("")
-	slot_re := getSlotRe(eapi_attrs)
+	slot_re := versions.getSlotRe(eapi_attrs)
 	myupd := [][]string{}
 	errors := []string{}
 	mylines := strings.Split(mycontent, "\n")
@@ -940,7 +941,7 @@ func _do_global_updates(trees *TreesDict, prev_mtimes map[string]string, quiet, 
 			if len(matches) == 0 {
 				matches = vardb.match(atomb, 1)
 			}
-			if len(matches) > 0 && repo_match(vardb.aux_get(Best(matches), map[string]bool{"repository": true}, "")[0]) {
+			if len(matches) > 0 && repo_match(vardb.aux_get(versions.Best(matches), map[string]bool{"repository": true}, "")[0]) {
 				if len(portdb.match(atoma, 1)) != 0 {
 					world_warnings[[2]*Atom{atoma, atomb}] = true
 				}
@@ -1012,7 +1013,7 @@ func _do_global_updates(trees *TreesDict, prev_mtimes map[string]string, quiet, 
 					return false
 				}
 			}
-			repository := vardb.aux_get(Best(matches, ""), map[string]bool{"repository": true}, "")[0]
+			repository := vardb.aux_get(versions.Best(matches, ""), map[string]bool{"repository": true}, "")[0]
 			return repository == repo_name ||
 				(repo_name == master_repo &&
 					repository
