@@ -1,12 +1,12 @@
 package main
 
 import (
+	"github.com/ppphp/portago/pkg/portage"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/ppphp/portago/atom"
-	"github.com/ppphp/portago/pkg/portage/emaint"
+	"github.com/ppphp/portago/pkg/emaint"
 )
 
 func init() {
@@ -26,7 +26,7 @@ func init() {
 		}
 	}
 	go signalHandler()
-	atom.InternalCaller = true
+	portage.InternalCaller = true
 }
 
 func main() {

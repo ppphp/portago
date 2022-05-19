@@ -112,13 +112,13 @@ func (s *SizeHash) BlockSize() int {
 	return 256
 }
 
-var prelinkCapable = false
+var PrelinkCapable = false
 
 func init() {
 	if _, err := os.Stat(_const.PrelinkBinary); !os.IsNotExist(err) {
 		cmd := exec.Command(_const.PrelinkBinary, "--version")
 		if err := cmd.Run(); err != nil {
-			prelinkCapable = true
+			PrelinkCapable = true
 		}
 	}
 }
@@ -300,7 +300,7 @@ func performChecksum(fname, hashname string, calcPrelink bool) ([]byte, int) {
 	prelinkTmpFile := ""
 	myFileName := fname
 	var err error
-	if calcPrelink && prelinkCapable && isPrelinkableElf(fname) {
+	if calcPrelink && PrelinkCapable && isPrelinkableElf(fname) {
 		var tmpFileFd *os.File
 		tmpFileFd, err = ioutil.TempFile("", "*")
 		var retval []int
@@ -316,7 +316,7 @@ func performChecksum(fname, hashname string, calcPrelink bool) ([]byte, int) {
 		}
 		if err != nil {
 			//except portage.exception.CommandNotFound:
-			prelinkCapable = false
+			PrelinkCapable = false
 		}
 	}
 	if !hashFuncKeys[hashname] {

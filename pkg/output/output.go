@@ -433,15 +433,15 @@ func set_term_size(lines, columns, fd int) error {
 	return err
 }
 
-type eOutput struct {
+type EOutput struct {
 	__last_e_cmd               string
 	__last_e_len, term_columns int
 	quiet                      bool
 }
 
 // false
-func NewEOutput(quiet bool) *eOutput {
-	e := &eOutput{}
+func NewEOutput(quiet bool) *EOutput {
+	e := &EOutput{}
 	e.__last_e_cmd = ""
 	e.__last_e_len = 0
 	e.quiet = quiet
@@ -453,11 +453,11 @@ func NewEOutput(quiet bool) *eOutput {
 	return e
 }
 
-func (e *eOutput) _write(f *os.File, s string) {
+func (e *EOutput) _write(f *os.File, s string) {
 	util.WriteMsg(s, -1, f)
 }
 
-func (e *eOutput) __eend(caller string, errno int, msg string) {
+func (e *EOutput) __eend(caller string, errno int, msg string) {
 	status_brackets := ""
 	if errno == 0 {
 		status_brackets = Colorize("BRACKET", "[ ") + Colorize("GOOD", "ok") + Colorize("BRACKET", " ]")
@@ -482,7 +482,7 @@ func (e *eOutput) __eend(caller string, errno int, msg string) {
 	}
 }
 
-func (e *eOutput) ebegin(msg string) {
+func (e *EOutput) Ebegin(msg string) {
 	msg += " ..."
 	if !e.quiet {
 		e.einfon(msg)
@@ -492,14 +492,14 @@ func (e *eOutput) ebegin(msg string) {
 }
 
 // ""
-func (e *eOutput) eend(errno int, msg string) {
+func (e *EOutput) Eend(errno int, msg string) {
 	if !e.quiet {
 		e.__eend("eend", errno, msg)
 	}
 	e.__last_e_cmd = "eend"
 }
 
-func (e *eOutput) eerror(msg string) {
+func (e *EOutput) eerror(msg string) {
 	out := os.Stderr
 	if !e.quiet {
 		if e.__last_e_cmd == "ebegin" {
@@ -510,7 +510,7 @@ func (e *eOutput) eerror(msg string) {
 	e.__last_e_cmd = "eerror"
 }
 
-func (e *eOutput) einfo(msg string) {
+func (e *EOutput) einfo(msg string) {
 	out := os.Stderr
 	if !e.quiet {
 		if e.__last_e_cmd == "ebegin" {
@@ -521,7 +521,7 @@ func (e *eOutput) einfo(msg string) {
 	e.__last_e_cmd = "einfo"
 }
 
-func (e *eOutput) einfon(msg string) {
+func (e *EOutput) einfon(msg string) {
 	out := os.Stderr
 	if !e.quiet {
 		if e.__last_e_cmd == "ebegin" {
@@ -532,7 +532,7 @@ func (e *eOutput) einfon(msg string) {
 	e.__last_e_cmd = "einfon"
 }
 
-func (e *eOutput) ewarn(msg string) {
+func (e *EOutput) ewarn(msg string) {
 	out := os.Stderr
 	if !e.quiet {
 		if e.__last_e_cmd == "ebegin" {
@@ -543,7 +543,7 @@ func (e *eOutput) ewarn(msg string) {
 	e.__last_e_cmd = "ewarn"
 }
 
-func (e *eOutput) ewend(errno int, msg string) {
+func (e *EOutput) ewend(errno int, msg string) {
 	if !e.quiet {
 		e.__eend("ewend", errno, msg)
 	}

@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/ppphp/configparser"
-	"github.com/ppphp/portago/atom"
+	"github.com/ppphp/portago/pkg/ebuild"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/util"
 	"strconv"
@@ -93,7 +93,7 @@ func (b *BinRepoConfigLoader) __len__() int {
 	return len(b._data)
 }
 
-func NewBinRepoConfigLoader(paths []string, settings *atom.Config) *BinRepoConfigLoader {
+func NewBinRepoConfigLoader(paths []string, settings *ebuild.Config) *BinRepoConfigLoader {
 	b := &BinRepoConfigLoader{}
 
 	parser_defaults := map[string]string{

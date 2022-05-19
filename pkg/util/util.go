@@ -7,8 +7,12 @@ import (
 	"github.com/ppphp/configparser"
 	"github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/dep"
+	"github.com/ppphp/portago/pkg/ebuild"
 	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/portage"
 	"github.com/ppphp/portago/pkg/process"
+	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/shlex"
 	"io"
 	"io/ioutil"
@@ -22,38 +26,6 @@ import (
 	"strings"
 	"syscall"
 )
-
-var noiseLimit = 0
-
-//0, nil
-func WriteMsg(myStr string, noiseLevel int, fd *os.File) {
-	if fd == nil {
-		fd = os.Stderr
-	}
-	if noiseLevel <= noiseLimit {
-		fd.Write([]byte(myStr))
-	}
-}
-
-// 0
-func WriteMsgStdout(myStr string, noiseLevel int) {
-	WriteMsg(myStr, noiseLevel, os.Stdout)
-}
-
-// 0, 0
-func WriteMsgLevel(msg string, level, noiseLevel int) {
-	var fd *os.File
-	if level >= 30 {
-		fd = os.Stderr
-	} else {
-		fd = os.Stdout
-	}
-	WriteMsg(msg, noiseLevel, fd)
-}
-
-func NormalizePath(myPath string) string {
-	return path.Clean(myPath)
-}
 
 // 0, false, false
 func grabFile(myFileName string, compatLevel int, recursive, rememberSourceFile bool) [][2]string {
@@ -204,11 +176,11 @@ type SB struct {
 }
 
 type AS struct {
-	A *atom.Atom
+	A *dep.Atom
 	S string
 }
 
-func appendRepo(atomList map[*atom.Atom]string, repoName string, rememberSourceFile bool) []AS {
+func appendRepo(atomList map[*dep.Atom]string, repoName string, rememberSourceFile bool) []AS {
 	sb := []AS{}
 	if rememberSourceFile {
 		for atom, source := range atomList {
@@ -234,10 +206,10 @@ func appendRepo(atomList map[*atom.Atom]string, repoName string, rememberSourceF
 	return sb
 }
 
-func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[*atom.Atom]string { //1,false,false,false,false
+func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[*dep.Atom]string { //1,false,false,false,false
 	matchedRemovals := map[[2]string]bool{}
 	unmatchedRemovals := map[string][]string{}
-	newList := map[*atom.Atom]string{}
+	newList := map[*dep.Atom]string{}
 	for _, subList := range lists {
 		for _, t := range subList {
 			tokenKey := t
@@ -253,11 +225,11 @@ func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 			}
 			if incremental != 0 {
 				if token == "-*" {
-					newList = map[*atom.Atom]string{}
+					newList = map[*dep.Atom]string{}
 				} else if token[:1] == "-" {
 					matched := false
 					if ignoreRepo && !strings.Contains(token, "::") {
-						toBeRemoved := []*atom.Atom{}
+						toBeRemoved := []*dep.Atom{}
 						tokenSlice := token[1:]
 						for atom := range newList {
 							atomWithoutRepo := atom.value
@@ -294,10 +266,10 @@ func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 						matchedRemovals[tokenKey] = true
 					}
 				} else {
-					newList[&atom.Atom{value: token}] = sourceFile
+					newList[&dep.Atom{value: token}] = sourceFile
 				}
 			} else {
-				newList[&atom.Atom{value: token}] = sourceFile
+				newList[&dep.Atom{value: token}] = sourceFile
 			}
 		}
 	}
@@ -306,9 +278,9 @@ func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 			if len(tokens) > 3 {
 				selected := []string{tokens[len(tokens)-1], tokens[len(tokens)-2], tokens[len(tokens)-3]}
 				tokens = tokens[:len(tokens)-3]
-				WriteMsg(fmt.Sprintf("--- Unmatched removal atoms in %s: %s and %v more\n", sourceFile, strings.Join(selected, ", "), len(tokens)), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("--- Unmatched removal atoms in %s: %s and %v more\n", sourceFile, strings.Join(selected, ", "), len(tokens)), -1, nil)
 			} else {
-				WriteMsg(fmt.Sprintf("--- Unmatched removal Atom(s) in %s: %s\n", sourceFile, strings.Join(tokens, ", ")), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("--- Unmatched removal Atom(s) in %s: %s\n", sourceFile, strings.Join(tokens, ", ")), -1, nil)
 			}
 		}
 	}
@@ -380,7 +352,7 @@ func readCorrespondingEapiFile(filename, defaults string) string { // "0"
 			if len(lines) == 2 {
 				eapi = strings.TrimSuffix(lines[0], "\n")
 			} else {
-				WriteMsg(fmt.Sprintf("--- Invalid 'eapi' file (doesn't contain exactly one line): %s\n", eapiFile), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("--- Invalid 'eapi' file (doesn't contain exactly one line): %s\n", eapiFile), -1, nil)
 			}
 		}
 	}
@@ -392,14 +364,14 @@ func readCorrespondingEapiFile(filename, defaults string) string { // "0"
 	return eapi
 }
 
-func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, allowWildcard, allowRepo, allowBuildId, allowUse, verifyEapi bool, eapi, eapiDefault string) map[*atom.Atom][]string { //000ffftf none 0
+func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, allowWildcard, allowRepo, allowBuildId, allowUse, verifyEapi bool, eapi, eapiDefault string) map[*dep.Atom][]string { //000ffftf none 0
 	fileList := []string{}
 	if recursive {
 		fileList = RecursiveFileList(myfilename)
 	} else {
 		fileList = []string{myfilename}
 	}
-	atoms := map[*atom.Atom][]string{}
+	atoms := map[*dep.Atom][]string{}
 	var d map[string][]string
 	for _, filename := range fileList {
 		d = grabDict(filename, false, true, false, true, newlines)
@@ -410,12 +382,12 @@ func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, a
 			eapi = readCorrespondingEapiFile(myfilename, eapiDefault)
 		}
 		for k, v := range d {
-			a, err := atom.NewAtom(k, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId)
+			a, err := dep.NewAtom(k, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId)
 			if err != nil {
-				WriteMsg(fmt.Sprintf("--- Invalid Atom in %s: %s\n", filename, err), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("--- Invalid Atom in %s: %s\n", filename, err), -1, nil)
 			} else {
 				if !allowUse && a.Use != nil {
-					WriteMsg(fmt.Sprintf("--- Atom is not allowed to have USE flag(s) in %s: %s\n", filename, k), -1, nil)
+					msg.WriteMsg(fmt.Sprintf("--- Atom is not allowed to have USE flag(s) in %s: %s\n", filename, k), -1, nil)
 					continue
 				}
 				if atoms[a] == nil {
@@ -462,8 +434,8 @@ func grabFilePackage(myFileName string, compatLevel int, recursive, allowWildcar
 			pkg = pkg[1:]
 		}
 
-		if _, err := atom.NewAtom(pkg, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId); err != nil {
-			WriteMsg(fmt.Sprintf("--- Invalid Atom in %s: %s\n", sourceFile, err), -1, nil)
+		if _, err := dep.NewAtom(pkg, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId); err != nil {
+			msg.WriteMsg(fmt.Sprintf("--- Invalid Atom in %s: %s\n", sourceFile, err), -1, nil)
 		} else {
 			if pkgOrig == pkg {
 				if rememberSourceFile {
@@ -539,14 +511,6 @@ func grabLines(fname string, recursive, rememberSourceFile bool) [][2]string { /
 		}
 	}
 	return myLines
-}
-
-func doStat(fname string, followLinks bool) (os.FileInfo, error) {
-	if followLinks {
-		return os.Stat(fname)
-	} else {
-		return os.Lstat(fname)
-	}
 }
 
 type ConfigProtect struct {
@@ -837,7 +801,7 @@ func getConfig(myCfg string, tolerant, allowSourcing, expand, recursive bool, ex
 		content += "\n"
 	}
 	if strings.Contains(content, "\r") {
-		WriteMsg(fmt.Sprintf("!!! Please use dos2unix to convert line endings in config file: '%s'\n", myCfg), -1, nil)
+		msg.WriteMsg(fmt.Sprintf("!!! Please use dos2unix to convert line endings in config file: '%s'\n", myCfg), -1, nil)
 	}
 	lex := NewGetConfigShlex(strings.NewReader(content), myCfg, true, "", tolerant)
 	lex.Wordchars = "abcdfeghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789~!@#$%*_\\:;?,./-+{}"
@@ -859,7 +823,7 @@ func getConfig(myCfg string, tolerant, allowSourcing, expand, recursive bool, ex
 			if !tolerant {
 				//raise ParseError(msg)
 			} else {
-				WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
 				return myKeys
 			}
 		} else if equ != "=" {
@@ -867,7 +831,7 @@ func getConfig(myCfg string, tolerant, allowSourcing, expand, recursive bool, ex
 			if !tolerant {
 				//raise ParseError(msg)
 			} else {
-				WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
 				return myKeys
 			}
 		}
@@ -877,7 +841,7 @@ func getConfig(myCfg string, tolerant, allowSourcing, expand, recursive bool, ex
 			if !tolerant {
 				//raise ParseError(msg)
 			} else {
-				WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
 				return myKeys
 			}
 		}*/
@@ -886,7 +850,7 @@ func getConfig(myCfg string, tolerant, allowSourcing, expand, recursive bool, ex
 			if !tolerant {
 				//raise ParseError(msg)
 			} else {
-				WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
 				continue
 			}
 		}
@@ -973,7 +937,7 @@ func varExpand(myString string, myDict map[string]string, errorLeader func() str
 						if errorLeader != nil {
 							msg = errorLeader() + msg
 						}
-						WriteMsg(msg+"\n", -1, nil)
+						msg.WriteMsg(msg+"\n", -1, nil)
 						return ""
 					}
 					braced = true
@@ -988,7 +952,7 @@ func varExpand(myString string, myDict map[string]string, errorLeader func() str
 							if errorLeader != nil {
 								msg = errorLeader() + msg
 							}
-							WriteMsg(msg+"\n", -1, nil)
+							msg.WriteMsg(msg+"\n", -1, nil)
 							return ""
 						} else {
 							pos += 1
@@ -1004,7 +968,7 @@ func varExpand(myString string, myDict map[string]string, errorLeader func() str
 						if errorLeader != nil {
 							msg = errorLeader() + msg
 						}
-						WriteMsg(msg+"\n", -1, nil)
+						msg.WriteMsg(msg+"\n", -1, nil)
 						return ""
 					} else {
 						pos += 1
@@ -1019,7 +983,7 @@ func varExpand(myString string, myDict map[string]string, errorLeader func() str
 					if errorLeader != nil {
 						msg = errorLeader() + msg
 					}
-					WriteMsg(msg+"\n", -1, nil)
+					msg.WriteMsg(msg+"\n", -1, nil)
 					return ""
 				}
 				numVars += 1
@@ -1107,99 +1071,6 @@ func isdirRaiseEaccess(path string) bool {
 
 type slotObject struct {
 	weakRef string
-}
-
-// -1,-1,-1,-1,nil,true
-func applyPermissions(filename string, uid, gid uint32, mode, mask os.FileMode, statCached os.FileInfo, followLinks bool) bool {
-	modified := false
-	if statCached == nil {
-		statCached, _ = doStat(filename, followLinks)
-	}
-	if (int(uid) != -1 && uid != statCached.Sys().(*syscall.Stat_t).Uid) || (int(gid) != -1 && gid != statCached.Sys().(*syscall.Stat_t).Gid) {
-		if followLinks {
-			os.Chown(filename, int(uid), int(gid))
-		} else {
-			os.Lchown(filename, int(uid), int(gid))
-		}
-		modified = true
-	} // TODO check errno
-	newMode := os.FileMode(0) // uint32(-1)
-	stMode := statCached.Mode() & 07777
-	if mask >= 0 {
-		if int(mode) == -1 {
-			mode = 0
-		} else {
-			mode = mode & 07777
-		}
-		if (stMode&mask != mode) || ((mask^stMode)&stMode != stMode) {
-			newMode = mode | stMode
-			newMode = (mask ^ newMode) & newMode
-		}
-	} else if int(mode) != -1 {
-		mode = mode & 07777
-		if mode != stMode {
-			newMode = mode
-		}
-	}
-	if modified && int(stMode) == -1 && (int(stMode)&syscall.S_ISUID != 0 || int(stMode)&syscall.S_ISGID != 0) {
-		if int(mode) == -1 {
-			newMode = stMode
-		} else {
-			mode = mode & 0777
-			if mask >= 0 {
-				newMode = mode | stMode
-				newMode = (mask ^ newMode) & newMode
-			} else {
-				newMode = mode
-			}
-		}
-	}
-	if !followLinks && statCached.Mode()&os.ModeSymlink != 0 {
-		newMode = -1
-	}
-	if int(newMode) != -1 {
-		os.Chmod(filename, os.FileMode(newMode))
-	}
-	return modified
-}
-
-// -1, nil, true
-func Apply_stat_permissions(filename string, newStat os.FileInfo, mask os.FileMode, statCached os.FileInfo, followLinks bool) bool {
-	st := newStat.Sys().(*syscall.Stat_t)
-	return apply_secpass_permissions(filename, st.Uid, st.Gid, newStat.Mode(), mask, statCached, followLinks)
-}
-
-// -1, -1, -1, -1, nil, true
-func apply_secpass_permissions(filename string, uid, gid uint32, mode, mask os.FileMode, statCached os.FileInfo, followLinks bool) bool {
-
-	if statCached == nil {
-		statCached, _ = doStat(filename, followLinks)
-	}
-
-	allApplied := true
-
-	if (int(uid) != -1 || int(gid) != -1) && atom.secpass != nil && *atom.secpass < 2 {
-		if int(uid) != -1 && uid != statCached.Sys().(*syscall.Stat_t).Uid {
-			allApplied = false
-			uid = -1
-		}
-		gs, _ := os.Getgroups()
-		in := false
-		for _, g := range gs {
-			if g == int(gid) {
-				in = true
-				break
-			}
-		}
-		if int(uid) != -1 && gid != statCached.Sys().(*syscall.Stat_t).Gid && !in {
-			allApplied = false
-			gid = -1
-		}
-	}
-
-	applyPermissions(filename, uid, gid, mode, mask,
-		statCached, followLinks)
-	return allApplied
 }
 
 type atomic_ofstream struct {
@@ -1439,9 +1310,9 @@ func _compression_probe_file(f *os.File) string {
 }
 
 // 0, nil, nil, nil
-func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *atom.Config, hardlink_candidates []string) int64 {
+func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *ebuild.Config, hardlink_candidates []string) int64 {
 	if mysettings == nil {
-		mysettings = atom.Settings()
+		mysettings = portage.Settings()
 	}
 
 	xattr_enabled := mysettings.Features.Features["xattr"]
@@ -1545,9 +1416,9 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 			//except SystemExit as e:
 			//raise
 			//except Exception as e:
-			WriteMsg(fmt.Sprintf("!!! failed to properly create symlink:"), -1, nil)
-			WriteMsg(fmt.Sprintf("!!! %s -> %s\n", dest, target), -1, nil)
-			WriteMsg(fmt.Sprintf("!!! %s\n", err), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("!!! failed to properly create symlink:"), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("!!! %s -> %s\n", dest, target), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("!!! %s\n", err), -1, nil)
 			return 0
 		}
 	}
@@ -1559,8 +1430,8 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 
 		if err := syscall.Unlink(hardlink_tmp); err != nil {
 			if err != syscall.ENOENT {
-				WriteMsg(fmt.Sprintf("!!! Failed to remove hardlink temp file: %s\n", hardlink_tmp), -1, nil)
-				WriteMsg(fmt.Sprintf("!!! %s\n", err), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("!!! Failed to remove hardlink temp file: %s\n", hardlink_tmp), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("!!! %s\n", err), -1, nil)
 				return 0
 			}
 			//del e
@@ -1570,8 +1441,8 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 				continue
 			} else {
 				if err := os.Rename(hardlink_tmp, dest); err != nil {
-					WriteMsg(fmt.Sprintf("!!! Failed to rename %s to %s\n", hardlink_tmp, dest), -1, nil)
-					WriteMsg(fmt.Sprintf("!!! %s\n", err), -1, nil)
+					msg.WriteMsg(fmt.Sprintf("!!! Failed to rename %s to %s\n", hardlink_tmp, dest), -1, nil)
+					msg.WriteMsg(fmt.Sprintf("!!! %s\n", err), -1, nil)
 					return 0
 				}
 				hardlinked = true
@@ -1601,8 +1472,8 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 		}
 		if err != nil {
 			if err != syscall.EXDEV {
-				WriteMsg(fmt.Sprintf("!!! Failed to move %s to %s\n", src, dest), -1, nil)
-				WriteMsg(fmt.Sprintf("!!! %s\n", err), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("!!! Failed to move %s to %s\n", src, dest), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("!!! %s\n", err), -1, nil)
 				return 0
 			}
 		}
@@ -1624,7 +1495,7 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 							"In order to avoid this error, set " +
 							"FEATURES=\"-xattr\" in make.conf."
 						for _, line := range TextWrap(msg, 65) {
-							WriteMsg(fmt.Sprintf("!!! %s\n", line), -1, nil)
+							msg.WriteMsg(fmt.Sprintf("!!! %s\n", line), -1, nil)
 						}
 					}
 				}
@@ -1639,17 +1510,17 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 				//except SystemExit as e:
 				//raise
 				//except Exception as e:
-				//writemsg("!!! %s\n" % _('copy %(src)s -> %(dest)s failed.') %
+				//msg.WriteMsg("!!! %s\n" % _('copy %(src)s -> %(dest)s failed.') %
 				//{"src": src, "dest": dest}, noiselevel = -1)
-				//writemsg("!!! %s\n" % (e, ), noiselevel = -1)
+				//msg.WriteMsg("!!! %s\n" % (e, ), noiselevel = -1)
 				return 0
 			}
 		} else {
 			a, _ := atom.spawn([]string{_const.MoveBinary, "-f", src, dest}, ExpandEnv(), "", nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
 			if len(a) != 0 && a[0] != syscall.F_OK {
-				WriteMsg(fmt.Sprintf("!!! Failed to move special file:\n"), -1, nil)
-				WriteMsg(fmt.Sprintf("!!! '%s' to '%s'\n", src, dest), -1, nil)
-				WriteMsg(fmt.Sprintf("!!! %s\n", a), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("!!! Failed to move special file:\n"), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("!!! '%s' to '%s'\n", src, dest), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("!!! %s\n", a), -1, nil)
 				return 0
 			}
 		}
@@ -1676,9 +1547,9 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 		if err == nil {
 			newmtime = st.ModTime().UnixNano()
 		} else {
-			WriteMsg(fmt.Sprintf("!!! Failed to stat in movefile()\n"), -1, nil)
-			WriteMsg(fmt.Sprintf("!!! %s\n", dest), -1, nil)
-			WriteMsg(fmt.Sprintf("!!! %s\n", err), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("!!! Failed to stat in movefile()\n"), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("!!! %s\n", dest), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("!!! %s\n", err), -1, nil)
 			return 0
 		}
 	}
@@ -1691,14 +1562,6 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 	//}
 
 	return newmtime
-}
-
-func Copyfile(src, dest string) error {
-	a, err := ioutil.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	return ioutil.WriteFile(dest, a, 0644)
 }
 
 type MtimeDB struct {
@@ -1716,14 +1579,14 @@ func (m *MtimeDB) _load(filename string) {
 		if err == syscall.ENOENT || err == syscall.EACCES {
 			//pass
 		} else {
-			WriteMsg(fmt.Sprintf("!!! Error loading '%s': %s\n", filename, err), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("!!! Error loading '%s': %s\n", filename, err), -1, nil)
 		}
 	}
 
 	var d map[string]interface{} = nil
 	if len(content) > 0 {
 		if err := json.Unmarshal(content, &d); err != nil {
-			WriteMsg(fmt.Sprintf("!!! Error loading '%s': %s\n", filename, err), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("!!! Error loading '%s': %s\n", filename, err), -1, nil)
 		}
 	}
 
@@ -1756,7 +1619,7 @@ func (m *MtimeDB) _load(filename string) {
 
 	for k := range d {
 		if !mtimedbkeys[k] {
-			WriteMsg(fmt.Sprintf("Deleting invalid mtimedb key: %s\n", k), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("Deleting invalid mtimedb key: %s\n", k), -1, nil)
 			delete(d, k)
 		}
 	}
@@ -1775,7 +1638,7 @@ func (m *MtimeDB) Commit() {
 		d[k] = v
 	}
 	if !reflect.DeepEqual(d, m._clean_data) {
-		d["version"] = fmt.Sprint(atom.VERSION)
+		d["version"] = fmt.Sprint(portage.VERSION)
 		//try:
 		f := NewAtomic_ofstream(m.filename, os.O_CREATE|os.O_RDWR|os.O_TRUNC, true)
 		//except

@@ -2,8 +2,9 @@ package util
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/atom"
+	"github.com/ppphp/portago/pkg/env"
 	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/shlex"
 	"io/ioutil"
 	"path/filepath"
 	"sort"
@@ -45,7 +46,7 @@ func ExtractKernelVersion(base_dir string) (string, error) {
 		}
 	}
 
-	localversions, _ := atom.listDir(base_dir)
+	localversions, _ := myutil.ListDir(base_dir)
 	for x := len(localversions) - 1; x >= 0; x-- {
 		if localversions[x][:12] != "localversion" {
 			lvs := []string{}
@@ -68,8 +69,8 @@ func ExtractKernelVersion(base_dir string) (string, error) {
 		version += strings.Join(strings.Fields(strings.Join(fs, " ")), "")
 	}
 
-	loader := atom.NewKeyValuePairFileLoader(filepath.Join(base_dir, ".config"), nil, nil)
-	kernelconfig, loader_errors := loader.load()
+	loader := env.NewKeyValuePairFileLoader(filepath.Join(base_dir, ".config"), nil, nil)
+	kernelconfig, loader_errors := loader.Load()
 	if len(loader_errors) > 0 {
 		for file_path, file_errors := range loader_errors {
 			for _, error_str := range file_errors {

@@ -2,7 +2,6 @@ package myutil
 
 import (
 	"bytes"
-	"github.com/ppphp/portago/atom"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -20,6 +19,22 @@ func ReverseSlice(s interface{}) {
 	for i, j := 0, size-1; i < j; i, j = i+1, j-1 {
 		swap(i, j)
 	}
+}
+
+func ReverseSliceT[T []any](s T) {
+	size := reflect.ValueOf(s).Len()
+	swap := reflect.Swapper(s)
+	for i, j := 0, size-1; i < j; i, j = i+1, j-1 {
+		swap(i, j)
+	}
+}
+
+func CopyMapT[T map[any]any](m T) T {
+	r := map[any]any{}
+	for k, v := range m {
+		r[k] = v
+	}
+	return r
 }
 
 func CopyMapSS(m map[string]string) map[string]string {
@@ -46,8 +61,9 @@ func CopyMapSB(m map[string]bool) map[string]bool {
 	return r
 }
 
-func CopyMSMASS(m map[string]map[*atom.Atom][]string) map[string]map[*atom.Atom][]string {
-	r := map[string]map[*atom.Atom][]string{}
+// m map[string]map[*atom.Atom][]string
+func CopyMSMASS[T map[any]any](m T) T {
+	r := map[any]any{}
 	for k, v := range m {
 		r[k] = v
 	}
@@ -176,7 +192,7 @@ func CopyMap(m map[string]interface{}) map[string]interface{} {
 	return cp
 }
 
-func pathExists(filename string) bool {
+func PathExists(filename string) bool {
 	st, _ := os.Stat(filename)
 	return st != nil
 }
@@ -186,7 +202,7 @@ func PathIsDir(filename string) bool {
 	return st != nil && st.IsDir()
 }
 
-func pathIsFile(filename string) bool {
+func PathIsFile(filename string) bool {
 	st, _ := os.Stat(filename)
 	return st != nil && !st.IsDir()
 }
@@ -214,7 +230,7 @@ func sorted(a []string) []string {
 	return b
 }
 
-func sortedmsb(a map[string]bool) []string {
+func Sortedmsb(a map[string]bool) []string {
 	b := []string{}
 	for k := range a {
 		b = append(b, k)

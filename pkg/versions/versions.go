@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/pkg/eapi"
+	"github.com/ppphp/portago/pkg/ebuild"
 	"github.com/ppphp/portago/pkg/myutil"
 	"math/big"
 	"regexp"
@@ -340,7 +341,7 @@ func CatPkgSplit(mydata string, silent int, eapi string) [4]string {
 type PkgStr struct {
 	string
 	metadata                                                      map[string]string
-	settings                                                      *atom.Config
+	settings                                                      *ebuild.Config
 	eapi, repo, slot, fileSize, cp, version, subSlot, slotInvalid string
 
 	db                        *atom.dbapi
@@ -364,7 +365,7 @@ func (p *PkgStr) stable() bool {
 }
 
 // nil, nil, "", "", "", 0, 0, "", 0, nil
-func NewPkgStr(cpv string, metadata map[string]string, settings *atom.Config, eapi1, repo, slot string, build_time, build_id int, file_size string, mtime int, db *atom.dbapi) *PkgStr {
+func NewPkgStr(cpv string, metadata map[string]string, settings *ebuild.Config, eapi1, repo, slot string, build_time, build_id int, file_size string, mtime int, db *atom.dbapi) *PkgStr {
 	p := &PkgStr{string: cpv}
 	if len(metadata) != 0 {
 		p.metadata = metadata

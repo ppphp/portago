@@ -5,6 +5,8 @@ import (
 	"github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/data"
+	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/exception"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/process"
@@ -49,7 +51,7 @@ func filter_loglevels(logentries map[string][]struct{s string;ss []string}, logl
 }
 
 
-func _preload_elog_modules(settings *atom.Config) {
+func _preload_elog_modules(settings *ebuild.Config) {
 	logsystems := strings.Fields(settings.ValueDict["PORTAGE_ELOG_SYSTEM"])
 	for _, s:= range logsystems{
 		if strings.Contains(s, ":") {
@@ -137,13 +139,13 @@ func _combine_logentries(logentries map[string][]struct {s  string;ss []string} 
 //	return m
 //}
 
-var _elog_listeners = []func(*atom.Config, string, interface{}, interface{})
-func add_listener(listener func(*atom.Config, string, interface{}, interface{})) {
+var _elog_listeners = []func(*ebuild.Config, string, interface{}, interface{})
+func add_listener(listener func(*ebuild.Config, string, interface{}, interface{})) {
 	_elog_listeners = append(_elog_listeners, listener)
 }
 
-func remove_listener(listener func(*atom.Config, string, interface{}, interface{})) {
-	el:= []func(*atom.Config, string, interface{}, interface{}){}
+func remove_listener(listener func(*ebuild.Config, string, interface{}, interface{})) {
+	el:= []func(*ebuild.Config, string, interface{}, interface{}){}
 	for _, e :=range _elog_listeners {
 		for &e != &listener {
 			el =append(el, e)
@@ -154,7 +156,7 @@ func remove_listener(listener func(*atom.Config, string, interface{}, interface{
 var _elog_atexit_handlers = []
 
 // nil
-func elog_process(cpv string, mysettings *atom.Config, phasefilter []string) {
+func elog_process(cpv string, mysettings *ebuild.Config, phasefilter []string) {
 
 	logsystems1 := strings.Fields(mysettings.ValueDict["PORTAGE_ELOG_SYSTEM"])
 	for _, s := range logsystems1 {
@@ -275,7 +277,7 @@ func elog_process(cpv string, mysettings *atom.Config, phasefilter []string) {
 			util.WriteMsg("Timeout in elog_process for system '%s'\n"%s,
 				noiselevel = -1)
 			except
-			atom.PortageException
+			exception.PortageException
 			as
 		e:
 			util.WriteMsg("%s\n"%str(e), noiselevel = -1)
@@ -454,7 +456,7 @@ func eerror(msg, phase, key string, out io.Writer){
 
 // -------------------------------------------------- custom
 
-func custom_process(mysettings *atom.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
+func custom_process(mysettings *ebuild.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
 	elogfilename := save_process(mysettings, key, logentries, fulltext)
 
 	if mysettings.ValueDict["PORTAGE_ELOG_COMMAND"]== "" {
@@ -475,7 +477,7 @@ func custom_process(mysettings *atom.Config, key string, logentries map[string][
 
 
 var _echo_items = []*struct{s1,s2 string; ss map[string][]struct {s  string;ss []string}; s3 string}
-func echo_process(mysettings *atom.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
+func echo_process(mysettings *ebuild.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
 	logfile := ""
 	if key == mysettings.mycpv.string && myutil.Inmss(mysettings.ValueDict,"PORTAGE_LOGDIR") && myutil.Inmss(mysettings.ValueDict,"PORTAGE_LOG_FILE") {
 		logfile = mysettings.ValueDict["PORTAGE_LOG_FILE"]
@@ -533,7 +535,7 @@ func _echo_finalize() {
 
 // --------------------------mail
 
-func mail_process(mysettings *atom.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
+func mail_process(mysettings *ebuild.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
 	myrecipient := "root@localhost"
 	if myutil.Inmss(mysettings.ValueDict, "PORTAGE_ELOG_MAILURI") {
 		myrecipient = strings.Fields(mysettings.ValueDict["PORTAGE_ELOG_MAILURI"])[0]
@@ -564,7 +566,7 @@ func mail_process(mysettings *atom.Config, key string, logentries map[string][]s
 try:
 	portage.mail.send_mail(mysettings, mymessage)
 	except
-	atom.PortageException
+	exception.PortageException
 	as e:
 	util.WriteMsg("%s\n"%str(e), noiselevel = -1)
 
@@ -576,7 +578,7 @@ try:
 var _config_keys = []string{"PORTAGE_ELOG_MAILURI", "PORTAGE_ELOG_MAILFROM",
 "PORTAGE_ELOG_MAILSUBJECT",}
 var mail_summary_items = map[string]*struct{ms1, ms2 map[string]string}{}
-func mail_summary_process(mysettings *atom.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
+func mail_summary_process(mysettings *ebuild.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
 	time_str := time.Now().Format("20060102-150405 07:00") //%Y%m%d-%H%M%S %Z
 	header := fmt.Sprintf(">>> Messages generated for package %s by process %d on %s:\n\n", key, os.Getpid(),  time_str)
 	config_root := mysettings.ValueDict["PORTAGE_CONFIGROOT"]
@@ -642,7 +644,7 @@ AlarmSignal:
 	util.WriteMsg("Timeout in finalize() for elog system 'mail_summary'\n",
 		noiselevel = -1)
 	except
-	atom.PortageException
+	exception.PortageException
 	as
 e:
 	util.WriteMsg("%s\n" % (e, ), noiselevel = -1)
@@ -653,7 +655,7 @@ e:
 // ---------------------save
 
 
-func save_process(mysettings *atom.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
+func save_process(mysettings *ebuild.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
 	logdir := ""
 	if mysettings.ValueDict["PORTAGE_LOGDIR"]!= "" {
 		logdir = util.NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])
@@ -728,7 +730,7 @@ e:
 // ------------------------save summary
 
 
-func save_summary_process(mysettings *atom.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
+func save_summary_process(mysettings *ebuild.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
 	logdir := ""
 	if mysettings.ValueDict["PORTAGE_LOGDIR"] != "" {
 		logdir = util.NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])
@@ -809,7 +811,7 @@ var _pri = map[string]syslog.Priority{
 	"QA":    syslog.LOG_WARNING,
 }
 
-func syslog_process(mysettings *atom.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
+func syslog_process(mysettings *ebuild.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
 	w, _ := syslog.New(syslog.LOG_ERR|syslog.LOG_WARNING|syslog.LOG_INFO|syslog.LOG_NOTICE| syslog.LOG_LOCAL5,"portage")
 	for phase := range _const.EBUILD_PHASES {
 		if _, ok := logentries[phase]; !ok {

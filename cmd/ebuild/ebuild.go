@@ -4,8 +4,12 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/dbapi"
+	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/emerge"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/portage"
 	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/portago/pkg/versions"
@@ -64,7 +68,7 @@ func main() {
 	pf.Parse(os.Args[1:])
 	pargs := pf.Args()
 	if opts.version {
-		print("Portage", atom.VERSION)
+		print("Portage", portage.VERSION)
 		os.Exit(syscall.F_OK)
 	}
 	if len(pargs) < 2 {
@@ -72,7 +76,7 @@ func main() {
 	}
 	if !opts.ignore_default_opts {
 		default_opts, _ := shlex.Split(strings.NewReader(
-			atom.Settings().ValueDict["EBUILD_DEFAULT_OPTS"]), false, true)
+			portage.Settings().ValueDict["EBUILD_DEFAULT_OPTS"]), false, true)
 		pf.Parse(append(default_opts, os.Args[1:]...))
 		pargs = pf.Args()
 	}
@@ -80,18 +84,18 @@ func main() {
 	force := opts.force
 	if debug {
 		os.Setenv("PORTAGE_DEBUG", "1")
-		atom.ResetLegacyGlobals()
+		portage.ResetLegacyGlobals()
 	}
 	if opts.color != "y" &&
 		(opts.color == "n" ||
-			(atom.Settings().ValueDict["NOCOLOR"] != "yes" &&
-				atom.Settings().ValueDict["NOCOLOR"] != "true") ||
-			atom.Settings().ValueDict["TERM"] == "dumb" || !terminal.IsTerminal(int(os.Stdout.Fd()))) {
+			(portage.Settings().ValueDict["NOCOLOR"] != "yes" &&
+				portage.Settings().ValueDict["NOCOLOR"] != "true") ||
+			portage.Settings().ValueDict["TERM"] == "dumb" || !terminal.IsTerminal(int(os.Stdout.Fd()))) {
 		output.NoColor()
-		atom.Settings().Unlock()
-		atom.Settings().ValueDict["NOCOLOR"] = "true"
-		atom.Settings().BackupChanges("NOCOLOR")
-		atom.Settings().Lock()
+		portage.Settings().Unlock()
+		portage.Settings().ValueDict["NOCOLOR"] = "true"
+		portage.Settings().BackupChanges("NOCOLOR")
+		portage.Settings().Lock()
 	}
 	ebuild := pargs[0]
 	pargs = pargs[1:]
@@ -116,19 +120,19 @@ func main() {
 	ebuild_portdir, _ := filepath.EvalSymlinks(filepath.Dir(filepath.Dir(filepath.Dir(ebuild))))
 	ep := strings.Split(ebuild, string(os.PathSeparator))
 	ebuild = filepath.Join(ebuild_portdir, ep[len(ep)-3], ep[len(ep)-2], ep[len(ep)-2])
-	vdb_path, _ := filepath.EvalSymlinks(filepath.Join(atom.Settings().ValueDict["EROOT"], _const.VdbPath))
+	vdb_path, _ := filepath.EvalSymlinks(filepath.Join(portage.Settings().ValueDict["EROOT"], _const.VdbPath))
 	if ebuild_portdir != vdb_path &&
-		!myutil.Ins(atom.Portdb().porttrees, ebuild_portdir) {
-		portdir_overlay := atom.Settings().ValueDict["PORTDIR_OVERLAY"]
-		os.Setenv("PORTDIR_OVERLAY", portdir_overlay+" "+atom.ShellQuote(ebuild_portdir))
+		!myutil.Ins(portage.Portdb().porttrees, ebuild_portdir) {
+		portdir_overlay := portage.Settings().ValueDict["PORTDIR_OVERLAY"]
+		os.Setenv("PORTDIR_OVERLAY", portdir_overlay+" "+portage.ShellQuote(ebuild_portdir))
 
 		print(fmt.Sprintf("Appending %s to PORTDIR_OVERLAY...", ebuild_portdir))
-		atom.ResetLegacyGlobals()
+		portage.ResetLegacyGlobals()
 	}
 
 	myrepo := nil
 	if ebuild_portdir != vdb_path {
-		myrepo = atom.Portdb().getRepositoryName(ebuild_portdir)
+		myrepo = portage.Portdb().getRepositoryName(ebuild_portdir)
 	}
 	if _, err1 := os.Stat(ebuild); err1 == os.ErrNotExist {
 		err(fmt.Sprintf("%s: does not exist", ebuild))
@@ -136,7 +140,7 @@ func main() {
 	ebuild_split := strings.Split(ebuild, "/")
 	cpv := fmt.Sprintf("%s/%s", ebuild_split[len(ebuild_split)-3], pf)
 	f, _ := ioutil.ReadFile(ebuild)
-	eapi, _ := atom.ParseEapiEbuildHead(strings.Split(string(f), "\n"))
+	eapi, _ := portage.ParseEapiEbuildHead(strings.Split(string(f), "\n"))
 	if eapi == "" {
 		eapi = "0"
 	}
@@ -148,14 +152,14 @@ func main() {
 	if strings.HasPrefix(ebuild, vdb_path) {
 		mytree = "vartree"
 		pkg_type = "installed"
-		portage_ebuild := atom.Db().Values()[atom.Root()].VarTree().dbapi.findname(cpv)
+		portage_ebuild := portage.Db().Values()[portage.Root()].VarTree().dbapi.findname(cpv)
 		if rp, _ := filepath.EvalSymlinks(portage_ebuild); rp != ebuild {
 			err(fmt.Sprintf("Portage seems to think that %s is at %s", cpv, portage_ebuild))
 		}
 	} else {
 		mytree = "porttree"
 		pkg_type = "ebuild"
-		portage_ebuild := atom.Portdb().findname(cpv, myrepo)
+		portage_ebuild := portage.Portdb().findname(cpv, myrepo)
 		if len(portage_ebuild) == 0 || portage_ebuild != ebuild {
 			err(fmt.Sprintf("%s: does not seem to have a valid PORTDIR structure", ebuild))
 		}
@@ -173,7 +177,7 @@ func main() {
 		}
 	}
 
-	atom.Settings().Validate()
+	portage.Settings().Validate()
 	build_dir_phases := map[string]bool{"setup": true, "unpack": true, "prepare": true, "configure": true, "compile": true,
 		"test": true, "install": true, "package": true, "rpm": true, "merge": true, "qmerge": true}
 	ebuild_changed := false
@@ -185,10 +189,10 @@ func main() {
 	}
 	if mytree == "porttree" && len(inter) > 0 {
 		ebuild_changed =
-			atom.Portdb()._pull_valid_cache(cpv, ebuild, ebuild_portdir)[0] == ""
+			portage.Portdb()._pull_valid_cache(cpv, ebuild, ebuild_portdir)[0] == ""
 	}
-	print(atom.Portdb())
-	tmpsettings := atom.Portdb().doebuild_settings
+	print(portage.Portdb())
+	tmpsettings := portage.Portdb().doebuild_settings
 	tmpsettings.ValueDict["PORTAGE_VERBOSE"] = "1"
 	tmpsettings.BackupChanges("PORTAGE_VERBOSE")
 	if opts.skip_manifest {
@@ -218,25 +222,25 @@ func main() {
 		}
 		tmpsettings.Features.Discard("digest")
 	}
-	tmpsettings = atom.NewConfig(tmpsettings, nil, "", nil, "", "", "", "", true, nil, false, nil)
+	tmpsettings = ebuild.NewConfig(tmpsettings, nil, "", nil, "", "", "", "", true, nil, false, nil)
 	//try{
-	var mydbapi atom.IDbApi
+	var mydbapi dbapi.IDbApi
 	if mytree == "porttree" {
-		mydbapi = atom.Db().Values()[atom.Settings().ValueDict["EROOT"]].PortTree().dbapi
+		mydbapi = portage.Db().Values()[portage.Settings().ValueDict["EROOT"]].PortTree().dbapi
 	} else if mytree == "vartree" {
-		mydbapi = atom.Db().Values()[atom.Settings().ValueDict["EROOT"]].VarTree().dbapi
+		mydbapi = portage.Db().Values()[portage.Settings().ValueDict["EROOT"]].VarTree().dbapi
 	}
 
-	metadata := dict(zip(atom.NewPackage(false, nil, false, nil, nil, "").metadata_keys,
+	metadata := dict(zip(emerge.NewPackage(false, nil, false, nil, nil, "").metadata_keys,
 		mydbapi.aux_get(
-			cpv, atom.NewPackage(false, nil, false, nil, nil, "").metadata_keys, myrepo = myrepo)))
+			cpv, emerge.NewPackage(false, nil, false, nil, nil, "").metadata_keys, myrepo = myrepo)))
 	if err != nil {
 		//except PortageKeyError{
 		syscall.Exit(1)
 	}
-	root_config := atom.NewRootConfig(atom.Settings(),
-		atom.Db().Values()[atom.Settings().ValueDict["EROOT"]], nil)
-	pkg := atom.NewPackage(pkg_type != "ebuild", cpv,
+	root_config := emerge.NewRootConfig(portage.Settings(),
+		portage.Db().Values()[portage.Settings().ValueDict["EROOT"]], nil)
+	pkg := emerge.NewPackage(pkg_type != "ebuild", cpv,
 		pkg_type == "installed",
 		metadata, root_config,
 		pkg_type)
@@ -249,11 +253,11 @@ func main() {
 			checked_for_stale_env = true
 		}
 		if (arg == "digest" || arg == "manifest") && force {
-			discard_digests(ebuild, tmpsettings, atom.Portdb())
+			discard_digests(ebuild, tmpsettings, portage.Portdb())
 		}
-		print(ebuild, arg, tmpsettings, debug, mytree, atom.Db().Values()[atom.Root()].VarTree())
+		print(ebuild, arg, tmpsettings, debug, mytree, portage.Db().Values()[portage.Root()].VarTree())
 		a := atom.doebuild(ebuild, arg, tmpsettings,
-			debug, 0, 0, 0, 1, 0, mytree, nil, atom.Db().Values()[atom.Root()].VarTree(),
+			debug, 0, 0, 0, 1, 0, mytree, nil, portage.Db().Values()[portage.Root()].VarTree(),
 			nil, nil, false)
 		//except KeyboardInterrupt{
 		//print("Interrupted.")
@@ -289,13 +293,13 @@ func err(txt string) {
 	os.Exit(1)
 }
 
-func discard_digests(myebuild string, mysettings *atom.Config, mydbapi *atom.portdbapi) {
+func discard_digests(myebuild string, mysettings *ebuild.Config, mydbapi *atom.portdbapi) {
 	//try{
 	atom._doebuild_manifest_exempt_depend += 1
 	defer atom._doebuild_manifest_exempt_depend -= 1
 
 	pkgdir := filepath.Dir(myebuild)
-	fetchlist_dict := atom.NewFetchlistDict(pkgdir, mysettings, mydbapi)
+	fetchlist_dict := dbapi.NewFetchlistDict(pkgdir, mysettings, mydbapi)
 	rc := mysettings.Repositories.getRepoForLocation(
 		filepath.Dir(filepath.Dir(pkgdir)))
 	mf := rc.load_manifest(pkgdir, mysettings.ValueDict["DISTDIR"],
@@ -312,7 +316,7 @@ func discard_digests(myebuild string, mysettings *atom.Config, mydbapi *atom.por
 	//finally{
 }
 
-func stale_env_warning(pargs []string, tmpsettings*atom.Config, build_dir_phases map[string]bool, debug, ebuild_changed bool, ebuild string) {
+func stale_env_warning(pargs []string, tmpsettings*ebuild.Config, build_dir_phases map[string]bool, debug, ebuild_changed bool, ebuild string) {
 	inter := map[string]bool{}
 	for _, p :=range pargs{
 		if !build_dir_phases[p]{
@@ -322,8 +326,8 @@ func stale_env_warning(pargs []string, tmpsettings*atom.Config, build_dir_phases
 	if !myutil.Ins(pargs, "clean") &&
 		!tmpsettings.Features.Features["noauto"] &&
 		len(inter)>0 {
-		atom.doebuild_environment(ebuild, "setup", atom.Root(),
-			tmpsettings, debug, 1, atom.Portdb())
+		atom.doebuild_environment(ebuild, "setup", portage.Root(),
+			tmpsettings, debug, 1, portage.Portdb())
 		env_filename := filepath.Join(tmpsettings.ValueDict["T"], "environment")
 		if _, err := os.Stat(env_filename) ;err != nil {
 			msg := fmt.Sprintf("Existing ${T}/environment for '%s' will be sourced. "+

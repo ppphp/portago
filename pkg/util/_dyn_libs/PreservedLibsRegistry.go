@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/ppphp/portago/atom"
+	"github.com/ppphp/portago/pkg/locks"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -19,21 +20,21 @@ type preservedLibsRegistry struct {
 		cpv, counter string
 		paths        []string
 	}
-	_lock *atom.LockFileS
+	_lock *locks.LockFileS
 }
 
 func (p *preservedLibsRegistry) lock() {
 	if p._lock != nil {
 		//raise AssertionError("already locked")
 	}
-	p._lock, _ = atom.Lockfile(p._filename, false, false, "", 0)
+	p._lock, _ = locks.Lockfile(p._filename, false, false, "", 0)
 }
 
 func (p *preservedLibsRegistry) unlock() {
 	if p._lock == nil {
 		//raise AssertionError("not locked")
 	}
-	atom.Unlockfile(p._lock)
+	locks.Unlockfile(p._lock)
 	p._lock = nil
 }
 

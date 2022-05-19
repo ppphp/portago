@@ -1,6 +1,7 @@
 package atom
 
 import (
+	"github.com/ppphp/portago/pkg/dep"
 	"github.com/ppphp/portago/pkg/versions"
 	"testing"
 )
@@ -148,7 +149,7 @@ func TestAtom(t *testing.T) {
 	//			(None,  's*s-*/portage', None, '1', None, 'repo_name'), True, True),
 
 	{
-		a, err := NewAtom("=sys-apps/portage-2.1-r1:0[doc,a=,!b=,c?,!d?,-e]", nil, false, nil, nil, "", nil, nil)
+		a, err := dep.NewAtom("=sys-apps/portage-2.1-r1:0[doc,a=,!b=,c?,!d?,-e]", nil, false, nil, nil, "", nil, nil)
 		if err != nil {
 			t.Errorf("%v\n", err)
 		}

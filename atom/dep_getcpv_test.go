@@ -1,6 +1,9 @@
 package atom
 
-import "testing"
+import (
+	"github.com/ppphp/portago/pkg/dep"
+	"testing"
+)
 
 func TestDepGetCPV(t *testing.T) {
 
@@ -22,8 +25,8 @@ func TestDepGetCPV(t *testing.T) {
 				if len(slot) > 0 {
 					mycpv += slot
 				}
-				if depGetcpv(mycpv).string != cpv {
-					t.Errorf("%v != %v", depGetcpv(mycpv), cpv)
+				if dep.depGetcpv(mycpv).string != cpv {
+					t.Errorf("%v != %v", dep.depGetcpv(mycpv), cpv)
 				}
 			}
 
@@ -32,8 +35,8 @@ func TestDepGetCPV(t *testing.T) {
 			if len(slot) > 0 {
 				mycpv += slot
 			}
-			if depGetcpv(mycpv).string != cpv {
-				t.Errorf("%v != %v", depGetcpv(mycpv), cpv)
+			if dep.depGetcpv(mycpv).string != cpv {
+				t.Errorf("%v != %v", dep.depGetcpv(mycpv), cpv)
 			}
 		}
 	}

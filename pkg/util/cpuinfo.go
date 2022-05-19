@@ -2,6 +2,6 @@ package util
 
 import "runtime"
 
-func getCPUCount() int {
+func GetCPUCount() int {
 	return runtime.NumCPU()
 }

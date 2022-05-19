@@ -4,9 +4,15 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/data"
+	"github.com/ppphp/portago/pkg/dbapi"
+	"github.com/ppphp/portago/pkg/dep"
 	eapi2 "github.com/ppphp/portago/pkg/eapi"
+	"github.com/ppphp/portago/pkg/emerge"
+	metadata2 "github.com/ppphp/portago/pkg/metadata"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/portage"
+	"github.com/ppphp/portago/pkg/sets"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/portago/pkg/versions"
 	"github.com/ppphp/shlex"
@@ -41,10 +47,10 @@ func init() {
 		}
 	}
 	go signalHandler()
-	atom.InternalCaller = true
+	portage.InternalCaller = true
 }
 
-func eval_atom_use(atom *atom.Atom) *atom.Atom {
+func eval_atom_use(atom *dep.Atom) *dep.Atom {
 	if use, ok := os.LookupEnv("USE"); ok {
 		u := map[string]bool{}
 		for _, v := range strings.Fields(use) {
@@ -118,7 +124,7 @@ func init() {
 		elog = func(elog_funcname string, lines []string) {
 			cmd := fmt.Sprintf("source '%s/isolated-functions.sh' ; ", os.Getenv("PORTAGE_BIN_PATH"))
 			for _, line := range lines {
-				cmd += fmt.Sprintf("%s %s ; ", elog_funcname, atom.ShellQuote(line))
+				cmd += fmt.Sprintf("%s %s ; ", elog_funcname, portage.ShellQuote(line))
 			}
 			c := exec.Command(_const.BashBinary, "-c", cmd)
 			c.Run()
@@ -158,7 +164,7 @@ func main() {
 		usage(argv)
 		os.Exit(syscall.F_OK)
 	} else if opts.version {
-		print("Portage", atom.VERSION)
+		print("Portage", portage.VERSION)
 		os.Exit(syscall.F_OK)
 	}
 
@@ -210,13 +216,13 @@ func main() {
 		os.Setenv("ROOT", root)
 		if !function.UsesConfigroot {
 			os.Setenv("PORTAGE_CONFIGROOT", eroot)
-			atom.SyncMode = true
+			portage.SyncMode = true
 		}
 	}
 
 	args = argv[2:]
 	if usesEroot {
-		args[0] = atom.Settings().ValueDict["EROOT"]
+		args[0] = portage.Settings().ValueDict["EROOT"]
 	}
 
 	retval := function.F(args)
@@ -234,7 +240,7 @@ func hasVersion(argv  []string) int {
 	warnings := []string{}
 
 	allow_repo := !atomValidateStrict || eapi2.EapiHasRepoDeps(eapi)
-	atom1, err := atom.NewAtom(argv[1], nil, false, &allow_repo, nil, "", nil, nil)
+	atom1, err := dep.NewAtom(argv[1], nil, false, &allow_repo, nil, "", nil, nil)
 	if err != nil {
 		//except portage.exception.InvalidAtom:
 		if atomValidateStrict {
@@ -246,7 +252,7 @@ func hasVersion(argv  []string) int {
 		}
 	} else {
 		if atomValidateStrict {
-			atom1, err = atom.NewAtom(argv[1], nil, false, &allow_repo, nil, eapi, nil, nil)
+			atom1, err = dep.NewAtom(argv[1], nil, false, &allow_repo, nil, eapi, nil, nil)
 			if err != nil {
 				//except portage.exception.InvalidAtom as e:
 				warnings = append(warnings, fmt.Sprintf("QA Notice: %s: %s", "has_version", err))
@@ -260,7 +266,7 @@ func hasVersion(argv  []string) int {
 	}
 
 	//try:
-	mylist := atom.Db().Values()[argv[0]].VarTree().dbapi.match(atom1, 1)
+	mylist := portage.Db().Values()[argv[0]].VarTree().dbapi.match(atom1, 1)
 	if len(mylist) > 0 {
 		return 0
 	} else {
@@ -284,7 +290,7 @@ func bestVersion(argv []string) int {
 
 	allow_repo := !atomValidateStrict || eapi2.EapiHasRepoDeps(eapi)
 
-	atom1, err := atom.NewAtom(argv[1], nil, false, &allow_repo, nil, "", nil, nil)
+	atom1, err := dep.NewAtom(argv[1], nil, false, &allow_repo, nil, "", nil, nil)
 	if err != nil {
 		//except portage.exception.InvalidAtom:
 		if atomValidateStrict {
@@ -297,7 +303,7 @@ func bestVersion(argv []string) int {
 		}
 	} else {
 		if atomValidateStrict {
-			atom1, err = atom.NewAtom(argv[1], nil, false, &allow_repo, nil, eapi, nil, nil)
+			atom1, err = dep.NewAtom(argv[1], nil, false, &allow_repo, nil, eapi, nil, nil)
 			if err != nil {
 				//except portage.exception.InvalidAtom as e:
 				warnings = append(warnings, fmt.Sprintf("QA Notice: %s: %s", "best_version", err))
@@ -311,7 +317,7 @@ func bestVersion(argv []string) int {
 	}
 
 	//try:
-	mylist := atom.Db().Values()[argv[0]].VarTree().dbapi.match(atom)
+	mylist := portage.Db().Values()[argv[0]].VarTree().dbapi.match(atom)
 	print(versions.Best(mylist, ""))
 	return 0
 	//except KeyError:
@@ -325,7 +331,7 @@ func massBestVersion(argv []string) int {
 	}
 	//try:
 	for _, pack := range argv[1:] {
-		mylist := atom.Db().Values()[argv[0]].VarTree().dbapi.match(pack)
+		mylist := portage.Db().Values()[argv[0]].VarTree().dbapi.match(pack)
 		print(fmt.Sprintf("%s:%s", pack, versions.Best(mylist, "")))
 	}
 	//except KeyError:
@@ -350,10 +356,10 @@ func metadata(argv []string) int {
 		os.Stderr.Write([]byte(fmt.Sprintf("Unrecognized package type: '%s'", pkgtype)))
 		return 1
 	}
-	trees := atom.Db()
-	repo := atom.DepGetrepo(pkgspec)
-	pkgspec = atom.RemoveSlot(pkgspec)
-	var mydbapi atom.IDbApi
+	trees := portage.Db()
+	repo := dep.DepGetrepo(pkgspec)
+	pkgspec = dep.RemoveSlot(pkgspec)
+	var mydbapi dbapi.IDbApi
 	switch type_map[pkgtype] {
 	case "porttree":
 		mydbapi = trees.Values()[eroot].PortTree().dbapi
@@ -379,13 +385,13 @@ func contents(argv []string) int {
 	}
 
 	root, cpv := argv[0], argv[1]
-	vartree := atom.Db().Values()[root].VarTree()
+	vartree := portage.Db().Values()[root].VarTree()
 	if !vartree.dbapi.cpv_exists(cpv) {
 		os.Stderr.Write([]byte((fmt.Sprintf("Package not found: '%s'\n", cpv))))
 		return 1
 	}
 	cat, pkg := atom.catsplit(cpv)[0], atom.catsplit(cpv)[1]
-	db := atom.NewDblink(cat, pkg, root, vartree.settings,
+	db := dbapi.NewDblink(cat, pkg, root, vartree.settings,
 		"vartree", vartree, nil, nil, 0)
 	util.WriteMsgStdout(strings.Join(sorted(db.getcontents()), "\n")+"\n", -1)
 	return 0
@@ -399,8 +405,8 @@ func owners(argv []string) int {
 	}
 
 	eroot := argv[0]
-	vardb := atom.Db().Values()[eroot].VarTree().dbapi
-	root := atom.Settings().ValueDict["ROOT"]
+	vardb := portage.Db().Values()[eroot].VarTree().dbapi
+	root := portage.Settings().ValueDict["ROOT"]
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -512,7 +518,7 @@ func is_protected(argv []string) int {
 		return 2
 	}
 
-	settings := atom.Settings()
+	settings := portage.Settings()
 	protect, _ := shlex.Split(strings.NewReader(settings.ValueDict["CONFIG_PROTECT"]), false, true)
 	protect_mask, _ := shlex.Split(
 		strings.NewReader(settings.ValueDict["CONFIG_PROTECT_MASK"]), false, true)
@@ -540,7 +546,7 @@ func filter_protected(argv []string) int {
 		//pass
 	}
 
-	settings := atom.Settings()
+	settings := portage.Settings()
 	protect, _ := shlex.Split(strings.NewReader(settings.ValueDict["CONFIG_PROTECT"]), false, true)
 	protect_mask, _ := shlex.Split(
 		strings.NewReader(settings.ValueDict["CONFIG_PROTECT_MASK"]), false, true)
@@ -610,24 +616,24 @@ func bestVisible(argv []string) int {
 	}
 
 	eroot := argv[0]
-	var db atom.IDbApi
+	var db dbapi.IDbApi
 	switch type_map[pkgtype] {
 	case "porttree":
-		db = atom.Db().Values()[eroot].PortTree().dbapi
+		db = portage.Db().Values()[eroot].PortTree().dbapi
 	case "bintree":
-		db = atom.Db().Values()[eroot].BinTree().dbapi
+		db = portage.Db().Values()[eroot].BinTree().dbapi
 	case "vartree":
-		db = atom.Db().Values()[eroot].VarTree().dbapi
+		db = portage.Db().Values()[eroot].VarTree().dbapi
 	}
 
 	//try:
-	atom2 := atom.dep_expandS(atom1, db, 1, atom.Settings())
+	atom2 := atom.dep_expandS(atom1, db, 1, portage.Settings())
 	//except portage.exception.InvalidAtom:
 	//atom.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n" % atom,
 	//	-1)
 	//return 2
 
-	root_config := atom.NewRootConfig(atom.Settings(), atom.Db().Values()[eroot], nil)
+	root_config := emerge.NewRootConfig(portage.Settings(), portage.Db().Values()[eroot], nil)
 
 	var cpv_list []string
 	if hasattr(db, "xmatch") {
@@ -640,7 +646,7 @@ func bestVisible(argv []string) int {
 
 		myutil.ReverseSlice(cpv_list)
 
-		atom_set := atom.NewInternalPackageSet(initial_atoms = (atom2,))
+		atom_set := sets.NewInternalPackageSet(initial_atoms = (atom2,))
 
 		var repo_list []string
 
@@ -660,7 +666,7 @@ func bestVisible(argv []string) int {
 				for i, v := range db.AuxGet(cpv, NewPackage().metadata_keys, repo){
 					metadata[NewPackage().metadata_keys[i]] = v
 				}
-				pkg := atom.NewPackage(pkgtype != "ebuild", cpv,
+				pkg := emerge.NewPackage(pkgtype != "ebuild", cpv,
 					pkgtype == "installed", metadata,
 					root_config, pkgtype)
 				if !atom_set.findAtomForPackage(pkg) {
@@ -716,8 +722,8 @@ func allBestVisible(argv []string) int {
 		return 2
 	}
 
-	for _, pkg := range atom.Db().Values()[argv[0]].PortTree().dbapi.cp_all() {
-		mybest := versions.Best(atom.Db().Values()[argv[0]].PortTree().dbapi.match(pkg), "")
+	for _, pkg := range portage.Db().Values()[argv[0]].PortTree().dbapi.cp_all() {
+		mybest := versions.Best(portage.Db().Values()[argv[0]].PortTree().dbapi.match(pkg), "")
 		if mybest != "" {
 			print(mybest)
 		}
@@ -735,9 +741,9 @@ func match(argv []string) int {
 		atom1 = "*/*"
 	}
 
-	vardb := atom.Db().Values()[root].VarTree().dbapi
+	vardb := portage.Db().Values()[root].VarTree().dbapi
 	t := true
-	atom2, err := atom.NewAtom(atom1, nil, true, &t, nil, "", nil, nil)
+	atom2, err := dep.NewAtom(atom1, nil, true, &t, nil, "", nil, nil)
 	if err != nil {
 		//except portage.exception.InvalidAtom:
 		atom2 = atom.dep_expandS(atom1, vardb, 1, vardb.settings)
@@ -796,7 +802,7 @@ func expand_virtual(argv []string) int    {
 
 try:
 	results = list(expand_new_virt(
-		atom.Db().Values()[root].VarTree().dbapi, atom1))
+		portage.Db().Values()[root].VarTree().dbapi, atom1))
 	except portage.exception.InvalidAtom:
 	util.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n" , atom1),
 		-1)
@@ -812,12 +818,12 @@ try:
 
 func vdbPath(argv []string) int {
 	out := os.Stdout
-	out.Write([]byte(filepath.Join(atom.Settings().ValueDict["EROOT"], _const.VdbPath) + "\n"))
+	out.Write([]byte(filepath.Join(portage.Settings().ValueDict["EROOT"], _const.VdbPath) + "\n"))
 	return 0
 }
 
 func gentooMirrors(argv []string) int {
-	print(atom.Settings().ValueDict["GENTOO_MIRRORS"])
+	print(portage.Settings().ValueDict["GENTOO_MIRRORS"])
 	return 0
 }
 
@@ -827,7 +833,7 @@ func repositories_configuration(argv []string) int {
 		os.Stderr.Write([]byte("ERROR: insufficient parameters!"))
 		return 3
 	}
-	os.Stdout.Write([]byte(atom.Db().Values()[argv[0]].VarTree().settings.Repositories.configString()))
+	os.Stdout.Write([]byte(portage.Db().Values()[argv[0]].VarTree().settings.Repositories.configString()))
 
 	return 0
 }
@@ -837,22 +843,22 @@ func repos_config(argv []string) int {
 }
 
 func configProtect(argv []string) int {
-	print(atom.Settings().ValueDict["CONFIG_PROTECT"])
+	print(portage.Settings().ValueDict["CONFIG_PROTECT"])
 	return 0
 }
 
 func configProtectMask(argv []string) int {
-	print(atom.Settings().ValueDict["CONFIG_PROTECT_MASK"])
+	print(portage.Settings().ValueDict["CONFIG_PROTECT_MASK"])
 	return 0
 }
 
 func pkgdir(argv []string) int {
-	print(atom.Settings().ValueDict["PKGDIR"])
+	print(portage.Settings().ValueDict["PKGDIR"])
 	return 0
 }
 
 func distdir(argv []string) int {
-	println(atom.Settings().ValueDict["DISTDIR"])
+	println(portage.Settings().ValueDict["DISTDIR"])
 	return 0
 }
 
@@ -886,7 +892,7 @@ func envvar(argv []string) int {
 		}
 
 		if verbose {
-			println(a + "=" + atom.ShellQuote(value))
+			println(a + "=" + portage.ShellQuote(value))
 		} else {
 			println(value)
 		}
@@ -900,7 +906,7 @@ func get_repos(argv []string) int {
 		print("ERROR: insufficient parameters!")
 		return 2
 	}
-	print(strings.Join(reversed(atom.Db().Values()[argv[0]].VarTree().settings.Repositories.preposOrder), " "))
+	print(strings.Join(reversed(portage.Db().Values()[argv[0]].VarTree().settings.Repositories.preposOrder), " "))
 	return 0 }
 
 func master_repositories(argv []string) int {
@@ -914,7 +920,7 @@ func master_repositories(argv []string) int {
 			return 2
 		}
 		//try:
-		repo := atom.Db().Values()[argv[0]].VarTree().settings.Repositories.getitem(arg)
+		repo := portage.Db().Values()[argv[0]].VarTree().settings.Repositories.getitem(arg)
 		//except KeyError:
 		//print("")
 		//return 1
@@ -937,7 +943,7 @@ func get_repo_path(argv []string) int {
 		os.Stderr.Write([]byte(fmt.Sprintf("ERROR: invalid repository: %s" , arg))))
 	return 2
 	}
-	path := atom.Db().Values()[argv[0]].VarTree().settings.Repositories.treeMap[arg]
+	path := portage.Db().Values()[argv[0]].VarTree().settings.Repositories.treeMap[arg]
 	if path == "" {
 		print("")
 		return 1
@@ -959,7 +965,7 @@ func available_eclasses(argv []string) int {
 			return 2
 		}
 		//try:
-		repo := atom.Db().Values()[argv[0]].VarTree().settings.Repositories.getitem(arg)
+		repo := portage.Db().Values()[argv[0]].VarTree().settings.Repositories.getitem(arg)
 		//except KeyError:
 		//print("")
 		//return 1
@@ -979,7 +985,7 @@ func eclass_path(argv []string) int {
 		return 2
 	}
 //try:
-	repo := atom.Db().Values()[argv[0]].VarTree().settings.Repositories.getitem(argv[1])
+	repo := portage.Db().Values()[argv[0]].VarTree().settings.Repositories.getitem(argv[1])
 	//except KeyError:
 	//print("")
 	//return 1
@@ -1006,7 +1012,7 @@ func license_path(argv []string) int {
 		return 2
 	}
 	//try:
-	repo := atom.Db().Values()[argv[0]].VarTree().settings.Repositories.getitem(argv[1])
+	repo := portage.Db().Values()[argv[0]].VarTree().settings.Repositories.getitem(argv[1])
 	//except KeyError:
 	//print("")
 	//return 1
@@ -1042,7 +1048,7 @@ func list_preserved_libs(argv []string) int {
 		print("ERROR: wrong number of arguments")
 		return 2
 	}
-	mylibs := atom.Db().Values()[argv[0]].VarTree().dbapi._plib_registry.getPreservedLibs()
+	mylibs := portage.Db().Values()[argv[0]].VarTree().dbapi._plib_registry.getPreservedLibs()
 	rValue := 1
 	msg := []string{}
 	for _, cpv := range sorted(mylibs) {
@@ -1059,7 +1065,7 @@ func list_preserved_libs(argv []string) int {
 
 func MaintainerEmailMatcher(maintainer_emails []string) func()bool{
 	_re := regexp.MustCompile(fmt.Sprintf("^(%s)$" , strings.Join(maintainer_emails, "|")))
-	return func(metadata_xml atom.MetadataXML)bool{
+	return func(metadata_xml metadata2.MetadataXML)bool{
 		match := false
 		matcher := _re.MatchString
 		for _, x := range metadata_xml.Maintainers() {
@@ -1072,7 +1078,7 @@ func MaintainerEmailMatcher(maintainer_emails []string) func()bool{
 	}
 }
 
-func match_orphaned(metadata_xml atom.MetadataXML) bool {
+func match_orphaned(metadata_xml metadata2.MetadataXML) bool {
 	if len(metadata_xml.maintainers()) == 0 {
 		return true
 	} else {
@@ -1081,28 +1087,28 @@ func match_orphaned(metadata_xml atom.MetadataXML) bool {
 }
 
 func pquery(opts Opts, args []string) int {
-	portdb := atom.Db().Values()[atom.Root()].PortTree().dbapi
-	root_config := atom.NewRootConfig(portdb.settings,
-		atom.Db().Values()[atom.Root()], nil)
+	portdb := portage.Db().Values()[portage.Root()].PortTree().dbapi
+	root_config := emerge.NewRootConfig(portdb.settings,
+		portage.Db().Values()[portage.Root()], nil)
 
-	_pkg := func(cpv *versions.PkgStr, repo_name string) *atom.Package {
+	_pkg := func(cpv *versions.PkgStr, repo_name string) *emerge.Package {
 		metadata := map[string]string{}
 		//try:
-		for i := range atom.NewPackage(false, nil, false, nil, nil, "").metadata_keys {
-			metadata[atom.NewPackage(false, nil, false, nil, nil, "").metadata_keys[i]] = portdb.auxGet(cpv,
-				atom.NewPackage(false, nil, false, nil, nil, "").metadata_keys,
+		for i := range emerge.NewPackage(false, nil, false, nil, nil, "").metadata_keys {
+			metadata[emerge.NewPackage(false, nil, false, nil, nil, "").metadata_keys[i]] = portdb.auxGet(cpv,
+				emerge.NewPackage(false, nil, false, nil, nil, "").metadata_keys,
 				repo_name)[i]
 		}
 		//except KeyError:
 		//raise portage.exception.PackageNotFound(cpv)
-		return atom.NewPackage(false, cpv,
+		return emerge.NewPackage(false, cpv,
 			false, metadata,
 			root_config,
 			"ebuild")
 	}
 
 	need_metadata := false
-	atoms := []*atom.Atom{}
+	atoms := []*dep.Atom{}
 	for _, arg := range args {
 		atom1 := ""
 
@@ -1118,7 +1124,7 @@ func pquery(opts Opts, args []string) int {
 		}
 
 		t := true
-		atom2, err := atom.NewAtom(atom1, nil, true, &t, nil, "", nil, nil)
+		atom2, err := dep.NewAtom(atom1, nil, true, &t, nil, "", nil, nil)
 		if err != nil {
 			//except portage.exception.InvalidAtom:
 			util.WriteMsg(fmt.Sprintf("ERROR: Invalid atom: '%s'\n", arg),
@@ -1149,7 +1155,7 @@ func pquery(opts Opts, args []string) int {
 		need_metadata = true
 	}
 
-	xml_matchers := []func(atom.MetadataXML) bool{}
+	xml_matchers := []func(metadata2.MetadataXML) bool{}
 	if len(opts.maintainerEmail) > 0 {
 		maintainer_emails := []string{}
 		for _, x := range opts.maintainerEmail {
@@ -1232,7 +1238,7 @@ func pquery(opts Opts, args []string) int {
 					metadata_xml_path := filepath.Join(
 						repo.location, cp, "metadata.xml")
 				try:
-					metadata_xml := atom.MetadataXML{}(metadata_xml_path, None)
+					metadata_xml := metadata2.MetadataXML{}(metadata_xml_path, None)
 					except(EnvironmentError, SyntaxError):
 					match = false
 					else
@@ -1325,7 +1331,7 @@ func pquery(opts Opts, args []string) int {
 
 func usage(argv []string) {
 	fmt.Println(">>> Portage information query tool")
-	fmt.Printf(">>> %s\n", atom.VERSION)
+	fmt.Printf(">>> %s\n", portage.VERSION)
 	fmt.Println(">>> Usage: portageq <command> [<option> ...]")
 	fmt.Println("")
 	fmt.Println("Available commands:")

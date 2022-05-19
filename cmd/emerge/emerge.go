@@ -1,12 +1,12 @@
 package main
 
 import (
+	"github.com/ppphp/portago/pkg/emerge"
+	"github.com/ppphp/portago/pkg/portage"
 	"github.com/ppphp/portago/pkg/process"
 	"os"
 	"os/signal"
 	"syscall"
-
-	"github.com/ppphp/portago/atom"
 )
 
 func init() {
@@ -26,12 +26,12 @@ func init() {
 		}
 	}
 	go signalHandler()
-	atom.InternalCaller = true
-	atom.DisableLegacyGlobals()
+	portage.InternalCaller = true
+	portage.DisableLegacyGlobals()
 }
 
 func main() {
 	process.SanitizeFds()
-	retval := atom.EmergeMain(nil)
+	retval := emerge.EmergeMain(nil)
 	os.Exit(retval)
 }
