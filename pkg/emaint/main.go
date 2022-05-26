@@ -113,7 +113,7 @@ type TaskHandler struct {
 	show_progress_bar, verbose, isatty bool
 	callback                           func()
 	module_output                      interface{}
-	progress_bar                       *progress.ProgressBar2
+	progress_bar                       *progress.ProgressBar
 }
 
 func NewTaskHandler(show_progress_bar, verbose bool, callback func(), module_output interface{}) *TaskHandler { // true, true, nil, nil
@@ -124,7 +124,7 @@ func NewTaskHandler(show_progress_bar, verbose bool, callback func(), module_out
 	t.module_output = module_output
 	_, err := unix.IoctlGetTermios(int(os.Stdout.Fd()), unix.TCGETS)
 	t.isatty = os.Getenv("TERM") != "dumb" && err == nil
-	t.progress_bar = progress.NewProgressBar2(t.isatty, os.Stdout, "Emaint", 0, "", 27)
+	t.progress_bar = progress.NewProgressBar(t.isatty, os.Stdout, "Emaint", 0, "", 27)
 	return t
 }
 

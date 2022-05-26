@@ -4,6 +4,7 @@ package dep
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/emerge"
 	"github.com/ppphp/portago/pkg/util/elf"
 	"strings"
 )
@@ -103,8 +104,8 @@ func compute_multilib_category(elf_header elf.ELFHeader) string {
 	return category
 }
 
-func parse_soname_deps(s string) []*sonameAtom {
-	ret := []*sonameAtom{}
+func parse_soname_deps(s string) []*SonameAtom {
+	ret := []*SonameAtom{}
 	categories := map[string]bool{}
 	category := ""
 	previous_soname := ""
@@ -134,22 +135,22 @@ func parse_soname_deps(s string) []*sonameAtom {
 	return ret
 }
 
-type sonameAtom struct {
+type SonameAtom struct {
 	packagee bool
 
 	multilib_category, soname string
 }
 
-func (s *sonameAtom) eq(sa *sonameAtom) bool {
+func (s *SonameAtom) eq(sa *SonameAtom) bool {
 	return s.multilib_category == sa.multilib_category && s.soname == sa.soname
 }
 
-func (s *sonameAtom) match(pkg *Package) bool {
-	return pkg._provides != nil && pkg._provides[[2]string{s.multilib_category, s.soname}] == s
+func (s *SonameAtom) match(pkg *emerge.Package) bool {
+	return pkg.Provides != nil && pkg.Provides[[2]string{s.multilib_category, s.soname}] == s
 }
 
-func NewSonameAtom(multilibCategory, soname string) *sonameAtom {
-	s := &sonameAtom{packagee: false}
+func NewSonameAtom(multilibCategory, soname string) *SonameAtom {
+	s := &SonameAtom{packagee: false}
 	s.multilib_category = multilibCategory
 	s.soname = soname
 	return s

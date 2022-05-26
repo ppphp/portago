@@ -61,7 +61,7 @@ func ExtractKernelVersion(base_dir string) (string, error) {
 	sort.Strings(localversions)
 
 	for _, lv := range localversions {
-		gf := grabFile(base_dir+"/"+lv, 0, false, false)
+		gf := GrabFile(base_dir+"/"+lv, 0, false, false)
 		fs := []string{}
 		for _, k := range gf {
 			fs = append(fs, k[0])

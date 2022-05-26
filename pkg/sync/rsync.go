@@ -9,6 +9,7 @@ import (
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/shlex"
 	"io/ioutil"
 	"math/rand"
@@ -75,7 +76,7 @@ func(r *RsyncSync) update() (int,bool) {
 	}
 
 	for vcs_dir := range vcs_dirs {
-		util.WriteMsgLevel(fmt.Sprintf("!!! %s appears to be under revision "+
+		msg.WriteMsgLevel(fmt.Sprintf("!!! %s appears to be under revision "+
 			"control (contains %s).\n!!! Aborting rsync sync "+
 			"(override with \"sync-rsync-vcs-ignore = true\" in repos.conf).\n",
 			r.repo.Location, vcs_dir), 40, -1)
@@ -113,7 +114,7 @@ func(r *RsyncSync) update() (int,bool) {
 		if err != nil || r.verify_jobs < 0 {
 			//raise ValueError(r.verify_jobs)
 			//except ValueError:
-			util.WriteMsgLevel(fmt.Sprintf("!!! sync-rsync-verify-jobs not a positive integer: %s\n", r.verify_jobs, ), 30, -1)
+			msg.WriteMsgLevel(fmt.Sprintf("!!! sync-rsync-verify-jobs not a positive integer: %s\n", r.verify_jobs, ), 30, -1)
 			r.verify_jobs = 0
 		} else {
 			if r.verify_jobs == 0 {
@@ -127,7 +128,7 @@ func(r *RsyncSync) update() (int,bool) {
 		r.max_age, err = strconv.Atoi(max_age)
 		if err != nil || r.max_age < 0 {
 			//except ValueError:
-			util.WriteMsgLevel(fmt.Sprintf("!!! sync-rsync-max-age must be a non-negative integer: %s\n", r.max_age, ), 30, -1)
+			msg.WriteMsgLevel(fmt.Sprintf("!!! sync-rsync-max-age must be a non-negative integer: %s\n", r.max_age, ), 30, -1)
 			r.max_age = 0
 		}
 	} else {
@@ -180,7 +181,7 @@ func(r *RsyncSync) update() (int,bool) {
 	r.servertimestampfile = filepath.Join(
 		r.repo.Location, "metadata", "timestamp.chk")
 
-	content := util.grabFile(r.servertimestampfile, 0, false, false)
+	content := util.GrabFile(r.servertimestampfile, 0, false, false)
 	timestamp := int64(0)
 	if len(content) == 0 {
 		timestampT, err := time.Parse(content[0][0], time.RFC1123) // TimestampFormat)
@@ -269,7 +270,7 @@ func(r *RsyncSync) update() (int,bool) {
 	addrinfos, err := net.LookupIP(getaddrinfo_host)
 	if err != nil {
 		//except socket.error as e:
-		util.WriteMsgLevel(fmt.Sprintf("!!! getaddrinfo failed for \"%s\": %s\n",
+		msg.WriteMsgLevel(fmt.Sprintf("!!! getaddrinfo failed for \"%s\": %s\n",
 			hostname, err), -1, 40)
 	}
 
@@ -506,7 +507,7 @@ IOError:
 func(r *RsyncSync) retrieve_head( **kwargs) (int, bool){
 	if kwargs:
 	r._kwargs(kwargs)
-	last_sync = portage.grabfile(filepath.Join(r.repo.Location, "metadata", "timestamp.commit"))
+	last_sync = portage.GrabFile(filepath.Join(r.repo.Location, "metadata", "timestamp.commit"))
 	ret = (1, false)
 	if last_sync:
 try:
@@ -674,7 +675,7 @@ try:
 	if r.usersync_uid != nil {
 		util.applyPermissions(tmpservertimestampfile, uint32(os.Getuid()) ,-1,-1,-1,nil,true)
 	}
-	content = util.grabFile(tmpservertimestampfile, 0, false, false)
+	content = util.GrabFile(tmpservertimestampfile, 0, false, false)
 finally:
 	if r.rsync_initial_timeout != 0 {
 		portage.exception.AlarmSignal.unregister()

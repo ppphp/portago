@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/process"
-	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/msg"
 	"io"
 	"io/ioutil"
 	"os"
@@ -37,7 +37,7 @@ var (
 		"SECURITY_WARN":           {"red"},
 		"MERGE_LIST_PROGRESS":     {"yellow"},
 		"PKG_BLOCKER":             {"red"},
-		"PKG_BLOCKER_SATISFIED":   {"darkblue"},
+		"PKG_BLOCKER_SATISFIED":   {"teal"},
 		"PKG_MERGE":               {"darkgreen"},
 		"PKG_MERGE_SYSTEM":        {"darkgreen"},
 		"PKG_MERGE_WORLD":         {"green"},
@@ -45,8 +45,8 @@ var (
 		"PKG_BINARY_MERGE_SYSTEM": {"purple"},
 		"PKG_BINARY_MERGE_WORLD":  {"fuchsia"},
 		"PKG_UNINSTALL":           {"red"},
-		"PKG_NOMERGE":             {"darkblue"},
-		"PKG_NOMERGE_SYSTEM":      {"darkblue"},
+		"PKG_NOMERGE":             {"teal"},
+		"PKG_NOMERGE_SYSTEM":      {"teal"},
 		"PKG_NOMERGE_WORLD":       {"blue"},
 		"PROMPT_CHOICE_DEFAULT":   {"green"},
 		"PROMPT_CHOICE_OTHER":     {"red"},
@@ -76,7 +76,7 @@ var (
 )
 
 // "default", []string{"normal"}
-func color(fg, bg string, attr []string) string {
+func Color(fg, bg string, attr []string) string {
 	myStr := codes[fg]
 	for _, x := range append([]string{bg}, attr...) {
 		myStr += codes[x]
@@ -140,7 +140,9 @@ func parseColorMap(configRoot string, onerror func(error) error) error {
 
 	for lineno, line := range lines {
 		commenterPos := strings.Index(line, "#")
-		line = strings.TrimSpace(line[:commenterPos])
+		if commenterPos != -1 {
+			line = strings.TrimSpace(line[:commenterPos])
+		}
 		if len(line) == 0 {
 			continue
 		}
@@ -210,14 +212,14 @@ func parseColorMap(configRoot string, onerror func(error) error) error {
 	return nil
 }
 
-func nc_len(mystr string) int {
+func NcLen(mystr string) int {
 	re, _ := regexp.Compile(escSeq + "^m]+m")
 	tmp := re.ReplaceAllString(mystr, "")
 	return len(tmp)
 }
 
 var (
-	_legal_terms_re, _        = regexp.Compile("^(xterm|xterm-color|Eterm|aterm|rxvt|screen|kterm|rxvt-unicode|gnome|interix|tmux|st-256color)")
+	_legal_terms_re, _        = regexp.Compile("^(xterm|xterm-color|Eterm|aterm|rxvt|screen|kterm|rxvt-unicode|gnome|interix|tmux|st-256color|alacritty|konsole|foot)")
 	_disable_xtermTitle *bool = nil
 	_max_xtermTitle_len       = 253
 )
@@ -245,7 +247,7 @@ func XtermTitle(mystr string, raw bool) {
 
 var default_xterm_title = ""
 
-func xtermTitleReset() {
+func XtermTitleReset() {
 	if default_xterm_title == "" {
 		promptCommand := os.Getenv("PROMPT_COMMAND")
 		if promptCommand == "" {
@@ -284,7 +286,7 @@ func xtermTitleReset() {
 	XtermTitle(default_xterm_title, true)
 }
 
-func noTitles() {
+func NoTitles() {
 	doTitles = 0
 }
 
@@ -292,7 +294,7 @@ func NoColor() {
 	HaveColor = 0
 }
 
-func resetColor() string {
+func ResetColor() string {
 	return codes["reset"]
 }
 
@@ -312,7 +314,7 @@ func styleToAnsiCode(style string) string {
 func ColorMap() string {
 	mycolors := []string{}
 	for _, c := range []string{"GOOD", "WARN", "BAD", "HILITE", "BRACKET", "NORMAL"} {
-		mycolors = append(mycolors, fmt.Sprintf("%s=$'%s'", c, styleToAnsiCode(c)))
+		mycolors = append(mycolors, fmt.Sprintf("PORTAGE_COLOR_%s=$'%s'", c, styleToAnsiCode(c)))
 	}
 	return strings.Join(mycolors, "\n")
 }
@@ -418,7 +420,7 @@ func (d *StyleWriter) NewStyles(s string) {
 }
 
 // 0
-func get_term_size(fd int) (int, int, error) {
+func Get_term_size(fd int) (int, int, error) {
 	if fd == 0 {
 		fd = syscall.Stdout
 	}
@@ -445,7 +447,7 @@ func NewEOutput(quiet bool) *EOutput {
 	e.__last_e_cmd = ""
 	e.__last_e_len = 0
 	e.quiet = quiet
-	_, columns, _ := get_term_size(0)
+	_, columns, _ := Get_term_size(0)
 	if columns <= 0 {
 		columns = 80
 	}
@@ -454,7 +456,7 @@ func NewEOutput(quiet bool) *EOutput {
 }
 
 func (e *EOutput) _write(f *os.File, s string) {
-	util.WriteMsg(s, -1, f)
+	msg.WriteMsg(s, -1, f)
 }
 
 func (e *EOutput) __eend(caller string, errno int, msg string) {
@@ -465,9 +467,9 @@ func (e *EOutput) __eend(caller string, errno int, msg string) {
 		status_brackets = Colorize("BRACKET", "[ ") + Colorize("BAD", "!!") + Colorize("BRACKET", " ]")
 		if msg != "" {
 			if caller == "eend" {
-				e.eerror(msg[:1])
+				e.Eerror(msg[:1])
 			} else if caller == "ewend" {
-				e.ewarn(msg[:1])
+				e.Ewarn(msg[:1])
 			}
 		}
 	}
@@ -499,24 +501,24 @@ func (e *EOutput) Eend(errno int, msg string) {
 	e.__last_e_cmd = "eend"
 }
 
-func (e *EOutput) eerror(msg string) {
+func (e *EOutput) Eerror(msg string) {
 	out := os.Stderr
 	if !e.quiet {
 		if e.__last_e_cmd == "ebegin" {
 			e._write(out, "\n")
 		}
-		e._write(out, Colorize("BAD", " * ")+msg+"\n")
+		e._write(out, Colorize("ERR", " * ")+msg+"\n")
 	}
 	e.__last_e_cmd = "eerror"
 }
 
-func (e *EOutput) einfo(msg string) {
+func (e *EOutput) Einfo(msg string) {
 	out := os.Stderr
 	if !e.quiet {
 		if e.__last_e_cmd == "ebegin" {
 			e._write(out, "\n")
 		}
-		e._write(out, Colorize("GOOD", " * ")+msg+"\n")
+		e._write(out, Colorize("INFO", " * ")+msg+"\n")
 	}
 	e.__last_e_cmd = "einfo"
 }
@@ -527,12 +529,34 @@ func (e *EOutput) einfon(msg string) {
 		if e.__last_e_cmd == "ebegin" {
 			e._write(out, "\n")
 		}
-		e._write(out, Colorize("GOOD", " * ")+msg)
+		e._write(out, Colorize("INFO", " * ")+msg)
 	}
 	e.__last_e_cmd = "einfon"
 }
 
-func (e *EOutput) ewarn(msg string) {
+func (e *EOutput) Eqawarn(msg string) {
+	out := os.Stderr
+	if !e.quiet {
+		if e.__last_e_cmd == "ebegin" {
+			e._write(out, "\n")
+		}
+		e._write(out, Colorize("QAWARN", " * ")+msg+"\n")
+	}
+	e.__last_e_cmd = "ewarn"
+}
+
+func (e *EOutput) Elog(msg string) {
+	out := os.Stderr
+	if !e.quiet {
+		if e.__last_e_cmd == "ebegin" {
+			e._write(out, "\n")
+		}
+		e._write(out, Colorize("LOG", " * ")+msg+"\n")
+	}
+	e.__last_e_cmd = "LOG"
+}
+
+func (e *EOutput) Ewarn(msg string) {
 	out := os.Stderr
 	if !e.quiet {
 		if e.__last_e_cmd == "ebegin" {
@@ -543,7 +567,7 @@ func (e *EOutput) ewarn(msg string) {
 	e.__last_e_cmd = "ewarn"
 }
 
-func (e *EOutput) ewend(errno int, msg string) {
+func (e *EOutput) Ewend(errno int, msg string) {
 	if !e.quiet {
 		e.__eend("ewend", errno, msg)
 	}
@@ -618,12 +642,12 @@ func NewProgressBar(title string, maxval int, label string, max_desc_length int)
 
 type TermProgressBar struct {
 	*ProgressBar
-	term_columns, _min_columns, _max_columns int
+	Term_columns, _min_columns, _max_columns int
 	_position                                float64
 	file                                     *os.File
 }
 
-func (t *TermProgressBar) set(value, maxval int) { // 0
+func (t *TermProgressBar) Set(value, maxval int) { // 0
 	t.ProgressBar.set(value, maxval)
 	t._display_image(t._create_image())
 }
@@ -631,10 +655,11 @@ func (t *TermProgressBar) set(value, maxval int) { // 0
 func (t *TermProgressBar) _display_image(image []byte) {
 	t.file.Write([]byte("\r"))
 	t.file.Write(image)
+	t.file.Sync()
 }
 
 func (t *TermProgressBar) _create_image() []byte {
-	cols := t.term_columns
+	cols := t.Term_columns
 	if cols > t._max_columns {
 		cols = t._max_columns
 	}
@@ -680,71 +705,32 @@ func (t *TermProgressBar) _create_image() []byte {
 			"["+strings.Repeat(" ", bar_width)+
 				"<=>"+strings.Repeat(" ", max_bar_width-bar_width)+"]")
 		return []byte(image)
-	} else {
-		percentage := 100 * curval // maxval
-		max_bar_width := bar_space - 1
-		_percent := fmt.Sprintf("%"+fmt.Sprint(percentage_str_width)+"d", fmt.Sprintf("%d%% ", percentage))
-		image := fmt.Sprintf("%s%s", t._desc, _percent)
+	}
+	percentage := 100 * curval // maxval
+	max_bar_width := bar_space - 1
+	_percent := fmt.Sprintf("%"+fmt.Sprint(percentage_str_width)+"d", fmt.Sprintf("%d%% ", percentage))
+	image := fmt.Sprintf("%s%s", t._desc, _percent)
 
-		if cols < min_columns {
-			return []byte(image)
-		}
-		offset := curval / maxval
-		bar_width := int(offset * max_bar_width)
-		image = image + "[" + strings.Repeat("=", bar_width) +
-			">" + strings.Repeat(" ", max_bar_width-bar_width) + "]"
+	if cols < min_columns {
 		return []byte(image)
 	}
+	offset := curval / maxval
+	bar_width := int(offset * max_bar_width)
+	image = image + "[" + strings.Repeat("=", bar_width) +
+		">" + strings.Repeat(" ", max_bar_width-bar_width) + "]"
+	return []byte(image)
 }
 
 func NewTermProgressBar(fd *os.File, title string, maxval int, label string, max_desc_length int) *TermProgressBar { // os.Stdout, "", 0, "", 25
 	t := &TermProgressBar{}
 	t.ProgressBar = NewProgressBar(title, maxval, label, max_desc_length)
-	_, t.term_columns, _ = get_term_size(int(fd.Fd()))
+	_, t.Term_columns, _ = Get_term_size(int(fd.Fd()))
 	t.file = fd
 	t._min_columns = 11
 	t._max_columns = 80
 	t._position = 0.0
 
 	return t
-}
-
-func init() {
-	for x := 30; x < 38; x++ {
-		ansiCodes = append(ansiCodes, fmt.Sprintf("%vm", x))
-		ansiCodes = append(ansiCodes, fmt.Sprintf("%v;01m", x))
-	}
-	for k, v := range rgb_ansi_colors {
-		codes[v] = escSeq + ansiCodes[k]
-	}
-
-	codes["black"] = codes["0x000000"]
-	codes["darkgray"] = codes["0x555555"]
-
-	codes["red"] = codes["0xFF5555"]
-	codes["darkred"] = codes["0xAA0000"]
-
-	codes["green"] = codes["0x55FF55"]
-	codes["darkgreen"] = codes["0x00AA00"]
-
-	codes["yellow"] = codes["0xFFFF55"]
-	codes["brown"] = codes["0xAA5500"]
-
-	codes["blue"] = codes["0x5555FF"]
-	codes["darkblue"] = codes["0x0000AA"]
-
-	codes["fuchsia"] = codes["0xFF55FF"]
-	codes["purple"] = codes["0xAA00AA"]
-
-	codes["turquoise"] = codes["0x55FFFF"]
-	codes["teal"] = codes["0x00AAAA"]
-
-	codes["white"] = codes["0xFFFFFF"]
-	codes["lightgray"] = codes["0xAAAAAA"]
-
-	codes["darkteal"] = codes["turquoise"]
-	codes["0xAAAA00"] = codes["brown"]
-	codes["darkyellow"] = codes["0xAAAA00"]
 }
 
 type AbstractFormatter struct {
@@ -774,7 +760,7 @@ func output_init(config_root string) { // /
 	}
 	_color_map_loaded = true
 	if err := parseColorMap(config_root, func(e error) error {
-		util.WriteMsg(fmt.Sprintf("%s\n", e.Error()), -1, nil)
+		msg.WriteMsg(fmt.Sprintf("%s\n", e.Error()), -1, nil)
 		return nil
 	}); err != nil {
 		return

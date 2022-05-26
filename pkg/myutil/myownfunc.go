@@ -29,8 +29,8 @@ func ReverseSliceT[T []any](s T) {
 	}
 }
 
-func CopyMapT[T map[any]any](m T) T {
-	r := map[any]any{}
+func CopyMapT[T1 comparable, T2 any](m map[T1]T2) map[T1]T2 {
+	r := map[T1]T2{}
 	for k, v := range m {
 		r[k] = v
 	}
@@ -176,20 +176,6 @@ func SplitSubN(s string, n int) []string {
 	}
 
 	return subs
-}
-
-func CopyMap(m map[string]interface{}) map[string]interface{} {
-	cp := make(map[string]interface{})
-	for k, v := range m {
-		vm, ok := v.(map[string]interface{})
-		if ok {
-			cp[k] = CopyMap(vm)
-		} else {
-			cp[k] = v
-		}
-	}
-
-	return cp
 }
 
 func PathExists(filename string) bool {

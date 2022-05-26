@@ -6,7 +6,7 @@ import (
 	"syscall"
 )
 
-func data_init(settings *ebuild.Config) {
+func Data_init(settings *ebuild.Config) {
 	if data.Portage_gid == nil && data._portage_username == nil {
 		v := ""
 		if w, ok := settings.ValueDict["PORTAGE_GRPNAME"]; ok {

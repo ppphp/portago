@@ -132,13 +132,13 @@ func isPrelinkableElf(fname string) bool {
 }
 
 // false
-func performMd5(x string, calcPrelink bool) []byte {
+func PerformMd5(x string, calcPrelink bool) []byte {
 	b, _ := performChecksum(x, "MD5", calcPrelink)
 	return b
 }
 
-func performMd5Merge(x string, calcPrelink bool) []byte {
-	return performMd5(x, calcPrelink)
+func PerformMd5Merge(x string, calcPrelink bool) []byte {
+	return PerformMd5(x, calcPrelink)
 }
 
 func performAll(x string, calcPrelink bool) map[string][]byte {
@@ -150,7 +150,7 @@ func performAll(x string, calcPrelink bool) map[string][]byte {
 	return myDict
 }
 
-func getValidChecksumKeys() map[string]bool {
+func GetValidChecksumKeys() map[string]bool {
 	return hashFuncKeys
 }
 
@@ -163,7 +163,7 @@ func getHashOrigin(hashtype string) string {
 	}
 }
 
-func filterUnaccelaratedHashes(digests map[string]string) map[string]string {
+func FilterUnaccelaratedHashes(digests map[string]string) map[string]string {
 	return digests
 }
 
@@ -196,7 +196,32 @@ func NewHashFilter(filterStr string) *hashFilter {
 	return &hashFilter{tokens == nil, tokens}
 }
 
-func applyHashFilter(digests map[string]string, hashFilter *hashFilter) map[string]string {
+type HashFilter1 func(string) bool
+
+func NewHashFilter1(filterStr string) HashFilter1 {
+	tokens := strings.Fields(strings.ToUpper(filterStr))
+	if len(tokens) == 0 || tokens[len(tokens)-1] == "*" {
+		tokens = nil
+	}
+	trasparent := len(tokens) == 0
+	return func(hashName string) bool {
+		if trasparent {
+			return true
+		}
+		for _, token := range tokens {
+			if token == "*" || token == hashName {
+				return true
+			} else if token[:1] == "-" {
+				if token[1:] == "*" || token[1:] == hashName {
+					return false
+				}
+			}
+		}
+		return false
+	}
+}
+
+func ApplyHashFilter(digests map[string]string, hashFilter *hashFilter) map[string]string {
 	verifiableHashTypes := make(map[string]bool)
 	for v := range digests {
 		verifiableHashTypes[v] = true
@@ -231,7 +256,7 @@ func applyHashFilter(digests map[string]string, hashFilter *hashFilter) map[stri
 }
 
 // false, 0
-func verifyAll(fname string, mydict map[string]string, calcPrelink bool, strict int) (bool, string, string, string) {
+func VerifyAll(fname string, mydict map[string]string, calcPrelink bool, strict int) (bool, string, string, string) {
 	fileIsOk := true
 	//reason := "Reason unknown"
 	s, _ := os.Stat(fname)
@@ -327,7 +352,7 @@ func performChecksum(fname, hashname string, calcPrelink bool) ([]byte, int) {
 }
 
 // []string{"MD5"}, false
-func performMultipleChecksums(fname string, hashes []string, calcPrelink bool) map[string][]byte {
+func PerformMultipleChecksums(fname string, hashes []string, calcPrelink bool) map[string][]byte {
 	rVal := map[string][]byte{}
 
 	for _, x := range hashes {
@@ -342,7 +367,7 @@ func performMultipleChecksums(fname string, hashes []string, calcPrelink bool) m
 	return rVal
 }
 
-func checksumStr(data, hashname string) []byte {
+func ChecksumStr(data, hashname string) []byte {
 	if !hashFuncKeys[hashname] {
 		//raise portage.exception.DigestException(hashname + \
 		//" hash function not available (needs dev-python/pycrypto)")

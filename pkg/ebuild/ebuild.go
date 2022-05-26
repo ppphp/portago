@@ -2,7 +2,6 @@ package ebuild
 
 import (
 	"bufio"
-	"bytes"
 	"compress/gzip"
 	"fmt"
 	"github.com/ppphp/portago/atom"
@@ -21,6 +20,8 @@ import (
 	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/repository"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/msg"
+	"github.com/ppphp/portago/pkg/util/permissions"
 	"github.com/ppphp/portago/pkg/versions"
 	"github.com/ppphp/shlex"
 	"golang.org/x/sys/unix"
@@ -148,168 +149,6 @@ func iterParents(p string) []string {
 	return d
 }
 
-type QueryCommand struct {
-	
-	phase string
-	settings *Config
-}
-
-var QueryCommand_db *portage.TreesDict = nil
-
-func (q *QueryCommand) get_db() *portage.TreesDict {
-	if QueryCommand_db != nil {
-		return QueryCommand_db
-	}
-	return portage.Db()
-}
-
-func NewQueryCommand(settings *Config, phase string) *QueryCommand {
-	q := &QueryCommand{}
-	q.settings = settings
-	q.phase = phase
-	return q
-}
-
-func (q *QueryCommand) __call__( argv []string) (string,string,int) {
-	cmd := argv[0]
-	root := argv[1]
-	args := argv[2:]
-
-	warnings := []string{}
-	warnings_str := ""
-
-	db := q.get_db()
-	eapi := q.settings.ValueDict["EAPI"]
-
-	if root == "" {
-		root = string(os.PathSeparator)
-	}
-	root = strings.TrimRight(util.NormalizePath(root), string(os.PathSeparator)) + string(os.PathSeparator)
-	if _, ok := db.Values()[root]; !ok {
-		return "", fmt.Sprintf("%s: Invalid ROOT: %s\n", cmd, root), 3
-	}
-
-	portdb := db.Values()[root].PortTree().dbapi
-	vardb := db.Values()[root].VarTree().dbapi
-
-	var atom1 *dep.Atom
-	if cmd == "best_version" || cmd == "has_version" {
-		allow_repo := eapi2.EapiHasRepoDeps(eapi)
-		var err error
-		atom1, err = dep.NewAtom(args[0], nil, false, &allow_repo, nil, "", nil, nil)
-		if err != nil {
-			//except InvalidAtom:
-			return "", fmt.Sprintf("%s: Invalid atom: %s\n", cmd, args[0]), 2
-		}
-
-		atom1, err = dep.NewAtom(args[0], nil, false, &allow_repo, nil, eapi, nil, nil)
-		if err != nil {
-			//except InvalidAtom:
-			warnings = append(warnings, fmt.Sprintf("QA Notice: %s: %s", cmd, err))
-		}
-
-		use := q.settings.ValueDict["PORTAGE_BUILT_USE"]
-		if use == "" {
-			use = q.settings.ValueDict["PORTAGE_USE"]
-		}
-
-		useSB := map[string]bool{}
-		for _, v := range strings.Fields(use) {
-			useSB[v] = true
-		}
-		atom1 = atom1.EvaluateConditionals(useSB)
-	}
-
-	if len(warnings) > 0 {
-		warnings_str = q._elog("eqawarn", warnings)
-	}
-
-	if cmd == "has_version" {
-		returncode := 1
-		if len(vardb.match(atom1.value, 1)) > 0 {
-			returncode = 0
-		}
-		return "", warnings_str, returncode
-	} else if cmd == "best_version" {
-		ps := []string{}
-		for _, p := range vardb.match(atom1.value, 1) {
-			ps = append(ps, p.string)
-		}
-		m := versions.Best(ps, "")
-		return fmt.Sprintf("%s\n", m), warnings_str, 0
-	} else if myutil.Ins([]string{"master_repositories", "repository_path", "available_eclasses", "eclass_path", "license_path"}, cmd) {
-		if !dep.repoNameRe.MatchString(args[0]) {
-			return "", fmt.Sprintf("%s: Invalid repository: %s\n", cmd, args[0]), 2
-		}
-		//try:
-		repo := portdb.repositories.Prepos[args[0]]
-		//except
-		//KeyError:
-		//	return ("", warnings_str, 1)
-
-		if cmd == "master_repositories" {
-			return fmt.Sprintf("%s\n", strings.Join(repo.masters, " ")), warnings_str, 0
-		} else if cmd == "repository_path" {
-			return fmt.Sprintf("%s\n", repo.Location), warnings_str, 0
-		} else if cmd == "available_eclasses" {
-			ree := []string{}
-			for k := range repo.eclassDb.eclasses {
-				ree = append(ree, k)
-			}
-			return fmt.Sprintf("%s\n", strings.Join(myutil.sorted(ree), " ")), warnings_str, 0
-		} else if cmd == "eclass_path" {
-			//try:
-			eclass := repo.eclassDb.eclasses[args[1]]
-			//except
-			//KeyError:
-			//	return ("", warnings_str, 1)
-			return fmt.Sprintf("%s\n", eclass.location), warnings_str, 0
-		} else if cmd == "license_path" {
-			paths := []string{}
-			for _, x := range repo.mastersRepo {
-				paths = append(paths, filepath.Join(x.Location, "licenses", args[1]))
-			}
-			paths = append(paths, filepath.Join(repo.Location, "licenses", args[1]))
-			paths = myutil.reversed(paths)
-
-			for _, path := range paths {
-				if myutil.pathExists(path) {
-					return fmt.Sprintf("%s\n", path), warnings_str, 0
-				}
-			}
-			return "", warnings_str, 1
-		}
-	} else {
-		return "", fmt.Sprintf("Invalid command: %s\n", cmd), 3
-	}
-	return "", "", 0
-}
-
-func (q *QueryCommand) _elog( elog_funcname string, lines []string) string {
-	out := &bytes.Buffer{}
-	phase := q.phase
-
-	var elog_func func(msg string, phase string, key string, out io.Writer)
-	switch elog_funcname {
-	case "eqawarn":
-		elog_func = elog.eqawarn
-	}
-	global_havecolor := output.HaveColor
-	//try:
-	if strings.ToLower(q.settings.ValueDict["NOCOLOR"]) == "no" || strings.ToLower(q.settings.ValueDict["NOCOLOR"]) == "false" || strings.ToLower(q.settings.ValueDict["NOCOLOR"]) == "" {
-		output.HaveColor = 1
-	} else {
-		output.HaveColor = 0
-	}
-	for _, line := range lines {
-		elog_func(line, phase, q.settings.mycpv.string, out)
-	}
-	//finally:
-	output.HaveColor = global_havecolor
-	msg := out.String()
-	return msg
-}
-
 // nil, nil, nil
 func digestgen(myarchives interface{}, mysettings *Config, myportdb *dbapi.portdbapi) int {
 	if mysettings != nil|| myportdb == nil {
@@ -331,7 +170,7 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *dbapi.portd
 	}
 	mytree := filepath.Dir(filepath.Dir(mysettings.ValueDict["O"]))
 //try:
-	rc := mysettings.Repositories.getRepoForLocation(mytree)
+	rc := mysettings.Repositories.GetRepoForLocation(mytree)
 	//except KeyError:
 	//mytree = os.path.realpath(mytree)
 	//mf = mysettings.repositories.get_repo_for _location(mytree)
@@ -344,7 +183,7 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *dbapi.portd
 		fetchlist_dict, false)
 
 	if !mf.allow_create {
-		util.WriteMsgStdout(fmt.Sprintf(">>> Skipping creating Manifest for %s; "+
+		msg.WriteMsgStdout(fmt.Sprintf(">>> Skipping creating Manifest for %s; "+
 		"repository is configured to not use them\n", mysettings.ValueDict["O"]), 0)
 		return 1
 	}
@@ -438,12 +277,12 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *dbapi.portd
 		myebuild := filepath.Join(mysettings.ValueDict["O"],
 			versions.catsplit(versions.cpv)[1]+".ebuild")
 		spawn_nofetch(myportdb, myebuild, nil, nil)
-		util.WriteMsg(fmt.Sprintf("!!! Fetch failed for %s, can't update Manifest\n",
+		msg.WriteMsg(fmt.Sprintf("!!! Fetch failed for %s, can't update Manifest\n",
 		 myfile),  -1, nil)
 		if myutil.Inmsmss(
 		dist_hashes, myfile)&& st!= nil&&st.Size() > 0{
-			cmd := output.colorize("INFORM", fmt.Sprintf("ebuild --force %s manifest", filepath.Base(myebuild)))
-			util.WriteMsg(fmt.Sprintf(
+			cmd := output.Colorize("INFORM", fmt.Sprintf("ebuild --force %s manifest", filepath.Base(myebuild)))
+			msg.WriteMsg(fmt.Sprintf(
 				"!!! If you would like to forcefully replace the existing Manifest entry\n"+
 			"!!! for %s, use the following command:\n", myfile) +
 			 fmt.Sprintf("!!!    %s\n" , cmd),
@@ -452,7 +291,7 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *dbapi.portd
 		return 0
 	}
 
-	util.WriteMsgStdout(fmt.Sprintf(">>> Creating Manifest for %s\n", mysettings.ValueDict["O"]), 0)
+	msg.WriteMsgStdout(fmt.Sprintf(">>> Creating Manifest for %s\n", mysettings.ValueDict["O"]), 0)
 //try:
 	mf.create(false, true,
 	mysettings.Features.Features["assume-digests"], nil)
@@ -476,7 +315,7 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *dbapi.portd
 		sort.Strings(distlist)
 		auto_assumed:= []string{}
 		for _, filename:= range distlist {
-			if ! myutil.pathExists(
+			if ! myutil.PathExists(
 				filepath.Join(mysettings.ValueDict["DISTDIR"], filename)) {
 				auto_assumed =append(auto_assumed, filename)
 			}
@@ -486,7 +325,7 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *dbapi.portd
 			cp := strings.Join(sp[len(sp)-2:], string(os.PathSeparator))
 			pkgs := myportdb.cp_list(cp, 1,  []string{mytree})
 			pkgs.sort()
-			util.WriteMsgStdout("  digest.assumed" + output.colorize("WARN",
+			msg.WriteMsgStdout("  digest.assumed" + output.Colorize("WARN",
 				fmt.Sprintf("%18d", len(auto_assumed))) + "\n", 0)
 			for _, pkg_key := range pkgs{
 				fetchlist := myportdb.getFetchMap(pkg_key, mytree = mytree)
@@ -494,7 +333,7 @@ func digestgen(myarchives interface{}, mysettings *Config, myportdb *dbapi.portd
 				for _, filename := range auto_assumed {
 					if filename in
 					fetchlist{
-						util.WriteMsgStdout(fmt.Sprintf(
+						msg.WriteMsgStdout(fmt.Sprintf(
 							"   %s::%s\n", pv, filename), 0)
 					}
 				}
@@ -516,7 +355,7 @@ func digestcheck(myfiles []string, mysettings *Config, strict bool, mf *manifest
 		hash_filter = nil
 	}
 	if mf == nil {
-		rc := mysettings.Repositories.getRepoForLocation(
+		rc := mysettings.Repositories.GetRepoForLocation(
 			filepath.Dir(filepath.Dir(pkgdir)))
 		mf = rc.load_manifest(pkgdir, mysettings.ValueDict["DISTDIR"],nil, false)
 	}
@@ -525,66 +364,66 @@ func digestcheck(myfiles []string, mysettings *Config, strict bool, mf *manifest
 try:
 	if !mf.thin&& strict && !myutil.Inmss(mysettings.ValueDict,"PORTAGE_PARALLEL_FETCHONLY") {
 		if _, ok:= mf.fhashdict["EBUILD"]; ok {
-			eout.ebegin("checking ebuild checksums ;-)")
+			eout.Ebegin("checking ebuild checksums ;-)")
 			mf.checkTypeHashes("EBUILD", false, hash_filter)
-			eout.eend(0, "")
+			eout.Eend(0, "")
 		}
 		if _, ok := mf.fhashdict["AUX"]; ok {
-			eout.ebegin("checking auxfile checksums ;-)")
+			eout.Ebegin("checking auxfile checksums ;-)")
 			mf.checkTypeHashes("AUX", false, hash_filter)
-			eout.eend(0, "")
+			eout.Eend(0, "")
 		}
 		if mf.strict_misc_digests &&
 			mf.fhashdict.get("MISC") {
-			eout.ebegin("checking miscfile checksums ;-)")
+			eout.Ebegin("checking miscfile checksums ;-)")
 			mf.checkTypeHashes("MISC", true, hash_filter)
-			eout.eend(0, "")
+			eout.Eend(0, "")
 		}
 	}
 	for _, f := range myfiles{
-		eout.ebegin(fmt.Sprintf("checking %s ;-)", f))
+		eout.Ebegin(fmt.Sprintf("checking %s ;-)", f))
 		ftype := mf.findFile(f)
 		if ftype == "" {
 			if mf.allow_missing {
 				continue
 			}
-			eout.eend(1, "")
-			util.WriteMsg(fmt.Sprintf("\n!!! Missing digest for '%s'\n", f, ), -1, nil)
+			eout.Eend(1, "")
+			msg.WriteMsg(fmt.Sprintf("\n!!! Missing digest for '%s'\n", f, ), -1, nil)
 			return 0
 		}
 		mf.checkFileHashes(ftype, f, false, hash_filter)
-		eout.eend(0, "")
+		eout.Eend(0, "")
 	}
 	except
 	FileNotFound
 	as
 e:
-	eout.eend(1, "")
-	util.WriteMsg(fmt.Sprintf("\n!!! A file listed in the Manifest could not be found: %s\n", e),
+	eout.Eend(1, "")
+	msg.WriteMsg(fmt.Sprintf("\n!!! A file listed in the Manifest could not be found: %s\n", e),
 		 -1, nil)
 	return 0
 	except
 	DigestException
 	as
 e:
-	eout.eend(1, "")
-	util.WriteMsg("\n!!! Digest verification failed:\n",  -1, nil)
-	util.WriteMsg(fmt.Sprintf("!!! %s\n",e.value[0]),  -1, nil)
-	util.WriteMsg(fmt.Sprintf("!!! Reason: %s\n",e.value[1]),  -1, nil)
-	util.WriteMsg(fmt.Sprintf("!!! Got: %s\n",e.value[2]),  -1, nil)
-	util.WriteMsg(fmt.Sprintf("!!! Expected: %s\n",e.value[3]),  -1, nil)
+	eout.Eend(1, "")
+	msg.WriteMsg("\n!!! Digest verification failed:\n",  -1, nil)
+	msg.WriteMsg(fmt.Sprintf("!!! %s\n",e.value[0]),  -1, nil)
+	msg.WriteMsg(fmt.Sprintf("!!! Reason: %s\n",e.value[1]),  -1, nil)
+	msg.WriteMsg(fmt.Sprintf("!!! Got: %s\n",e.value[2]),  -1, nil)
+	msg.WriteMsg(fmt.Sprintf("!!! Expected: %s\n",e.value[3]),  -1, nil)
 	return 0
 	if mf.thin || mf.allow_missing {
 		return 1
 	}
-	lds,_:= myutil.listDir(pkgdir)
+	lds,_:= myutil.ListDir(pkgdir)
 	for _, f:= range lds {
 		pf := ""
 		if f[len(f)-7:] == ".ebuild" {
 			pf = f[:len(f)-7]
 		}
 		if pf != "" &!mf.hasFile("EBUILD", f) {
-			util.WriteMsg(fmt.Sprintf("!!! A file is not listed in the Manifest: '%s'\n",
+			msg.WriteMsg(fmt.Sprintf("!!! A file is not listed in the Manifest: '%s'\n",
 				filepath.Join(pkgdir, f), -1, nil)
 			if strict {
 				return 0
@@ -603,7 +442,7 @@ try:
 UnicodeDecodeError:
 	parent = _unicode_decode(parent,
 		encoding = _encodings['fs'], errors = 'replace')
-	util.WriteMsg(_("!!! Path contains invalid "
+	msg.WriteMsg(_("!!! Path contains invalid "
 	"character(s) for encoding '%s': '%s'") 
 % (_encodings['fs'], parent), noiselevel = -1)
 	if strict:
@@ -620,7 +459,7 @@ try:
 UnicodeDecodeError:
 	d = _unicode_decode(d,
 		encoding = _encodings['fs'], errors = 'replace')
-	util.WriteMsg(_("!!! Path contains invalid "
+	msg.WriteMsg(_("!!! Path contains invalid "
 	"character(s) for encoding '%s': '%s'") 
 % (_encodings['fs'], filepath.Join(parent, d)),
 	noiselevel = -1)
@@ -644,7 +483,7 @@ UnicodeDecodeError:
 	if f.startswith("."):
 	continue
 	f = filepath.Join(parent, f)[len(filesdir)+1:]
-	util.WriteMsg(_("!!! File name contains invalid "
+	msg.WriteMsg(_("!!! File name contains invalid "
 	"character(s) for encoding '%s': '%s'") 
 % (_encodings['fs'], f), noiselevel = -1)
 	if strict:
@@ -657,7 +496,7 @@ UnicodeDecodeError:
 	if file_type != "AUX" and
 	not
 	f.startswith("digest-"):
-	util.WriteMsg(_("!!! A file is not listed in the Manifest: '%s'\n") %
+	msg.WriteMsg(_("!!! A file is not listed in the Manifest: '%s'\n") %
 filepath.Join(filesdir, f), noiselevel = -1)
 	if strict:
 	return 0
@@ -1088,7 +927,7 @@ debug bool, use_cache=None, db dbapi.IDbApi) {
 					}
 				}
 				if in {
-					util.WriteMsg(fmt.Sprintf("Warning: %s requested but no masquerade dir "+
+					msg.WriteMsg(fmt.Sprintf("Warning: %s requested but no masquerade dir "+
 						"can be found in /usr/lib*/%s/bin\n", m, m), 0, nil)
 					delete(mysettings.Features.Features, feature)
 				}
@@ -1139,7 +978,7 @@ debug bool, use_cache=None, db dbapi.IDbApi) {
 		//}else{
 		if process.FindBinary(compression_binary) == "" {
 			missing_package := compression["package"]
-			util.WriteMsg(fmt.Sprintf("Warning: File compression unsupported %s. Missing package: %s\n", binpkg_compression, missing_package), 0, nil)
+			msg.WriteMsg(fmt.Sprintf("Warning: File compression unsupported %s. Missing package: %s\n", binpkg_compression, missing_package), 0, nil)
 			//}else{
 			ss, _ := shlex.Split(strings.NewReader(compression["compress"]), false, true)
 			cmds := []string{}
@@ -1180,7 +1019,7 @@ fd_pipes map[int]int, returnpid bool) int {
 	myroot := settings.ValueDict["EROOT"]
 
 	if tree == "" {
-		util.WriteMsg("Warning: tree not specified to doebuild\n", -1, nil)
+		msg.WriteMsg("Warning: tree not specified to doebuild\n", -1, nil)
 		tree = "porttree"
 	}
 
@@ -1226,14 +1065,14 @@ fd_pipes map[int]int, returnpid bool) int {
 
 	if !myutil.Ins(validcommands, mydo) {
 		sort.Strings(validcommands)
-		util.WriteMsg(fmt.Sprintf("!!! doebuild: '%s' is not one of the following valid commands:", mydo), -1, nil)
+		msg.WriteMsg(fmt.Sprintf("!!! doebuild: '%s' is not one of the following valid commands:", mydo), -1, nil)
 		for vcount := range validcommands {
 			if vcount%6 == 0 {
-				util.WriteMsg("\n!!! ", -1, nil)
+				msg.WriteMsg("\n!!! ", -1, nil)
 			}
-			util.WriteMsg(fmt.Sprintf("%11s", validcommands[vcount]), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("%11s", validcommands[vcount]), -1, nil)
 		}
-		util.WriteMsg("\n", -1, nil)
+		msg.WriteMsg("\n", -1, nil)
 		return 1
 	}
 
@@ -1242,8 +1081,8 @@ fd_pipes map[int]int, returnpid bool) int {
 		mydo = "fetch"
 	}
 
-	if !myutil.Ins(clean_phases, mydo) && !myutil.pathExists(myebuild) {
-		util.WriteMsg(fmt.Sprintf("!!! doebuild: %s not found for %s\n", myebuild, mydo), -1, nil)
+	if !myutil.Ins(clean_phases, mydo) && !myutil.PathExists(myebuild) {
+		msg.WriteMsg(fmt.Sprintf("!!! doebuild: %s not found for %s\n", myebuild, mydo), -1, nil)
 		return 1
 	}
 
@@ -1251,7 +1090,7 @@ fd_pipes map[int]int, returnpid bool) int {
 	manifest_path := filepath.Join(pkgdir, "Manifest")
 	var repo_config *repository.RepoConfig = nil
 	if tree == "porttree" {
-		repo_config = mysettings.Repositories.getRepoForLocation(
+		repo_config = mysettings.Repositories.GetRepoForLocation(
 			filepath.Dir(filepath.Dir(pkgdir)))
 	}
 
@@ -1262,7 +1101,7 @@ fd_pipes map[int]int, returnpid bool) int {
 		!repo_config.thinManifest &&
 		!myutil.Ins([]string{"digest", "manifest", "help"}, mydo) &&
 		atom.doebuildManifestExemptDepend == 0 &&
-		!(repo_config.allowMissingManifest && !myutil.pathExists(manifest_path)) {
+		!(repo_config.allowMissingManifest && !myutil.PathExists(manifest_path)) {
 
 		if _doebuild_broken_ebuilds[myebuild] {
 			return 1
@@ -1271,7 +1110,7 @@ fd_pipes map[int]int, returnpid bool) int {
 		if _doebuild_manifest_cache == nil ||
 			_doebuild_manifest_cache.getFullname() != manifest_path {
 			_doebuild_manifest_cache = nil
-			if !myutil.pathExists(manifest_path) {
+			if !myutil.PathExists(manifest_path) {
 				out := output.NewEOutput(false)
 				out.eerror(fmt.Sprintf("Manifest not found for '%s'", myebuild, ))
 				_doebuild_broken_ebuilds[myebuild] = true
@@ -1401,7 +1240,7 @@ fd_pipes map[int]int, returnpid bool) int {
 	}
 
 	if mydo == "depend" {
-		util.WriteMsg(fmt.Sprintf("!!! DEBUG: dbkey: %s\n", dbkey), 2, nil)
+		msg.WriteMsg(fmt.Sprintf("!!! DEBUG: dbkey: %s\n", dbkey), 2, nil)
 		if returnpid {
 			return _spawn_phase(mydo, mysettings, nil, returnpid, "",
 				fd_pipes = fd_pipes)
@@ -1418,7 +1257,7 @@ fd_pipes map[int]int, returnpid bool) int {
 	} else if mydo == "nofetch" {
 
 		if returnpid {
-			util.WriteMsg(fmt.Sprintf("!!! doebuild: %s\n",
+			msg.WriteMsg(fmt.Sprintf("!!! doebuild: %s\n",
 				fmt.Sprintf("returnpid is not supported for phase '%s'\n", mydo)),
 				-1, nil)
 		}
@@ -1449,7 +1288,7 @@ fd_pipes map[int]int, returnpid bool) int {
 
 	if mydo == "unmerge" {
 		if returnpid {
-			util.WriteMsg(fmt.Sprintf("!!! doebuild: %s\n",
+			msg.WriteMsg(fmt.Sprintf("!!! doebuild: %s\n",
 				fmt.Sprintf("returnpid is not supported for phase '%s'\n", mydo)),
 				-1, nil)
 		}
@@ -1483,7 +1322,7 @@ fd_pipes map[int]int, returnpid bool) int {
 		myutil.Ins(_doebuild_commands_without_builddir, mydo) {
 		//pass
 	} else if !phases_to_run["unpack"] {
-		unpacked = myutil.pathExists(filepath.Join(
+		unpacked = myutil.PathExists(filepath.Join(
 			mysettings.ValueDict["PORTAGE_BUILDDIR"], ".unpacked"))
 	} else {
 		workdir_st, err := os.Stat(mysettings.ValueDict["WORKDIR"])
@@ -1492,14 +1331,14 @@ fd_pipes map[int]int, returnpid bool) int {
 			//pass
 		} else {
 			newstuff := false
-			if !myutil.pathExists(filepath.Join(
+			if !myutil.PathExists(filepath.Join(
 				mysettings.ValueDict["PORTAGE_BUILDDIR"], ".unpacked")) {
-				util.WriteMsgStdout(fmt.Sprintf(
+				msg.WriteMsgStdout(fmt.Sprintf(
 					">>> Not marked as unpacked; recreating WORKDIR...\n"), 0)
 				newstuff = true
 			} else {
 				for x := range alist {
-					util.WriteMsgStdout(fmt.Sprintf(">>> Checking %s's mtime...\n", x), 0)
+					msg.WriteMsgStdout(fmt.Sprintf(">>> Checking %s's mtime...\n", x), 0)
 					x_st, err := os.Stat(filepath.Join(
 						mysettings.ValueDict["DISTDIR"], x))
 					if err != nil {
@@ -1508,7 +1347,7 @@ fd_pipes map[int]int, returnpid bool) int {
 					}
 
 					if x_st != nil && x_st.ModTime().Nanosecond() > workdir_st.ModTime().Nanosecond() {
-						util.WriteMsgStdout(fmt.Sprintf(">>> Timestamp of "+
+						msg.WriteMsgStdout(fmt.Sprintf(">>> Timestamp of "+
 							"%s has changed; recreating WORKDIR...\n", x), 0)
 						newstuff = true
 						break
@@ -1533,7 +1372,7 @@ fd_pipes map[int]int, returnpid bool) int {
 					builddir_lock = nil
 				}
 			} else {
-				util.WriteMsgStdout((">>> WORKDIR is up-to-date, keeping...\n"), 0)
+				msg.WriteMsgStdout((">>> WORKDIR is up-to-date, keeping...\n"), 0)
 				unpacked = true
 			}
 		}
@@ -1583,7 +1422,7 @@ fd_pipes map[int]int, returnpid bool) int {
 			(!features["noauto"] && !returnpid &&
 				(myutil.Inmsss(actionmap_deps, mydo) || myutil.Ins([]string{"merge", "package", "qmerge"}, mydo)))) {
 		if vartree == nil {
-			util.WriteMsg("Warning: vartree not given to doebuild. "+
+			msg.WriteMsg("Warning: vartree not given to doebuild. "+
 				"Cannot set REPLACING_VERSIONS in pkg_{pretend,setup}\n", 0, nil)
 		} else {
 			vardb := vartree.dbapi
@@ -1754,7 +1593,7 @@ fd_pipes map[int]int, returnpid bool) int {
 			} else {
 				parent_dir := filepath.Join(mysettings.ValueDict["PKGDIR"],
 					mysettings.ValueDict["CATEGORY"])
-				util.ensureDirs(parent_dir, -1, -1, -1, -1, nil, true)
+				util.EnsureDirs(parent_dir, -1, -1, -1, -1, nil, true)
 				if st, _ := os.Stat(parent_dir) st != nil && st.Mode()&0222 == 0 {
 					//raise PermissionDenied("access('%s', os.W_OK)" % parent_dir)
 				}
@@ -1793,7 +1632,7 @@ fd_pipes map[int]int, returnpid bool) int {
 			}
 		}
 	} else if returnpid {
-		util.WriteMsg(fmt.Sprintf("!!! doebuild: %s\n",
+		msg.WriteMsg(fmt.Sprintf("!!! doebuild: %s\n",
 			fmt.Sprintf("returnpid is not supported for phase '%s'\n", mydo)),
 			-1, nil)
 	}
@@ -1803,8 +1642,8 @@ fd_pipes map[int]int, returnpid bool) int {
 		//pass
 	} else if mydo == "qmerge" {
 
-		if !myutil.pathExists(filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"], ".installed")) {
-			util.WriteMsg(("!!! mydo=qmerge, but the install phase has not been run\n"),
+		if !myutil.PathExists(filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"], ".installed")) {
+			msg.WriteMsg(("!!! mydo=qmerge, but the install phase has not been run\n"),
 				-1, nil)
 			return 1
 		}
@@ -1832,7 +1671,7 @@ fd_pipes map[int]int, returnpid bool) int {
 					tree, mydbapi, vartree, prev_mtimes, nil, nil, fd_pipes)
 		}
 	} else {
-		util.WriteMsgStdout(fmt.Sprintf("!!! Unknown mydo: %s\n", mydo), -1)
+		msg.WriteMsgStdout(fmt.Sprintf("!!! Unknown mydo: %s\n", mydo), -1)
 		return 1
 	}
 
@@ -1842,7 +1681,7 @@ fd_pipes map[int]int, returnpid bool) int {
 func _check_temp_dir(settings *Config)  int{
 	if !myutil.Inmss(settings.ValueDict, "PORTAGE_TMPDIR") ||
 		!myutil.pathIsDir(settings.ValueDict["PORTAGE_TMPDIR"]) {
-		util.WriteMsg(fmt.Sprintf(("The directory specified in your "+
+		msg.WriteMsg(fmt.Sprintf(("The directory specified in your "+
 			"PORTAGE_TMPDIR variable, '%s',\n"+
 			"does not exist.  Please create this directory or "+
 			"correct your PORTAGE_TMPDIR setting.\n"),
@@ -1852,8 +1691,8 @@ func _check_temp_dir(settings *Config)  int{
 
 	checkdir := firstExisting(filepath.Join(settings.ValueDict["PORTAGE_TMPDIR"], "portage"))
 
-	if !myutil.osAccess(checkdir, unix.W_OK) {
-		util.WriteMsg(fmt.Sprintf("%s is not writable.\n"+
+	if !myutil.OsAccess(checkdir, unix.W_OK) {
+		msg.WriteMsg(fmt.Sprintf("%s is not writable.\n"+
 			"Likely cause is that you've mounted it as readonly.\n", checkdir),
 			-1, nil)
 		return 1
@@ -1861,8 +1700,8 @@ func _check_temp_dir(settings *Config)  int{
 
 	fd, _ := ioutil.TempFile(checkdir,  "exectest-*")
 	os.Chmod(fd.Name(), 0755)
-	if ! myutil.osAccess(fd.Name(), unix.X_OK) {
-		util.WriteMsg(fmt.Sprintf("Can not execute files in %s\n"+
+	if ! myutil.OsAccess(fd.Name(), unix.X_OK) {
+		msg.WriteMsg(fmt.Sprintf("Can not execute files in %s\n"+
 			"Likely cause is that you've mounted it with one of the\n"+
 			"following mount options: 'noexec', 'user', 'users'\n\n"+
 			"Please make sure that portage can execute files in this directory.\n", checkdir),
@@ -1922,7 +1761,7 @@ func _spawn_actionmap(settings *Config) Actionmap {
 
 	droppriv := features["userpriv"] &&
 		!myutil.Ins(restrict, "userpriv") &&
-		*data.secpass >= 2
+		*data.Secpass >= 2
 
 	fakeroot := features["fakeroot"]
 
@@ -2014,10 +1853,10 @@ func _validate_deps(mysettings *Config, myroot, mydo string, mydbapi dbapi.IDbAp
 	}
 
 	if len(msgs) > 0 {
-		util.WriteMsgLevel(fmt.Sprintf("Error(s) in metadata for '%s':\n",
+		msg.WriteMsgLevel(fmt.Sprintf("Error(s) in metadata for '%s':\n",
 			mysettings.mycpv, ), 40, -1)
 		for _, x := range msgs {
-			util.WriteMsgLevel(x,
+			msg.WriteMsgLevel(x,
 				40, -1)
 		}
 		if !invalid_dep_exempt_phases[mydo] {
@@ -2033,21 +1872,21 @@ func _validate_deps(mysettings *Config, myroot, mydo string, mydbapi dbapi.IDbAp
 			pkg.use.enabled, pkg.iuse.is_valid_flag, eapi = pkg.eapi)
 		if !result {
 			reduced_noise = result.tounicode()
-			util.WriteMsg(fmt.Sprintf("\n  %s\n"%_("The following REQUIRED_USE flag"+
+			msg.WriteMsg(fmt.Sprintf("\n  %s\n"%_("The following REQUIRED_USE flag"+
 				" constraints are unsatisfied:")), -1, nil)
-			util.WriteMsg(fmt.Sprintf("    %s\n", reduced_noise),
+			msg.WriteMsg(fmt.Sprintf("    %s\n", reduced_noise),
 				-1, nil)
 			normalized_required_use =
 				strings.Join(strings.Fields(pkg._metadata["REQUIRED_USE"]), " ")
 			if reduced_noise != normalized_required_use {
-				util.WriteMsg(fmt.Sprintf("\n  %s\n", "The above constraints "+
+				msg.WriteMsg(fmt.Sprintf("\n  %s\n", "The above constraints "+
 					"are a subset of the following complete expression:"),
 					-1, nil)
-				util.WriteMsg(fmt.Sprintf("    %s\n",
+				msg.WriteMsg(fmt.Sprintf("    %s\n",
 					dep.humanReadableRequiredUse(normalized_required_use)),
 					-1, nil)
 			}
-			util.WriteMsg("\n", -1, nil)
+			msg.WriteMsg("\n", -1, nil)
 		}
 		return 1
 	}
@@ -2101,13 +1940,13 @@ sesandbox, fakeroot, networked, ipc, mountns, pidns bool, fd_pipes map[int]int, 
 	portage_build_uid := os.Getuid()
 	portage_build_gid := os.Getgid()
 	logname := ""
-	if data.uid == 0 && data.portage_uid != nil && data.portage_gid != nil && hasattr(os, "setgroups") {
+	if data.uid == 0 && data.Portage_uid != nil && data.Portage_gid != nil && hasattr(os, "setgroups") {
 		if droppriv {
 			logname = *data._portage_username
 			keywords.update(
 			{
-				"uid": data.portage_uid,
-				"gid": data.portage_gid,
+				"uid": data.Portage_uid,
+				"gid": data.Portage_gid,
 				"groups": data.userpriv_groups,
 				"umask": 0o22
 			})
@@ -2131,15 +1970,15 @@ sesandbox, fakeroot, networked, ipc, mountns, pidns bool, fd_pipes map[int]int, 
 
 					if subprocess_tty != parent_tty {
 						_os.chown(subprocess_tty,
-							int(data.portage_uid), int(data.portage_gid))
+							int(data.Portage_uid), int(data.Portage_gid))
 					}
 				}
 			}
 
-			if features["userpriv"] && !myutil.Ins(strings.Fields(mysettings.ValueDict["PORTAGE_RESTRICT"]), "userpriv") && *data.secpass >= 2 {
+			if features["userpriv"] && !myutil.Ins(strings.Fields(mysettings.ValueDict["PORTAGE_RESTRICT"]), "userpriv") && *data.Secpass >= 2 {
 
-				portage_build_uid = int(*data.portage_uid)
-				portage_build_gid = int(*data.portage_gid)
+				portage_build_uid = int(*data.Portage_uid)
+				portage_build_gid = int(*data.Portage_gid)
 			}
 		}
 	}
@@ -2279,11 +2118,11 @@ logfile string, fd_pipes map[int]int, returnpid bool) int {
 	if !(mydo == "install" && mysettings.Features.Features["noauto"]) {
 		check_file := filepath.Join(
 			mysettings.ValueDict["PORTAGE_BUILDDIR"], fmt.Sprintf(".%sed", strings.TrimRight(mydo, "e")))
-		if myutil.pathExists(check_file) {
-			util.WriteMsgStdout(fmt.Sprintf((">>> It appears that "+
+		if myutil.PathExists(check_file) {
+			msg.WriteMsgStdout(fmt.Sprintf((">>> It appears that "+
 				"'%s' has already executed for '%s'; skipping.\n"),
 				mydo, mysettings.ValueDict["PF"]), 0)
-			util.WriteMsgStdout(fmt.Sprintf(">>> Remove '%s' to force %s.\n",
+			msg.WriteMsgStdout(fmt.Sprintf(">>> Remove '%s' to force %s.\n",
 				check_file, mydo), 0)
 			return 0
 		}
@@ -2326,10 +2165,10 @@ var _post_phase_cmds = {
 }
 
 func _post_phase_userpriv_perms(mysettings *Config) {
-	if  mysettings.Features.Features["userpriv"] && *data.secpass >= 2 {
+	if  mysettings.Features.Features["userpriv"] && *data.Secpass >= 2 {
 		for _, path := range []string{mysettings.ValueDict["HOME"], mysettings.ValueDict["T"]}{
 			apply_recursive_permissions(path,
-				data.uid = data.portage_uid, gid = data.portage_gid, dirmode = 0o700, dirmask=0,
+				data.uid = data.Portage_uid, gid = data.Portage_gid, dirmode = 0o700, dirmask=0,
 			filemode = 0o600, filemask=0)
 		}
 	}
@@ -2757,9 +2596,9 @@ if has_lafile_header{
 if needs_update{
 if ! fixlafiles_announced {
 	fixlafiles_announced = true
-	util.WriteMsg("Fixing .la files\n"), fd = out)
+	msg.WriteMsg("Fixing .la files\n"), fd = out)
 }
-util.WriteMsg(fmt.Sprintf("   %s\n" , fpath[len(destdir):]), fd=out)
+msg.WriteMsg(fmt.Sprintf("   %s\n" , fpath[len(destdir):]), fd=out)
 
 util.write_atomic(fpath,
 new_contents, mode="wb")
@@ -2772,19 +2611,19 @@ if unix.S_IFREG&mystat.Mode()!=0 &&
 				counted_inodes[mystat.Sys().(*syscall.Stat_t).Ino]=true
 				size += mystat.Size()
 			}
-if mystat.st_uid != data.portage_uid &&
-mystat.st_gid != data.portage_gid {
+if mystat.st_uid != data.Portage_uid &&
+mystat.st_gid != data.Portage_gid {
 	continue
 }
 myuid := -1
 mygid := -1
-if mystat.Sys().(*syscall.Stat_t).Uid == uint32(*data.portage_uid) {
+if mystat.Sys().(*syscall.Stat_t).Uid == uint32(*data.Portage_uid) {
 	myuid = inst_uid
 }
-if mystat.Sys().(*syscall.Stat_t).Gid == *data.portage_gid {
+if mystat.Sys().(*syscall.Stat_t).Gid == *data.Portage_gid {
 	mygid = inst_gid
 }
-util.apply_secpass_permissions(fpath, myuid, mygid, mystat.Mode(), -1,  mystat, false)
+permissions.Apply_secpass_permissions(fpath, myuid, mygid, mystat.Mode(), -1,  mystat, false)
 		}
 
 if unicode_error {
@@ -2976,7 +2815,7 @@ func _post_src_install_soname_symlinks(mysettings *Config, out io.Writer) {
 		entry, err := util.NewNeededEntry().parse(needed_filename, l)
 		if err != nil {
 			//}except InvalidData as e{
-			util.WriteMsgLevel(fmt.Sprintf("\n%s\n\n", err, ),
+			msg.WriteMsgLevel(fmt.Sprintf("\n%s\n\n", err, ),
 				40, -1)
 			continue
 		}
@@ -3117,7 +2956,7 @@ func _prepare_self_update(settings *Config) {
 	portage.proxy.lazyimport._preload_portage_submodules()
 
 	build_prefix := filepath.Join(settings.ValueDict["PORTAGE_TMPDIR"], "portage")
-	util.ensureDirs(build_prefix,-1,-1,-1,-1,nil,true)
+	util.EnsureDirs(build_prefix,-1,-1,-1,-1,nil,true)
 	base_path_tmp := ioutil.TempDir(
 		filepath.Join("", "._portage_reinstall_."), build_prefix)
 	process.atexit_register(func() {
@@ -3171,8 +3010,8 @@ func prepare_build_dirs(settings *Config, cleanup bool) int{
 			if syscall.ENOENT == err {
 				//pass
 			} else if syscall.EPERM == err {
-				util.WriteMsg(fmt.Sprintf("%s\n", err), -1, nil)
-				util.WriteMsg(fmt.Sprintf("Operation Not Permitted: rmtree('%s')\n",
+				msg.WriteMsg(fmt.Sprintf("%s\n", err), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("Operation Not Permitted: rmtree('%s')\n",
 					clean_dir), -1, nil)
 				return 1
 			} else {
@@ -3206,15 +3045,15 @@ func prepare_build_dirs(settings *Config, cleanup bool) int{
 
 //try:
 	for _, mydir:= range mydirs {
-		util.ensureDirs(mydir, -1, -1, -1, -1, nil, true)
+		util.EnsureDirs(mydir, -1, -1, -1, -1, nil, true)
 		//try:
-		util.apply_secpass_permissions(mydir,*data.portage_gid,uint32(*data.portage_uid),0700, 0,nil,true)
+		permissions.Apply_secpass_permissions(mydir,*data.Portage_gid,uint32(*data.Portage_uid),0700, 0,nil,true)
 		//except PortageException:
 		//if not pathIsDir(mydir):
 		//raise
 		for _, dir_key := range []string{"HOME", "PKG_LOGDIR", "T"} {
-			util.ensureDirs(mysettings.ValueDict[dir_key], -1, -1, 0755, -1, nil, true)
-			util.apply_secpass_permissions(mysettings.ValueDict[dir_key], uint32(*data.portage_uid), *data.portage_gid, -1, -1, nil, true)
+			util.EnsureDirs(mysettings.ValueDict[dir_key], -1, -1, 0755, -1, nil, true)
+			permissions.Apply_secpass_permissions(mysettings.ValueDict[dir_key], uint32(*data.Portage_uid), *data.Portage_gid, -1, -1, nil, true)
 		}
 	}
 	//except PermissionDenied as e:
@@ -3243,7 +3082,7 @@ func prepare_build_dirs(settings *Config, cleanup bool) int{
 func _adjust_perms_msg(settings *Config, msg string) {
 
 	write := func(msg string) {
-		util.WriteMsg(msg, -1, nil)
+		msg.WriteMsg(msg, -1, nil)
 	}
 
 	background := settings.ValueDict["PORTAGE_BACKGROUND"] == "1"
@@ -3303,7 +3142,7 @@ func _prepare_features_dirs(mysettings *Config) {
 	filemode := 060
 	modemask := 02
 	restrict := strings.Fields(mysettings.ValueDict["PORTAGE_RESTRICT"])
-	droppriv := *data.secpass >= 2&& mysettings.Features.Features["userpriv"] && !myutil.Ins(restrict,"userpriv")
+	droppriv := *data.Secpass >= 2&& mysettings.Features.Features["userpriv"] && !myutil.Ins(restrict,"userpriv")
 	for myfeature, kwargs := range features_dirs {
 		if mysettings.Features.Features[myfeature] {
 			failure := false
@@ -3320,15 +3159,15 @@ func _prepare_features_dirs(mysettings *Config) {
 				}
 			}
 			for _,  mydir:= range mydirs {
-				modified := util.ensureDirs(mydir,-1,-1,-1,-1,nil,true)
+				modified := util.EnsureDirs(mydir,-1,-1,-1,-1,nil,true)
 				droppriv_fix := false
 				if droppriv {
 					st, _ := os.Stat(mydir)
-					if st.Sys().(*syscall.Stat_t).Gid != *data.portage_gid || !(dirmode == st.Sys().(*syscall.Stat_t).Mode & dirmode) {
+					if st.Sys().(*syscall.Stat_t).Gid != *data.Portage_gid || !(dirmode == st.Sys().(*syscall.Stat_t).Mode & dirmode) {
 						droppriv_fix = true
 					}
 					if ! droppriv_fix {
-						lds, _, := myutil.listDir(mydir)
+						lds, _, := myutil.ListDir(mydir)
 						for _, filename := range lds{
 							subdir_st, err := os.Lstat(
 								filepath.Join(mydir, filename))
@@ -3336,7 +3175,7 @@ func _prepare_features_dirs(mysettings *Config) {
 								//except OSError:
 								continue
 							}
-							if subdir_st.Sys().(*syscall.Stat_t).Gid != *data.portage_gid ||
+							if subdir_st.Sys().(*syscall.Stat_t).Gid != *data.Portage_gid ||
 								(st.IsDir() &&! (dirmode == uint32(st.Mode()) & dirmode)) {
 								droppriv_fix = true
 								break
@@ -3347,12 +3186,12 @@ func _prepare_features_dirs(mysettings *Config) {
 
 				if droppriv_fix {
 					_adjust_perms_msg(mysettings,
-						output.colorize("WARN", " * ")+
+						output.Colorize("WARN", " * ")+
 							fmt.Sprintf("Adjusting permissions "+
 					"for FEATURES=userpriv: '%s'\n", mydir))
 				}else if modified {
 					_adjust_perms_msg(mysettings,
-						output.colorize("WARN", " * ")+
+						output.Colorize("WARN", " * ")+
 					fmt.Sprintf("Adjusting permissions "+
 					"for FEATURES=%s: '%s'\n", myfeature, mydir)))
 				}
@@ -3362,7 +3201,7 @@ func _prepare_features_dirs(mysettings *Config) {
 						raise
 					}
 					if ! apply_recursive_permissions(mydir,
-						gid = data.portage_gid, dirmode = dirmode, dirmask=modemask,
+						gid = data.Portage_gid, dirmode = dirmode, dirmask=modemask,
 						filemode = filemode, filemask=modemask, onerror = onerror){
 						raise
 						OperationNotPermitted(
@@ -3422,32 +3261,32 @@ func _prepare_workdir(mysettings *Config) {
 
 	md := os.FileMode(uint32(workdir_mode))
 	var uid uint32
-	if *data.secpass >= 2 {
-		uid = uint32(*data.portage_uid)
+	if *data.Secpass >= 2 {
+		uid = uint32(*data.Portage_uid)
 	}else {
 		uid = 0
 		uid -= 1
 	}
 	var gid uint32
-	if *data.secpass >= 1 {
-		 gid = *data.portage_gid
+	if *data.Secpass >= 1 {
+		 gid = *data.Portage_gid
 	}else {
 		gid = 0
 		gid -= 1
 	}
 
-	util.ensureDirs(mysettings.ValueDict["PORTAGE_BUILDDIR"], uid,gid, md, -1 ,nil, true)
-	util.ensureDirs(mysettings.ValueDict["WORKDIR"], uid,gid, md, -1 ,nil, true)
+	util.EnsureDirs(mysettings.ValueDict["PORTAGE_BUILDDIR"], uid,gid, md, -1 ,nil, true)
+	util.EnsureDirs(mysettings.ValueDict["WORKDIR"], uid,gid, md, -1 ,nil, true)
 
 	if mysettings.ValueDict["PORTAGE_LOGDIR"] == "" {
 		delete(mysettings.ValueDict, "PORTAGE_LOGDIR")
 	}
 	if myutil.Inmss(mysettings.ValueDict, "PORTAGE_LOGDIR") {
 		//try:
-		modified := util.ensureDirs(mysettings.ValueDict["PORTAGE_LOGDIR"],-1,-1,-1,-1,nil,true)
+		modified := util.EnsureDirs(mysettings.ValueDict["PORTAGE_LOGDIR"],-1,-1,-1,-1,nil,true)
 		if modified {
-			util.apply_secpass_permissions(mysettings.ValueDict["PORTAGE_LOGDIR"],
-				uint32(*data.portage_uid), *data.portage_gid, 0o2770, -1, nil, true)
+			permissions.Apply_secpass_permissions(mysettings.ValueDict["PORTAGE_LOGDIR"],
+				uint32(*data.Portage_uid), *data.Portage_gid, 0o2770, -1, nil, true)
 		}
 		//except PortageException as e:
 		//writemsg("!!! %s\n"%str(e), noiselevel = -1)
@@ -3464,10 +3303,10 @@ func _prepare_workdir(mysettings *Config) {
 	}
 
 	logdir_subdir_ok := false
-	if myutil.Inmss(mysettings.ValueDict, "PORTAGE_LOGDIR") && myutil.osAccess(mysettings.ValueDict["PORTAGE_LOGDIR"], unix.W_OK) {
-		logdir := util.NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])
+	if myutil.Inmss(mysettings.ValueDict, "PORTAGE_LOGDIR") && myutil.OsAccess(mysettings.ValueDict["PORTAGE_LOGDIR"], unix.W_OK) {
+		logdir := msg.NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])
 		logid_path := filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"], ".logid")
-		if !myutil.pathExists(logid_path) {
+		if !myutil.PathExists(logid_path) {
 			f, _ := os.OpenFile(logid_path, os.O_CREATE| os.O_RDWR, 0644)
 			f.Close()
 		}
@@ -3495,10 +3334,10 @@ func _prepare_workdir(mysettings *Config) {
 			//except PortageException as e:
 			//writemsg("!!! %s\n" % (e, ), noiselevel = -1)
 
-			if myutil.osAccess(log_subdir, unix.W_OK) {
+			if myutil.OsAccess(log_subdir, unix.W_OK) {
 				logdir_subdir_ok = true
 			} else {
-				util.WriteMsg(fmt.Sprintf("!!! %s: %s\n",
+				msg.WriteMsg(fmt.Sprintf("!!! %s: %s\n",
 					"Permission Denied", log_subdir), -1, nil)
 			}
 		}
@@ -3535,10 +3374,10 @@ func _ensure_log_subdirs(logdir, subdir string) {
 	gid := st.Sys().(*syscall.Stat_t).Gid
 	grp_mode := 02070 & st.Mode()
 
-	if grp_mode != 0 && gid == *data.portage_gid && *data.secpass >= 2 {
-		uid := *data.portage_uid
-		if st.Sys().(*syscall.Stat_t).Uid != uint32(*data.portage_uid) {
-			util.ensureDirs(logdir, uint32(uid), -1, -1, -1, nil, true)
+	if grp_mode != 0 && gid == *data.Portage_gid && *data.Secpass >= 2 {
+		uid := *data.Portage_uid
+		if st.Sys().(*syscall.Stat_t).Uid != uint32(*data.Portage_uid) {
+			util.EnsureDirs(logdir, uint32(uid), -1, -1, -1, nil, true)
 		}
 	}
 
@@ -3550,7 +3389,7 @@ func _ensure_log_subdirs(logdir, subdir string) {
 		ss := subdir_split[len(subdir_split)-1]
 		subdir_split = subdir_split[:len(subdir_split)-1]
 		current = filepath.Join(current, ss)
-		util.ensureDirs(current, uint32(uid), gid, grp_mode, 0, nil, true)
+		util.EnsureDirs(current, uint32(uid), gid, grp_mode, 0, nil, true)
 	}
 }
 
@@ -3574,9 +3413,9 @@ func _prepare_fake_filesdir(settings *Config) {
 func _prepare_fake_distdir(settings *Config, alist[]string){
 	orig_distdir := settings.ValueDict["DISTDIR"]
 	edpath := filepath.Join(settings.ValueDict["PORTAGE_BUILDDIR"], "distdir")
-	util.ensureDirs(edpath, -1, *data.portage_gid, 0755, -1, nil,true)
+	util.EnsureDirs(edpath, -1, *data.Portage_gid, 0755, -1, nil,true)
 
-	lds , _ := myutil.listDir(edpath)
+	lds , _ := myutil.ListDir(edpath)
 	for _, x:= range lds {
 		symlink_path := filepath.Join(edpath, x)
 		st, _ := os.Lstat(symlink_path)

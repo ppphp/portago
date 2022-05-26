@@ -12,6 +12,7 @@ import (
 	"github.com/ppphp/portago/pkg/manifest"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/portage"
+	"github.com/ppphp/portago/pkg/repository/validrepo"
 	"github.com/ppphp/portago/pkg/util"
 	"os"
 	"path"
@@ -26,22 +27,13 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var repoNameSubRe = regexp.MustCompile(`[^\w-]`)
-
-func genValidRepo(name string) string {
-	name = repoNameSubRe.ReplaceAllString(strings.TrimSpace(name), " ")
-	name = strings.Join(strings.Fields(name), "-")
-	name = strings.TrimLeft(name, "-")
-	return name
-}
-
 var (
 	invalidPathCharRe   = regexp.MustCompile("[^a-zA-Z0-9._\\-+/]")
 	validProfileFormats = map[string]bool{
 		"pms": true, "portage-1": true, "portage-2": true, "profile-bashrcs": true, "profile-set": true,
 		"profile-default-eapi": true, "build-id": true,
 	}
-	portage1ProfilesAllowDirectories = map[string]bool{"portage-1-compat": true, "portage-1": true, "portage-2": true}
+	Portage1ProfilesAllowDirectories = map[string]bool{"portage-1-compat": true, "portage-1": true, "portage-2": true}
 )
 
 // 0, 0
@@ -189,16 +181,16 @@ func (r *RepoConfig) update(new_repo *RepoConfig) {
 }
 
 func (r *RepoConfig) writable() bool {
-	s, _ := os.Stat(atom.firstExisting(r.Location))
+	s, _ := os.Stat(ebuild.firstExisting(r.Location))
 	return s.Mode()&unix.W_OK != 0
 }
 
 func (r *RepoConfig) readValidRepoName(repoPath string) (string, bool) {
 	name, missing := r.readRepoName(repoPath)
-	name = genValidRepo(name)
+	name = validrepo.GenValidRepo(name)
 	if len(name) == 0 {
 		name = "x-" + path.Base(repoPath)
-		name = genValidRepo(name)
+		name = validrepo.GenValidRepo(name)
 	}
 	return name, missing
 }
@@ -427,7 +419,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *R
 	r.mastersOrig = []string{}
 
 	if len(r.Location) > 0 {
-		layoutData, _ := parseLayoutConf(r.Location, r.Name)
+		layoutData, _ := ParseLayoutConf(r.Location, r.Name)
 		r.mastersOrig = layoutData["masters"]
 		if r.masters == nil {
 			r.masters = layoutData["masters"]
@@ -493,7 +485,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *R
 		eapi := util.readCorrespondingEapiFile(path.Join(r.Location, _const.RepoNameLoc), r.eapi)
 		r.portage1Profiles = eapi2.eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi)
 		for _, v := range layoutData["profile-formats"] {
-			if portage1ProfilesAllowDirectories[v] {
+			if Portage1ProfilesAllowDirectories[v] {
 				r.portage1Profiles = true
 				break
 			}
@@ -512,7 +504,7 @@ func NewRepoConfig(name string, repoOpts map[string]string, localConfig bool) *R
 	return r
 }
 
-type repoConfigLoader struct {
+type RepoConfigLoader struct {
 	locationMap, treeMap map[string]string
 	Prepos               map[string]*RepoConfig
 	preposOrder          []string
@@ -522,7 +514,7 @@ type repoConfigLoader struct {
 	ignoredRepos         []util.sss
 }
 
-func (r *repoConfigLoader) addRepositories(portDir, portdirOverlay string, prepos map[string]*RepoConfig, ignoredMap map[string][]string, localConfig bool, defaultPortdir string) string {
+func (r *RepoConfigLoader) addRepositories(portDir, portdirOverlay string, prepos map[string]*RepoConfig, ignoredMap map[string][]string, localConfig bool, defaultPortdir string) string {
 	overlays := []string{}
 	portDirOrig := ""
 	if portDir != "" {
@@ -683,7 +675,7 @@ func (r *repoConfigLoader) addRepositories(portDir, portdirOverlay string, prepo
 	return portDir
 }
 
-func (r *repoConfigLoader) parse(paths []string, prepos map[string]*RepoConfig, localConfig bool, defaultOpts map[string]string) error {
+func (r *RepoConfigLoader) parse(paths []string, prepos map[string]*RepoConfig, localConfig bool, defaultOpts map[string]string) error {
 	args := configparser.DefaultArgument
 	args.Defaults = defaultOpts
 	parser := configparser.NewConfigParser(args)
@@ -716,7 +708,7 @@ func (r *repoConfigLoader) parse(paths []string, prepos map[string]*RepoConfig, 
 	return nil
 }
 
-func (r *repoConfigLoader) mainRepoLocation() string {
+func (r *RepoConfigLoader) mainRepoLocation() string {
 	mainRepo := r.Prepos["DEFAULT"].mainRepo
 	if _, ok := r.Prepos[mainRepo]; mainRepo == "" || !ok {
 		return ""
@@ -724,7 +716,7 @@ func (r *repoConfigLoader) mainRepoLocation() string {
 	return r.Prepos[mainRepo].Location
 }
 
-func (r *repoConfigLoader) mainRepo() *RepoConfig {
+func (r *RepoConfigLoader) mainRepo() *RepoConfig {
 	mainRepo := r.Prepos["DEFAULT"].mainRepo
 	if mainRepo == "" {
 		return nil
@@ -732,7 +724,7 @@ func (r *repoConfigLoader) mainRepo() *RepoConfig {
 	return r.Prepos[mainRepo]
 }
 
-func (r *repoConfigLoader) RepoLocationList() []string {
+func (r *RepoConfigLoader) RepoLocationList() []string {
 	if r.preposChanged {
 		repoLocationList := []string{}
 		for _, repo := range r.preposOrder {
@@ -746,7 +738,7 @@ func (r *repoConfigLoader) RepoLocationList() []string {
 	return r.repoLocationList
 }
 
-func (r *repoConfigLoader) checkLocations() {
+func (r *RepoConfigLoader) checkLocations() {
 	for name, re := range r.Prepos {
 		if name != "DEFAULT" {
 			if re.Location == "" {
@@ -767,7 +759,7 @@ func (r *repoConfigLoader) checkLocations() {
 	}
 }
 
-func (r *repoConfigLoader) reposWithProfiles() []*RepoConfig {
+func (r *RepoConfigLoader) reposWithProfiles() []*RepoConfig {
 	rp := []*RepoConfig{}
 	for _, repoName := range r.preposOrder {
 		repo := r.Prepos[repoName]
@@ -778,26 +770,26 @@ func (r *repoConfigLoader) reposWithProfiles() []*RepoConfig {
 	return rp
 }
 
-func (r *repoConfigLoader) getNameForLocation(location string) string {
+func (r *RepoConfigLoader) getNameForLocation(location string) string {
 	return r.locationMap[location]
 }
 
-func (r *repoConfigLoader) getLocationForName(repoName string) string {
+func (r *RepoConfigLoader) GetLocationForName(repoName string) string {
 	if repoName == "" {
 		return ""
 	}
 	return r.treeMap[repoName]
 }
 
-func (r *repoConfigLoader) getRepoForLocation(location string) *RepoConfig {
+func (r *RepoConfigLoader) GetRepoForLocation(location string) *RepoConfig {
 	return r.Prepos[r.getNameForLocation(location)]
 }
 
-func (r *repoConfigLoader) getitem(repoName string) *RepoConfig {
+func (r *RepoConfigLoader) getitem(repoName string) *RepoConfig {
 	return r.Prepos[repoName]
 }
 
-func (r *repoConfigLoader) delitem(repoName string) {
+func (r *RepoConfigLoader) delitem(repoName string) {
 	if repoName == r.Prepos["DEFAULT"].mainRepo {
 		r.Prepos["DEFAULT"].mainRepo = ""
 	}
@@ -827,12 +819,12 @@ func (r *repoConfigLoader) delitem(repoName string) {
 	r.repoLocationList = rll
 }
 
-func (r *repoConfigLoader) contains(repoName string) bool {
+func (r *RepoConfigLoader) contains(repoName string) bool {
 	_, ok := r.Prepos[repoName]
 	return ok
 }
 
-func (r *repoConfigLoader) iter() []string {
+func (r *RepoConfigLoader) iter() []string {
 	rp := []string{}
 	for _, repo := range r.preposOrder {
 		rp = append(rp, repo)
@@ -840,7 +832,7 @@ func (r *repoConfigLoader) iter() []string {
 	return rp
 }
 
-func (r *repoConfigLoader) configString() string {
+func (r *RepoConfigLoader) configString() string {
 	configString := ""
 	repoName := []string{}
 	for r := range r.Prepos {
@@ -916,8 +908,8 @@ func (r *repoConfigLoader) configString() string {
 	return strings.TrimPrefix(configString, "\n")
 }
 
-func NewRepoConfigLoader(paths []string, settings *ebuild.Config) *repoConfigLoader {
-	r := &repoConfigLoader{}
+func NewRepoConfigLoader(paths []string, settings *ebuild.Config) *RepoConfigLoader {
+	r := &RepoConfigLoader{}
 	prepos, locationMap, treeMap, ignoredMap, defaultOpts := map[string]*RepoConfig{}, map[string]string{}, map[string]string{}, map[string][]string{}, map[string]string{"EPREFIX": settings.ValueDict["EPREFIX"], "EROOT": settings.ValueDict["EROOT"], "PORTAGE_CONFIGROOT": settings.ValueDict["PORTAGE_CONFIGROOT"], "ROOT": settings.ValueDict["ROOT"]}
 	var portDir, portDirOverlay string
 
@@ -1105,7 +1097,7 @@ func NewRepoConfigLoader(paths []string, settings *ebuild.Config) *repoConfigLoa
 		if len(repo.eclassOverrides) != 0 {
 			for otherRepoName := range r.treeMap {
 				if _, ok := r.treeMap[otherRepoName]; ok {
-					eclassLocations = append(eclassLocations, r.getLocationForName(otherRepoName))
+					eclassLocations = append(eclassLocations, r.GetLocationForName(otherRepoName))
 				} else {
 					util.WriteMsgLevel(fmt.Sprintf("Unavailable repository '%s' referenced by eclass-overrides entry for '%s'\n", otherRepoName, repoName), 40, -1)
 				}
@@ -1148,7 +1140,7 @@ func NewRepoConfigLoader(paths []string, settings *ebuild.Config) *repoConfigLoa
 	return r
 }
 
-func loadRepositoryConfig(settings *ebuild.Config, extraFiles string) *repoConfigLoader {
+func loadRepositoryConfig(settings *ebuild.Config, extraFiles string) *RepoConfigLoader {
 	repoConfigPaths := []string{}
 	if pr, ok := settings.ValueDict["PORTAGE_REPOSITORIES"]; ok {
 		repoConfigPaths = append(repoConfigPaths, pr)
@@ -1177,7 +1169,7 @@ func getRepoName(repoLocation, cached string) string {
 	return name
 }
 
-func parseLayoutConf(repoLocation, repoName string) (map[string][]string, map[string][]string) {
+func ParseLayoutConf(repoLocation, repoName string) (map[string][]string, map[string][]string) {
 	eapi := util.readCorrespondingEapiFile(path.Join(repoLocation, _const.RepoNameLoc), "0")
 
 	layoutFilename := path.Join(repoLocation, "metadata", "layout.conf")
@@ -1214,9 +1206,9 @@ func parseLayoutConf(repoLocation, repoName string) (map[string][]string, map[st
 		data["thin-manifest"] = nil
 	}
 	if v, ok := layoutData["repo-name"]; ok {
-		data["repo-name"] = []string{genValidRepo(v[0])}
+		data["repo-name"] = []string{validrepo.GenValidRepo(v[0])}
 	} else {
-		data["repo-name"] = []string{genValidRepo("")}
+		data["repo-name"] = []string{validrepo.GenValidRepo("")}
 	}
 
 	if v, ok := layoutData["Use-manifests"]; ok && strings.ToLower(v[0]) != "strict" {

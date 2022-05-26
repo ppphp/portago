@@ -3,10 +3,10 @@ package versions
 import (
 	"errors"
 	"fmt"
-	"github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/pkg/eapi"
-	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/interfaces"
 	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/repository/validrepo"
 	"math/big"
 	"regexp"
 	"strconv"
@@ -69,15 +69,15 @@ func getPvRe(eapiAttrs eapi.EapiAttrs) *regexp.Regexp {
 }
 
 // 1
-func verVerify(myver string, silent int) bool {
+func VerVerify(myver string, silent int) bool {
 	if verRegexp.MatchString(myver) {
 		return true
-	} else {
-		if silent != 0 {
-			fmt.Printf("!!! syntax error in version: %s", myver)
-		}
-		return false
 	}
+	if silent != 0 {
+		fmt.Printf("!!! syntax error in version: %s", myver)
+	}
+	return false
+
 }
 
 type VersionStatus string
@@ -146,7 +146,7 @@ func cmpString(s1, s2 string) (int, error) {
 	return c, nil
 }
 
-func verCmp(ver1, ver2 string) (int, error) {
+func VerCmp(ver1, ver2 string) (int, error) {
 	if ver1 == ver2 {
 		return 0, nil
 	}
@@ -288,19 +288,19 @@ func verCmp(ver1, ver2 string) (int, error) {
 
 }
 
-func pkgCmp(pkg1, pkg2 [3]string) (int, error) {
+func PkgCmp(pkg1, pkg2 [3]string) (int, error) {
 	if pkg1[0] != pkg2[0] {
 		return 0, errors.New("")
 	}
-	return verCmp(strings.Join(pkg1[1:], "-"), strings.Join(pkg2[1:], "-"))
+	return VerCmp(strings.Join(pkg1[1:], "-"), strings.Join(pkg2[1:], "-"))
 }
 
 // ""
-func pkgSplit(mypkg, eapi1 string) [3]string {
-	if !getPvRe(eapi.GetEapiAttrs(eapi1)).MatchString(mypkg) {
+func PkgSplit_(mypkg, eapi1 string) [3]string {
+	re := getPvRe(eapi.GetEapiAttrs(eapi1))
+	if !re.MatchString(mypkg) {
 		return [3]string{}
 	}
-	re := getPvRe(eapi.GetEapiAttrs(eapi1))
 	if myutil.GetNamedRegexp(re, mypkg, "pn_inval") != "" {
 		return [3]string{}
 	}
@@ -325,11 +325,11 @@ func CatPkgSplit(mydata string, silent int, eapi string) [4]string {
 	var p [3]string
 	if len(mySplit) == 1 {
 		cat = missingCat
-		p = pkgSplit(mydata, eapi)
+		p = PkgSplit_(mydata, eapi)
 	} else if len(mySplit) == 2 {
 		cat = mySplit[0]
 		if catRe.MatchString(cat) {
-			p = pkgSplit(mySplit[1], eapi)
+			p = PkgSplit_(mySplit[1], eapi)
 		}
 	}
 	if p == [3]string{} {
@@ -338,36 +338,23 @@ func CatPkgSplit(mydata string, silent int, eapi string) [4]string {
 	return [4]string{cat, p[0], p[1], p[2]}
 }
 
-type PkgStr struct {
+type PkgStr[T interfaces.ISettings] struct {
 	string
 	metadata                                                      map[string]string
-	settings                                                      *ebuild.Config
+	settings                                                      T
 	eapi, repo, slot, fileSize, cp, version, subSlot, slotInvalid string
 
-	db                        *atom.dbapi
-	buildId, buildTime, mtime int
+	db                        interfaces.IDbApi
+	BuildId, BuildTime, mtime int
 	_stable                   *bool
 	cpvSplit                  [4]string
-	cpv                       *PkgStr
-}
-
-func (p *PkgStr) stable() bool {
-	if p._stable != nil {
-		return *p._stable
-	}
-	settings := p.settings
-	if settings == nil {
-		return false
-	}
-	p._stable = new(bool)
-	*p._stable = settings.isStable(p)
-	return *p._stable
+	cpv                       *PkgStr[T]
 }
 
 // nil, nil, "", "", "", 0, 0, "", 0, nil
-func NewPkgStr(cpv string, metadata map[string]string, settings *ebuild.Config, eapi1, repo, slot string, build_time, build_id int, file_size string, mtime int, db *atom.dbapi) *PkgStr {
-	p := &PkgStr{string: cpv}
-	if len(metadata) != 0 {
+func NewPkgStr[T interfaces.ISettings](cpv string, metadata map[string]string, settings T, eapi1, repo, slot string, build_time, build_id int, file_size string, mtime int, db interfaces.IDbApi) *PkgStr[T] {
+	p := &PkgStr[T]{string: cpv}
+	if metadata != nil {
 		p.metadata = metadata
 		if a, ok := metadata["SLOT"]; ok {
 			slot = a
@@ -376,7 +363,7 @@ func NewPkgStr(cpv string, metadata map[string]string, settings *ebuild.Config, 
 			repo = a
 		}
 		if a, ok := metadata["EAPI"]; ok {
-			slot = a
+			eapi1 = a
 		}
 		if a, ok := metadata["BUILD_TIME"]; ok {
 			build_time, _ = strconv.Atoi(a)
@@ -392,20 +379,24 @@ func NewPkgStr(cpv string, metadata map[string]string, settings *ebuild.Config, 
 			mtime, _ = strconv.Atoi(a)
 		}
 	}
-	if settings != nil {
+	var empty T
+	if settings != empty {
 		p.settings = settings
 	}
 	if db != nil {
 		p.db = db
 	}
-	if eapi != "" {
+	if eapi1 != "" {
 		p.eapi = eapi1
 	}
-	p.buildTime = build_time // int
-	p.fileSize = file_size   // int
-	p.buildId = build_id
-	p.mtime = mtime // int
+	p.BuildTime = build_time
+	p.fileSize = file_size
+	p.BuildId = build_id
+	p.mtime = mtime
 	p.cpvSplit = CatPkgSplit(cpv, 1, eapi1)
+	if p.cpvSplit == [4]string{} {
+		//raise InvalidData(cpv)
+	}
 	p.cp = p.cpvSplit[0] + "/" + p.cpvSplit[1]
 	if p.cpvSplit[len(p.cpvSplit)-1] == "r0" && cpv[len(cpv)-3:] != "-r0" {
 		p.version = strings.Join(p.cpvSplit[2:4], "-")
@@ -435,7 +426,7 @@ func NewPkgStr(cpv string, metadata map[string]string, settings *ebuild.Config, 
 			}
 		}
 		if repo != "" {
-			repo = atom.genValidRepo(repo)
+			repo = validrepo.GenValidRepo(repo)
 			if repo == "" {
 				repo = unknownRepo
 			}
@@ -443,6 +434,41 @@ func NewPkgStr(cpv string, metadata map[string]string, settings *ebuild.Config, 
 		}
 	}
 	return p
+}
+
+func (p PkgStr[T]) _long(vari, defaulti int) int {
+	if vari != 0 {
+		//try:
+		vari = int(vari)
+		//except ValueError:
+		if vari != 0 {
+			vari = -1
+		} else {
+			vari = defaulti
+		}
+	}
+	return vari
+}
+
+func (p *PkgStr[T]) stable() bool {
+	if p._stable != nil {
+		return *p._stable
+	}
+	settings := p.settings
+	var empty T
+	if settings == empty {
+		return false
+	}
+	p._stable = new(bool)
+	*p._stable = settings.IsStable(p)
+	return *p._stable
+}
+
+func (p *PkgStr[T]) binpkg_format() string {
+	//try:
+	return p.metadata["BINPKG_FORMAT"]
+	//except (AttributeError, KeyError):
+	//raise AttributeError("binpkg_format")
 }
 
 // 1, nil
@@ -459,7 +485,7 @@ func PkgSplit(mypkg string, silent int, eapi string) [3]string {
 }
 
 // ""
-func cpvGetKey(mycpv, eapi string) string {
+func CpvGetKey(mycpv, eapi string) string {
 	//return mycpv.cp //TODO
 	mySplit := CatPkgSplit(mycpv, 1, eapi)
 	if mySplit != [4]string{} {
@@ -469,7 +495,7 @@ func cpvGetKey(mycpv, eapi string) string {
 	// "called with invalid cpv: '%s'" % (mycpv,),
 	// DeprecationWarning, stacklevel=2) //TODO
 	mySlash := strings.SplitN(mycpv, "/", 2)
-	myNSplit := pkgSplit(mySlash[0], eapi)
+	myNSplit := PkgSplit_(mySlash[0], eapi)
 	if myNSplit == [3]string{} {
 		return ""
 	}
@@ -482,34 +508,41 @@ func cpvGetKey(mycpv, eapi string) string {
 }
 
 // ""
-func cpvGetVersion(mycpv, eapi string) string {
+func CpvGetVersion(mycpv, eapi string) string {
 	//return mycpv.version //TODO
-	cp := cpvGetKey(mycpv, eapi)
+	cp := CpvGetKey(mycpv, eapi)
 	if cp == "" {
 		return ""
 	}
 	return mycpv[len(cp+"-"):]
 }
 
-var splitCache = map[string]*PkgStr{}
-
-func cpvSortKey(eapi string) func(string, string, string) (int, error) {
-	cmpCpv := func(cpv1, cpv2, eapi string) (int, error) {
-		split1, ok := splitCache[cpv1]
-		if !ok {
-			//split1 = cpv1.pv //TODO
-			split1 = NewPkgStr(cpv1, nil, nil, eapi, "", "", 0, 0, "", 0, nil)
-			splitCache[cpv1] = split1
-		}
-		split2 := NewPkgStr(cpv1, nil, nil, eapi, "", "", 0, 0, "", 0, nil)
-		splitCache[cpv2] = split2
-		//return verCmp(cpv1.version, cpv2.version)
-		return verCmp(cpv1, cpv2)
+func CmpSortKey(_cmp_func func(cpv1, cpv2, eapi string) (int, error)) func(string, string) bool {
+	return func(lhs, rhs string) bool {
+		i, _ := _cmp_func(lhs, rhs, "")
+		return i < 0
 	}
-	return cmpCpv // a sort key
 }
 
-func catsplit(mydep string) []string {
+func CpvSortKey[T interfaces.ISettings](eapi string) func(string, string) bool {
+	var splitCache = map[string]*PkgStr[T]{}
+	cmpCpv := func(cpv1, cpv2, eapi string) (int, error) {
+		split1, ok := splitCache[cpv1]
+		var empty T
+		if !ok {
+			//split1 = cpv1.pv //TODO
+			split1 = NewPkgStr[T](cpv1, nil, empty, eapi, "", "", 0, 0, "", 0, nil)
+			splitCache[cpv1] = split1
+		}
+		split2 := NewPkgStr[T](cpv1, nil, empty, eapi, "", "", 0, 0, "", 0, nil)
+		splitCache[cpv2] = split2
+		//return VerCmp(cpv1.version, cpv2.version)
+		return VerCmp(cpv1, cpv2)
+	}
+	return CmpSortKey(cmpCpv)
+}
+
+func CatSplit(mydep string) []string {
 	return strings.SplitN(mydep, "/", 2)
 }
 
@@ -528,7 +561,7 @@ func Best(myMatches []string, eapi string) string {
 		//v1 := x.version //TODO
 		//v1 := NewPkgStr(x, nil, nil, eapi, "", "", "", "", "", "", "")
 		v1 := x
-		v, _ := verCmp(v1, v2)
+		v, _ := VerCmp(v1, v2)
 		if v > 0 {
 			bestMatch = x
 			v2 = v1

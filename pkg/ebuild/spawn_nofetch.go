@@ -3,13 +3,14 @@ package ebuild
 import (
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/elog"
+	"github.com/ppphp/portago/pkg/emerge"
 	"github.com/ppphp/portago/pkg/myutil"
 	"os"
 	"strings"
 )
 
 type SpawnNofetchWithoutBuilddir struct {
-	*CompositeTask
+	*emerge.CompositeTask
 
 	// slot
 	settings *Config
@@ -65,7 +66,7 @@ func(s*SpawnNofetchWithoutBuilddir) _start() {
 
 	prepare_build_dirs(settings, false)
 
-	ebuild_phase := NewEbuildPhase(nil, s.background,
+	ebuild_phase := emerge.NewEbuildPhase(nil, s.background,
 		"nofetch", s.scheduler, settings, s.fd_pipes)
 
 	s._start_task(ebuild_phase, s._nofetch_exit)
@@ -82,11 +83,11 @@ func NewSpawnNofetchWithoutBuilddir(
 	background bool,
 	portdb = portdb,
 	ebuild_path string,
-	scheduler *SchedulerInterface,
+	scheduler *emerge.SchedulerInterface,
 fd_pipes map[int]int,
 settings *Config)*SpawnNofetchWithoutBuilddir {
 	s := &SpawnNofetchWithoutBuilddir{}
-	s.CompositeTask = NewCompositeTask()
+	s.CompositeTask = emerge.NewCompositeTask()
 
 	s.background = background
 	s.portdb = portdb
@@ -103,7 +104,7 @@ func spawn_nofetch(portdb, ebuild_path string, settings *Config, fd_pipes map[in
 	nofetch := NewSpawnNofetchWithoutBuilddir(false,
 		portdb = portdb,
 		ebuild_path,
-		NewSchedulerInterface(asyncio._safe_loop()),
+		emerge.NewSchedulerInterface(asyncio._safe_loop()),
 		fd_pipes, settings,)
 
 	nofetch.start()

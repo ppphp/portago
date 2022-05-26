@@ -28,7 +28,7 @@ import (
 var VERSION = "HEAD"
 
 var shellQuoteRe = regexp.MustCompile("[\\s><=*\\\\\\\"'$`]")
-var initializingGlobals *bool
+var InitializingGlobals *bool
 
 func ShellQuote(s string) string {
 
@@ -410,10 +410,10 @@ func Mtimedbfile() string {
 
 func _get_legacy_global() { // a fake copy, just init no return
 	_portdb = Db().valueDict[Root()].PortTree().dbapi
-	initializingGlobals = new(bool)
-	*initializingGlobals = true
+	InitializingGlobals = new(bool)
+	*InitializingGlobals = true
 	_db = CreateTrees(os.Getenv("PORTAGE_CONFIGROOT"), os.Getenv("ROOT"), nil, nil, os.Getenv("SYSROOT"), os.Getenv("EPREFIX"))
-	initializingGlobals = nil
+	InitializingGlobals = nil
 	_settings = _db.valueDict[_db._target_eroot].VarTree().settings
 	_root = new(string)
 	*_root = _db._target_eroot

@@ -48,7 +48,7 @@ func eapiSupportsPrefix(eapi string) bool {
 	return !map[string]bool{"0": true, "1": true, "2": true}[eapi]
 }
 
-func eapiExportsAa(eapi string) bool {
+func EapiExportsAa(eapi string) bool {
 	return map[string]bool{"0": true, "1": true, "2": true, "3": true}[eapi]
 }
 
@@ -56,11 +56,11 @@ func eapiExportsKv(eapi string) bool {
 	return map[string]bool{"0": true, "1": true, "2": true, "3": true}[eapi]
 }
 
-func eapiExportsMergeType(eapi string) bool {
+func EapiExportsMergeType(eapi string) bool {
 	return !map[string]bool{"0": true, "1": true, "2": true, "3": true}[eapi]
 }
 
-func eapiExportsReplaceVars(eapi string) bool {
+func EapiExportsReplaceVars(eapi string) bool {
 	return !map[string]bool{"0": true, "1": true, "2": true, "3": true}[eapi]
 }
 
@@ -108,11 +108,11 @@ func EapiHasRepoDeps(eapi string) bool {
 	return map[string]bool{"4-python": true, "5-progress": true}[eapi]
 }
 
-func eapiSupportsStableUseForcingAndMasking(eapi string) bool {
+func EapiSupportsStableUseForcingAndMasking(eapi string) bool {
 	return !map[string]bool{"0": true, "1": true, "2": true, "3": true, "4": true, "4-python": true, "4-slot-abi": true}[eapi]
 }
 
-func eapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi string) bool {
+func EapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi string) bool {
 	return !map[string]bool{"0": true, "1": true, "2": true, "3": true, "4": true, "4-slot-abi": true, "5": true, "6": true}[eapi]
 }
 
@@ -160,18 +160,18 @@ func eapiIsDeprecated(eapi string) bool {
 	return deprecatedEapis[eapi]
 }
 
-func eapiIsSupported(eapi string) bool {
+func EapiIsSupported(eapi string) bool {
 	return supportedEapis[strings.TrimSpace(eapi)]
 }
 
 type EapiAttrs struct {
-	allowsPackageProvided, bdepend, broot, exportsAa, exportsEbuildPhaseFunc,
+	AllowsPackageProvided, bdepend, Broot, exportsAa, ExportsEbuildPhaseFunc,
 	exportsEclassdir, exportsKv, exportsMergeType, exportsPortdir,
-	exportsReplaceVars, featureFlagTest, idepend, iuseDefaults,
+	exportsReplaceVars, FeatureFlagTest, idepend, iuseDefaults,
 	iuseEffective, posixishLocale, pathVariablesEndWithTrailingSlash,
 	prefix, repoDeps, requiredUse, requiredUseAtMostOneOf,
-	selectiveSrcUriRestriction, SlotOperator, slotDeps, srcUriArrows,
-	strongBlocks, useDeps, useDepDefaults, emptyGroupsAlwaysTrue, sysroot bool
+	selectiveSrcUriRestriction, SlotOperator, SlotDeps, srcUriArrows,
+	strongBlocks, UseDeps, UseDepDefaults, emptyGroupsAlwaysTrue, Sysroot bool
 }
 
 type Eapi struct {
@@ -213,7 +213,7 @@ func (e *Eapi) le(other *Eapi) bool {
 // ""
 func GetEapiAttrs(eapi_str string) EapiAttrs {
 	//logging.info("cache info: {}".format(_get_eapi_attrs.cache_info()))
-	if eapi_str == "" || !eapiIsSupported(eapi_str) {
+	if eapi_str == "" || !EapiIsSupported(eapi_str) {
 		return EapiAttrs{
 			true,
 			false,

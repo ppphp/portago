@@ -15,7 +15,7 @@ func doStat(fname string, followLinks bool) (os.FileInfo, error) {
 }
 
 // -1,-1,-1,-1,nil,true
-func applyPermissions(filename string, uid, gid uint32, mode, mask os.FileMode, statCached os.FileInfo, followLinks bool) bool {
+func ApplyPermissions(filename string, uid, gid uint32, mode, mask os.FileMode, statCached os.FileInfo, followLinks bool) bool {
 	modified := false
 	if statCached == nil {
 		statCached, _ = doStat(filename, followLinks)
@@ -72,11 +72,11 @@ func applyPermissions(filename string, uid, gid uint32, mode, mask os.FileMode, 
 // -1, nil, true
 func Apply_stat_permissions(filename string, newStat os.FileInfo, mask os.FileMode, statCached os.FileInfo, followLinks bool) bool {
 	st := newStat.Sys().(*syscall.Stat_t)
-	return apply_secpass_permissions(filename, st.Uid, st.Gid, newStat.Mode(), mask, statCached, followLinks)
+	return Apply_secpass_permissions(filename, st.Uid, st.Gid, newStat.Mode(), mask, statCached, followLinks)
 }
 
 // -1, -1, -1, -1, nil, true
-func apply_secpass_permissions(filename string, uid, gid uint32, mode, mask os.FileMode, statCached os.FileInfo, followLinks bool) bool {
+func Apply_secpass_permissions(filename string, uid, gid uint32, mode, mask os.FileMode, statCached os.FileInfo, followLinks bool) bool {
 
 	if statCached == nil {
 		statCached, _ = doStat(filename, followLinks)
@@ -105,7 +105,7 @@ func apply_secpass_permissions(filename string, uid, gid uint32, mode, mask os.F
 		}
 	}
 
-	applyPermissions(filename, uid, gid, mode, mask,
+	ApplyPermissions(filename, uid, gid, mode, mask,
 		statCached, followLinks)
 	return allApplied
 }

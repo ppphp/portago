@@ -189,6 +189,6 @@ const (
 
 	// Private constants for use in conditional code in order to minimize the diff
 	// between branches.
-	depcleanLibCheckDefault = true
-	enableSetConfig         = true
+	DepcleanLibCheckDefault = true
+	EnableSetConfig         = true
 )

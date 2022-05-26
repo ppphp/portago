@@ -5,7 +5,7 @@ import (
 	"github.com/ppphp/portago/pkg/util/msg"
 )
 
-func portageGroupWarning() {
+func PortageGroupWarning() {
 	warnPrefix := output.Colorize("BAD", "*** WARNING ***  ")
 	mylines := []string{
 		"For security reasons, only system administrators should be",

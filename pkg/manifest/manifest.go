@@ -2,12 +2,12 @@ package manifest
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/pkg/checksum"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/dbapi"
 	"github.com/ppphp/portago/pkg/exception"
 	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/repository"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/portago/pkg/versions"
 	"io/ioutil"
@@ -167,7 +167,7 @@ find_invalid_path_char func(string)int, strict_misc_digests bool)*Manifest {
 
 	if find_invalid_path_char == nil {
 		find_invalid_path_char = func(s string) int {
-			return atom.findInvalidPathChar(s,0,0)
+			return repository.findInvalidPathChar(s,0,0)
 		}
 	}
 	m._find_invalid_path_char = find_invalid_path_char
@@ -188,7 +188,7 @@ find_invalid_path_char func(string)int, strict_misc_digests bool)*Manifest {
 	}
 
 	for hashname := range m.hashes{
-		if !checksum.getValidChecksumKeys()[hashname] {
+		if !checksum.GetValidChecksumKeys()[hashname] {
 			delete(m.hashes, hashname)
 		}
 	}
@@ -315,7 +315,7 @@ func (m*Manifest) _parseDigests( mylines []string, myhashdict map[string]map[str
 }
 
 func (m*Manifest) _createManifestEntries() []*Manifest2Entry {
-	valid_hashes := myutil.CopyMapSB(checksum.getValidChecksumKeys())
+	valid_hashes := myutil.CopyMapSB(checksum.GetValidChecksumKeys())
 	valid_hashes["size"] = true
 	mytypes := []string{}
 	for k := range m.fhashdict {
@@ -635,7 +635,7 @@ assumeDistHashesAlways bool, requiredDistfiles map[string]bool) {
 			for h := range m.hashes {
 				hs = append(hs, h)
 			}
-			for k, v := range checksum.performMultipleChecksums(fname, hs, false) {
+			for k, v := range checksum.PerformMultipleChecksums(fname, hs, false) {
 				m.fhashdict["DIST"][f][k] = string(v)
 			}
 			//}except FileNotFound{
@@ -720,7 +720,7 @@ func (m*Manifest) _update_thick_pkgdir( cat, pn, pkgdir string) []string{
 		for k := range m.hashes {
 			mh = append(mh, k)
 		}
-		for k,v := range checksum.performMultipleChecksums(m.pkgdir+f, mh, false){
+		for k,v := range checksum.PerformMultipleChecksums(m.pkgdir+f, mh, false){
 			m.fhashdict[mytype][f][k]=string(v)
 		}
 	}
@@ -744,7 +744,7 @@ func (m*Manifest) _update_thick_pkgdir( cat, pn, pkgdir string) []string{
 		for k := range m.hashes {
 			mh = append(mh, k)
 		}
-		for k,v := range checksum.performMultipleChecksums(
+		for k,v := range checksum.PerformMultipleChecksums(
 			filepath.Join(m.pkgdir, "files", strings.TrimLeft(f, string(os.PathSeparator))), mh, false){
 			m.fhashdict["AUX"][f][k]=string(v)
 		}
@@ -784,12 +784,12 @@ func (m*Manifest) checkTypeHashes( idtype string, ignoreMissingFiles bool, hash_
 
 // false, nil
 func (m*Manifest) checkFileHashes( ftype, fname string, ignoreMissing bool, hash_filter *checksum.hashFilter) (bool, string){
-	digests := checksum.filterUnaccelaratedHashes(m.fhashdict[ftype][fname])
+	digests := checksum.FilterUnaccelaratedHashes(m.fhashdict[ftype][fname])
 	if hash_filter != nil {
-		digests = checksum.applyHashFilter(digests, hash_filter)
+		digests = checksum.ApplyHashFilter(digests, hash_filter)
 	}
 	//try{
-	ok, reason, _, _ := checksum.verifyAll(m._getAbsname(ftype, fname), digests, 0, 0)
+	ok, reason, _, _ := checksum.VerifyAll(m._getAbsname(ftype, fname), digests, 0, 0)
 	if !ok {
 		//raise DigestException(tuple([m._getAbsname(ftype, fname)]+list(reason)))
 	}
@@ -862,7 +862,7 @@ func (m*Manifest) updateFileHashes( ftype, fname string, checkExisting, ignoreMi
 			}
 		}
 	}
-	myhashes := checksum.performMultipleChecksums(m._getAbsname(ftype, fname), myhashkeys, false)
+	myhashes := checksum.PerformMultipleChecksums(m._getAbsname(ftype, fname), myhashkeys, false)
 	for k, v := range myhashes {
 		m.fhashdict[ftype][fname][k] = string(v)
 	}

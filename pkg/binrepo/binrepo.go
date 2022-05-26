@@ -8,6 +8,7 @@ import (
 	"github.com/ppphp/portago/pkg/ebuild"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/msg"
 	"strconv"
 	"strings"
 )
@@ -118,7 +119,7 @@ func NewBinRepoConfigLoader(paths []string, settings *ebuild.Config) *BinRepoCon
 		repo_data["name"] = section_name
 		repo := NewBinRepoConfig(repo_data)
 		if repo.sync_uri == "" {
-			util.WriteMsg(fmt.Sprintf("!!! Missing sync-uri setting for binrepo %s\n", repo.name), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("!!! Missing sync-uri setting for binrepo %s\n", repo.name), -1, nil)
 			continue
 		}
 

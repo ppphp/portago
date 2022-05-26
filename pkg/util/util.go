@@ -6,13 +6,16 @@ import (
 	"fmt"
 	"github.com/ppphp/configparser"
 	"github.com/ppphp/portago/atom"
+	"github.com/ppphp/portago/pkg/checksum"
 	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/data"
 	"github.com/ppphp/portago/pkg/dep"
 	"github.com/ppphp/portago/pkg/ebuild"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/portage"
 	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util/msg"
+	"github.com/ppphp/portago/pkg/util/permissions"
 	"github.com/ppphp/shlex"
 	"io"
 	"io/ioutil"
@@ -28,7 +31,7 @@ import (
 )
 
 // 0, false, false
-func grabFile(myFileName string, compatLevel int, recursive, rememberSourceFile bool) [][2]string {
+func GrabFile(myFileName string, compatLevel int, recursive, rememberSourceFile bool) [][2]string {
 	myLines := grabLines(myFileName, recursive, true)
 	var newLines [][2]string
 
@@ -92,7 +95,7 @@ func mapDictListVals(f func(string) string, mydict map[string][]string) {
 }
 
 // false, []string{}, false
-func stackDictList(originalDicts []map[string][]string, incremental int, incrementalS []string, ignoreNone int) map[string][]string {
+func StackDictList(originalDicts []map[string][]string, incremental int, incrementalS []string, ignoreNone int) map[string][]string {
 	finalDict := map[string][]string{}
 	for _, myDict := range originalDicts {
 		if myDict == nil {
@@ -180,7 +183,7 @@ type AS struct {
 	S string
 }
 
-func appendRepo(atomList map[*dep.Atom]string, repoName string, rememberSourceFile bool) []AS {
+func AppendRepo(atomList map[*dep.Atom]string, repoName string, rememberSourceFile bool) []AS {
 	sb := []AS{}
 	if rememberSourceFile {
 		for atom, source := range atomList {
@@ -206,7 +209,7 @@ func appendRepo(atomList map[*dep.Atom]string, repoName string, rememberSourceFi
 	return sb
 }
 
-func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[*dep.Atom]string { //1,false,false,false,false
+func StackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[*dep.Atom]string { //1,false,false,false,false
 	matchedRemovals := map[[2]string]bool{}
 	unmatchedRemovals := map[string][]string{}
 	newList := map[*dep.Atom]string{}
@@ -288,7 +291,7 @@ func stackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 }
 
 // false, false, false, true, false
-func grabDict(myFileName string, justStrings, empty, recursive, incremental, newLines bool) map[string][]string {
+func GrabDict(myFileName string, justStrings, empty, recursive, incremental, newLines bool) map[string][]string {
 	newDict := map[string][]string{}
 	for _, x := range grabLines(myFileName, recursive, false) {
 		v := x[0]
@@ -333,7 +336,7 @@ func grabDict(myFileName string, justStrings, empty, recursive, incremental, new
 
 var eapiFileCache = map[string]string{}
 
-func readCorrespondingEapiFile(filename, defaults string) string { // "0"
+func ReadCorrespondingEapiFile(filename, defaults string) string { // "0"
 	eapiFile := path.Join(path.Dir(filename), "eapi")
 	eapi, ok := eapiFileCache[eapiFile]
 	if ok {
@@ -364,7 +367,7 @@ func readCorrespondingEapiFile(filename, defaults string) string { // "0"
 	return eapi
 }
 
-func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, allowWildcard, allowRepo, allowBuildId, allowUse, verifyEapi bool, eapi, eapiDefault string) map[*dep.Atom][]string { //000ffftf none 0
+func GrabDictPackage(myfilename string, juststrings, recursive, newlines bool, allowWildcard, allowRepo, allowBuildId, allowUse, verifyEapi bool, eapi, eapiDefault string) map[*dep.Atom][]string { //000ffftf none 0
 	fileList := []string{}
 	if recursive {
 		fileList = RecursiveFileList(myfilename)
@@ -374,12 +377,12 @@ func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, a
 	atoms := map[*dep.Atom][]string{}
 	var d map[string][]string
 	for _, filename := range fileList {
-		d = grabDict(filename, false, true, false, true, newlines)
+		d = GrabDict(filename, false, true, false, true, newlines)
 		if len(d) == 0 {
 			continue
 		}
 		if verifyEapi && eapi == "" {
-			eapi = readCorrespondingEapiFile(myfilename, eapiDefault)
+			eapi = ReadCorrespondingEapiFile(myfilename, eapiDefault)
 		}
 		for k, v := range d {
 			a, err := dep.NewAtom(k, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId)
@@ -406,13 +409,13 @@ func grabDictPackage(myfilename string, juststrings, recursive, newlines bool, a
 	return atoms
 }
 
-func grabFilePackage(myFileName string, compatLevel int, recursive, allowWildcard, allowRepo, allowBuildId, rememberSourceFile, verifyEapi bool, eapi, eapiDefault string) [][2]string { // 0,false,false,false,false,false,false,nil,0
-	pkgs := grabFile(myFileName, compatLevel, recursive, true)
+func GrabFilePackage(myFileName string, compatLevel int, recursive, allowWildcard, allowRepo, allowBuildId, rememberSourceFile, verifyEapi bool, eapi, eapiDefault string) [][2]string { // 0,false,false,false,false,false,false,nil,0
+	pkgs := GrabFile(myFileName, compatLevel, recursive, true)
 	if len(pkgs) == 0 {
 		return pkgs
 	}
 	if verifyEapi && eapi == "" {
-		eapi = readCorrespondingEapiFile(myFileName, eapiDefault)
+		eapi = ReadCorrespondingEapiFile(myFileName, eapiDefault)
 	}
 	myBaseName := path.Base(myFileName)
 	isPackagesFile := myBaseName == "packages"
@@ -524,7 +527,7 @@ func (c *ConfigProtect) updateprotect() {
 	c.protect = []string{}
 	c._dirs = map[string]bool{}
 	for _, x := range c.protect_list {
-		ppath := NormalizePath(
+		ppath := msg.NormalizePath(
 			filepath.Join(c.myroot, strings.TrimLeft(x, string(os.PathSeparator))))
 		if st, _ := os.Stat(filepath.Dir(ppath)); st != nil && st.IsDir() {
 			c.protect = append(c.protect, ppath)
@@ -539,7 +542,7 @@ func (c *ConfigProtect) updateprotect() {
 
 	c.protectmask = []string{}
 	for _, x := range c.mask_list {
-		ppath := NormalizePath(
+		ppath := msg.NormalizePath(
 			filepath.Join(c.myroot, strings.TrimLeft(x, string(os.PathSeparator))))
 		if c.case_insensitive {
 			ppath = strings.ToLower(ppath)
@@ -641,9 +644,9 @@ func new_protect_filename(myDest, newMd5 string, force bool) string {
 	}
 
 	protNum = protNum + 1
-	newPfile := NormalizePath(filepath.Join(realDirname,
+	newPfile := msg.NormalizePath(filepath.Join(realDirname,
 		"._cfg"+fmt.Sprintf("%04d", protNum)+"_"+realFilename))
-	oldPfile := NormalizePath(filepath.Join(realDirname, lastPfile))
+	oldPfile := msg.NormalizePath(filepath.Join(realDirname, lastPfile))
 	if lastPfile != "" && newMd5 != "" {
 		oldPfileSt, err := os.Lstat(oldPfile)
 		if err != nil {
@@ -664,7 +667,7 @@ func new_protect_filename(myDest, newMd5 string, force bool) string {
 					return oldPfile
 				}
 			} else {
-				lastPfileMd5 := atom.performMd5Merge(oldPfile, false)
+				lastPfileMd5 := checksum.PerformMd5Merge(oldPfile, false)
 				//except FileNotFound:
 				//pass
 				//else{
@@ -761,7 +764,7 @@ func NewGetConfigShlex(instream io.Reader, infile string, posix bool, punctuatio
 var invalidVarNameRe = regexp.MustCompile("^\\d|\\W")
 
 // false, false, true, false, nil
-func getConfig(myCfg string, tolerant, allowSourcing, expand, recursive bool, expandMap map[string]string) map[string]string {
+func GetConfig(myCfg string, tolerant, allowSourcing, expand, recursive bool, expandMap map[string]string) map[string]string {
 	if len(expandMap) > 0 {
 		expand = true
 	} else {
@@ -775,7 +778,7 @@ func getConfig(myCfg string, tolerant, allowSourcing, expand, recursive bool, ex
 		}
 		fname := ""
 		for _, fname = range RecursiveFileList(myCfg) {
-			newKeys := getConfig(fname, tolerant, allowSourcing, true, false, expandMap)
+			newKeys := GetConfig(fname, tolerant, allowSourcing, true, false, expandMap)
 			for k, v := range newKeys {
 				myKeys[k] = v
 			}
@@ -819,19 +822,19 @@ func getConfig(myCfg string, tolerant, allowSourcing, expand, recursive bool, ex
 		}
 		equ, _ := lex.GetToken()
 		if equ == "" {
-			msg := "Unexpected EOF" //TODO error_leader
+			msg1 := "Unexpected EOF" //TODO error_leader
 			if !tolerant {
 				//raise ParseError(msg)
 			} else {
-				msg.WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("%s\n", msg1), -1, nil)
 				return myKeys
 			}
 		} else if equ != "=" {
-			msg := fmt.Sprintf("Invalid token '%s' (not '=')", equ) //TODO error_leader
+			msg1 := fmt.Sprintf("Invalid token '%s' (not '=')", equ) //TODO error_leader
 			if !tolerant {
 				//raise ParseError(msg)
 			} else {
-				msg.WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("%s\n", msg1), -1, nil)
 				return myKeys
 			}
 		}
@@ -846,11 +849,11 @@ func getConfig(myCfg string, tolerant, allowSourcing, expand, recursive bool, ex
 			}
 		}*/
 		if invalidVarNameRe.MatchString(key) {
-			msg := fmt.Sprintf("Invalid variable name '%s'", key) //TODO error_leader
+			msg1 := fmt.Sprintf("Invalid variable name '%s'", key) //TODO error_leader
 			if !tolerant {
 				//raise ParseError(msg)
 			} else {
-				msg.WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("%s\n", msg1), -1, nil)
 				continue
 			}
 		}
@@ -933,11 +936,11 @@ func varExpand(myString string, myDict map[string]string, errorLeader func() str
 				if myString[pos] == '{' {
 					pos += 1
 					if pos == length {
-						msg := varexpandUnexpectedEofMsg
+						msg1 := varexpandUnexpectedEofMsg
 						if errorLeader != nil {
-							msg = errorLeader() + msg
+							msg1 = errorLeader() + msg1
 						}
-						msg.WriteMsg(msg+"\n", -1, nil)
+						msg.WriteMsg(msg1+"\n", -1, nil)
 						return ""
 					}
 					braced = true
@@ -948,11 +951,11 @@ func varExpand(myString string, myDict map[string]string, errorLeader func() str
 				for varexpandWordChars[myString[pos]] {
 					if pos+1 >= len(myString) {
 						if braced {
-							msg := varexpandUnexpectedEofMsg
+							msg1 := varexpandUnexpectedEofMsg
 							if errorLeader != nil {
-								msg = errorLeader() + msg
+								msg1 = errorLeader() + msg1
 							}
-							msg.WriteMsg(msg+"\n", -1, nil)
+							msg.WriteMsg(msg1+"\n", -1, nil)
 							return ""
 						} else {
 							pos += 1
@@ -964,26 +967,26 @@ func varExpand(myString string, myDict map[string]string, errorLeader func() str
 				myVarName := myString[myvStart:pos]
 				if braced {
 					if myString[pos] != '{' {
-						msg := varexpandUnexpectedEofMsg
+						msg1 := varexpandUnexpectedEofMsg
 						if errorLeader != nil {
-							msg = errorLeader() + msg
+							msg1 = errorLeader() + msg1
 						}
-						msg.WriteMsg(msg+"\n", -1, nil)
+						msg.WriteMsg(msg1+"\n", -1, nil)
 						return ""
 					} else {
 						pos += 1
 					}
 				}
 				if len(myVarName) == 0 {
-					msg := "$"
+					msg1 := "$"
 					if braced {
-						msg += "{}"
+						msg1 += "{}"
 					}
-					msg += ": bad substitution"
+					msg1 += ": bad substitution"
 					if errorLeader != nil {
-						msg = errorLeader() + msg
+						msg1 = errorLeader() + msg1
 					}
-					msg.WriteMsg(msg+"\n", -1, nil)
+					msg.WriteMsg(msg1+"\n", -1, nil)
 					return ""
 				}
 				numVars += 1
@@ -1006,7 +1009,7 @@ var ldSoIncludeRe = regexp.MustCompile(`^include\s+(\S.*)`)
 
 func readLdSoConf(p string) []string {
 	conf := []string{}
-	for _, l := range grabFile(p, 0, false, false) {
+	for _, l := range GrabFile(p, 0, false, false) {
 		includeMatch := ldSoIncludeRe.MatchString(l[0])
 		if includeMatch {
 			subpath := path.Join(path.Dir(p),
@@ -1034,7 +1037,7 @@ func getLibPaths(root string, env map[string]string) []string {
 	rval = append(rval, "/usr/lib", "/lib")
 	p := []string{}
 	for _, x := range rval {
-		p = append(p, NormalizePath(x))
+		p = append(p, msg.NormalizePath(x))
 	}
 	return p
 }
@@ -1052,13 +1055,13 @@ func uniqueArray(a []interface{}) []interface{} {
 }
 
 // return access
-func existsRaiseEaccess(path string) bool {
+func ExistsRaiseEaccess(path string) bool {
 	_, err := os.Stat(path)
 	return err != os.ErrPermission
 }
 
 // if access return
-func isdirRaiseEaccess(path string) bool {
+func IsdirRaiseEaccess(path string) bool {
 	f, err := os.Stat(path)
 	if err != nil {
 		if err == os.ErrPermission {
@@ -1096,7 +1099,7 @@ func (a *atomic_ofstream) Close() error {
 	}
 	if !a._aborted {
 		st, _ := os.Stat(realName)
-		Apply_stat_permissions(f.Name(), st, -1, nil, true)
+		permissions.Apply_stat_permissions(f.Name(), st, -1, nil, true)
 		if err := os.Rename(f.Name(), realName); err != nil {
 			return err
 		}
@@ -1164,14 +1167,14 @@ func write_atomic(filePath string, content string, mode int, followLinks bool) {
 }
 
 // -1,-1,-1,-1,nil,true
-func ensureDirs(dirPath string, uid, gid uint32, mode, mask os.FileMode, statCached os.FileInfo, followLinks bool) bool {
+func EnsureDirs(dirPath string, uid, gid uint32, mode, mask os.FileMode, statCached os.FileInfo, followLinks bool) bool {
 	createdDir := false
 	if err := os.MkdirAll(dirPath, 0755); err == nil {
 		createdDir = true
 	} // TODO check errno
 	permsModified := false
 	if int(uid) != -1 || int(gid) != -1 || int(mode) != -1 || int(mask) != -1 || statCached != nil || followLinks {
-		permsModified = applyPermissions(dirPath, uid, gid, mode, mask, statCached, followLinks)
+		permsModified = permissions.ApplyPermissions(dirPath, uid, gid, mode, mask, statCached, followLinks)
 	} else {
 		permsModified = false
 	}
@@ -1201,8 +1204,8 @@ func NewProjectFilename(myDest, newMd5 string, force bool) string {
 		}
 	}
 	protNum++
-	newPFile := NormalizePath(path.Join(realDirname, ".cfg"+fmt.Sprintf("%04s", string(protNum))+"_"+realFilename))
-	oldPFile := NormalizePath(path.Join(realDirname, lastFile))
+	newPFile := msg.NormalizePath(path.Join(realDirname, ".cfg"+fmt.Sprintf("%04s", string(protNum))+"_"+realFilename))
+	oldPFile := msg.NormalizePath(path.Join(realDirname, lastFile))
 	if len(lastFile) != 0 && len(newMd5) != 0 {
 		oldPfileSt, err := os.Lstat(oldPFile)
 		if err != nil {
@@ -1233,17 +1236,6 @@ func ReadConfigs(parser configparser.ConfigParser, paths []string) error {
 		}
 	}
 	return nil
-}
-
-func ExpandEnv() map[string]string {
-	m := map[string]string{}
-	for _, v := range os.Environ() {
-		s := strings.SplitN(v, "=", 2)
-		if len(s) == 2 {
-			m[s[0]] = s[1]
-		}
-	}
-	return m
 }
 
 var _compressors = map[string]map[string]string{
@@ -1491,10 +1483,10 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 						//except SystemExit:
 						//raise
 						//except:
-						msg := "Failed to copy extended attributes. " +
+						msg1 := "Failed to copy extended attributes. " +
 							"In order to avoid this error, set " +
 							"FEATURES=\"-xattr\" in make.conf."
-						for _, line := range TextWrap(msg, 65) {
+						for _, line := range TextWrap(msg1, 65) {
 							msg.WriteMsg(fmt.Sprintf("!!! %s\n", line), -1, nil)
 						}
 					}
@@ -1626,7 +1618,7 @@ func (m *MtimeDB) _load(filename string) {
 	for k, v := range d {
 		m.dict[k] = v
 	}
-	d = myutil.CopyMap(m._clean_data)
+	d = myutil.CopyMapT[string, any](m._clean_data)
 }
 
 func (m *MtimeDB) Commit() {
@@ -1650,9 +1642,9 @@ func (m *MtimeDB) Commit() {
 			f.Write(jd)
 		}
 		f.Close()
-		apply_secpass_permissions(m.filename,
-			uint32(atom.uid), *atom.portage_gid, 0o644, -1, nil, true)
-		m._clean_data = myutil.CopyMap(d)
+		permissions.Apply_secpass_permissions(m.filename,
+			uint32(data.Uid), *data.Portage_gid, 0o644, -1, nil, true)
+		m._clean_data = myutil.CopyMapT[string, any](d)
 	}
 }
 func NewMtimeDB(filename string) *MtimeDB {

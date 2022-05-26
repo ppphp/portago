@@ -12,6 +12,7 @@ import (
 	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/repository"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/shlex"
 	"golang.org/x/sys/unix"
 	"os"
@@ -34,10 +35,10 @@ func (s *syncBase) repoStorage() {
 
 func (s *syncBase) hasBin() bool {
 	if s.binCommand == "" {
-		msg := []string{fmt.Sprintf("Command not found: %s", s.binCommand),
+		msg1 := []string{fmt.Sprintf("Command not found: %s", s.binCommand),
 			fmt.Sprintf("Type \"emerge %s\" to enable %s support.", s.binPkg, s.binCommand)}
-		for _, l := range msg {
-			util.WriteMsgLevel(fmt.Sprintf("!!! %s", l), -40, -1)
+		for _, l := range msg1 {
+			msg.WriteMsgLevel(fmt.Sprintf("!!! %s", l), -40, -1)
 		}
 		return false
 	}

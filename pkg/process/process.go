@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/myutil"
-	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/msg"
 	"os"
 	"path"
 	"path/filepath"
@@ -94,8 +94,8 @@ func SanitizeFds() { // all file descriptors in golang are not inheritable witho
 	return
 }
 
-// false, "", nil
-func spawn_bash(mycommand string, debug bool, opt_name string, fd_pipes map[int]int, **keywords) ([]int, error) {
+// false, "", nil, **keywords
+func spawn_bash(mycommand string, debug bool, opt_name string, fd_pipes map[int]uintptr) ([]int, error) {
 
 	args := []string{_const.BashBinary}
 	if opt_name == "" {
@@ -106,24 +106,24 @@ func spawn_bash(mycommand string, debug bool, opt_name string, fd_pipes map[int]
 	}
 	args = append(args, "-c")
 	args = append(args, mycommand)
-	return Spawn(args, nil, opt_name, fd_pipes, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "", **keywords)
+	return Spawn(args, nil, opt_name, fd_pipes, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "") //, **keywords
 }
 
-// ""
-func spawn_sandbox(mycommand, opt_name string, **keywords) ([]int, error) {
+// "", nil, **keywords
+func spawn_sandbox(mycommand, opt_name string, fd_pipes map[int]uintptr) ([]int, error) {
 	if !sandbox_capable {
-		return spawn_bash(mycommand, false, opt_name, **keywords)
+		return spawn_bash(mycommand, false, opt_name, fd_pipes) //, **keywords
 	}
 	args := []string{_const.SandboxBinary}
 	if opt_name == "" {
 		opt_name = filepath.Base(strings.Fields(mycommand)[0])
 	}
 	args = append(args, mycommand)
-	return Spawn(args, nil, opt_name, nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "", **keywords)
+	return Spawn(args, nil, opt_name, nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "") //, **keywords
 }
 
-// "", ""
-func spawn_fakeroot(mycommand, fakeroot_state, opt_name string, **keywords) ([]int, error) {
+// "", "", **keywords
+func spawn_fakeroot(mycommand, fakeroot_state, opt_name string) ([]int, error) {
 	args := []string{_const.FakerootBinary}
 	if opt_name == "" {
 		opt_name = filepath.Base(strings.Fields(mycommand)[0])
@@ -142,7 +142,7 @@ func spawn_fakeroot(mycommand, fakeroot_state, opt_name string, **keywords) ([]i
 	args = append(args, _const.BashBinary)
 	args = append(args, "-c")
 	args = append(args, mycommand)
-	return Spawn(args, nil, opt_name, nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "", **keywords)
+	return Spawn(args, nil, opt_name, nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "") //, **keywords
 }
 
 var _exithandlers []func()
@@ -173,7 +173,7 @@ func Spawn(mycommand []string, env map[string]string, opt_name string, fd_pipes 
 	uid, gid int, groups []int, umask int, cwd, logfile string, path_lookup bool, pre_exec func(),
 	close_fds, unshare_net, unshare_ipc, unshare_mount, unshare_pid bool, cgroup string) ([]int, error) {
 	if env == nil {
-		env = util.ExpandEnv()
+		env = msg.ExpandEnv()
 	}
 	binary := mycommand[0]
 	stb, err := os.Stat(binary)
@@ -389,7 +389,10 @@ func FindBinary(binary string) string {
 	paths := strings.Split(os.Getenv("PATH"), ":")
 	for _, p := range paths {
 		fname := path.Join(p, binary)
-		s, _ := os.Stat(fname)
+		s, err := os.Stat(fname)
+		if err != nil {
+			continue
+		}
 		if (s.Mode()&unix.X_OK != 0) && (!s.IsDir()) {
 			return fname
 		}

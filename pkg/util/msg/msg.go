@@ -3,6 +3,7 @@ package msg
 import (
 	"os"
 	"path"
+	"strings"
 )
 
 var noiseLimit = 0
@@ -35,4 +36,15 @@ func WriteMsgLevel(msg string, level, noiseLevel int) {
 
 func NormalizePath(myPath string) string {
 	return path.Clean(myPath)
+}
+
+func ExpandEnv() map[string]string {
+	m := map[string]string{}
+	for _, v := range os.Environ() {
+		s := strings.SplitN(v, "=", 2)
+		if len(s) == 2 {
+			m[s[0]] = s[1]
+		}
+	}
+	return m
 }

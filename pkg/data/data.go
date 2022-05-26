@@ -25,6 +25,6 @@ var Userpriv_groups []int
 var _portage_grpname, _portage_username *string
 var Portage_gid *uint32
 var Portage_uid, Secpass *int
-var uid = os.Geteuid()
+var Uid = os.Geteuid()
 
 const Ostype = runtime.GOOS

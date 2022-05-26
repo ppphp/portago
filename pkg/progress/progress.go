@@ -8,20 +8,20 @@ import (
 	"time"
 )
 
-type ProgressHandler1 struct {
+type ProgressHandler struct {
 	curval, maxval      int64
 	last_update         time.Time
 	min_display_latency time.Duration
 }
 
-func (p *ProgressHandler1) Reset() {
+func (p *ProgressHandler) Reset() {
 	p.curval = 0
 	p.maxval = 0
 	p.last_update = time.Unix(0, 0)
 	p.min_display_latency = 200 * time.Millisecond
 }
 
-func (p *ProgressHandler1) onProgress(maxval, curval int64) {
+func (p *ProgressHandler) onProgress(maxval, curval int64) {
 	p.maxval = maxval
 	p.curval = curval
 	cur_time := time.Now()
@@ -31,18 +31,18 @@ func (p *ProgressHandler1) onProgress(maxval, curval int64) {
 	}
 }
 
-func (p *ProgressHandler1) display() {
+func (p *ProgressHandler) display() {
 	panic("not implemented")
 }
 
-func NewProgressHandler1() *ProgressHandler1 {
-	p := &ProgressHandler1{}
+func NewProgressHandler() *ProgressHandler {
+	p := &ProgressHandler{}
 	p.Reset()
 	return p
 }
 
-type ProgressBar2 struct {
-	*ProgressHandler1
+type ProgressBar struct {
+	*ProgressHandler
 	isatty          bool
 	fd              *os.File
 	title           string
@@ -54,8 +54,8 @@ type ProgressBar2 struct {
 	cancel          chan bool
 }
 
-func NewProgressBar2(isatty bool, fd *os.File, title string, maxval int, label string, max_desc_length int) *ProgressBar2 { // os.Stdout, "", 0, "", 25
-	p := &ProgressBar2{}
+func NewProgressBar(isatty bool, fd *os.File, title string, maxval int, label string, max_desc_length int) *ProgressBar { // os.Stdout, "", 0, "", 25
+	p := &ProgressBar{}
 	p.isatty = isatty
 	p.fd = fd
 	p.title = title
@@ -63,12 +63,12 @@ func NewProgressBar2(isatty bool, fd *os.File, title string, maxval int, label s
 	p.label = label
 	p.max_desc_length = max_desc_length
 
-	p.ProgressHandler1 = NewProgressHandler1()
+	p.ProgressHandler = NewProgressHandler()
 	p.progressBar = nil
 	return p
 }
 
-func (p *ProgressBar2) Start() func(int64, int64) {
+func (p *ProgressBar) Start() func(int64, int64) {
 	if p.isatty {
 		p.progressBar = output.NewTermProgressBar(p.fd, p.title, p.maxval, p.label, p.max_desc_length)
 		p.c = make(chan os.Signal, 0)
@@ -88,18 +88,18 @@ func (p *ProgressBar2) Start() func(int64, int64) {
 	return p.onProgress
 }
 
-func (p *ProgressBar2) SetLabel(_label string) {
+func (p *ProgressBar) SetLabel(_label string) {
 	p.label = _label
 }
 
-func (p *ProgressBar2) Display() {
-	p.progressBar.set(int(p.curval), int(p.maxval))
+func (p *ProgressBar) Display() {
+	p.progressBar.Set(int(p.curval), int(p.maxval))
 }
 
-func (p *ProgressBar2) sigwinch_handler(signum, frame int) {
-	_, p.progressBar.term_columns, _ = output.get_term_size(0)
+func (p *ProgressBar) sigwinch_handler(signum, frame int) {
+	_, p.progressBar.Term_columns, _ = output.Get_term_size(0)
 }
 
-func (p *ProgressBar2) Stop() {
+func (p *ProgressBar) Stop() {
 	p.cancel <- true
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/ppphp/portago/pkg/const"
 	ebuild2 "github.com/ppphp/portago/pkg/ebuild"
 	"github.com/ppphp/portago/pkg/emaint"
+	"github.com/ppphp/portago/pkg/emerge"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/portage"
@@ -13,6 +14,7 @@ import (
 	"github.com/ppphp/portago/pkg/sets"
 	"github.com/ppphp/portago/pkg/sync"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/msg"
 	"golang.org/x/crypto/ssh/terminal"
 	"os"
 	"path/filepath"
@@ -53,7 +55,7 @@ func actionSync(emerge_config *EmergeConfig) int {
 	if return_messages {
 		emaint.print_results(msgs)
 	} else if len(msgs) > 0 && !success {
-		util.WriteMsgLevel(strings.Join(msgs, "\n")+"\n", 40, -1)
+		msg.WriteMsgLevel(strings.Join(msgs, "\n")+"\n", 40, -1)
 	}
 
 	if success {
@@ -605,10 +607,10 @@ func runAction(emergeConfig *EmergeConfig) int {
 	//
 	emergeexit := func() {
 		if _, ok := emergeConfig.opts["--pretend"]; !ok {
-			atom.emergelog(xterm_titles, " *** terminating.", "")
+			emerge.emergelog(xterm_titles, " *** terminating.", "")
 		}
 		if xterm_titles {
-			output.xtermTitleReset()
+			output.XtermTitleReset()
 		}
 	}
 	process.atexit_register(emergeexit)

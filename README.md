@@ -10,15 +10,50 @@ Package Management by go can remove annoying python dependency, though it is mea
 
 Honestly, the main problem is give the package manager a static type.
 
-now portage portage-3.0.11
+now based on portage master, Feb 21, 2022
+
+14d9c755f7534e23f10719d0fe6c04b18534e854
 
 # Roadmap
 
-- ebuild sync
+- package dependency and file split
+  - good
+    - const
+    - eapi
+    - process
+    - checksum
+    - output
+    - data
+    - progress
+    - xpak
+    - src
+    - versions
+  - bad
+    - binrepo
+    - cache
+    - dbapi
+    - dep
+    - ebuild
+    - elog
+    - emaint
+    - emerge
+    - env
+    - getbinpkg
+    - locks
+    - manifest
+    - metadata
+    - portage
+    - repository
+    - sets
+    - sync
+    - util
+- ebuild sync runnable
   - [ ] can build binary (used to)
   - [ ] can synchronize repo
   - [ ] can test functions
   - [ ] can configure
+- python files rewrite
+- shell files rewrite
 
 TODO:
 - gemato
@@ -27,4 +62,4 @@ TODO:
 - configparser test
 - selinux
 
-4e3c8ffebe0f377b2c39c5213983d641396aec34
+
