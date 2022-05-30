@@ -147,12 +147,12 @@ func eapiHasSysroot(eapi string) bool {
 var (
 	testingEapis    = map[string]bool{}
 	deprecatedEapis = map[string]bool{"3_pre1": true, "3_pre2": true, "4_pre1": true, "4-slot-abi": true, "5_pre1": true, "5_pre2": true, "6_pre1": true, "7_pre1": true}
-	supportedEapis  = myutil.CopyMapSB(deprecatedEapis)
+	SupportedEapis  = myutil.CopyMapSB(deprecatedEapis)
 )
 
 func init() {
 	for x := 0; x <= cons.EAPI; x++ {
-		supportedEapis[fmt.Sprint(x)] = true
+		SupportedEapis[fmt.Sprint(x)] = true
 	}
 }
 
@@ -161,17 +161,17 @@ func eapiIsDeprecated(eapi string) bool {
 }
 
 func EapiIsSupported(eapi string) bool {
-	return supportedEapis[strings.TrimSpace(eapi)]
+	return SupportedEapis[strings.TrimSpace(eapi)]
 }
 
 type EapiAttrs struct {
 	AllowsPackageProvided, bdepend, Broot, exportsAa, ExportsEbuildPhaseFunc,
-	exportsEclassdir, exportsKv, exportsMergeType, exportsPortdir,
+	ExportsEclassdir, exportsKv, exportsMergeType, ExportsPortdir,
 	exportsReplaceVars, FeatureFlagTest, idepend, iuseDefaults,
-	iuseEffective, posixishLocale, pathVariablesEndWithTrailingSlash,
-	prefix, repoDeps, requiredUse, requiredUseAtMostOneOf,
-	selectiveSrcUriRestriction, SlotOperator, SlotDeps, srcUriArrows,
-	strongBlocks, UseDeps, UseDepDefaults, emptyGroupsAlwaysTrue, Sysroot bool
+	IuseEffective, posixishLocale, PathVariablesEndWithTrailingSlash,
+	prefix, RepoDeps, requiredUse, RequiredUseAtMostOneOf,
+	SelectiveSrcUriRestriction, SlotOperator, SlotDeps, SrcUriArrows,
+	StrongBlocks, UseDeps, UseDepDefaults, EmptyGroupsAlwaysTrue, Sysroot bool
 }
 
 type Eapi struct {

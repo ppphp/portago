@@ -5,7 +5,7 @@ import (
 	"github.com/ppphp/portago/pkg/data"
 	"github.com/ppphp/portago/pkg/locks"
 	"github.com/ppphp/portago/pkg/output"
-	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/permissions"
 	"os"
 	"path/filepath"
 	"time"
@@ -32,8 +32,8 @@ func Emergelog(xterm_titles bool, mystr string, short_msg string) {
 	existing_log := err != nil
 	mylogfile, _ := os.OpenFile(file_path, os.O_APPEND|os.O_WRONLY, 0644)
 	if !existing_log {
-		util.apply_secpass_permissions(
-			file_path, uint32(*data.portage_uid), *data.portage_gid, 0660, -1, nil, true,
+		permissions.Apply_secpass_permissions(
+			file_path, uint32(*data.Portage_uid), *data.Portage_gid, 0660, -1, nil, true,
 		)
 	}
 	mylock, _ := locks.Lockfile(file_path, false, false, "", 0)

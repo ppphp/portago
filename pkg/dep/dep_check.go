@@ -2,10 +2,10 @@ package dep
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/pkg/dbapi"
 	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/interfaces"
 	"github.com/ppphp/portago/pkg/myutil"
-	atom2 "github.com/ppphp/portago/pkg/portage"
+	"github.com/ppphp/portago/pkg/portage"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/versions"
@@ -14,11 +14,11 @@ import (
 
 // "/", nil, 0, 0
 func _expand_new_virtuals(mysplit []string, edebug bool, mydbapi, mysettings *ebuild.Config, myroot string,
-	trees atom2.TreesDict, use_mask, use_force int, **kwargs){
+	trees portage.TreesDict, use_mask, use_force int, **kwargs){
 
 	newsplit := []string{}
 	mytrees := trees.valueDict[myroot]
-	var portdb dbapi.IDbApi = mytrees.PortTree().dbapi
+	var portdb interfaces.IDbApi = mytrees.PortTree().dbapi
 	pkg_use_enabled := mytrees.get("pkg_use_enabled")
 	atom_graph := mytrees.get("atom_graph")
 	parent := mytrees.get("parent")
@@ -288,10 +288,10 @@ type _dep_choice struct{
 }
 
 // 0, nil, false
-func dep_zapdeps(unreduced []string, reduced, myroot string, use_binaries int, trees *atom2.TreesDict,
+func dep_zapdeps(unreduced []string, reduced, myroot string, use_binaries int, trees *portage.TreesDict,
 	minimize_slots bool) []string {
 	if trees == nil {
-		trees = atom2.Db()
+		trees = portage.Db()
 	}
 	msg.WriteMsg(fmt.Sprint("ZapDeps -- %s\n", use_binaries), 2, nil)
 	if !reduced || (len(unreduced) == 0 && unreduced[0] == "||") || dep_eval(reduced) {
@@ -774,11 +774,11 @@ return nil
 
 // "yes", nil, nil, 1, 0, "", nil
 func dep_check(depstring string, mydbapi, mysettings *ebuild.Config, use string, mode=None, myuse []string,
-	use_cache , use_binaries int, myroot string, trees *atom2.TreesDict) (int, []string) {
+	use_cache , use_binaries int, myroot string, trees *portage.TreesDict) (int, []string) {
 	myroot = mysettings.ValueDict["EROOT"]
 	edebug := mysettings.ValueDict["PORTAGE_DEBUG"] == "1"
 	if trees == nil {
-		trees = atom2.Db()
+		trees = portage.Db()
 	}
 	myusesplit := []string{}
 	if use == "yes" {
@@ -794,7 +794,7 @@ func dep_check(depstring string, mydbapi, mysettings *ebuild.Config, use string,
 	if use == "all" {
 		arch := mysettings.ValueDict["ARCH"]
 		for k := range mysettings.usemask {
-			mymasks[k.value] = true
+			mymasks[k.Value] = true
 		}
 		for k := range mysettings.archlist() {
 			mymasks[k] = true
@@ -804,7 +804,7 @@ func dep_check(depstring string, mydbapi, mysettings *ebuild.Config, use string,
 			useforce[arch] = true
 		}
 		for k := range mysettings.useforce {
-			useforce[k.value] = true
+			useforce[k.Value] = true
 		}
 		for k := range mymasks {
 			delete(useforce, k)
@@ -836,7 +836,7 @@ func dep_check(depstring string, mydbapi, mysettings *ebuild.Config, use string,
 		mysplit = depstring
 	} else {
 		//try{
-		mysplit = useReduce(depstring, myusesplit,
+		mysplit = UseReduce(depstring, myusesplit,
 			mymasks, use == "all", useforce, false, eapi,
 			true, false, nil, func(s string) *Atom {
 				a, _ := NewAtom(s, nil, false, nil, nil, "", nil, nil)
@@ -992,7 +992,7 @@ func dep_wordreduce(mydeplist []string,mysettings *ebuild.Config,mydbapi,mode,us
 			mykey := deplist[mypos].cp
 			if mysettings!= nil &&  myutil.Inmsss(
 				mysettings.pprovideddict,mykey) &&
-				matchFromList(deplist[mypos], mysettings.pprovideddict[mykey]) {
+				MatchFromList(deplist[mypos], mysettings.pprovideddict[mykey]) {
 				deplist[mypos] = true
 			}else if mydbapi == nil {
 				deplist[mypos] = false

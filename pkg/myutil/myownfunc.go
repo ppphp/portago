@@ -61,13 +61,13 @@ func CopyMapSB(m map[string]bool) map[string]bool {
 	return r
 }
 
-// m map[string]map[*atom.Atom][]string
-func CopyMSMASS[T map[any]any](m T) T {
-	r := map[any]any{}
-	for k, v := range m {
-		r[k] = v
+func InmsT[T any](a map[string]T, b string) bool {
+	for v := range a {
+		if b == v {
+			return true
+		}
 	}
-	return r
+	return false
 }
 
 func Inmss(a map[string]string, b string) bool {
@@ -201,6 +201,14 @@ func OsAccess(filename string, mode os.FileMode) bool {
 	return st.Mode()&mode != 0
 }
 
+func ReversedT[T any](a []T) []T {
+	b := []T{}
+	for _, v := range a {
+		b = append([]T{v}, b...)
+	}
+	return b
+}
+
 func Reversed(a []string) []string {
 	b := []string{}
 	for _, v := range a {
@@ -209,7 +217,7 @@ func Reversed(a []string) []string {
 	return b
 }
 
-func sorted(a []string) []string {
+func Sorted(a []string) []string {
 	b := []string{}
 	copy(b, a)
 	sort.Strings(b)
@@ -217,6 +225,15 @@ func sorted(a []string) []string {
 }
 
 func Sortedmsb(a map[string]bool) []string {
+	b := []string{}
+	for k := range a {
+		b = append(b, k)
+	}
+	sort.Strings(b)
+	return b
+}
+
+func SortedMS[T any](a map[string]T) []string {
 	b := []string{}
 	for k := range a {
 		b = append(b, k)

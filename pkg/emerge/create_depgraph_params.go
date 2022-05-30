@@ -3,7 +3,7 @@ package emerge
 import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/myutil"
-	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/msg"
 )
 
 func create_depgraph_params(myopts map[string]string, myaction string) map[string]interface{} {
@@ -193,7 +193,7 @@ func create_depgraph_params(myopts map[string]string, myaction string) map[strin
 	}
 
 	if myutil.Inmss(myopts, "--debug") {
-		util.WriteMsgLevel(fmt.Sprintf("\n\nmyparams %s\n\n", myparams), -1, 10)
+		msg.WriteMsgLevel(fmt.Sprintf("\n\nmyparams %s\n\n", myparams), -1, 10)
 	}
 
 	return myparams

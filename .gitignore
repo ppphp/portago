@@ -5,6 +5,6 @@ webui/node_modules
 webui/dist
 portageq
 !cmd/portageq
-emerge
+/emerge
 !cmd/emerge
 !pkg/emerge

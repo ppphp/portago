@@ -837,7 +837,7 @@ func (p *portdbapi) xmatch(level string, origdep *dep.Atom) []*versions.PkgStr {
 
 // @coroutine
 func (p *portdbapi) async_xmatch(level string, origdep *dep.Atom) []*versions.PkgStr {
-	mydep := dep_expand(origdep, p, 1, p.settings)
+	mydep := Dep_expand(origdep, p, 1, p.settings)
 	mykey := mydep.cp
 
 	cache_key := [2]string{}
@@ -989,7 +989,7 @@ func (p *portdbapi) _visible(cpv *versions.PkgStr, metadata map[string]string) b
 	if settings._getMissingKeywords(cpv, metadata) != nil {
 		return false
 	}
-	if settings.localConfig {
+	if settings.LocalConfig {
 		metadata["CHOST"] = settings.ValueDict["CHOST"]
 		if !settings._accept_chost(metadata) {
 			return false
@@ -1042,9 +1042,9 @@ func NewPortDbApi(mysettings *ebuild.Config) *portdbapi {
 		}
 	}
 
-	p.porttrees = p.settings.Repositories.repoLocationList
+	p.porttrees = p.settings.Repositories.RepoLocationList
 	st, _ := os.Stat(
-		filepath.Join(p.settings.Repositories.mainRepoLocation(), "eclass"))
+		filepath.Join(p.settings.Repositories.MainRepoLocation(), "eclass"))
 
 	p._have_root_eclass_dir = st != nil && st.IsDir()
 
@@ -1076,7 +1076,7 @@ func NewPortDbApi(mysettings *ebuild.Config) *portdbapi {
 	cache_kwargs := map[string]int{}
 
 	depcachedir_unshared := false
-	if *data.secpass < 1 &&
+	if *data.Secpass < 1 &&
 		depcachedir_w_ok &&
 		depcachedir_st != nil &&
 		os.Getuid() == int(depcachedir_st.Sys().(syscall.Stat_t).Uid) &&
@@ -1088,7 +1088,7 @@ func NewPortDbApi(mysettings *ebuild.Config) *portdbapi {
 		cache_kwargs["perms"] = 0o664
 	}
 
-	if (*data.secpass < 1 && !depcachedir_unshared) || !depcachedir_w_ok {
+	if (*data.Secpass < 1 && !depcachedir_unshared) || !depcachedir_w_ok {
 		for _, x := range p.porttrees {
 			p.auxdb[x] = cache.NewVolatileDatabase(
 				p.depcachedir, x, p._known_keys, false)

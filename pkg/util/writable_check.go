@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/util/msg"
 	"io/ioutil"
 	"os"
 	"runtime"
@@ -24,7 +25,7 @@ func linux_ro_checker(dir_list map[string]bool) map[string]bool {
 	f, err := ioutil.ReadFile("/proc/self/mountinfo")
 	if err != nil {
 		//except EnvironmentError:
-		WriteMsgLevel("!!! /proc/self/mountinfo cannot be read", 30, -1)
+		msg.WriteMsgLevel("!!! /proc/self/mountinfo cannot be read", 30, -1)
 		return map[string]bool{}
 	}
 
@@ -58,7 +59,7 @@ func linux_ro_checker(dir_list map[string]bool) map[string]bool {
 	}
 
 	for _, line := range invalids {
-		WriteMsgLevel(fmt.Sprintf("!!! /proc/self/mountinfo contains unrecognized line: %s\n",
+		msg.WriteMsgLevel(fmt.Sprintf("!!! /proc/self/mountinfo contains unrecognized line: %s\n",
 			strings.TrimRight(line, "\n")), 30, -1)
 	}
 

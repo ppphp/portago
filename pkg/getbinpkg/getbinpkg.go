@@ -30,12 +30,50 @@ type PackageIndex struct {
 	_inherited_keys                                                                                []string
 }
 
+// nil, nil, nil, nil, nil
+func NewPackageIndex(allowedPkgKeys map[string]bool, defaultHeaderData map[string]string,
+	defaultPkgData map[string]string, inheritedKeys []string, translatedKeys [][2]string) *PackageIndex {
+	p := &PackageIndex{}
+
+	p._pkg_slot_dict = nil
+	if len(allowedPkgKeys) > 0 {
+		p._pkg_slot_dict = func() map[string]string {
+			return map[string]string{}
+		} //slot_dict_class(allowed_pkg_keys)
+	}
+
+	p._default_header_data = defaultHeaderData
+	p._default_pkg_data = defaultPkgData
+	p._inherited_keys = inheritedKeys
+	p._write_translation_map = map[string]string{}
+	p._read_translation_map = map[string]string{}
+	if len(translatedKeys) > 0 {
+		for _, x := range translatedKeys {
+			k, v := x[0], x[1]
+			p._write_translation_map[k] = v
+		}
+		for _, x := range translatedKeys {
+			k, v := x[0], x[1]
+			p._read_translation_map[v] = k
+		}
+	}
+	p.header = map[string]string{}
+	if len(p._default_header_data) != 0 {
+		for k, v := range p._default_header_data {
+			p.header[k] = v
+		}
+	}
+	p.packages = []map[string]string{}
+	p.modified = true
+
+	return p
+}
+
 // true
 func (p *PackageIndex) _readpkgindex(pkgfile io.Reader, pkg_entry bool) map[string]string {
-	var allowed_keys []string = nil
 	d := map[string]string{}
-	if p._pkg_slot_dict == nil || !pkg_entry {
-	} else {
+	var allowed_keys []string = nil
+	if p._pkg_slot_dict == nil && pkg_entry {
 		d = p._pkg_slot_dict()
 		allowed_keys = []string{}
 	}
@@ -124,11 +162,7 @@ func (p *PackageIndex) write(pkgfile io.Writer) {
 		p.header["TIMESTAMP"] = fmt.Sprint(time.Now().Unix())
 		p.header["PACKAGES"] = fmt.Sprint(len(p.packages))
 	}
-	keys := []string{}
-	for k := range p.header {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+	keys := myutil.SortedMS[string](p.header)
 	s := [][2]string{}
 	for _, k := range keys {
 		if len(p.header[k]) != 0 {
@@ -157,11 +191,7 @@ func (p *PackageIndex) write(pkgfile io.Writer) {
 				}
 			}
 		}
-		keys := []string{}
-		for k := range metadata {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
+		keys := myutil.SortedMS[string](metadata)
 
 		s := [][2]string{}
 		for _, k := range keys {
@@ -171,47 +201,4 @@ func (p *PackageIndex) write(pkgfile io.Writer) {
 		}
 		p._writepkgindex(pkgfile, s)
 	}
-}
-
-// nil, nil, nil, nil, nil
-func NewPackageIndex(
-	allowedPkgKeys map[string]bool,
-	defaultHeaderData map[string]string,
-	defaultPkgData map[string]string,
-	inheritedKeys []string,
-	translatedKeys [][2]string) *PackageIndex {
-	p := &PackageIndex{}
-
-	p._pkg_slot_dict = nil
-	if allowedPkgKeys != nil {
-		p._pkg_slot_dict = func() map[string]string {
-			return map[string]string{}
-		} //slot_dict_class(allowed_pkg_keys)
-	}
-
-	p._default_header_data = defaultHeaderData
-	p._default_pkg_data = defaultPkgData
-	p._inherited_keys = inheritedKeys
-	p._write_translation_map = map[string]string{}
-	p._read_translation_map = map[string]string{}
-	if len(translatedKeys) > 0 {
-		for _, x := range translatedKeys {
-			k, v := x[0], x[1]
-			p._write_translation_map[k] = v
-		}
-		for _, x := range translatedKeys {
-			k, v := x[0], x[1]
-			p._read_translation_map[v] = k
-		}
-	}
-	p.header = map[string]string{}
-	if len(p._default_header_data) != 0 {
-		for k, v := range p._default_header_data {
-			p.header[k] = v
-		}
-	}
-	p.packages = []map[string]string{}
-	p.modified = true
-
-	return p
 }

@@ -85,7 +85,7 @@ kwargs:
 
 	spawn_func := process.Spawn
 
-	if settings.selinux_enabled() {
+	if settings.Selinux_enabled() {
 		spawn_func = selinux.spawn_wrapper(spawn_func, settings.ValueDict["PORTAGE_FETCH_T"])
 
 		if args[0] != _const.BashBinary {

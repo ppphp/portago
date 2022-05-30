@@ -1,6 +1,7 @@
 package util
 
 import (
+	"github.com/ppphp/portago/pkg/util/msg"
 	"os"
 	"path/filepath"
 	"strings"
@@ -125,7 +126,7 @@ var _exc_map = map[error]error{
 }
 
 
-func _raise_exc(e error){
+func Raise_exc(e error){
 	wrapper_cls := _exc_map[e]
 	if wrapper_cls == nil {
 		//raise
@@ -138,9 +139,9 @@ func _raise_exc(e error){
 // nil
 func install_mask_dir(base_dir string, install_mask *InstallMask, onerror func(error)) {
 	if onerror == nil {
-		onerror = _raise_exc
+		onerror = Raise_exc
 	}
-	base_dir = NormalizePath(base_dir)
+	base_dir = msg.NormalizePath(base_dir)
 	base_dir_len := len(base_dir) + 1
 	dir_stack := []string{}
 

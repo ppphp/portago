@@ -3,7 +3,6 @@ package ebuild
 import (
 	"github.com/ppphp/portago/pkg/dep"
 	"github.com/ppphp/portago/pkg/util"
-	"github.com/ppphp/portago/pkg/versions"
 	"path"
 	"strings"
 )
@@ -26,10 +25,10 @@ func NewKeywordsManager(profiles []*profileNode, absUserConfig string, userConfi
 		}
 		cpdict := map[string]map[*dep.Atom][]string{}
 		for k, v := range pkeyworddict {
-			if _, ok := cpdict[k.cp]; !ok {
-				cpdict[k.cp] = map[*dep.Atom][]string{k: v}
+			if _, ok := cpdict[k.Cp]; !ok {
+				cpdict[k.Cp] = map[*dep.Atom][]string{k: v}
 			} else {
-				cpdict[k.cp][k] = v
+				cpdict[k.Cp][k] = v
 			}
 		}
 		k.pkeywordsList = append(k.pkeywordsList, cpdict)
@@ -45,10 +44,10 @@ func NewKeywordsManager(profiles []*profileNode, absUserConfig string, userConfi
 		}
 		cpdict := map[string]map[*dep.Atom][]string{}
 		for k, v := range d {
-			if _, ok := cpdict[k.cp]; !ok {
-				cpdict[k.cp] = map[*dep.Atom][]string{k: v}
+			if _, ok := cpdict[k.Cp]; !ok {
+				cpdict[k.Cp] = map[*dep.Atom][]string{k: v}
 			} else {
-				cpdict[k.cp][k] = v
+				cpdict[k.Cp][k] = v
 			}
 		}
 		k.pAcceptKeywords = append(k.pAcceptKeywords, cpdict)
@@ -75,17 +74,17 @@ func NewKeywordsManager(profiles []*profileNode, absUserConfig string, userConfi
 			if len(v) == 0 {
 				v = acceptKeywordDefaults
 			}
-			if _, ok := k.pkeywordsDict[k1.cp]; !ok {
-				k.pkeywordsDict[k1.cp] = map[*dep.Atom][]string{k1: v}
+			if _, ok := k.pkeywordsDict[k1.Cp]; !ok {
+				k.pkeywordsDict[k1.Cp] = map[*dep.Atom][]string{k1: v}
 			} else {
-				k.pkeywordsDict[k1.cp][k1] = v
+				k.pkeywordsDict[k1.Cp][k1] = v
 			}
 		}
 	}
 	return k
 }
 
-func (k *KeywordsManager) getKeywords(cpv *versions.PkgStr, slot, keywords, repo string) map[*dep.Atom]string {
+func (k *KeywordsManager) getKeywords(cpv *PkgStr, slot, keywords, repo string) map[*dep.Atom]string {
 	pkg := cpv
 	cp := pkg.cp
 	kw := [][][2]string{{}}
@@ -112,7 +111,7 @@ func (k *KeywordsManager) getKeywords(cpv *versions.PkgStr, slot, keywords, repo
 	return util.StackLists(kw, 1, false, false, false, false)
 }
 
-func (k *KeywordsManager) isStable(pkg *versions.PkgStr, globalAcceptKeywords, backupedAcceptKeywords string) bool {
+func (k *KeywordsManager) isStable(pkg *PkgStr, globalAcceptKeywords, backupedAcceptKeywords string) bool {
 	myGroups := k.getKeywords(pkg, "", pkg.metadata["KEYWORDS"], "")
 	pGroups := strings.Fields(globalAcceptKeywords)
 	unmaskGroups := k.getPKeywords(pkg, "", "", globalAcceptKeywords)
@@ -134,12 +133,12 @@ func (k *KeywordsManager) isStable(pkg *versions.PkgStr, globalAcceptKeywords, b
 		if kw[:1] != "~" {
 			kw = "~" + kw
 		}
-		unstable[&dep.Atom{value: kw}] = ""
+		unstable[&dep.Atom{Value: kw}] = ""
 	}
 	return len(k._getMissingKeywords(pkg, pgroups, unstable)) > 0
 }
 
-func (k *KeywordsManager) GetMissingKeywords(cpv *versions.PkgStr, slot, keywords, repo, globalAcceptKeywords, backupedAcceptKeywords string) map[*dep.Atom]string {
+func (k *KeywordsManager) GetMissingKeywords(cpv *PkgStr, slot, keywords, repo, globalAcceptKeywords, backupedAcceptKeywords string) map[*dep.Atom]string {
 	mygroups := k.getKeywords(cpv, slot, keywords, repo)
 	pGroups := strings.Fields(globalAcceptKeywords)
 	unmaskGroups := k.getPKeywords(cpv, slot, repo, globalAcceptKeywords)
@@ -156,7 +155,7 @@ func (k *KeywordsManager) GetMissingKeywords(cpv *versions.PkgStr, slot, keyword
 	return k._getMissingKeywords(cpv, pgroups, mygroups)
 }
 
-func (k *KeywordsManager) getRawMissingKeywords(cpv *versions.PkgStr, slot, keywords, repo, globalAcceptKeywords string) map[*dep.Atom]string {
+func (k *KeywordsManager) getRawMissingKeywords(cpv *PkgStr, slot, keywords, repo, globalAcceptKeywords string) map[*dep.Atom]string {
 	mygroups := k.getKeywords(cpv, slot, keywords, repo)
 	pGroups := strings.Fields(globalAcceptKeywords)
 	pgroups := map[string]bool{}
@@ -184,15 +183,15 @@ func (k *KeywordsManager) getEgroups(egroups, mygroups []string) map[string]bool
 	return incPGroups
 }
 
-func (k *KeywordsManager) _getMissingKeywords(cpv *versions.PkgStr, pgroups map[string]bool, mygroups map[*dep.Atom]string) map[*dep.Atom]string {
+func (k *KeywordsManager) _getMissingKeywords(cpv *PkgStr, pgroups map[string]bool, mygroups map[*dep.Atom]string) map[*dep.Atom]string {
 	match := false
 	hasstable := false
 	hastesting := false
 	for gp := range mygroups {
-		if gp.value == "*" {
+		if gp.Value == "*" {
 			match = true
 			break
-		} else if gp.value == "~*" {
+		} else if gp.Value == "~*" {
 			hastesting = true
 			for x := range pgroups {
 				if x[:1] == "~" {
@@ -203,12 +202,12 @@ func (k *KeywordsManager) _getMissingKeywords(cpv *versions.PkgStr, pgroups map[
 			if match {
 				break
 			}
-		} else if pgroups[gp.value] {
+		} else if pgroups[gp.Value] {
 			match = true
 			break
-		} else if strings.HasPrefix(gp.value, "~") {
+		} else if strings.HasPrefix(gp.Value, "~") {
 			hastesting = true
-		} else if !strings.HasPrefix(gp.value, "-") {
+		} else if !strings.HasPrefix(gp.Value, "-") {
 			hasstable = true
 		}
 	}
@@ -219,13 +218,13 @@ func (k *KeywordsManager) _getMissingKeywords(cpv *versions.PkgStr, pgroups map[
 		return map[*dep.Atom]string{}
 	} else {
 		if len(mygroups) == 0 {
-			mygroups = map[*dep.Atom]string{{value: "**"}: ""}
+			mygroups = map[*dep.Atom]string{{Value: "**"}: ""}
 		}
 		return mygroups
 	}
 }
 
-func (k *KeywordsManager) getPKeywords(cpv *versions.PkgStr, slot, repo, globalAcceptKeywords string) []string {
+func (k *KeywordsManager) getPKeywords(cpv *PkgStr, slot, repo, globalAcceptKeywords string) []string {
 	pgroups := strings.Fields(globalAcceptKeywords)
 	cp := cpv.cp
 	unmaskGroups := []string{}

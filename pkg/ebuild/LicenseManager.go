@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/dep"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/grab"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/versions"
 	"path"
@@ -49,7 +50,7 @@ func (l *LicenseManager) readUserConfig(absUserConfig string) {
 
 func (l *LicenseManager) readLicenseGroups(locations []string) {
 	for _, loc := range locations {
-		for k, v := range util.GrabDict(path.Join(loc, "license_groups"), false, false, false, true, false) {
+		for k, v := range grab.GrabDict(path.Join(loc, "license_groups"), false, false, false, true, false) {
 			if _, ok := l.licenseGroups[k]; !ok {
 				l.licenseGroups[k] = map[string]bool{}
 			}
@@ -140,13 +141,13 @@ func (l *LicenseManager) _expandLicenseToken(token string, traversedGroups map[s
 	return rValue
 }
 
-func (l *LicenseManager) _getPkgAcceptLicense(cpv *versions.PkgStr, slot, repo string) []string {
+func (l *LicenseManager) _getPkgAcceptLicense(cpv *versions.PkgStr[*Config], slot, repo string) []string {
 	acceptLicense := l.acceptLicense
-	cp := versions.cpvGetKey(cpv.string, "")
+	cp := versions.CpvGetKey(cpv.string, "")
 	cpdict := l._plicensedict[cp]
 	if len(cpdict) > 0 {
 		if cpv.slot == "" {
-			cpv = versions.NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
+			cpv = versions.NewPkgStr[*Config](cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 		}
 		plicenceList := orderedByAtomSpecificity(cpdict, cpv, "")
 		if len(plicenceList) > 0 {
@@ -159,9 +160,9 @@ func (l *LicenseManager) _getPkgAcceptLicense(cpv *versions.PkgStr, slot, repo s
 	return acceptLicense
 }
 
-func (l *LicenseManager) getPrunnedAcceptLicense(cpv *versions.PkgStr, use map[string]bool, lic, slot, repo string) string {
+func (l *LicenseManager) getPrunnedAcceptLicense(cpv *versions.PkgStr[*Config], use map[string]bool, lic, slot, repo string) string {
 	licenses := map[string]bool{}
-	for _, u := range dep.useReduce(lic, use, nil, false, nil, false, "", false, true, nil, nil, false) {
+	for _, u := range dep.UseReduce(lic, use, nil, false, nil, false, "", false, true, nil, nil, false) {
 		licenses[u] = true
 	}
 	acceptLicense := l._getPkgAcceptLicense(cpv, slot, repo)
@@ -190,9 +191,9 @@ func (l *LicenseManager) getPrunnedAcceptLicense(cpv *versions.PkgStr, use map[s
 	return strings.Join(licensesS, " ")
 }
 
-func (l *LicenseManager) getMissingLicenses(cpv *versions.PkgStr, use, lic, slot, repo string) []string {
+func (l *LicenseManager) getMissingLicenses(cpv *versions.PkgStr[*Config], use, lic, slot, repo string) []string {
 	licenses := map[string]bool{}
-	for _, u := range dep.useReduce(lic, nil, nil, true, nil, false, "", false, true, nil, nil, false) {
+	for _, u := range dep.UseReduce(lic, nil, nil, true, nil, false, "", false, true, nil, nil, false) {
 		licenses[u] = true
 	}
 	delete(licenses, "||")
@@ -218,7 +219,7 @@ func (l *LicenseManager) getMissingLicenses(cpv *versions.PkgStr, use, lic, slot
 			useM[u] = true
 		}
 	}
-	licenseStruct := dep.useReduce(licenseStr, useM, []string{}, false, []string{}, false, "", false, false, nil, nil, false)
+	licenseStruct := dep.UseReduce(licenseStr, useM, []string{}, false, []string{}, false, "", false, false, nil, nil, false)
 
 	return l._getMaskedLicenses(licenseStruct, acceptableLicenses)
 }

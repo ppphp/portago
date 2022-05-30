@@ -3,8 +3,10 @@ package _dyn_libs
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/pkg/locks"
+	"github.com/ppphp/portago/pkg/portage"
+	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/versions"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -95,7 +97,7 @@ func (p *preservedLibsRegistry) store() {
 	if os.Getenv("SANDBOX_ON") == "1" || &p._data == &p._data_orig {
 		return
 	}
-	f := NewAtomic_ofstream(p._filename, os.O_RDWR|os.O_CREATE, true)
+	f := util.NewAtomic_ofstream(p._filename, os.O_RDWR|os.O_CREATE, true)
 	//if self._json_write:
 	v, _ := json.Marshal(p._data)
 	f.Write(v)
@@ -122,7 +124,7 @@ func (p *preservedLibsRegistry) _normalize_counter(counter string) string {
 
 func (p *preservedLibsRegistry) register(cpv, slot, counter string, paths []string) {
 
-	cp := atom.cpvGetKey(cpv, "")
+	cp := versions.CpvGetKey(cpv, "")
 	cps := cp + ":" + slot
 	counter = p._normalize_counter(counter)
 	if _, ok := p._data[cps]; len(paths) == 0 && ok && p._data[cps].cpv == cpv && p._normalize_counter(p._data[cps].counter) == counter {
@@ -167,7 +169,7 @@ func (p *preservedLibsRegistry) pruneNonExisting() {
 		}
 
 		for f, target := range symlinks {
-			if hardlinks[atom.absSymlink(f, target)] {
+			if hardlinks[portage.absSymlink(f, target)] {
 				paths = append(paths, f)
 			}
 		}

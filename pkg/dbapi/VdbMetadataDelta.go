@@ -13,7 +13,7 @@ import (
 )
 
 type vdbMetadataDelta struct {
-	_vardb *vardbapi
+	_vardb *Vardbapi
 }
 
 func (v *vdbMetadataDelta) initialize(timestamp int) {
@@ -183,7 +183,7 @@ func (v *vdbMetadataDelta) applyDelta(data map[string][]map[string]string) {
 	}
 }
 
-func NewVdbMetadataDelta(vardb *vardbapi) *vdbMetadataDelta {
+func NewVdbMetadataDelta(vardb *Vardbapi) *vdbMetadataDelta {
 	v := &vdbMetadataDelta{}
 	v._vardb = vardb
 	return v

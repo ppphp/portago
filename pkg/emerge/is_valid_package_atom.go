@@ -26,5 +26,5 @@ func is_valid_package_atom(x string, allow_repo, allow_build_id bool) bool {
 			x = x2
 		}
 	}
-	return dep.isValidAtom(x, false, false, allow_repo, "", allow_build_id)
+	return dep.IsValidAtom(x, false, false, allow_repo, "", allow_build_id)
 }

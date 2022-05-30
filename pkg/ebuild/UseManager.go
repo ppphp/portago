@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/dep"
 	"github.com/ppphp/portago/pkg/eapi"
+	"github.com/ppphp/portago/pkg/interfaces"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/repository"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/grab"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/versions"
 	"path"
@@ -15,7 +17,7 @@ import (
 
 type UseManager struct {
 	userConfig                                                                                         bool
-	isStable                                                                                           func(*versions.PkgStr) bool
+	isStable                                                                                           func(str interfaces.IPkgStr) bool
 	repoUsemaskDict, repoUsestablemaskDict, repoUseforceDict, repoUsestableforceDict                   map[string][]string
 	repoPusemaskDict, repoPusestablemaskDict, repoPuseforceDict, repoPusestableforceDict, repoPuseDict map[string]map[string]map[*dep.Atom][]string
 	usemaskList, usestablemaskList, useforceList, usestableforceList                                   [][]string
@@ -26,7 +28,8 @@ type UseManager struct {
 	repositories                                                                                       *repository.RepoConfigLoader
 }
 
-func NewUseManager(repositories *repository.RepoConfigLoader, profiles []*profileNode, absUserConfig string, isStable func(*versions.PkgStr) bool, userConfig bool) *UseManager { // t
+// true
+func NewUseManager(repositories *repository.RepoConfigLoader, profiles []*profileNode, absUserConfig string, isStable func(str interfaces.IPkgStr) bool, userConfig bool) *UseManager {
 	u := &UseManager{}
 	u.userConfig = userConfig
 	u.isStable = isStable
@@ -61,7 +64,7 @@ func NewUseManager(repositories *repository.RepoConfigLoader, profiles []*profil
 
 func (u *UseManager) parseFileToTuple(fileName string, recursive bool, eapiFilter func(string) bool, eapi, eapiDefault string) []string { // tnn"0"
 	ret := []string{}
-	lines := util.GrabFile(fileName, 0, true, false)
+	lines := grab.GrabFile(fileName, 0, true, false)
 	if eapi == "" {
 		eapi = util.ReadCorrespondingEapiFile(fileName, eapiDefault)
 	}
@@ -192,7 +195,7 @@ func (u *UseManager) parseUserFilesToExtatomdict(fileName, location string, user
 
 func (u *UseManager) parseRepositoryFilesToDictOfTuples(fileName string, repositories *repository.RepoConfigLoader, eapiFilter func(string) bool) map[string][]string { // n
 	ret := map[string][]string{}
-	for _, repo := range repositories.reposWithProfiles() {
+	for _, repo := range repositories.ReposWithProfiles() {
 		ret[repo.Name] = u.parseFileToTuple(path.Join(repo.Location, "profiles", fileName), true, eapiFilter, "", repo.eapi)
 	}
 	return ret
@@ -200,7 +203,7 @@ func (u *UseManager) parseRepositoryFilesToDictOfTuples(fileName string, reposit
 
 func (u *UseManager) parseRepositoryFilesToDictOfDicts(fileName string, repositories *repository.RepoConfigLoader, eapiFilter func(string) bool) map[string]map[string]map[*dep.Atom][]string {
 	ret := map[string]map[string]map[*dep.Atom][]string{}
-	for _, repo := range repositories.reposWithProfiles() {
+	for _, repo := range repositories.ReposWithProfiles() {
 		ret[repo.Name] = u.parseFileToDict(path.Join(repo.Location, "profiles", fileName), false, true, eapiFilter, false, "0", repo.eapi, myutil.Ins(repo.profileFormats, "build-id"))
 	}
 	return ret
@@ -224,11 +227,11 @@ func (u *UseManager) parseProfileFilesToTupleOfDicts(fileName string, locations 
 
 func (u *UseManager) parseRepositoryUsealiases(repositorires *repository.RepoConfigLoader) map[string]map[string][]string {
 	ret := map[string]map[string][]string{}
-	for _, repo := range repositorires.reposWithProfiles() {
+	for _, repo := range repositorires.ReposWithProfiles() {
 		fileName := path.Join(repo.Location, "profiles", "use.aliases")
 		eapi := util.ReadCorrespondingEapiFile(fileName, repo.eapi)
 		useFlagRe := dep.GetUseflagRe(eapi)
-		rawFileDict := util.GrabDict(fileName, false, false, true, false, false)
+		rawFileDict := grab.GrabDict(fileName, false, false, true, false, false)
 		fileDict := map[string][]string{}
 		for realFlag, aliases := range rawFileDict {
 			if !useFlagRe.MatchString(realFlag) {
@@ -269,11 +272,11 @@ func (u *UseManager) parseRepositoryUsealiases(repositorires *repository.RepoCon
 
 func (u *UseManager) parseRepositoryPackageusealiases(repositorires *repository.RepoConfigLoader) map[string]map[string]map[*dep.Atom]map[string][]string {
 	ret := map[string]map[string]map[*dep.Atom]map[string][]string{}
-	for _, repo := range repositorires.reposWithProfiles() {
+	for _, repo := range repositorires.ReposWithProfiles() {
 		fileName := path.Join(repo.Location, "profiles", "package.use.aliases")
 		eapi := util.ReadCorrespondingEapiFile(fileName, repo.eapi)
 		useFlagRe := dep.GetUseflagRe(eapi)
-		lines := util.GrabFile(fileName, 0, true, false)
+		lines := grab.GrabFile(fileName, 0, true, false)
 		fileDict := map[string]map[*dep.Atom]map[string][]string{}
 		for _, line := range lines {
 			elements := strings.Fields(line[0])
@@ -360,7 +363,7 @@ func (u *UseManager) getUseMask(pkg *versions.PkgStr, stable *bool) map[*dep.Ato
 	useMask := [][]string{}
 	if pkg.repo != "" && pkg.repo != versions.unknownRepo {
 		repos := []string{}
-		for range u.repositories.getitem(pkg.repo).masters {
+		for range u.repositories.Getitem(pkg.repo).masters {
 		}
 		repos = append(repos, pkg.repo)
 		for _, repo := range repos {
@@ -442,7 +445,7 @@ func (u *UseManager) getUseForce(pkg *versions.PkgStr, stable *bool) map[*dep.At
 	useForce := [][]string{}
 	if pkg.repo != "" && pkg.repo != versions.unknownRepo {
 		repos := []string{}
-		for range u.repositories.getitem(pkg.repo).masters {
+		for range u.repositories.Getitem(pkg.repo).masters {
 		}
 		repos = append(repos, pkg.repo)
 		for _, repo := range repos {
@@ -509,7 +512,7 @@ func (u *UseManager) getUseAliases(pkg *versions.PkgStr) map[string][]string {
 	}
 	cp := pkg.cp
 	if cp == "" {
-		slot := dep.depGetslot(pkg.string)
+		slot := dep.DepGetslot(pkg.string)
 		repo := dep.DepGetrepo(pkg.string)
 		pkg := versions.NewPkgStr(dep.RemoveSlot(pkg.string), nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 		cp = pkg.cp
@@ -597,7 +600,7 @@ func (u *UseManager) getUseAliases(pkg *versions.PkgStr) map[string][]string {
 func (u *UseManager) getPUSE(pkg *versions.PkgStr) string {
 	cp := pkg.cp
 	if cp == "" {
-		slot := dep.depGetslot(pkg.string)
+		slot := dep.DepGetslot(pkg.string)
 		repo := dep.DepGetrepo(pkg.string)
 		pkg := versions.NewPkgStr(dep.RemoveSlot(pkg.string), nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 		cp = pkg.cp

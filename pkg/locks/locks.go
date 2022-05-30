@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/data"
 	"github.com/ppphp/portago/pkg/output"
-	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/msg"
 	"io/ioutil"
 	"os"
 	"path"
@@ -75,11 +75,11 @@ func _close_fds() {
 	}
 }
 
-func lockdir(mydir string, flags int) (*LockFileS, error) { // 0
+func Lockdir(mydir string, flags int) (*LockFileS, error) { // 0
 	return Lockfile(mydir, true, false, "", flags)
 }
 
-func unlockdir(mylock *LockFileS) bool {
+func Unlockdir(mylock *LockFileS) bool {
 	return Unlockfile(mylock)
 }
 
@@ -100,7 +100,7 @@ func Lockfile(mypath string, wantnewlockfile, unlinkfile bool, waiting_msg strin
 			return l, e
 		}
 		if l.string == "" {
-			util.WriteMsg("lockfile removed by previous lock holder, retrying\n", 1, nil)
+			msg.WriteMsg("lockfile removed by previous lock holder, retrying\n", 1, nil)
 		}
 	}
 	return l, e
@@ -148,14 +148,14 @@ func _lockfile_iteration(mypath string, wantnewlockfile, unlinkfile bool, waitin
 			if err == syscall.ENONET || err == syscall.ESTALE {
 				return Lockfile(mypath, wantnewlockfile, unlinkfile, waiting_msg, flags)
 			} else {
-				util.WriteMsg(fmt.Sprintf("%s: chown('%s', -1, %d)\n", err, lockfilename, gid), -1, nil)
-				util.WriteMsg(fmt.Sprintf("Cannot chown a lockfile: '%s'\n", lockfilename), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("%s: chown('%s', -1, %d)\n", err, lockfilename, gid), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("Cannot chown a lockfile: '%s'\n", lockfilename), -1, nil)
 				s, _ := os.Getgroups()
 				p := []string{}
 				for _, v := range s {
 					p = append(p, string(v))
 				}
-				util.WriteMsg(fmt.Sprintf("Group IDs of current user: %s\n", strings.Join(p, " ")), -1, nil)
+				msg.WriteMsg(fmt.Sprintf("Group IDs of current user: %s\n", strings.Join(p, " ")), -1, nil)
 			}
 		}
 	}
@@ -199,7 +199,7 @@ func _lockfile_iteration(mypath string, wantnewlockfile, unlinkfile bool, waitin
 						if !enolock_msg_shown {
 							enolock_msg_shown = true
 							context_desc := fmt.Sprintf("Error while waiting to lock '%s'", lockfilename)
-							util.WriteMsg(fmt.Sprintf("\n!!! %s: %s\n", context_desc, err), -1, nil)
+							msg.WriteMsg(fmt.Sprintf("\n!!! %s: %s\n", context_desc, err), -1, nil)
 						}
 						time.Sleep(_HARDLINK_POLL_LATENCY * time.Second)
 						continue
@@ -248,7 +248,7 @@ func _lockfile_iteration(mypath string, wantnewlockfile, unlinkfile bool, waitin
 
 	_open_fds[myfd] = true
 
-	util.WriteMsg(fmt.Sprintf("%v%v%v\n", lockfilename, myfd, unlinkfile), 1, nil)
+	msg.WriteMsg(fmt.Sprintf("%v%v%v\n", lockfilename, myfd, unlinkfile), 1, nil)
 	return &LockFileS{lockfilename, myfd, unlinkfile, locking_method}, nil
 }
 
@@ -340,7 +340,7 @@ func Unlockfile(s *LockFileS) bool {
 	}
 
 	if _, err := os.Stat(lockfilename); err != nil {
-		util.WriteMsg(fmt.Sprintf("lockfile does not exist '%s'\n", lockfilename), 1, nil)
+		msg.WriteMsg(fmt.Sprintf("lockfile does not exist '%s'\n", lockfilename), 1, nil)
 		if myfd != 0 {
 			syscall.Close(myfd)
 			delete(_open_fds, myfd)
@@ -366,30 +366,30 @@ func Unlockfile(s *LockFileS) bool {
 	}
 	if unlinkfile {
 		if err := locking_method(myfd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-			util.WriteMsg("Failed to get lock... someone took it.\n", 1, nil)
-			util.WriteMsg(err.Error()+"\n", 1, nil)
+			msg.WriteMsg("Failed to get lock... someone took it.\n", 1, nil)
+			msg.WriteMsg(err.Error()+"\n", 1, nil)
 		}
-		util.WriteMsg("Got the lockfile...\n", 1, nil)
+		msg.WriteMsg("Got the lockfile...\n", 1, nil)
 		n, err := _fstat_nlink(myfd)
 		if err != nil {
-			util.WriteMsg("Failed to get lock... someone took it.\n", 1, nil)
-			util.WriteMsg(err.Error()+"\n", 1, nil)
+			msg.WriteMsg("Failed to get lock... someone took it.\n", 1, nil)
+			msg.WriteMsg(err.Error()+"\n", 1, nil)
 		}
 		if n == 1 {
 			if err := syscall.Unlink(lockfilename); err != nil {
-				util.WriteMsg("Failed to get lock... someone took it.\n", 1, nil)
-				util.WriteMsg(err.Error()+"\n", 1, nil)
+				msg.WriteMsg("Failed to get lock... someone took it.\n", 1, nil)
+				msg.WriteMsg(err.Error()+"\n", 1, nil)
 			}
-			util.WriteMsg("Unlinked lockfile...\n", 1, nil)
+			msg.WriteMsg("Unlinked lockfile...\n", 1, nil)
 			if err := locking_method(myfd, syscall.LOCK_UN); err != nil {
-				util.WriteMsg("Failed to get lock... someone took it.\n", 1, nil)
-				util.WriteMsg(err.Error()+"\n", 1, nil)
+				msg.WriteMsg("Failed to get lock... someone took it.\n", 1, nil)
+				msg.WriteMsg(err.Error()+"\n", 1, nil)
 			}
 		} else {
-			util.WriteMsg(fmt.Sprintf("lockfile does not exist '%s'\n", lockfilename), 1, nil)
+			msg.WriteMsg(fmt.Sprintf("lockfile does not exist '%s'\n", lockfilename), 1, nil)
 			if err := syscall.Close(myfd); err != nil {
-				util.WriteMsg("Failed to get lock... someone took it.\n", 1, nil)
-				util.WriteMsg(err.Error()+"\n", 1, nil)
+				msg.WriteMsg("Failed to get lock... someone took it.\n", 1, nil)
+				msg.WriteMsg(err.Error()+"\n", 1, nil)
 			}
 			delete(_open_fds, myfd)
 			return false
@@ -455,10 +455,10 @@ func hardlink_lockfile(lockfilename string, waiting_msg string, flags int) bool 
 			var myfd_st *syscall.Stat_t
 			if err := syscall.Fstat(myfd, myfd_st); err != nil {
 				if err != syscall.ENOENT && err != syscall.ESTALE {
-					util.WriteMsg(fmt.Sprintf("%s: fchown('%s', -1, %d)\n", err, lockfilename, data.Portage_gid), -1, nil)
-					util.WriteMsg(fmt.Sprintf("Cannot chown a lockfile: '%s'\n", lockfilename), -1, nil)
+					msg.WriteMsg(fmt.Sprintf("%s: fchown('%s', -1, %d)\n", err, lockfilename, data.Portage_gid), -1, nil)
+					msg.WriteMsg(fmt.Sprintf("Cannot chown a lockfile: '%s'\n", lockfilename), -1, nil)
 					n, _ := os.Getgroups()
-					util.WriteMsg(fmt.Sprintf("Group IDs of current user: %+v\n", n), -1, nil)
+					msg.WriteMsg(fmt.Sprintf("Group IDs of current user: %+v\n", n), -1, nil)
 				} else {
 					continue
 				}
@@ -466,10 +466,10 @@ func hardlink_lockfile(lockfilename string, waiting_msg string, flags int) bool 
 				if *data.Secpass >= 1 && myfd_st.Gid != gid {
 					if err := syscall.Fchown(myfd, -1, int(gid)); err != nil {
 						if err != syscall.ENOENT && err != syscall.ESTALE {
-							util.WriteMsg(fmt.Sprintf("%s: fchown('%s', -1, %d)\n", err, lockfilename, data.Portage_gid), -1, nil)
-							util.WriteMsg(fmt.Sprintf("Cannot chown a lockfile: '%s'\n", lockfilename), -1, nil)
+							msg.WriteMsg(fmt.Sprintf("%s: fchown('%s', -1, %d)\n", err, lockfilename, data.Portage_gid), -1, nil)
+							msg.WriteMsg(fmt.Sprintf("Cannot chown a lockfile: '%s'\n", lockfilename), -1, nil)
 							n, _ := os.Getgroups()
-							util.WriteMsg(fmt.Sprintf("Group IDs of current user: %+v\n", n), -1, nil)
+							msg.WriteMsg(fmt.Sprintf("Group IDs of current user: %+v\n", n), -1, nil)
 						} else {
 							continue
 						}

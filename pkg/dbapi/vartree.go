@@ -4,27 +4,35 @@ import (
 	"archive/tar"
 	"bytes"
 	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/pkg/xattr"
 	_const "github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/dep"
 	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/elog"
 	"github.com/ppphp/portago/pkg/emerge"
 	"github.com/ppphp/portago/pkg/exception"
 	"github.com/ppphp/portago/pkg/locks"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/portage"
+	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/_dyn_libs"
+	"github.com/ppphp/portago/pkg/util/elf"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/versions"
 	"github.com/spf13/pflag"
+	"golang.org/x/sys/unix"
 	"hash"
+	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,7 +40,7 @@ import (
 	"time"
 )
 
-type vardbapi struct {
+type Vardbapi struct {
 	*dbapi
 	_excluded_dirs, _aux_cache_keys_re, _aux_multi_line_re *regexp.Regexp
 	_aux_cache_version, _owners_cache_version              int
@@ -59,17 +67,17 @@ type vardbapi struct {
 	vartree                     *varTree
 	_aux_cache_keys             map[string]bool
 	_cache_delta                *vdbMetadataDelta
-	_plib_registry              *util.preservedLibsRegistry
-	_linkmap                    *util.linkageMapELF
+	_plib_registry              *_dyn_libs.preservedLibsRegistry
+	_linkmap                    *_dyn_libs.linkageMapELF
 	_owners                     *_owners_db
 }
 
-func (v *vardbapi) writable() bool {
-	st, err := os.Stat(atom.firstExisting(v._dbroot))
+func (v *Vardbapi) writable() bool {
+	st, err := os.Stat(ebuild.firstExisting(v._dbroot))
 	return err != nil && st.Mode()&os.FileMode(os.O_WRONLY) != 0
 }
 
-func (v *vardbapi) getpath(myKey, filename string) string { // ""+
+func (v *Vardbapi) getpath(myKey, filename string) string { // ""+
 	rValue := v._dbroot + _const.VdbPath + string(os.PathSeparator) + myKey
 	if filename != "" {
 		rValue = filepath.Join(rValue, filename)
@@ -77,7 +85,7 @@ func (v *vardbapi) getpath(myKey, filename string) string { // ""+
 	return rValue
 }
 
-func (v *vardbapi) lock() {
+func (v *Vardbapi) lock() {
 	if v._lock_count != 0 {
 		v._lock_count++
 	} else {
@@ -89,7 +97,7 @@ func (v *vardbapi) lock() {
 	}
 }
 
-func (v *vardbapi) unlock() {
+func (v *Vardbapi) unlock() {
 	if v._lock_count > 1 {
 		v._lock_count -= 1
 	} else {
@@ -97,13 +105,13 @@ func (v *vardbapi) unlock() {
 			panic("not locked")
 		}
 		v._lock_count = 0
-		atom.unlockdir(v._lock)
+		locks.Unlockdir(v._lock)
 		v._lock = ""
 	}
 
 }
 
-func (v *vardbapi) _fs_lock() {
+func (v *Vardbapi) _fs_lock() {
 	if v._fs_lock_count < 1 {
 		if v._fs_lock_obj != nil {
 			panic("already locked")
@@ -117,7 +125,7 @@ func (v *vardbapi) _fs_lock() {
 	v._fs_lock_count += 1
 }
 
-func (v *vardbapi) _fs_unlock() {
+func (v *Vardbapi) _fs_unlock() {
 	if v._fs_lock_count < 1 {
 		if v._fs_lock_obj == nil {
 			panic("not locked")
@@ -128,7 +136,7 @@ func (v *vardbapi) _fs_unlock() {
 	v._fs_lock_count -= 1
 }
 
-func (v *vardbapi) _slot_lock(slotAtom *dep.Atom) {
+func (v *Vardbapi) _slot_lock(slotAtom *dep.Atom) {
 	lock := v._slot_locks[slotAtom].s
 	counter := v._slot_locks[slotAtom].int
 	if lock == nil {
@@ -142,7 +150,7 @@ func (v *vardbapi) _slot_lock(slotAtom *dep.Atom) {
 	}{lock, counter + 1}
 }
 
-func (v *vardbapi) _slot_unlock(slotAtom *dep.Atom) {
+func (v *Vardbapi) _slot_unlock(slotAtom *dep.Atom) {
 	lock := v._slot_locks[slotAtom].s
 	counter := v._slot_locks[slotAtom].int
 	if lock == nil {
@@ -160,9 +168,9 @@ func (v *vardbapi) _slot_unlock(slotAtom *dep.Atom) {
 	}
 }
 
-func (v *vardbapi) _bump_mtime(cpv string) {
+func (v *Vardbapi) _bump_mtime(cpv string) {
 	base := v._eroot + _const.VdbPath
-	cat := versions.catsplit(cpv)[0]
+	cat := versions.CatSplit(cpv)[0]
 	catDir := base + string(filepath.Separator) + cat
 	t := time.Now()
 
@@ -173,7 +181,7 @@ func (v *vardbapi) _bump_mtime(cpv string) {
 	}
 }
 
-func (v *vardbapi) cpv_exists(myKey, myRepo string) bool {
+func (v *Vardbapi) cpv_exists(myKey, myRepo string) bool {
 	_, err := os.Stat(v.getpath(myKey, ""))
 	if err != nil {
 		return true
@@ -181,7 +189,7 @@ func (v *vardbapi) cpv_exists(myKey, myRepo string) bool {
 	return false
 }
 
-func (v *vardbapi) cpv_counter(myCpv *versions.PkgStr) int {
+func (v *Vardbapi) cpv_counter(myCpv *versions.PkgStr) int {
 	s, err := strconv.Atoi(v.AuxGet(myCpv, []string{"COUNTER"}, "")[0])
 	if err != nil {
 		msg.WriteMsgLevel(fmt.Sprintf("portage: COUNTER for %s was corrupted; resetting to value of 0\n", myCpv.string), 40, -1)
@@ -190,13 +198,13 @@ func (v *vardbapi) cpv_counter(myCpv *versions.PkgStr) int {
 	return s
 }
 
-func (v *vardbapi) cpv_inject(myCpv *versions.PkgStr) {
+func (v *Vardbapi) cpv_inject(myCpv *versions.PkgStr) {
 	util.EnsureDirs(v.getpath(myCpv.string, ""), -1, -1, -1, -1, nil, true)
 	counter := v.counter_tick()
 	util.write_atomic(v.getpath(myCpv.string, "COUNTER"), string(counter), 0, true)
 }
 
-func (v *vardbapi) isInjected(myCpv string) bool {
+func (v *Vardbapi) isInjected(myCpv string) bool {
 	if v.cpv_exists(myCpv, "") {
 		if _, err := os.Stat(v.getpath(myCpv, "INJECTED")); err == nil {
 			return true
@@ -209,7 +217,7 @@ func (v *vardbapi) isInjected(myCpv string) bool {
 }
 
 // nil
-func (v *vardbapi) move_ent(myList []*dep.Atom, repoMatch func(string) bool) int {
+func (v *Vardbapi) move_ent(myList []*dep.Atom, repoMatch func(string) bool) int {
 	origCp := myList[1]
 	newCp := myList[2]
 
@@ -273,7 +281,7 @@ func (v *vardbapi) move_ent(myList []*dep.Atom, repoMatch func(string) bool) int
 	return moves
 }
 
-func (v *vardbapi) cp_list(myCp string, useCache int) []*versions.PkgStr {
+func (v *Vardbapi) cp_list(myCp string, useCache int) []*versions.PkgStr {
 	mySplit := versions.catsplit(myCp)
 	if mySplit[0] == "*" {
 		mySplit[0] = mySplit[0][1:]
@@ -334,12 +342,12 @@ func (v *vardbapi) cp_list(myCp string, useCache int) []*versions.PkgStr {
 }
 
 // 1
-func (v *vardbapi) cpv_all(useCache int) []*versions.PkgStr {
+func (v *Vardbapi) cpv_all(useCache int) []*versions.PkgStr {
 	return v._iter_cpv_all(useCache != 0, false)
 }
 
 // true, true
-func (v *vardbapi) _iter_cpv_all(useCache, sort1 bool) []*versions.PkgStr {
+func (v *Vardbapi) _iter_cpv_all(useCache, sort1 bool) []*versions.PkgStr {
 	basePath := filepath.Join(v._eroot, _const.VdbPath) + string(filepath.Separator)
 	ListDir := util.ListDir
 	if !useCache {
@@ -396,7 +404,7 @@ func (v *vardbapi) _iter_cpv_all(useCache, sort1 bool) []*versions.PkgStr {
 }
 
 // 1, false
-func (v *vardbapi) cp_all(useCache int, sort1 bool) []string {
+func (v *Vardbapi) cp_all(useCache int, sort1 bool) []string {
 	myList := v.cpv_all(useCache)
 	d := map[string]bool{}
 	for _, y := range myList {
@@ -424,9 +432,9 @@ func (v *vardbapi) cp_all(useCache int, sort1 bool) []string {
 	return dr
 }
 
-func (v *vardbapi) checkblockers() {}
+func (v *Vardbapi) checkblockers() {}
 
-func (v *vardbapi) _clear_cache() {
+func (v *Vardbapi) _clear_cache() {
 	v.mtdircache = map[string]int{}
 	v.matchcache = map[string]map[[2]*dep.Atom][]*versions.PkgStr{}
 	v.cpcache = map[string]struct {
@@ -436,17 +444,17 @@ func (v *vardbapi) _clear_cache() {
 	v._aux_cache_obj = nil
 }
 
-func (v *vardbapi) _add(pkgDblink *dblink) {
+func (v *Vardbapi) _add(pkgDblink *dblink) {
 	v._pkgs_changed = true
 	v._clear_pkg_cache(pkgDblink)
 }
 
-func (v *vardbapi) _remove(pkgDblink *dblink) {
+func (v *Vardbapi) _remove(pkgDblink *dblink) {
 	v._pkgs_changed = true
 	v._clear_pkg_cache(pkgDblink)
 }
 
-func (v *vardbapi) _clear_pkg_cache(pkgDblink *dblink) {
+func (v *Vardbapi) _clear_pkg_cache(pkgDblink *dblink) {
 	delete(v.mtdircache, pkgDblink.cat)
 	delete(v.matchcache, pkgDblink.cat)
 	delete(v.cpcache, pkgDblink.mysplit[0])
@@ -455,7 +463,7 @@ func (v *vardbapi) _clear_pkg_cache(pkgDblink *dblink) {
 }
 
 // 1
-func (v *vardbapi) match(origDep string, useCache int) []*versions.PkgStr {
+func (v *Vardbapi) match(origDep string, useCache int) []*versions.PkgStr {
 	myDep := dep_expandS(origDep, v.dbapi, useCache, v.settings)
 	cacheKey := [2]*dep.Atom{myDep, myDep.unevaluatedAtom}
 	myKey := dep.depGetKey(myDep.value)
@@ -486,11 +494,11 @@ func (v *vardbapi) match(origDep string, useCache int) []*versions.PkgStr {
 	return v.matchcache[myCat][cacheKey][:]
 }
 
-func (v *vardbapi) findname(myCpv string) string {
+func (v *Vardbapi) findname(myCpv string) string {
 	return v.getpath(myCpv, versions.catsplit(myCpv)[1]+".ebuild")
 }
 
-func (v *vardbapi) flush_cache() {
+func (v *Vardbapi) flush_cache() {
 	if v._flush_cache_enabled && v._aux_cache() != nil && *data.secpass >= 2 && (len(v._aux_cache().modified)) >= v._aux_cache_threshold || !myutil.pathExists(v._cache_delta_filename) {
 
 		util.EnsureDirs(filepath.Dir(v._aux_cache_filename), -1, -1, -1, -1, nil, true)
@@ -523,14 +531,14 @@ func (v *vardbapi) flush_cache() {
 	}
 }
 
-func (v *vardbapi) _aux_cache() *auxCache {
+func (v *Vardbapi) _aux_cache() *auxCache {
 	if v._aux_cache_obj == nil {
 		v._aux_cache_init()
 	}
 	return v._aux_cache_obj
 }
 
-func (v *vardbapi) _aux_cache_init() {
+func (v *Vardbapi) _aux_cache_init() {
 
 	//TODO: pickle
 	//aux_cache := nil
@@ -591,7 +599,7 @@ func (v *vardbapi) _aux_cache_init() {
 }
 
 // nil
-func (v *vardbapi) aux_get(myCpv string, wants map[string]bool, myRepo string) []string {
+func (v *Vardbapi) aux_get(myCpv string, wants map[string]bool, myRepo string) []string {
 	cacheTheseWants := map[string]bool{}
 	for k := range v._aux_cache_keys {
 		if wants[k] {
@@ -706,7 +714,7 @@ func (v *vardbapi) aux_get(myCpv string, wants map[string]bool, myRepo string) [
 }
 
 // nil
-func (v *vardbapi) _aux_get(myCpv string, wants map[string]bool, st os.FileInfo) map[string]string {
+func (v *Vardbapi) _aux_get(myCpv string, wants map[string]bool, st os.FileInfo) map[string]string {
 	myDir := v.getpath(myCpv, "")
 	if st == nil {
 		var err error
@@ -770,7 +778,7 @@ func (v *vardbapi) _aux_get(myCpv string, wants map[string]bool, st os.FileInfo)
 	return results
 }
 
-func (v *vardbapi) _aux_env_search(cpv string, variables []string) map[string]string {
+func (v *Vardbapi) _aux_env_search(cpv string, variables []string) map[string]string {
 
 	envFile := v.getpath(cpv, "environment.bz2")
 	if st, _ := os.Stat(envFile); st != nil && !st.IsDir() {
@@ -837,7 +845,7 @@ func (v *vardbapi) _aux_env_search(cpv string, variables []string) map[string]st
 	return results
 }
 
-func (v *vardbapi) aux_update(cpv string, values map[string]string) {
+func (v *Vardbapi) aux_update(cpv string, values map[string]string) {
 	mylink := v._dblink(cpv)
 	if !mylink.exists() {
 		//raise KeyError(cpv)
@@ -857,7 +865,7 @@ func (v *vardbapi) aux_update(cpv string, values map[string]string) {
 	v._bump_mtime(cpv)
 }
 
-func (v *vardbapi) unpack_metadata(versions.pkg, dest_dir) {
+func (v *Vardbapi) unpack_metadata(versions.pkg, dest_dir) {
 
 	loop = asyncio._wrap_loop()
 	if not isinstance(versions.pkg, portage.config):
@@ -881,7 +889,7 @@ func (v *vardbapi) unpack_metadata(versions.pkg, dest_dir) {
 
 }
 
-func (v *vardbapi) unpack_contents(versions.pkg, dest_dir,
+func (v *Vardbapi) unpack_contents(versions.pkg, dest_dir,
 	include_config=nil, include_unmodified_config=nil) {
 	loop = asyncio._wrap_loop()
 	if not isinstance(versions.pkg, portage.config):
@@ -947,12 +955,12 @@ log_path= settings.ValueDict["PORTAGE_LOG_FILE"))
 
 }
 
-func (v *vardbapi) counter_tick() int {
+func (v *Vardbapi) counter_tick() int {
 	return v.counter_tick_core(1)
 }
 
 // ignored, ignored
-func (v *vardbapi) get_counter_tick_core() int {
+func (v *Vardbapi) get_counter_tick_core() int {
 	counter := -1
 	c, err := ioutil.ReadFile(v._counter_path)
 	if err == nil {
@@ -995,7 +1003,7 @@ func (v *vardbapi) get_counter_tick_core() int {
 }
 
 // ignnored, 1, ignored
-func (v *vardbapi) counter_tick_core(incrementing int) int {
+func (v *Vardbapi) counter_tick_core(incrementing int) int {
 	v.lock()
 	counter := v.get_counter_tick_core() - 1
 	if incrementing != 0 {
@@ -1012,13 +1020,13 @@ func (v *vardbapi) counter_tick_core(incrementing int) int {
 	return counter
 }
 
-func (v *vardbapi) _dblink(cpv string) *dblink {
+func (v *Vardbapi) _dblink(cpv string) *dblink {
 	category, pf := versions.catsplit(cpv)[0], versions.catsplit(cpv)[1]
 	return NewDblink(category, pf, "", v.settings, "vartree", v.vartree, nil, nil, 0)
 }
 
 // true
-func (v *vardbapi) removeFromContents(pkg *dblink, paths []string, relativePaths bool) {
+func (v *Vardbapi) removeFromContents(pkg *dblink, paths []string, relativePaths bool) {
 	root := v.settings.ValueDict["ROOT"]
 	rootLen := len(root) - 1
 	newContents := map[string][]string{}
@@ -1084,7 +1092,7 @@ func (v *vardbapi) removeFromContents(pkg *dblink, paths []string, relativePaths
 }
 
 // nil
-func (v *vardbapi) writeContentsToContentsFile(pkg *dblink, new_contents map[string][]string, new_needed []*util.NeededEntry) {
+func (v *Vardbapi) writeContentsToContentsFile(pkg *dblink, new_contents map[string][]string, new_needed []*util.NeededEntry) {
 	root := v.settings.ValueDict["ROOT"]
 	v._bump_mtime(pkg.mycpv.string)
 	if new_needed != nil {
@@ -1104,10 +1112,10 @@ func (v *vardbapi) writeContentsToContentsFile(pkg *dblink, new_contents map[str
 type _owners_cache struct {
 	_new_hash              func() hash.Hash
 	_hash_bits, _hex_chars int
-	_vardb                 *vardbapi
+	_vardb                 *Vardbapi
 }
 
-func NewOwners_cache(vardb *vardbapi)*_owners_cache {
+func NewOwners_cache(vardb *Vardbapi)*_owners_cache {
 	o := &_owners_cache{}
 	o._new_hash = md5.New
 	o._hash_bits = 16
@@ -1173,10 +1181,10 @@ func (o *_owners_cache)  _hash_pkg( cpv string) struct{s1 string; int; s2 string
 }
 
 type _owners_db struct {
-	_vardb     *vardbapi
+	_vardb     *Vardbapi
 }
 
-func New_owners_db(vardb *vardbapi)*_owners_db {
+func New_owners_db(vardb *Vardbapi)*_owners_db {
 	o := &_owners_db{}
 
 	o._vardb = vardb
@@ -1428,8 +1436,8 @@ func (o *_owners_db)  _iter_owners_low_mem(path_list []string) []struct{d *dblin
 	return ret
 }
 
-func NewVarDbApi(settings *ebuild.Config, vartree *varTree) *vardbapi { // nil, nil
-	v := &vardbapi{}
+func NewVarDbApi(settings *ebuild.Config, vartree *varTree) *Vardbapi { // nil, nil
+	v := &Vardbapi{}
 	e := []string{}
 	for _, v := range []string{"CVS", "lost+found"} {
 		e = append(e, regexp.QuoteMeta(v))
@@ -1485,8 +1493,8 @@ func NewVarDbApi(settings *ebuild.Config, vartree *varTree) *vardbapi { // nil, 
 	v._cache_delta = NewVdbMetadataDelta(v)
 	v._counter_path = filepath.Join(v._eroot, _const.CachePath, "counter")
 
-	v._plib_registry = util.NewPreservedLibsRegistry(settings.ValueDict["ROOT"], filepath.Join(v._eroot, _const.PrivatePath, "preserved_libs_registry"))
-	v._linkmap = util.NewLinkageMapELF(v)
+	v._plib_registry = _dyn_libs.NewPreservedLibsRegistry(settings.ValueDict["ROOT"], filepath.Join(v._eroot, _const.PrivatePath, "preserved_libs_registry"))
+	v._linkmap = _dyn_libs.NewLinkageMapELF(v)
 	v._owners = New_owners_db(v)
 
 	v._cached_counter = nil
@@ -1497,7 +1505,7 @@ func NewVarDbApi(settings *ebuild.Config, vartree *varTree) *vardbapi { // nil, 
 type varTree struct {
 	settings  *ebuild.Config
 	populated int
-	dbapi     *vardbapi
+	dbapi     *Vardbapi
 }
 
 // ""
@@ -5030,7 +5038,7 @@ func (d *dblink) _post_merge_sync() {
 
 // nil, nil, 0,nil, nil, nil
 func (d *dblink) merge(mergeroot, inforoot , myebuild string, cleanup bool,
-	mydbapi *vardbapi, prev_mtimes *emerge.MergeProcess, counter int) int {
+	mydbapi *Vardbapi, prev_mtimes *emerge.MergeProcess, counter int) int {
 
 	retval := -1
 	parallel_install := d.settings.Features.Features["parallel-install"]

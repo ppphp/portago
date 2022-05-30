@@ -1,12 +1,12 @@
 package util
 
-type digraph struct {
+type Digraph struct {
 	nodes interface{}
 	order []
 }
 
-func NewDigraph() *digraph {
-	d := &digraph{}
+func NewDigraph() *Digraph {
+	d := &Digraph{}
 
 	d.nodes =
 	{
@@ -16,7 +16,7 @@ return d
 }
 
 // 0
-func(d*digraph) add(node, parent, priority=0) {
+func(d*Digraph) add(node, parent, priority=0) {
 	if node not
 	in
 	d.nodes:
@@ -54,7 +54,7 @@ priority:
 bisect.insort(priorities, priority)
 }
 
-func(d*digraph) discard( node) {
+func(d*Digraph) discard( node) {
 try:
 	d.remove(node)
 	except
@@ -62,7 +62,7 @@ KeyError:
 	pass
 }
 
-func(d*digraph) remove( node) {
+func(d*Digraph) remove( node) {
 
 	if node not
 	in
@@ -86,7 +86,7 @@ func(d*digraph) remove( node) {
 	d.order.remove(node)
 }
 
-func(d*digraph) update( other) {
+func(d*Digraph) update( other) {
 	for node
 		in
 	other.order:
@@ -102,13 +102,13 @@ func(d*digraph) update( other) {
 	d.add(node, None)
 }
 
-func(d*digraph) clear() {
+func(d*Digraph) clear() {
 	d.nodes.clear()
 	del
 	d.order[:]
 }
 
-func(d*digraph) difference_update( t) {
+func(d*Digraph) difference_update( t) {
 	if isinstance(t, (list, tuple)) or \
 	not
 	hasattr(t, "__contains__"):
@@ -137,7 +137,7 @@ d.nodes[node]
 d.order = order
 }
 
-func(d*digraph) has_edge(child, parent) bool {
+func(d*Digraph) has_edge(child, parent) bool {
 try:
 	return child
 	in
@@ -147,7 +147,7 @@ KeyError:
 	return false
 }
 
-func(d*digraph) remove_edge(child, parent) {
+func(d*Digraph) remove_edge(child, parent) {
 
 	for k
 		in
@@ -175,17 +175,17 @@ func(d*digraph) remove_edge(child, parent) {
 	d.nodes[parent][0][child]
 }
 
-func(d*digraph) __iter__() {
+func(d*Digraph) __iter__() {
 	return iter(d.order)
 }
 
-func(d*digraph) contains(node) {
+func(d*Digraph) contains(node) {
 	return node
 	in
 	d.nodes
 }
 
-func(d*digraph) get( key, default=None) {
+func(d*Digraph) get( key, default=None) {
 	node_data = d.nodes.get(key, d)
 	if node_data is
 d:
@@ -193,11 +193,11 @@ d:
 return node_data[2]
 }
 
-func(d*digraph) all_nodes() {
+func(d*Digraph) all_nodes() {
 	return d.order[:]
 }
 
-func(d*digraph) child_nodes(node, ignore_priority=None) {
+func(d*Digraph) child_nodes(node, ignore_priority=None) {
 	if ignore_priority is
 None:
 	return list(d.nodes[node][0])
@@ -221,7 +221,7 @@ children.append(child)
 return children
 }
 
-func(d*digraph) parent_nodes(node, ignore_priority=None) {
+func(d*Digraph) parent_nodes(node, ignore_priority=None) {
 	if ignore_priority is
 None:
 	return list(d.nodes[node][1])
@@ -245,7 +245,7 @@ parents.append(parent)
 return parents
 }
 
-func(d*digraph) leaf_nodes(ignore_priority=None) {
+func(d*Digraph) leaf_nodes(ignore_priority=None) {
 
 	leaf_nodes = []
 if ignore_priority is
@@ -291,7 +291,7 @@ return leaf_nodes
 }
 
 // nil
-func(d*digraph) root_nodes(ignore_priority=None) {
+func(d*Digraph) root_nodes(ignore_priority=None) {
 
 	root_nodes = []
 if ignore_priority is
@@ -336,15 +336,15 @@ root_nodes.append(node)
 return root_nodes
 }
 
-func(d*digraph) __bool__() {
+func(d*Digraph) __bool__() {
 	return bool(d.nodes)
 }
 
-func(d*digraph) is_empty() {
+func(d*Digraph) is_empty() {
 	return len(d.nodes) == 0
 }
 
-func(d*digraph) clone() {
+func(d*Digraph) clone() {
 	clone := NewDigraph()
 	clone.nodes =
 	{
@@ -384,7 +384,7 @@ None:
 	return clone
 }
 
-func(d*digraph) delnode( node) {
+func(d*Digraph) delnode( node) {
 try:
 	d.remove(node)
 	except
@@ -392,18 +392,18 @@ KeyError:
 	pass
 }
 
-func(d*digraph) firstzero() {
+func(d*Digraph) firstzero() {
 	leaf_nodes = d.leaf_nodes()
 	if leaf_nodes:
 	return leaf_nodes[0]
 	return None
 }
 
-func(d*digraph) hasallzeros( ignore_priority=None) {
+func(d*Digraph) hasallzeros( ignore_priority=None) {
 	return len(d.leaf_nodes(ignore_priority = ignore_priority)) == \
 	len(d.order)
 
-	func(d *digraph) debug_print():
+	func(d *Digraph) debug_print():
 	def
 	output(s):
 	writemsg(s, noiselevel = -1)
@@ -421,7 +421,7 @@ func(d*digraph) hasallzeros( ignore_priority=None) {
 	output("  %s (%s)\n"%(child, priorities[-1], ))
 }
 
-func(d*digraph) bfs( start, ignore_priority=None) {
+func(d*Digraph) bfs( start, ignore_priority=None) {
 	if start not
 	in
 d:
@@ -437,7 +437,7 @@ enqueued |= new
 queue.extend([(n, child) for child in new])
 }
 
-func(d*digraph) shortest_path( start, end, ignore_priority=None) {
+func(d*Digraph) shortest_path( start, end, ignore_priority=None) {
 	if start not
 	in
 d:
@@ -465,7 +465,7 @@ return paths[child]
 return None
 }
 
-func(d*digraph) get_cycles( ignore_priority=None, max_length=None) {
+func(d*Digraph) get_cycles( ignore_priority=None, max_length=None) {
 	all_cycles = []
 for node
 in

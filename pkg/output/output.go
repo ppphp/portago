@@ -754,7 +754,7 @@ func (a *AbstractFormatter) PopStyle(s string) {
 
 var _color_map_loaded = false
 
-func output_init(config_root string) { // /
+func Output_init(config_root string) { // /
 	if _color_map_loaded {
 		return
 	}

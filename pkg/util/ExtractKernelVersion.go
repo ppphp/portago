@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/env"
 	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/shlex"
 	"io/ioutil"
 	"path/filepath"
@@ -74,7 +75,7 @@ func ExtractKernelVersion(base_dir string) (string, error) {
 	if len(loader_errors) > 0 {
 		for file_path, file_errors := range loader_errors {
 			for _, error_str := range file_errors {
-				WriteMsgLevel(fmt.Sprintf("%s: %s\n", file_path, error_str), 40, -1)
+				msg.WriteMsgLevel(fmt.Sprintf("%s: %s\n", file_path, error_str), 40, -1)
 			}
 		}
 	}

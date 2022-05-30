@@ -7,7 +7,6 @@ import (
 	"github.com/ppphp/portago/pkg/repository"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/portago/pkg/util/msg"
-	"github.com/ppphp/portago/pkg/versions"
 	"path"
 	"strings"
 )
@@ -16,23 +15,23 @@ type maskManager struct {
 	_punmaskdict, _pmaskdict, _pmaskdict_raw map[string][]*dep.Atom
 }
 
-func (m *maskManager) _getMaskAtom(cpv *versions.PkgStr, slot, repo string, unmask_atoms []*dep.Atom) *dep.Atom { // nil
-	var pkg *versions.PkgStr = nil
+func (m *maskManager) _getMaskAtom(cpv *PkgStr, slot, repo string, unmask_atoms []*dep.Atom) *dep.Atom { // nil
+	var pkg *PkgStr = nil
 	if cpv.slot == "" {
-		pkg = versions.NewPkgStr[*Config](cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
+		pkg = NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 	} else {
 		pkg = cpv
 	}
 	maskAtoms := m._punmaskdict[pkg.cp]
 	if len(maskAtoms) > 0 {
-		pkgList := []*versions.PkgStr{pkg}
+		pkgList := []*PkgStr{pkg}
 		for _, x := range maskAtoms {
-			if len(dep.matchFromList(x, pkgList)) == 0 {
+			if len(dep.MatchFromList(x, pkgList)) == 0 {
 				continue
 			}
 			if len(unmask_atoms) > 0 {
 				for _, y := range unmask_atoms {
-					if len(dep.matchFromList(y, pkgList)) > 0 {
+					if len(dep.MatchFromList(y, pkgList)) > 0 {
 						return nil
 					}
 				}
@@ -43,17 +42,17 @@ func (m *maskManager) _getMaskAtom(cpv *versions.PkgStr, slot, repo string, unma
 	return nil
 }
 
-func (m *maskManager) getMaskAtom(cpv *versions.PkgStr, slot, repo string) *dep.Atom {
-	var pkg *versions.PkgStr = nil
+func (m *maskManager) getMaskAtom(cpv *PkgStr, slot, repo string) *dep.Atom {
+	var pkg *PkgStr = nil
 	if cpv.slot == "" {
-		pkg = versions.NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
+		pkg = NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 	} else {
 		pkg = cpv
 	}
 	return m._getMaskAtom(pkg, slot, repo, m._punmaskdict[pkg.cp])
 }
 
-func (m *maskManager) getRawMaskAtom(cpv *versions.PkgStr, slot, repo string) *dep.Atom {
+func (m *maskManager) getRawMaskAtom(cpv *PkgStr, slot, repo string) *dep.Atom {
 	return m._getMaskAtom(cpv, slot, repo, nil)
 }
 
@@ -77,7 +76,7 @@ func NewMaskManager(repositories *repository.RepoConfigLoader, profiles []*profi
 		return pmaskCache[loc]
 	}
 	repoPkgMaskLines := []util.AS{}
-	for _, repo := range repositories.reposWithProfiles() {
+	for _, repo := range repositories.ReposWithProfiles() {
 		lines := []map[*dep.Atom]string{}
 		repoLines := grabPMask(repo.Location, repo)
 		removals := map[string]bool{}
@@ -87,7 +86,7 @@ func NewMaskManager(repositories *repository.RepoConfigLoader, profiles []*profi
 			}
 		}
 		matchedRemovals := map[string]bool{}
-		for _, master := range repo.mastersRepo {
+		for _, master := range repo.MastersRepo {
 			masterLines := grabPMask(master.Location, master)
 			for _, line := range masterLines {
 				if removals[line[0]] {
@@ -96,7 +95,7 @@ func NewMaskManager(repositories *repository.RepoConfigLoader, profiles []*profi
 			}
 			lines = append(lines, util.StackLists([][][2]string{masterLines, repoLines}, 1, true, false, false, false))
 		}
-		if len(repo.mastersRepo) > 0 {
+		if len(repo.MastersRepo) > 0 {
 			unmatchedRemovals := map[string]bool{}
 			for r := range removals {
 				if !matchedRemovals[r] {
@@ -124,17 +123,17 @@ func NewMaskManager(repositories *repository.RepoConfigLoader, profiles []*profi
 		ls := [][2]string{}
 		for _, l := range lines {
 			for a, s := range l {
-				ls = append(ls, [2]string{a.value, s})
+				ls = append(ls, [2]string{a.Value, s})
 			}
 		}
 		repoPkgMaskLines = append(repoPkgMaskLines, util.AppendRepo(util.StackLists([][][2]string{ls}, 1, false, false, false, false), repo.Name, true)...)
 	}
 	repoPkgUnmaskLines := []util.AS{}
-	for _, repo := range repositories.reposWithProfiles() {
-		if !repo.portage1Profiles {
+	for _, repo := range repositories.ReposWithProfiles() {
+		if !repo.Portage1Profiles {
 			continue
 		}
-		repoLines := util.GrabFilePackage(path.Join(repo.Location, "profiles", "package.unmask"), 0, true, false, false, myutil.Ins(repo.profileFormats, "build-id"), true, true, "", repo.eapi)
+		repoLines := util.GrabFilePackage(path.Join(repo.Location, "profiles", "package.unmask"), 0, true, false, false, myutil.Ins(repo.ProfileFormats, "build-id"), true, true, "", repo.Eapi)
 		lines := util.StackLists([][][2]string{repoLines}, 1, true, true, strict_umatched_removal, false)
 		repoPkgUnmaskLines = append(repoPkgUnmaskLines, util.AppendRepo(lines, repo.Name, true)...)
 	}
@@ -158,16 +157,16 @@ func NewMaskManager(repositories *repository.RepoConfigLoader, profiles []*profi
 
 	var r1, r2, p1, p2 [][2]string
 	for _, r := range repoPkgMaskLines {
-		r1 = append(r1, [2]string{r.A.value, r.S})
+		r1 = append(r1, [2]string{r.A.Value, r.S})
 	}
 	for _, r := range repoPkgUnmaskLines {
-		r2 = append(r2, [2]string{r.A.value, r.S})
+		r2 = append(r2, [2]string{r.A.Value, r.S})
 	}
 	for a, s := range profilePkgmasklines {
-		p1 = append(p1, [2]string{a.value, s})
+		p1 = append(p1, [2]string{a.Value, s})
 	}
 	for a, s := range profilePkgunmasklines {
-		p2 = append(p2, [2]string{a.value, s})
+		p2 = append(p2, [2]string{a.Value, s})
 	}
 
 	rawPkgMaskLines := util.StackLists([][][2]string{r1, p1}, 1, true, false, false, false)
@@ -175,18 +174,18 @@ func NewMaskManager(repositories *repository.RepoConfigLoader, profiles []*profi
 	pkgUnmaskLines := util.StackLists([][][2]string{r2, p2, userPkgUnmaskLines}, 1, true, false, false, false)
 
 	for x := range rawPkgMaskLines {
-		if _, ok := m._pmaskdict_raw[x.cp]; !ok {
-			m._pmaskdict_raw[x.cp] = []*dep.Atom{x}
+		if _, ok := m._pmaskdict_raw[x.Cp]; !ok {
+			m._pmaskdict_raw[x.Cp] = []*dep.Atom{x}
 		}
 	}
 	for x := range pkgMaskLines {
-		if _, ok := m._pmaskdict[x.cp]; !ok {
-			m._pmaskdict[x.cp] = []*dep.Atom{x}
+		if _, ok := m._pmaskdict[x.Cp]; !ok {
+			m._pmaskdict[x.Cp] = []*dep.Atom{x}
 		}
 	}
 	for x := range pkgUnmaskLines {
-		if _, ok := m._punmaskdict[x.cp]; !ok {
-			m._punmaskdict[x.cp] = []*dep.Atom{x}
+		if _, ok := m._punmaskdict[x.Cp]; !ok {
+			m._punmaskdict[x.Cp] = []*dep.Atom{x}
 		}
 	}
 

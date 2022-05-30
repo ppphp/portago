@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/ppphp/portago/pkg/eapi"
+	"github.com/ppphp/portago/pkg/interfaces"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/versions"
@@ -27,12 +28,10 @@ const (
 )
 
 var (
-	repoNameRe          = regexp.MustCompile("^" + repoName + "$")
-	slotDepReCache      = map[bool]*regexp.Regexp{}
-	atomReCache         = map[bool]*regexp.Regexp{}
-	atomWildcardReCache = map[bool]*regexp.Regexp{}
-	usedepReCache       = map[bool]*regexp.Regexp{}
-	useflagReCache      = map[bool]*regexp.Regexp{}
+	RepoNameRe     = regexp.MustCompile("^" + repoName + "$")
+	slotDepReCache = map[bool]*regexp.Regexp{}
+	usedepReCache  = map[bool]*regexp.Regexp{}
+	useflagReCache = map[bool]*regexp.Regexp{}
 )
 
 func getSlotDepRe(attrs eapi.EapiAttrs) *regexp.Regexp {
@@ -43,164 +42,139 @@ func getSlotDepRe(attrs eapi.EapiAttrs) *regexp.Regexp {
 	}
 	s := ""
 	if attrs.SlotOperator {
-		s = versions.slot + "?(\\*|=|/" + versions.slot + "=?)?"
+		s = versions.Slot + "?(\\*|=|/" + versions.Slot + "=?)?"
 	} else {
-		s = versions.slot
+		s = versions.Slot
 	}
 	slotRe = regexp.MustCompile("^" + s + "$")
 	slotDepReCache[cacheKey] = slotRe
 	return slotRe
 }
 
+func _match_slot[T interfaces.ISettings](atom *Atom[T], pkg *versions.PkgStr[T]) bool {
+	if pkg.Slot == atom.slot {
+		if atom.subSlot == "" {
+			return true
+		}
+		if atom.subSlot == pkg.SubSlot {
+			return true
+		}
+	}
+	return false
+}
+
+func matchSlot[T interfaces.ISettings](atom *Atom[T], pkg *versions.PkgStr[T]) bool {
+	if pkg.Slot == atom.slot {
+		if atom.subSlot == "" {
+			return true
+		} else if atom.subSlot == pkg.SubSlot {
+			return true
+		}
+	}
+	return false
+}
+
+var atomRe *regexp.Regexp
+
 func getAtomRe(attrs eapi.EapiAttrs) *regexp.Regexp {
-	cacheKey := attrs.DotsInPn
-	atomRe, ok := atomReCache[cacheKey]
-	if ok {
+	if atomRe != nil {
 		return atomRe
 	}
-	cps := ""
-	cpvs := ""
-	if attrs.DotsInPn {
-		cps = versions.cp["dots_allowed_in_PN"]
-		cpvs = versions.cpv["dots_allowed_in_PN"]
-	} else {
-		cps = versions.cp["dots_disallowed_in_PN"]
-		cpvs = versions.cpv["dots_disallowed_in_PN"]
-	}
-	mc := "^(?P<without_use>(?:" +
-		"(?P<op>" + op + cpvs + ")|" +
-		"(?P<star>=" + cpvs + "\\*)|" +
-		"(?P<simple>" + cps + "))" +
-		"(" + slotSeparator + slotLoose + ")?" +
-		repo + ")(" + use + ")?$"
-	atomRe = regexp.MustCompile(mc)
-	atomReCache[cacheKey] = atomRe
-	return atomRe
+
+	cp_re := versions.Cp
+	cpv_re := versions.Cpv
+
+	_atom_re := regexp.MustCompile(
+		"^(?P<without_use>(?:" + "(?P<op>" + op + cpv_re + ")|" +
+			"(?P<star>=" + cpv_re + "\\*)|" + "(?P<simple>" + cp_re + "))" +
+			"(" + slotSeparator + slotLoose + ")?" + repo + ")(" + use + ")?$")
+	return _atom_re
 }
+
+var _atom_wildcard_re *regexp.Regexp
 
 func getAtomWildcardRe(attrs eapi.EapiAttrs) *regexp.Regexp {
-	cacheKey := attrs.DotsInPn
-	atomRe, ok := atomWildcardReCache[cacheKey]
-	if ok {
-		return atomRe
+	if _atom_wildcard_re != nil {
+		return _atom_wildcard_re
 	}
-	s := ""
-	if attrs.DotsInPn {
-		s = "[\\w+*][\\w+.*-]*?"
-	} else {
-		s = "[\\w+*][\\w+*-]*?"
-	}
-	atomRe = regexp.MustCompile("((?P<simple>(" +
-		extendedCat + ")/(" + s + "(-" + versions.vr + ")?))" +
-		"|(?P<star>=((" + extendedCat + ")/(" + s + "))-(?P<version>\\*\\w+\\*)))" +
-		"(:(?P<slot>" + slotLoose + "))?(" +
-		repoSeparator + "(?P<repo>" + repoName + "))?$")
-	atomWildcardReCache[cacheKey] = atomRe
-	return atomRe
+	pkg_re := "[\\w+*][\\w+*-]*?"
+
+	_atom_wildcard_re = regexp.MustCompile(
+		"((?P<simple>(" + extendedCat + ")/(" + pkg_re + "(-" +
+			versions.Vr + ")?))" + "|(?P<star>=((" + extendedCat +
+			")/(" + pkg_re + "))-(?P<version>\\*\\w+\\*)))" + "(:(?P<slot>" +
+			slotLoose + "))?(" + repoSeparator + "(?P<repo>" + repoName + "))?$")
+	return _atom_wildcard_re
 }
+
+var usedepRe *regexp.Regexp
 
 func getUsedepRe(attrs eapi.EapiAttrs) *regexp.Regexp {
-	cacheKey := attrs.dotsInUseFlags
-	useDepRe, ok := usedepReCache[cacheKey]
-	if ok {
-		return useDepRe
+	if usedepRe != nil {
+		return usedepRe
 	}
-	s := ""
-	if attrs.dotsInUseFlags {
-		s = "[A-Za-z0-9][A-Za-z0-9+_@.-]*"
-	} else {
-		s = "[A-Za-z0-9][A-Za-z0-9+_@-]*"
-	}
-	useDepRe = regexp.MustCompile("^(?P<prefix>[!-]?)(?P<flag>" +
-		s + ")(?P<default>(\\(\\+\\)|\\(\\-\\))?)(?P<suffix>[?=]?)$")
-	usedepReCache[cacheKey] = useDepRe
-	return useDepRe
+
+	usedepRe = regexp.MustCompile("^(?P<prefix>[!-]?)(?P<flag>[A-Za-z0-9][A-Za-z0-9+_@-]*)(?P<default>(\\(\\+\\)|\\(\\-\\))?)(?P<suffix>[?=]?)$")
+	return usedepRe
 }
 
+var _useflag_re *regexp.Regexp
+
 func GetUseflagRe(eapi1 string) *regexp.Regexp {
-	attrs := eapi.GetEapiAttrs(eapi1)
-	cacheKey := attrs.dotsInUseFlags
-	useflagRe, ok := useflagReCache[cacheKey]
-	if ok {
-		return useflagRe
+	if _useflag_re != nil {
+		return _useflag_re
 	}
-	s := ""
-	if attrs.dotsInUseFlags {
-		s = "[A-Za-z0-9][A-Za-z0-9+_@.-]*"
-	} else {
-		s = "[A-Za-z0-9][A-Za-z0-9+_@-]*"
-	}
-	useflagRe = regexp.MustCompile("^" + s + "$")
-	useflagReCache[cacheKey] = useflagRe
-	return useflagRe
+
+	_useflag_re = regexp.MustCompile("^[A-Za-z0-9][A-Za-z0-9+_@-]*$")
+	return _useflag_re
 }
 
 func cpvequal(cpv1, cpv2 string) bool {
 	c1 := versions.NewPkgStr(cpv1, nil, nil, "", "", "", 0, 0, "", 0, nil)
-	split1 := c1.cpvSplit
+	split1 := c1.CpvSplit
 	c2 := versions.NewPkgStr(cpv2, nil, nil, "", "", "", 0, 0, "", 0, nil)
-	split2 := c2.cpvSplit
+	split2 := c2.CpvSplit
 	if split1[0] != split2[0] || split1[1] != split2[1] {
 		return false
 	}
-	v, _ := versions.verCmp(cpv1, cpv2)
+	v, _ := versions.VerCmp(cpv1, cpv2)
 	return v == 0
 }
 
-func parenEnclose(myList [][]string, unevaluatedAtom, opconvert bool) string {
+func ParenEncloses[T string | []string | interface {
+	UnevaluatedAtom() *Atom[interfaces.ISettings]
+}](myList []T, unevaluatedAtom, opconvert bool) string {
 	myStrParts := []string{}
 	for _, x := range myList {
-		if opconvert && len(x) > 0 && x[0] != "||" {
-			myStrParts = append(myStrParts, fmt.Sprintf("%s ( %s )", x[0], parenEncloses(x[1:], false, false)))
-		} else {
-			myStrParts = append(myStrParts, fmt.Sprintf("( %s )", parenEncloses(x, false, false)))
+		switch y := x.(type) {
+		case []string:
+			if opconvert && len(y) > 0 && y[0] != "||" {
+				myStrParts = append(myStrParts, fmt.Sprintf("%s ( %s )", y[0], ParenEncloses(y[1:], false, false)))
+			} else {
+				myStrParts = append(myStrParts, fmt.Sprintf("( %s )", ParenEncloses(y, false, false)))
+			}
+		case string:
+			myStrParts = append(myStrParts, y)
+		case interface {
+			UnevaluatedAtom() *Atom[interfaces.ISettings]
+		}:
+			myStrParts = append(myStrParts, y.UnevaluatedAtom().Value)
 		}
 	}
 	return strings.Join(myStrParts, " ")
 }
 
-func inSliceS(str string, slice []string) bool {
-	for _, s := range slice {
-		if s == str {
-			return true
-		}
-	}
-	return false
-}
-
-func parenEncloses(myList []string, unevaluatedAtom, opconvert bool) string {
-	myStrParts := []string{}
-	for _, x := range myList {
-		//if unevaluated_atom: // TODO
-		//    x = getattr(x, "unevaluated_atom', x)
-		myStrParts = append(myStrParts, x)
-	}
-	return strings.Join(myStrParts, " ")
-}
-
-func matchSlot(atom *Atom, pkg *versions.PkgStr) bool {
-	if pkg.slot == atom.slot {
-		if atom.subSlot == "" {
-			return true
-		} else if atom.subSlot == pkg.subSlot {
-			return true
-		}
-	}
-	return false
-}
-
-// map[string]bool{}, []string{}, false, []string{}, false, "", false, false, nil, nil, false
-func useReduce(depstr string, uselist map[string]bool, masklist []string, matchall bool, excludeall []string, isSrcUri bool, eapi string, opconvert, flat bool, isValidFlag func(string) bool, tokenClass func(string) *Atom, matchnone bool) []string {
+func UseReduceCached[T interfaces.ISettings](depstr string, uselist map[string]bool, masklist []string, matchall bool, excludeall []string, isSrcUri bool, eapi1 string, opconvert, flat bool, isValidFlag func(string) bool, tokenClass func(string) *Atom[T], matchnone bool, subset map[string]bool) []string {
 	if opconvert && flat {
 		// ValueError("portage.dep.use_reduce: 'opconvert' and "flat' are mutually exclusive")
 	}
 	if matchall && matchnone {
 		// ValueError("portage.dep.use_reduce: 'opconvert' and 'flat' are mutually exclusive")
 	}
-	EapiAttrs := eapi.GetEapiAttrs(eapi)
-	useFlagRe := GetUseflagRe(eapi)
+	EapiAttrs := eapi.GetEapiAttrs(eapi1)
+	useFlagRe := GetUseflagRe(eapi1)
 
-	isActive := func(conditional string) bool {
+	isActive := func(conditional string) (bool, error) {
 		flag := ""
 		isNegated := false
 		if strings.HasPrefix(conditional, "!") {
@@ -222,19 +196,19 @@ func useReduce(depstr string, uselist map[string]bool, masklist []string, matcha
 			}
 		}
 
-		if isNegated && inSliceS(flag, excludeall) {
-			return false
+		if isNegated && myutil.Ins(excludeall, flag) {
+			return false, nil
 		}
-		if inSliceS(flag, masklist) {
-			return false
+		if myutil.Ins(masklist, flag) {
+			return false, nil
 		}
 		if matchall {
-			return true
+			return true, nil
 		}
 		if matchnone {
-			return false
+			return false, nil
 		}
-		return (uselist[flag] && !isNegated) || (!uselist[flag] && isNegated)
+		return (uselist[flag] && !isNegated) || (!uselist[flag] && isNegated), nil
 	}
 
 	//missingWhiteSpaceCheck := func(token string, pos int) error {
@@ -264,7 +238,7 @@ func useReduce(depstr string, uselist map[string]bool, masklist []string, matcha
 			needBracket = false
 			stack = append(stack, []string{})
 			level += 1
-		} else if token == "(" {
+		} else if token == ")" {
 			if needBracket {
 				//raise InvalidDependString(
 				//	_("expected: '(', got: '%s', token %s") % (token, pos+1))
@@ -279,9 +253,10 @@ func useReduce(depstr string, uselist map[string]bool, masklist []string, matcha
 				stack = stack[:len(stack)-1]
 				isSingle := len(l) == 1 || (opconvert && len(l) != 0 && l[0] == "||") || (!opconvert && len(l) == 2 && l[0] == "||")
 				ignore := false
+
 				if flat {
 					if len(stack[level]) != 0 && strings.HasSuffix(stack[level][len(stack[level])-1], "?") {
-						if isActive(stack[level][len(stack[level])-1]) {
+						if ok, err := isActive(stack[level][len(stack[level])-1]); ok && err == nil {
 							stack[level] = stack[level][:len(stack[level])-1]
 							stack[level] = append(stack[level], l...)
 						} else {
@@ -293,13 +268,13 @@ func useReduce(depstr string, uselist map[string]bool, masklist []string, matcha
 					continue
 				}
 				if len(stack[level]) != 0 {
-					if stack[level][len(stack[level])-1] == "||" && len(l) != 0 {
-						if !EapiAttrs.emptyGroupsAlwaysTrue {
+					if stack[level][len(stack[level])-1] == "||" && len(l) == 0 {
+						if !EapiAttrs.EmptyGroupsAlwaysTrue {
 							l = append(l, "__const__/empty-any-of")
 						}
 						stack[level] = stack[level][:len(stack[level])-1]
 					} else if strings.HasSuffix(stack[level][len(stack[level])-1], "?") {
-						if !isActive(stack[level][len(stack[level])-1]) {
+						if ok, err := isActive(stack[level][len(stack[level])-1]); !ok && err == nil {
 							ignore = true
 						}
 						stack[level] = stack[level][:len(stack[level])-1]
@@ -379,7 +354,7 @@ func useReduce(depstr string, uselist map[string]bool, masklist []string, matcha
 				//raise InvalidDependString(
 				//	_("SRC_URI arrow are only allowed in SRC_URI: token %s") % (pos+1,))
 			}
-			if !EapiAttrs.srcUriArrows {
+			if !EapiAttrs.SrcUriArrows {
 				//raise InvalidDependString(
 				//	_("SRC_URI arrow!allowed in EAPI %s: token %s") % (eapi, pos+1))
 			}
@@ -398,11 +373,16 @@ func useReduce(depstr string, uselist map[string]bool, masklist []string, matcha
 				needBracket = true
 			} else {
 				needBracket = false
-				if tokenClass != nil && !isSrcUri {
-					//token = tokenClass()// TODO
-					t := tokenClass(token)
+				if isSrcUri {
+					if !EapiAttrs.SelectiveSrcUriRestriction && (strings.HasPrefix(token, "fetch+") || strings.HasPrefix(token, "mirror+")) {
+						//raise InvalidDependString(_(
+						//		"Selective fetch/mirror restriction not allowed "
+						//"in EAPI %s: token %s")% (eapi, pos + 1))
+					}
+				} else if tokenClass != nil {
+					t := tokenClass(token) // eapi=eapi, is_valid_flag=is_valid_flag
 					if !matchall {
-						token = t.EvaluateConditionals(uselist).value
+						token = t.EvaluateConditionals(uselist).Value
 					}
 				}
 			}
@@ -424,6 +404,27 @@ func useReduce(depstr string, uselist map[string]bool, masklist []string, matcha
 		//	_("Missing file name at end of string"))
 	}
 	return stack[0]
+}
+
+// map[string]bool{}, []string{}, false, []string{}, false, "", false, false, nil, nil, false, nil
+func UseReduce[T interfaces.ISettings](depstr string, uselist map[string]bool, masklist []string, matchall bool, excludeall []string, isSrcUri bool, eapi1 string, opconvert, flat bool, isValidFlag func(string) bool, tokenClass func(string) *Atom[T], matchnone bool, subset map[string]bool) []string {
+	result := UseReduceCached(
+		depstr,
+		uselist,
+		masklist,
+		matchall,
+		excludeall,
+		isSrcUri,
+		eapi1,
+		opconvert,
+		flat,
+		isValidFlag,
+		tokenClass,
+		matchnone,
+		subset,
+	)
+
+	return result[:]
 }
 
 type conditionalClass struct {
@@ -488,9 +489,162 @@ type useDep struct {
 	conditionalStrings                                           map[string]string
 }
 
+// nil, nil, nil, nil, nil, nil
+func NewUseDep(use []string, EapiAttrs *eapi.EapiAttrs, enabledFlags, disabledFlags, missingEnabled, missingDisabled map[string]bool, conditional map[string]map[string]bool, required map[string]bool) *useDep {
+	u := &useDep{conditionalStrings: conditionalStrings}
+	u.EapiAttrs = EapiAttrs
+	if enabledFlags != nil {
+		u.tokens = use
+		u.required = required
+		u.enabled = enabledFlags
+		u.disabled = disabledFlags
+		u.missingEnabled = missingEnabled
+		u.missingDisabled = missingDisabled
+		u.conditional = nil
+		if conditional != nil {
+			u.conditional = NewConditionalClass()
+			if len(conditional["enabled"]) > 0 {
+				u.conditional.enabled = conditional["enabled"]
+			} else {
+				u.conditional.enabled = map[string]bool{}
+			}
+			if len(conditional["disabled"]) > 0 {
+				u.conditional.disabled = conditional["disabled"]
+			} else {
+				u.conditional.disabled = map[string]bool{}
+			}
+			if len(conditional["equal"]) > 0 {
+				u.conditional.equal = conditional["equal"]
+			} else {
+				u.conditional.equal = map[string]bool{}
+			}
+			if len(conditional["not_equal"]) > 0 {
+				u.conditional.notEqual = conditional["not_equal"]
+			} else {
+				u.conditional.notEqual = map[string]bool{}
+			}
+		}
+		return u
+	}
+
+	enabledFlags = map[string]bool{}
+	disabledFlags = map[string]bool{}
+	missingEnabled = map[string]bool{}
+	missingDisabled = map[string]bool{}
+	noDefault := map[string]bool{}
+	conditional = map[string]map[string]bool{}
+	usedepRe := getUsedepRe(*u.EapiAttrs)
+
+	for _, x := range use {
+		if !usedepRe.MatchString(x) {
+			//raise InvalidAtom(_("Invalid use dep: '%s'") % (x,))
+		}
+		operator := myutil.GetNamedRegexp(usedepRe, x, "prefix") + myutil.GetNamedRegexp(usedepRe, x, "suffix")
+		flag := myutil.GetNamedRegexp(usedepRe, x, "flag")
+		defaults := myutil.GetNamedRegexp(usedepRe, x, "default")
+		if operator == "" {
+			enabledFlags[flag] = true
+		} else if operator == "-" {
+			disabledFlags[flag] = true
+		} else if operator == "?" {
+			if len(conditional["enabled"]) == 0 {
+				conditional["enabled"] = map[string]bool{flag: true}
+			} else {
+				conditional["enabled"][flag] = true
+			}
+		} else if operator == "=" {
+			if len(conditional["equal"]) == 0 {
+				conditional["equal"] = map[string]bool{flag: true}
+			} else {
+				conditional["equal"][flag] = true
+			}
+		} else if operator == "!=" {
+			if len(conditional["not_equal"]) == 0 {
+				conditional["not_equal"] = map[string]bool{flag: true}
+			} else {
+				conditional["not_equal"][flag] = true
+			}
+		} else if operator == "!?" {
+			if len(conditional["disabled"]) == 0 {
+				conditional["disabled"] = map[string]bool{flag: true}
+			} else {
+				conditional["disabled"][flag] = true
+			}
+		} else {
+			//raise InvalidAtom(_("Invalid use dep: '%s'") % (x,))
+		}
+		if len(defaults) != 0 {
+			if defaults == "(+)" {
+				if missingDisabled[flag] || noDefault[flag] {
+					//raise InvalidAtom(_("Invalid use dep: '%s'") % (x,))
+				}
+				missingEnabled[flag] = true
+			} else {
+				if missingEnabled[flag] || noDefault[flag] {
+					//raise InvalidAtom(_("Invalid use dep: '%s'") % (x,))
+				}
+				missingDisabled[flag] = true
+			}
+		} else {
+			if missingEnabled[flag] || missingDisabled[flag] {
+				//raise InvalidAtom(_("Invalid use dep: '%s'") % (x,))
+			}
+			noDefault[flag] = true
+		}
+	}
+	u.tokens = use
+
+	u.required = noDefault
+	u.enabled = enabledFlags
+	u.disabled = disabledFlags
+	u.missingEnabled = missingEnabled
+	u.missingDisabled = missingDisabled
+	u.conditional = nil
+
+	if len(conditional) > 0 {
+		u.conditional = NewConditionalClass()
+		if len(conditional["enabled"]) > 0 {
+			u.conditional.enabled = conditional["enabled"]
+		} else {
+			u.conditional.enabled = map[string]bool{}
+		}
+		if len(conditional["disabled"]) > 0 {
+			u.conditional.disabled = conditional["disabled"]
+		} else {
+			u.conditional.disabled = map[string]bool{}
+		}
+		if len(conditional["equal"]) > 0 {
+			u.conditional.equal = conditional["equal"]
+		} else {
+			u.conditional.equal = map[string]bool{}
+		}
+		if len(conditional["not_equal"]) > 0 {
+			u.conditional.notEqual = conditional["not_equal"]
+		} else {
+			u.conditional.notEqual = map[string]bool{}
+		}
+	}
+	return u
+}
+
+func (u *useDep) bool() bool {
+	return len(u.tokens) != 0
+}
+
+func (u *useDep) str() string {
+	if len(u.tokens) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("[%s]", strings.Join(u.tokens, ","))
+}
+
+func (u *useDep) repr() string {
+	return fmt.Sprintf("portage.dep._use_dep(%s)", u.tokens)
+}
+
 func (u *useDep) evaluateConditionals(use map[string]bool) *useDep {
-	enabledFlags := myutil.CopyMapSB(u.enabled)
-	disabledFlags := myutil.CopyMapSB(u.disabled)
+	enabledFlags := myutil.CopyMapT(u.enabled)
+	disabledFlags := myutil.CopyMapT(u.disabled)
 	tokens := []string{}
 	usedepRe := getUsedepRe(*u.EapiAttrs)
 	for _, x := range u.tokens {
@@ -498,8 +652,10 @@ func (u *useDep) evaluateConditionals(use map[string]bool) *useDep {
 		flag := myutil.GetNamedRegexp(usedepRe, x, "flag")
 		defaults := myutil.GetNamedRegexp(usedepRe, x, "default")
 		if operator == "?" {
-			enabledFlags[flag] = true
-			tokens = append(tokens, flag+defaults)
+			if use[flag] {
+				enabledFlags[flag] = true
+				tokens = append(tokens, flag+defaults)
+			}
 		} else if operator == "=" {
 			if use[flag] {
 				enabledFlags[flag] = true
@@ -533,8 +689,8 @@ func (u *useDep) violatedConditionals(otherUse map[string]bool, isValidFlag func
 		//raise InvalidAtom("violated_conditionals needs 'parent_use'" +
 		//" parameter for conditional flags.")
 	}
-	enabledFlags := myutil.CopyMapSB(u.enabled)
-	disabledFlags := myutil.CopyMapSB(u.disabled)
+	enabledFlags := myutil.CopyMapT(u.enabled)
+	disabledFlags := myutil.CopyMapT(u.disabled)
 	conditional := map[string]map[string]bool{}
 	tokens := []string{}
 	allDefaults := map[string]bool{}
@@ -722,8 +878,8 @@ func (u *useDep) violatedConditionals(otherUse map[string]bool, isValidFlag func
 }
 
 func (u *useDep) evalQaConditionals(useMask, useForce map[string]bool) *useDep {
-	enabledFlags := myutil.CopyMapSB(u.enabled)
-	disabledFlags := myutil.CopyMapSB(u.disabled)
+	enabledFlags := myutil.CopyMapT(u.enabled)
+	disabledFlags := myutil.CopyMapT(u.disabled)
 	tokens := []string{}
 	usedepRe := getUsedepRe(*u.EapiAttrs)
 	for _, x := range u.tokens {
@@ -765,162 +921,11 @@ func (u *useDep) evalQaConditionals(useMask, useForce map[string]bool) *useDep {
 	return NewUseDep(tokens, u.EapiAttrs, enabledFlags, disabledFlags, u.missingEnabled, u.missingDisabled, nil, u.required)
 }
 
-func NewUseDep(use []string, EapiAttrs *eapi.EapiAttrs, enabledFlags, disabledFlags, missingEnabled, missingDisabled map[string]bool, conditional map[string]map[string]bool, required map[string]bool) *useDep { // none
-	u := &useDep{conditionalStrings: conditionalStrings}
-	u.EapiAttrs = EapiAttrs
-	if enabledFlags != nil {
-		u.tokens = use
-		u.required = required
-		u.enabled = enabledFlags
-		u.disabled = disabledFlags
-		u.missingEnabled = missingEnabled
-		u.missingDisabled = missingDisabled
-		u.conditional = nil
-		if conditional != nil {
-			u.conditional = NewConditionalClass()
-			if len(conditional["enabled"]) > 0 {
-				u.conditional.enabled = conditional["enabled"]
-			} else {
-				u.conditional.enabled = map[string]bool{}
-			}
-			if len(conditional["disabled"]) > 0 {
-				u.conditional.disabled = conditional["disabled"]
-			} else {
-				u.conditional.disabled = map[string]bool{}
-			}
-			if len(conditional["equal"]) > 0 {
-				u.conditional.equal = conditional["equal"]
-			} else {
-				u.conditional.equal = map[string]bool{}
-			}
-			if len(conditional["not_equal"]) > 0 {
-				u.conditional.notEqual = conditional["not_equal"]
-			} else {
-				u.conditional.notEqual = map[string]bool{}
-			}
-		}
-		return u
-	}
-
-	enabledFlags = map[string]bool{}
-	disabledFlags = map[string]bool{}
-	missingEnabled = map[string]bool{}
-	missingDisabled = map[string]bool{}
-	noDefault := map[string]bool{}
-	conditional = map[string]map[string]bool{}
-	usedepRe := getUsedepRe(*u.EapiAttrs)
-
-	for _, x := range use {
-		if !usedepRe.MatchString(x) {
-			//raise InvalidAtom(_("Invalid use dep: '%s'") % (x,))
-		}
-		operator := myutil.GetNamedRegexp(usedepRe, x, "prefix") + myutil.GetNamedRegexp(usedepRe, x, "suffix")
-		flag := myutil.GetNamedRegexp(usedepRe, x, "flag")
-		defaults := myutil.GetNamedRegexp(usedepRe, x, "default")
-		if operator == "" {
-			enabledFlags[flag] = true
-		} else if operator == "-" {
-			disabledFlags[flag] = true
-		} else if operator == "?" {
-			if len(conditional["enabled"]) == 0 {
-				conditional["enabled"] = map[string]bool{flag: true}
-			} else {
-				conditional["enabled"][flag] = true
-			}
-		} else if operator == "=" {
-			if len(conditional["equal"]) == 0 {
-				conditional["equal"] = map[string]bool{flag: true}
-			} else {
-				conditional["equal"][flag] = true
-			}
-		} else if operator == "!=" {
-			if len(conditional["not_equal"]) == 0 {
-				conditional["not_equal"] = map[string]bool{flag: true}
-			} else {
-				conditional["not_equal"][flag] = true
-			}
-		} else if operator == "!?" {
-			if len(conditional["disabled"]) == 0 {
-				conditional["disabled"] = map[string]bool{flag: true}
-			} else {
-				conditional["disabled"][flag] = true
-			}
-		} else {
-			//raise InvalidAtom(_("Invalid use dep: '%s'") % (x,))
-		}
-		if len(defaults) != 0 {
-			if defaults == "(+)" {
-				if missingDisabled[flag] || noDefault[flag] {
-					//raise InvalidAtom(_("Invalid use dep: '%s'") % (x,))
-				}
-				missingEnabled[flag] = true
-			} else {
-				if missingEnabled[flag] || noDefault[flag] {
-					//raise InvalidAtom(_("Invalid use dep: '%s'") % (x,))
-				}
-				missingDisabled[flag] = true
-			}
-		} else {
-			if missingEnabled[flag] || missingDisabled[flag] {
-				//raise InvalidAtom(_("Invalid use dep: '%s'") % (x,))
-			}
-			noDefault[flag] = true
-		}
-	}
-	u.tokens = use
-
-	u.required = noDefault
-	u.enabled = enabledFlags
-	u.disabled = disabledFlags
-	u.missingEnabled = missingEnabled
-	u.missingDisabled = missingDisabled
-	u.conditional = nil
-
-	if conditional != nil {
-		u.conditional = NewConditionalClass()
-		if len(conditional["enabled"]) > 0 {
-			u.conditional.enabled = conditional["enabled"]
-		} else {
-			u.conditional.enabled = map[string]bool{}
-		}
-		if len(conditional["disabled"]) > 0 {
-			u.conditional.disabled = conditional["disabled"]
-		} else {
-			u.conditional.disabled = map[string]bool{}
-		}
-		if len(conditional["equal"]) > 0 {
-			u.conditional.equal = conditional["equal"]
-		} else {
-			u.conditional.equal = map[string]bool{}
-		}
-		if len(conditional["not_equal"]) > 0 {
-			u.conditional.notEqual = conditional["not_equal"]
-		} else {
-			u.conditional.notEqual = map[string]bool{}
-		}
-	}
-	return u
-}
-
-func (u *useDep) bool() bool {
-	return len(u.tokens) != 0
-}
-
-func (u *useDep) str() string {
-	if len(u.tokens) == 0 {
-		return ""
-	}
-	return fmt.Sprintf("[%s]", strings.Join(u.tokens, ","))
-}
-
-func (u *useDep) repr() string {
-	return fmt.Sprintf("portage.dep._use_dep(%s)", u.tokens)
-}
-
 type overlap struct {
 	forbid bool
 }
 
+// false
 func newOverlap(forbid bool) *overlap {
 	return &overlap{forbid: forbid}
 }
@@ -929,190 +934,36 @@ type blocker struct {
 	overlap *overlap
 }
 
+// false
 func newBlocker(forbidOverlap bool) *blocker {
 	return &blocker{overlap: newOverlap(forbidOverlap)}
 }
 
-type Atom struct {
-	value                                                          string
-	ispackage, soname, extendedSyntax                              bool
+type Atom[T interfaces.ISettings] struct {
+	// inherit
+	Value string
+
+	// class
+	ispackage, soname bool
+
+	// object
+	extendedSyntax                                                 bool
 	buildId                                                        int
 	Blocker                                                        *blocker
-	slotOperator, subSlot, repo, slot, eapi, cp, version, Operator string
-	cpv                                                            *versions.PkgStr
+	slotOperator, subSlot, Repo, slot, eapi, Cp, version, Operator string
+	cpv                                                            *versions.PkgStr[T]
 	Use                                                            *useDep
-	withoutUse, unevaluatedAtom                                    *Atom
-}
-
-func (a *Atom) withoutSlot() *Atom {
-	if a.slot == "" && a.slotOperator == "" {
-		return a
-	}
-	atom := RemoveSlot(a.value)
-	if a.repo != "" {
-		atom += repoSeparator + a.repo
-	}
-	if a.Use != nil {
-		atom += a.Use.str()
-	}
-	m := true
-	b, _ := NewAtom(atom, nil, true, &m, nil, "", nil, nil)
-	return b
-}
-
-func (a *Atom) withRepo(repo string) *Atom {
-	atom := RemoveSlot(a.value)
-	if a.slot != "" || a.slotOperator != "" {
-		atom += slotSeparator
-		if a.slot != "" {
-			atom += a.slot
-		}
-		if a.subSlot != "" {
-			atom += fmt.Sprintf("/%s", a.subSlot)
-		}
-		if a.slotOperator != "" {
-			atom += a.slotOperator
-		}
-	}
-	atom += repoSeparator + repo
-	if a.Use != nil {
-		atom += a.Use.str()
-	}
-	m := true
-	b, _ := NewAtom(atom, nil, true, &m, nil, "", nil, nil)
-	return b
-}
-
-func (a *Atom) withSlot(slot string) *Atom {
-	atom := RemoveSlot(a.value) + slotSeparator + slot
-	if a.repo != "" {
-		atom += repoSeparator + a.repo
-	}
-	if a.Use != nil {
-		atom += a.Use.str()
-	}
-	m := true
-	b, _ := NewAtom(atom, nil, true, &m, nil, "", nil, nil)
-	return b
-}
-
-func (a *Atom) EvaluateConditionals(use map[string]bool) *Atom {
-	if !(a.Use != nil && a.Use.conditional != nil) {
-		return a
-	}
-	atom := RemoveSlot(a.value)
-	if a.slot != "" || a.slotOperator != "" {
-		atom += slotSeparator
-		if a.slot != "" {
-			atom += a.slot
-		}
-		if a.subSlot != "" {
-			atom += fmt.Sprintf("/%s", a.subSlot)
-		}
-		if a.slotOperator != "" {
-			atom += a.slotOperator
-		}
-	}
-	useDep := a.Use.evaluateConditionals(use)
-	atom += useDep.str()
-	m := true
-	b, _ := NewAtom(atom, nil, true, &m, nil, "", nil, nil)
-	return b
-}
-
-func (a *Atom) violatedConditionals(otherUse map[string]bool, isValidFlag func(string) bool, parentUse map[string]bool) *Atom { // none
-	if a.Use == nil {
-		return a
-	}
-	atom := RemoveSlot(a.value)
-	if a.slot != "" || a.slotOperator != "" {
-		atom += slotSeparator
-		if a.slot != "" {
-			atom += a.slot
-		}
-		if a.subSlot != "" {
-			atom += fmt.Sprintf("/%s", a.subSlot)
-		}
-		if a.slotOperator != "" {
-			atom += a.slotOperator
-		}
-	}
-	useDep := a.Use.violatedConditionals(otherUse, isValidFlag, parentUse)
-	atom += useDep.str()
-	m := true
-	b, _ := NewAtom(atom, nil, true, &m, nil, "", nil, nil)
-	return b
-}
-
-func (a *Atom) evalQaConditionals(useMask, useForce map[string]bool) *Atom {
-	if a.Use == nil || a.Use.conditional == nil {
-		return a
-	}
-	atom := RemoveSlot(a.value)
-	if a.slot != "" || a.slotOperator != "" {
-		atom += slotSeparator
-		if a.slot != "" {
-			atom += a.slot
-		}
-		if a.subSlot != "" {
-			atom += fmt.Sprintf("/%s", a.subSlot)
-		}
-		if a.slotOperator != "" {
-			atom += a.slotOperator
-		}
-	}
-	useDep := a.Use.evalQaConditionals(useMask, useForce)
-	atom += useDep.str()
-	m := true
-	b, _ := NewAtom(atom, nil, true, &m, nil, "", nil, nil)
-	return b
-}
-
-func (a *Atom) slotOperatorBuilt() bool {
-	return a.slotOperator == "=" && a.subSlot != ""
-}
-
-func (a *Atom) withoutRepo() *Atom {
-	if a.repo == "" {
-		return a
-	}
-	b, _ := NewAtom(strings.Replace(a.value, repoSeparator+a.repo, "", 1), nil, true, nil, nil, "", nil, nil)
-	return b
-}
-
-func (a *Atom) intersects(other *Atom) bool {
-	if a == other {
-		return true
-	}
-	if a.cp != other.cp || a.Use != other.Use || a.Operator != other.Operator || a.cpv != other.cpv {
-		return false
-	}
-	if a.slot == "" || other.slot == "" || a.slot == other.slot {
-		return true
-	}
-	return false
-}
-
-func (a *Atom) copy() *Atom {
-	return a
-}
-
-func (a *Atom) deepcopy() *Atom { // memo=None, memo[id(self)] = self
-	return a
-}
-
-func (a *Atom) match(pkg *versions.PkgStr) bool {
-	return len(matchFromList(a, []*versions.PkgStr{pkg})) > 0
+	withoutUse, unevaluatedAtom                                    *Atom[T]
 }
 
 //s, nil, false, nil, nil, "", nil, nil
-func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *bool, _use *useDep, eapi1 string, isValidFlag func(string) bool, allowBuildId *bool) (*Atom, error) {
-	a := &Atom{value: s, ispackage: true, soname: false}
+func NewAtom[T interfaces.ISettings](s string, unevaluatedAtom *Atom[T], allowWildcard bool, allowRepo *bool, _use *useDep, eapi1 string, isValidFlag func(string) bool, allowBuildId *bool) (*Atom[T], error) {
+	a := &Atom[T]{Value: s, ispackage: true, soname: false}
 	EapiAttrs := eapi.GetEapiAttrs(eapi1)
 	atomRe := getAtomRe(EapiAttrs)
 	a.eapi = eapi1
 	if eapi1 != "" {
-		allowRepo = &EapiAttrs.repoDeps
+		allowRepo = &EapiAttrs.RepoDeps
 	} else {
 		if allowRepo == nil {
 			allowRepo = new(bool)
@@ -1254,11 +1105,11 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 	} else {
 		return nil, fmt.Errorf("required group!found in Atom: '%v'", a)
 	}
-	a.cp = cp
-	a.cpv = versions.NewPkgStr(cpv, nil, nil, "", "", "", 0, 0, "", 0, nil)
+	a.Cp = cp
+	a.cpv = versions.NewPkgStr[T](cpv, nil, nil, "", "", "", 0, 0, "", 0, nil)
 	a.version = extendedVersion
-	a.version = a.cpv.version
-	a.repo = repo
+	a.version = a.cpv.Version
+	a.Repo = repo
 	if slot == "" {
 		a.slot = ""
 		a.subSlot = ""
@@ -1303,7 +1154,7 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 		//raise InvalidAtom(self)
 	}
 	use := &useDep{}
-	withoutUse := &Atom{}
+	withoutUse := &Atom[T]{}
 	if useStr != "" {
 		if _use != nil {
 			use = _use
@@ -1368,7 +1219,7 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 				}
 			}
 		}
-		if a.Blocker != nil && a.Blocker.overlap.forbid && !EapiAttrs.strongBlocks {
+		if a.Blocker != nil && a.Blocker.overlap.forbid && !EapiAttrs.StrongBlocks {
 			//raise InvalidAtom(
 			//	_("Strong blocks are!allowed in EAPI %s: '%s'")
 			//% (eapi, self), category='EAPI.incompatible')
@@ -1378,7 +1229,172 @@ func NewAtom(s string, unevaluatedAtom *Atom, allowWildcard bool, allowRepo *boo
 	return a, nil
 }
 
-func extractAffectingUse(mystr string, atom *Atom, eapi string) map[string]bool {
+func (a *Atom[T]) withoutSlot() *Atom[T] {
+	if a.slot == "" && a.slotOperator == "" {
+		return a
+	}
+	atom := RemoveSlot(a.Value)
+	if a.Repo != "" {
+		atom += repoSeparator + a.Repo
+	}
+	if a.Use != nil {
+		atom += a.Use.str()
+	}
+	m := true
+	b, _ := NewAtom[T](atom, nil, true, &m, nil, "", nil, nil)
+	return b
+}
+
+func (a *Atom[T]) WithRepo(repo string) *Atom[T] {
+	atom := RemoveSlot(a.Value)
+	if a.slot != "" || a.slotOperator != "" {
+		atom += slotSeparator
+		if a.slot != "" {
+			atom += a.slot
+		}
+		if a.subSlot != "" {
+			atom += fmt.Sprintf("/%s", a.subSlot)
+		}
+		if a.slotOperator != "" {
+			atom += a.slotOperator
+		}
+	}
+	atom += repoSeparator + repo
+	if a.Use != nil {
+		atom += a.Use.str()
+	}
+	m := true
+	b, _ := NewAtom[T](atom, nil, true, &m, nil, "", nil, nil)
+	return b
+}
+
+func (a *Atom[T]) withSlot(slot string) *Atom[T] {
+	atom := RemoveSlot(a.Value) + slotSeparator + slot
+	if a.Repo != "" {
+		atom += repoSeparator + a.Repo
+	}
+	if a.Use != nil {
+		atom += a.Use.str()
+	}
+	m := true
+	b, _ := NewAtom[T](atom, nil, true, &m, nil, "", nil, nil)
+	return b
+}
+
+func (a *Atom[T]) EvaluateConditionals(use map[string]bool) *Atom[T] {
+	if !(a.Use != nil && a.Use.conditional != nil) {
+		return a
+	}
+	atom := RemoveSlot(a.Value)
+	if a.slot != "" || a.slotOperator != "" {
+		atom += slotSeparator
+		if a.slot != "" {
+			atom += a.slot
+		}
+		if a.subSlot != "" {
+			atom += fmt.Sprintf("/%s", a.subSlot)
+		}
+		if a.slotOperator != "" {
+			atom += a.slotOperator
+		}
+	}
+	useDep := a.Use.evaluateConditionals(use)
+	atom += useDep.str()
+	m := true
+	b, _ := NewAtom[T](atom, nil, true, &m, nil, "", nil, nil)
+	return b
+}
+
+func (a *Atom[T]) violatedConditionals(otherUse map[string]bool, isValidFlag func(string) bool, parentUse map[string]bool) *Atom[T] { // none
+	if a.Use == nil {
+		return a
+	}
+	atom := RemoveSlot(a.Value)
+	if a.slot != "" || a.slotOperator != "" {
+		atom += slotSeparator
+		if a.slot != "" {
+			atom += a.slot
+		}
+		if a.subSlot != "" {
+			atom += fmt.Sprintf("/%s", a.subSlot)
+		}
+		if a.slotOperator != "" {
+			atom += a.slotOperator
+		}
+	}
+	useDep := a.Use.violatedConditionals(otherUse, isValidFlag, parentUse)
+	atom += useDep.str()
+	m := true
+	b, _ := NewAtom[T](atom, nil, true, &m, nil, "", nil, nil)
+	return b
+}
+
+func (a *Atom[T]) evalQaConditionals(useMask, useForce map[string]bool) *Atom[T] {
+	if a.Use == nil || a.Use.conditional == nil {
+		return a
+	}
+	atom := RemoveSlot(a.Value)
+	if a.slot != "" || a.slotOperator != "" {
+		atom += slotSeparator
+		if a.slot != "" {
+			atom += a.slot
+		}
+		if a.subSlot != "" {
+			atom += fmt.Sprintf("/%s", a.subSlot)
+		}
+		if a.slotOperator != "" {
+			atom += a.slotOperator
+		}
+	}
+	useDep := a.Use.evalQaConditionals(useMask, useForce)
+	atom += useDep.str()
+	m := true
+	b, _ := NewAtom[T](atom, nil, true, &m, nil, "", nil, nil)
+	return b
+}
+
+func (a *Atom[T]) slotOperatorBuilt() bool {
+	return a.slotOperator == "=" && a.subSlot != ""
+}
+
+func (a *Atom[T]) withoutRepo() *Atom[T] {
+	if a.Repo == "" {
+		return a
+	}
+	b, _ := NewAtom[T](strings.Replace(a.Value, repoSeparator+a.Repo, "", 1), nil, true, nil, nil, "", nil, nil)
+	return b
+}
+
+func (a *Atom[T]) intersects(other *Atom[T]) bool {
+	if a == other {
+		return true
+	}
+	if a.Cp != other.Cp || a.Use != other.Use || a.Operator != other.Operator || a.cpv != other.cpv {
+		return false
+	}
+	if a.slot == "" || other.slot == "" || a.slot == other.slot {
+		return true
+	}
+	return false
+}
+
+func (a *Atom[T]) copy() *Atom[T] {
+	return a
+}
+
+func (a *Atom[T]) deepcopy() *Atom[T] { // memo=None, memo[id(self)] = self
+	return a
+}
+
+func (a *Atom[T]) match(pkg *versions.PkgStr[T]) bool {
+	return len(MatchFromList(a, []*versions.PkgStr[T]{pkg})) > 0
+}
+
+func (a *Atom[T]) UnevaluatedAtom() *Atom[T] {
+	return a.unevaluatedAtom
+}
+
+func extractAffectingUse[T interfaces.ISettings](mystr string, atom *Atom[T], eapi string) map[string]bool {
 	useflagRe := GetUseflagRe(eapi)
 	mySplit := strings.Fields(mystr)
 	level := 0
@@ -1525,7 +1541,7 @@ func extractUnpackDependencies(srcUri string, unpackers map[string]string) strin
 }
 
 //false, false, false, "", false
-func isValidAtom(atom string, allowBlockers, allowWildcard, allowRepo bool, eapi string, allowBuildId bool) bool {
+func IsValidAtom(atom string, allowBlockers, allowWildcard, allowRepo bool, eapi string, allowBuildId bool) bool {
 	a, err := NewAtom(atom, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId)
 	if err != nil {
 		return false
@@ -1565,12 +1581,12 @@ func getOperator(mydep string) string {
 	return a.Operator
 }
 
-func depGetcpv(mydep string) *versions.PkgStr {
-	a, _ := NewAtom(mydep, nil, false, nil, nil, "", nil, nil)
+func depGetcpv[T interfaces.ISettings](mydep string) *versions.PkgStr[T] {
+	a, _ := NewAtom[T](mydep, nil, false, nil, nil, "", nil, nil)
 	return a.cpv
 }
 
-func depGetslot(mydep string) string {
+func DepGetslot(mydep string) string {
 	mydep = strings.Split(mydep, repoSeparator)[0]
 	colon := strings.Index(mydep, slotSeparator)
 	if colon != -1 {
@@ -1642,10 +1658,10 @@ func depGetUseDeps(depend string) []string {
 	return useList
 }
 
-func isJustName(mypkg string) bool {
+func IsJustName(mypkg string) bool {
 	a, err := NewAtom(mypkg, nil, false, nil, nil, "", nil, nil)
 	if err == nil {
-		return mypkg == a.cp
+		return mypkg == a.Cp
 	}
 	p := strings.Split(mypkg, "-")
 	for _, x := range p[len(p)-2:] {
@@ -1659,22 +1675,22 @@ func isJustName(mypkg string) bool {
 func isSpecific(mypkg string) bool {
 	a, err := NewAtom(mypkg, nil, false, nil, nil, "", nil, nil)
 	if err == nil {
-		return mypkg != a.cp
+		return mypkg != a.Cp
 	}
-	return !isJustName(mypkg)
+	return !IsJustName(mypkg)
 }
 
-func depGetKey(mydep string) string {
+func DepGetKey(mydep string) string {
 	a, _ := NewAtom(mydep, nil, false, nil, nil, "", nil, nil)
-	return a.cp
+	return a.Cp
 }
 
-func matchToList(mypkg *versions.PkgStr, mylist []*Atom) []*Atom {
-	matches := map[*Atom]bool{}
-	result := []*Atom{}
-	pkgs := []*versions.PkgStr{mypkg}
+func matchToList[T interfaces.ISettings](mypkg *versions.PkgStr[T], mylist []*Atom[T]) []*Atom[T] {
+	matches := map[*Atom[T]]bool{}
+	result := []*Atom[T]{}
+	pkgs := []*versions.PkgStr[T]{mypkg}
 	for _, x := range mylist {
-		if !matches[x] && len(matchFromList(x, pkgs)) > 0 {
+		if !matches[x] && len(MatchFromList(x, pkgs)) > 0 {
 			matches[x] = true
 			result = append(result, x)
 		}
@@ -1682,11 +1698,11 @@ func matchToList(mypkg *versions.PkgStr, mylist []*Atom) []*Atom {
 	return result
 }
 
-func bestMatchToList(mypkg *versions.PkgStr, mylist []*Atom) *Atom {
+func BestMatchToList[T interfaces.ISettings](mypkg *versions.PkgStr[T], mylist []*Atom[T]) *Atom[T] {
 	operatorValues := map[string]int{"=": 6, "~": 5, "=*": 4, ">": 2, "<": 2, ">=": 2, "<=": 2, "": 1}
 	maxvalue := -99
-	var bestm *Atom = nil
-	var mypkgCpv *versions.PkgStr = nil
+	var bestm *Atom[T] = nil
+	var mypkgCpv *versions.PkgStr[T] = nil
 	for _, x := range matchToList(mypkg, mylist) {
 		if x.extendedSyntax {
 			if x.Operator == "=*" {
@@ -1707,7 +1723,7 @@ func bestMatchToList(mypkg *versions.PkgStr, mylist []*Atom) *Atom {
 			}
 			continue
 		}
-		if depGetslot(x.value) != "" {
+		if DepGetslot(x.Value) != "" {
 			if maxvalue < 3 {
 				maxvalue = 3
 				bestm = x
@@ -1719,18 +1735,18 @@ func bestMatchToList(mypkg *versions.PkgStr, mylist []*Atom) *Atom {
 			bestm = x
 		} else if opVal == maxvalue && opVal == 2 {
 			if mypkgCpv == nil {
-				mypkgCpv = mypkg.cpv
+				mypkgCpv = mypkg.Cpv
 			}
 			if mypkgCpv == nil {
-				mypkgCpv = versions.NewPkgStr(RemoveSlot(mypkg.string), nil, nil, "", "", "", 0, 0, "", 0, nil)
+				mypkgCpv = versions.NewPkgStr[T](RemoveSlot(mypkg.String), nil, nil, "", "", "", 0, 0, "", 0, nil)
 			}
 			if bestm.cpv == mypkgCpv || bestm.cpv == x.cpv {
 			} else if x.cpv == mypkgCpv {
 				bestm = x
 			} else {
-				cpvList := []*versions.PkgStr{bestm.cpv, mypkgCpv, x.cpv}
+				cpvList := []*versions.PkgStr[T]{bestm.cpv, mypkgCpv, x.cpv}
 				sort.Slice(cpvList, func(i, j int) bool {
-					b, _ := versions.verCmp(cpvList[i].version, cpvList[j].version)
+					b, _ := versions.VerCmp(cpvList[i].Version, cpvList[j].Version)
 					return b < 0
 				})
 				if cpvList[0] == mypkgCpv || cpvList[len(cpvList)-1] == mypkgCpv {
@@ -1746,30 +1762,30 @@ func bestMatchToList(mypkg *versions.PkgStr, mylist []*Atom) *Atom {
 
 }
 
-func matchFromList(mydep *Atom, candidateList []*versions.PkgStr) []*versions.PkgStr {
+func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*versions.PkgStr[T]) []*versions.PkgStr[T] {
 	if len(candidateList) == 0 {
-		return []*versions.PkgStr{}
+		return []*versions.PkgStr[T]{}
 	}
 	mydepA := mydep
-	if "!" == mydep.value[:1] {
+	if "!" == mydep.Value[:1] {
 		mydepS := ""
-		if "!" == mydep.value[1:2] {
-			mydepS = mydep.value[2:]
+		if "!" == mydep.Value[1:2] {
+			mydepS = mydep.Value[2:]
 		} else {
-			mydepS = mydep.value[1:]
+			mydepS = mydep.Value[1:]
 		}
 		ar := true
-		mydepA, _ = NewAtom(mydepS, nil, true, &ar, nil, "", nil, nil)
+		mydepA, _ = NewAtom[T](mydepS, nil, true, &ar, nil, "", nil, nil)
 	}
 
 	mycpv := mydepA.cpv
-	mycpvCps := versions.CatPkgSplit(mycpv.string, 0, "")
+	mycpvCps := versions.CatPkgSplit(mycpv.String, 0, "")
 	//slot      := mydepA.slot
 	buildId := mydepA.buildId
 
 	_, _, ver, rev := "", "", "", ""
 	if mycpvCps == [4]string{} {
-		cp := versions.catsplit(mycpv.string)
+		cp := versions.CatSplit(mycpv.String)
 		_ = cp[0]
 		_ = cp[1]
 		ver = ""
@@ -1777,7 +1793,7 @@ func matchFromList(mydep *Atom, candidateList []*versions.PkgStr) []*versions.Pk
 	} else {
 		_, _, ver, rev = mycpvCps[0], mycpvCps[1], mycpvCps[2], mycpvCps[3]
 	}
-	if mydepA.value == mycpv.string {
+	if mydepA.Value == mycpv.String {
 		//raise KeyError(_("Specific key requires an operator"
 		//" (%s) (try adding an '=')") % (mydep))
 	}
@@ -1786,18 +1802,18 @@ func matchFromList(mydep *Atom, candidateList []*versions.PkgStr) []*versions.Pk
 	if ver != "" && rev != "" {
 		operator = mydepA.Operator
 		if operator == "" {
-			msg.WriteMsg(fmt.Sprintf("!!! Invalid Atom: %s\n", mydep.value), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("!!! Invalid Atom: %s\n", mydep.Value), -1, nil)
 		}
-		return []*versions.PkgStr{}
+		return []*versions.PkgStr[T]{}
 	} else {
 		operator = ""
 	}
-	mylist := []*versions.PkgStr{}
+	mylist := []*versions.PkgStr[T]{}
 	if mydepA.extendedSyntax {
 		for _, x := range candidateList {
-			cp := x.cp
+			cp := x.Cp
 			if cp == "" {
-				mysplit := versions.CatPkgSplit(RemoveSlot(x.string), 1, "")
+				mysplit := versions.CatPkgSplit(RemoveSlot(x.String), 1, "")
 				if mysplit != [4]string{} {
 					cp = mysplit[0] + "/" + mysplit[1]
 				}
@@ -1805,18 +1821,18 @@ func matchFromList(mydep *Atom, candidateList []*versions.PkgStr) []*versions.Pk
 			if cp == "" {
 				continue
 			}
-			if cp == mycpv.string || extendedCpMatch(mydepA.cp, cp) {
+			if cp == mycpv.String || extendedCpMatch(mydepA.Cp, cp) {
 				mylist = append(mylist, x)
 			}
 		}
 		if len(mylist) > 0 && mydepA.Operator == "=*" {
 			candidateList = mylist
-			mylist = []*versions.PkgStr{}
+			mylist = []*versions.PkgStr[T]{}
 			ver = mydepA.version[1 : len(mydepA.version)-1]
 			for _, x := range candidateList {
-				xVer := x.version
+				xVer := x.Version
 				if xVer == "" {
-					xs := versions.CatPkgSplit(RemoveSlot(x.string), 1, "")
+					xs := versions.CatPkgSplit(RemoveSlot(x.String), 1, "")
 					if xs == [4]string{} {
 						continue
 					}
@@ -1829,9 +1845,9 @@ func matchFromList(mydep *Atom, candidateList []*versions.PkgStr) []*versions.Pk
 		}
 	} else if operator == "" {
 		for _, x := range candidateList {
-			cp := x.cp
+			cp := x.Cp
 			if cp == "" {
-				mysplit := versions.CatPkgSplit(RemoveSlot(x.string), 1, "")
+				mysplit := versions.CatPkgSplit(RemoveSlot(x.String), 1, "")
 				if mysplit != [4]string{} {
 					cp = mysplit[0] + "/" + mysplit[1]
 				}
@@ -1839,17 +1855,17 @@ func matchFromList(mydep *Atom, candidateList []*versions.PkgStr) []*versions.Pk
 					continue
 				}
 			}
-			if cp == mydepA.cp {
+			if cp == mydepA.Cp {
 				mylist = append(mylist, x)
 			}
 		}
 	} else if operator == "=" {
 		for _, x := range candidateList {
-			xcpv := x.cpv
+			xcpv := x.Cpv
 			if xcpv == nil {
-				xcpv = &versions.PkgStr{string: RemoveSlot(x.string)}
+				xcpv = &versions.PkgStr[T]{String: RemoveSlot(x.String)}
 			}
-			if !cpvequal(xcpv.string, mycpv.string) {
+			if !cpvequal(xcpv.String, mycpv.String) {
 				continue
 			}
 			if buildId != 0 {
@@ -1864,25 +1880,25 @@ func matchFromList(mydep *Atom, candidateList []*versions.PkgStr) []*versions.Pk
 		}
 		mycpvCmp := ""
 		if myver == mycpvCps[2] {
-			mycpvCmp = mycpv.string
+			mycpvCmp = mycpv.String
 		} else {
-			mycpvCmp = strings.Replace(mycpv.string, mydepA.cp+"-"+mycpvCps[2], mydepA.cp+"-"+myver, 1)
+			mycpvCmp = strings.Replace(mycpv.String, mydepA.Cp+"-"+mycpvCps[2], mydepA.Cp+"-"+myver, 1)
 		}
 		for _, x := range candidateList {
 			pkg := x
-			if pkg.cp == "" {
-				pkg = versions.NewPkgStr(RemoveSlot(x.string), nil, nil, "", "", "", 0, 0, "", 0, nil)
+			if pkg.Cp == "" {
+				pkg = versions.NewPkgStr[T](RemoveSlot(x.String), nil, nil, "", "", "", 0, 0, "", 0, nil)
 			}
-			xs := pkg.cpvSplit
+			xs := pkg.CpvSplit
 			myver := strings.TrimPrefix(xs[2], "0")
 			if len(myver) == 0 || !unicode.IsDigit(rune(myver[0])) {
 				myver = "0" + myver
 			}
 			xcpv := ""
 			if myver == xs[2] {
-				xcpv = pkg.cpv.string
+				xcpv = pkg.Cpv.String
 			} else {
-				xcpv = strings.Replace(pkg.cpv.string, pkg.cp+"-"+xs[2], pkg.cp+"-"+myver, 1)
+				xcpv = strings.Replace(pkg.Cpv.String, pkg.Cp+"-"+xs[2], pkg.Cp+"-"+myver, 1)
 			}
 			if strings.HasPrefix(xcpv, mycpvCmp) {
 				nextChar := xcpv[len(mycpvCmp) : len(mycpvCmp)+1]
@@ -1893,9 +1909,9 @@ func matchFromList(mydep *Atom, candidateList []*versions.PkgStr) []*versions.Pk
 		}
 	} else if operator == "~" {
 		for _, x := range candidateList {
-			xs := x.cpvSplit
+			xs := x.CpvSplit
 			if xs == [4]string{} {
-				xs = versions.CatPkgSplit(RemoveSlot(x.string), 1, "")
+				xs = versions.CatPkgSplit(RemoveSlot(x.String), 1, "")
 			}
 			if xs == [4]string{} {
 				//raise InvalidData(x)
@@ -1911,14 +1927,14 @@ func matchFromList(mydep *Atom, candidateList []*versions.PkgStr) []*versions.Pk
 	} else if operator == ">" || operator == ">=" || operator == "<" || operator == "<=" {
 		for _, x := range candidateList {
 			pkg := x
-			if x.cp == "" {
-				pkg = versions.NewPkgStr(RemoveSlot(x.string), nil, nil, "", "", "", 0, 0, "", 0, nil)
+			if x.Cp == "" {
+				pkg = versions.NewPkgStr[T](RemoveSlot(x.String), nil, nil, "", "", "", 0, 0, "", 0, nil)
 			}
 
-			if pkg.cp != mydepA.cp {
+			if pkg.Cp != mydepA.Cp {
 				continue
 			}
-			result, err := versions.verCmp(pkg.version, mydepA.version)
+			result, err := versions.VerCmp(pkg.Version, mydepA.version)
 			if err != nil {
 				msg.WriteMsg(fmt.Sprintf("\nInvalid package name: %v\n", x), -1, nil)
 				//raise
@@ -1949,13 +1965,13 @@ func matchFromList(mydep *Atom, candidateList []*versions.PkgStr) []*versions.Pk
 
 	if mydepA.slot != "" {
 		candidateList = mylist
-		mylist = []*versions.PkgStr{}
+		mylist = []*versions.PkgStr[T]{}
 		for _, x := range candidateList {
 			xPkg := x
-			if xPkg.cpv == nil {
-				xslot := depGetslot(x.string)
+			if xPkg.Cpv == nil {
+				xslot := DepGetslot(x.String)
 				if xslot != "" {
-					xPkg = versions.NewPkgStr(RemoveSlot(x.string), nil, nil, "", "", xslot, 0, 0, "", 0, nil)
+					xPkg = versions.NewPkgStr[T](RemoveSlot(x.String), nil, nil, "", "", xslot, 0, 0, "", 0, nil)
 				} else {
 					continue
 				}
@@ -1964,7 +1980,7 @@ func matchFromList(mydep *Atom, candidateList []*versions.PkgStr) []*versions.Pk
 			if xPkg == nil {
 				mylist = append(mylist, x)
 			} else {
-				if xPkg.slot == "" {
+				if xPkg.Slot == "" {
 					mylist = append(mylist, x)
 				} else {
 					if matchSlot(mydepA, xPkg) {
@@ -1977,7 +1993,7 @@ func matchFromList(mydep *Atom, candidateList []*versions.PkgStr) []*versions.Pk
 
 	if mydepA.unevaluatedAtom.Use != nil {
 		candidateList = mylist
-		mylist = []*versions.PkgStr{}
+		mylist = []*versions.PkgStr[T]{}
 		for _, x := range candidateList {
 			//Use = getattr(x, "Use", None)
 			//if Use != nil{
@@ -2013,15 +2029,15 @@ func matchFromList(mydep *Atom, candidateList []*versions.PkgStr) []*versions.Pk
 		}
 	}
 
-	if mydepA.repo != "" {
+	if mydepA.Repo != "" {
 		candidateList = mylist
-		mylist = []*versions.PkgStr{}
+		mylist = []*versions.PkgStr[T]{}
 		for _, x := range candidateList {
-			repo := x.repo
+			repo := x.Repo
 			if repo == "" {
-				repo = DepGetrepo(x.string)
+				repo = DepGetrepo(x.String)
 			}
-			if repo != "" && repo != versions.unknownRepo && repo != mydepA.repo {
+			if repo != "" && repo != versions.UnknownRepo && repo != mydepA.Repo {
 				continue
 			}
 			mylist = append(mylist, x)
@@ -2035,10 +2051,10 @@ func humanReadableRequiredUse(requiredUse string) string {
 	return strings.Replace(strings.Replace(strings.Replace(requiredUse, "^^", "exactly-one-of", -1), "||", "any-of", -1), "??", "at-most-one-of", -1)
 }
 
-func get_required_use_flags(requiredUse, eapi string) map[string]bool { //n
-	EapiAttrs := eapi.GetEapiAttrs(eapi)
+func get_required_use_flags(requiredUse, eapi1 string) map[string]bool { //n
+	EapiAttrs := eapi.GetEapiAttrs(eapi1)
 	validOperators := map[string]bool{}
-	if EapiAttrs.requiredUseAtMostOneOf {
+	if EapiAttrs.RequiredUseAtMostOneOf {
 		validOperators = map[string]bool{"||": true, "^^": true, "??": true}
 	} else {
 		validOperators = map[string]bool{"||": true, "^^": true}
@@ -2117,3 +2133,5 @@ func get_required_use_flags(requiredUse, eapi string) map[string]bool { //n
 	}
 	return usedFlags
 }
+
+type ExtendedAtomDict[T interfaces.ISettings] map[string]map[*Atom[T]][]string

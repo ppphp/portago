@@ -3,6 +3,7 @@ package util
 import (
 	_const "github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/util/msg"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -10,7 +11,7 @@ import (
 
 // true
 func cacheddir(myOriginalPath string, ignoreCvs bool, ignoreList []string, EmptyOnError, followSymlinks bool) ([]string, []int) {
-	myPath := NormalizePath(myOriginalPath)
+	myPath := msg.NormalizePath(myOriginalPath)
 	pathStat, err := os.Stat(myPath)
 	if err != nil {
 		//except EnvironmentError as e:

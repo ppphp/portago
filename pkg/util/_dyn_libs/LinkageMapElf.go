@@ -5,6 +5,12 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/atom"
 	_const "github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/dbapi"
+	"github.com/ppphp/portago/pkg/dep"
+	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/elf"
+	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/versions"
 	"golang.org/x/sys/unix"
 	"os"
@@ -19,7 +25,7 @@ type linkageMapELF struct {
 	_soname_map_class struct {
 		consumers, providers []string
 	}
-	_dbapi                                                            *atom.vardbapi
+	_dbapi                                                            *dbapi.vardbapi
 	_root                                                             string
 	_libs map[string][] string
 	_obj_properties map[string]*_obj_properties_class
@@ -114,7 +120,7 @@ type _LibGraphNode struct{
 }
 
 func( l*_LibGraphNode) __str__() string {
-	return str(atom.sortedmsb(l.alt_paths))
+	return str(myutil.SortedMS(l.alt_paths))
 }
 
 func New_LibGraphNode( key *_ObjectKey) *_LibGraphNode {
@@ -143,7 +149,7 @@ func (o*linkageMapELF) rebuild(exclude_pkgs []*versions.PkgStr, include_file str
 	}{}
 
 	if include_file != "" {
-		for _, line := range grabFile(include_file, 0, false, false) {
+		for _, line := range util.GrabFile(include_file, 0, false, false) {
 			lines = append(lines, &struct {
 				p      *versions.PkgStr;
 				s1, s2 string
@@ -152,7 +158,7 @@ func (o*linkageMapELF) rebuild(exclude_pkgs []*versions.PkgStr, include_file str
 	}
 
 	aux_keys := map[string]bool{o._needed_aux_key: true}
-	can_lock := atom.osAccess(filepath.Dir(o._dbapi._dbroot), unix.W_OK)
+	can_lock := myutil.OsAccess(filepath.Dir(o._dbapi._dbroot), unix.W_OK)
 	if can_lock {
 		o._dbapi.lock()
 	}
@@ -233,7 +239,7 @@ func (o*linkageMapELF) rebuild(exclude_pkgs []*versions.PkgStr, include_file str
 				//UnicodeDecodeError:
 				//	l = _unicode_decode(l,
 				//		encoding = _encodings['content'], errors = 'replace')
-				//	WriteMsgLevel(_("\nError decoding characters " \
+				//	msg.WriteMsgLevel(_("\nError decoding characters " \
 				//	"returned from scanelf: %s\n\n") % (l, ),
 				//	level = logging.ERROR, noiselevel = -1)
 				l = strings.TrimRight(l[3:], "\n")
@@ -243,7 +249,7 @@ func (o*linkageMapELF) rebuild(exclude_pkgs []*versions.PkgStr, include_file str
 				entry, err := NewNeededEntry().parse("scanelf", l)
 				if err != nil {
 					//except InvalidData as e:
-					WriteMsgLevel(fmt.Sprintf("\n%s\n\n", err, ),
+					msg.WriteMsgLevel(fmt.Sprintf("\n%s\n\n", err, ),
 						40, -1)
 					continue
 				}
@@ -255,7 +261,7 @@ func (o*linkageMapELF) rebuild(exclude_pkgs []*versions.PkgStr, include_file str
 					}
 					continue
 				}
-				elf_header := atom.ReadELFHeader(f)
+				elf_header := elf.ReadELFHeader(f)
 
 				if entry.soname == "" {
 					cmd := exec.Command("file", entry.filename)
@@ -304,14 +310,14 @@ func (o*linkageMapELF) rebuild(exclude_pkgs []*versions.PkgStr, include_file str
 			continue
 		}
 		if strings.Contains(l, string([]byte{0})) {
-			WriteMsgLevel(fmt.Sprintf("\nLine contains null byte(s) "+
+			msg.WriteMsgLevel(fmt.Sprintf("\nLine contains null byte(s) "+
 				"in %s: %s\n\n", location, l), 40, -1)
 			continue
 		}
 		entry ,err := NewNeededEntry().parse(location, l)
 		if err != nil {
 			//except InvalidData as e:
-			WriteMsgLevel(fmt.Sprintf("\n%s\n\n", err), 40, -1)
+			msg.WriteMsgLevel(fmt.Sprintf("\n%s\n\n", err), 40, -1)
 			continue
 		}
 
@@ -320,13 +326,13 @@ func (o*linkageMapELF) rebuild(exclude_pkgs []*versions.PkgStr, include_file str
 				entry.arch, entry.arch)
 		}
 
-		entry.filename = NormalizePath(entry.filename)
+		entry.filename = msg.NormalizePath(entry.filename)
 		expand := map[string]string{
 			"ORIGIN": filepath.Dir(entry.filename),
 		}
 		runpaths:=map[string]bool{}
 		for _, x := range entry.runpaths{
-			runpaths[NormalizePath(varExpand(x, expand, func() string {return fmt.Sprintf("%s: " , location)})] = true
+			runpaths[msg.NormalizePath(varExpand(x, expand, func() string {return fmt.Sprintf("%s: " , location)})] = true
 		}
 		entry.runpaths = []string{}
 		for   k := range runpaths{
@@ -345,7 +351,7 @@ func (o*linkageMapELF) rebuild(exclude_pkgs []*versions.PkgStr, include_file str
 		}
 		for _, entry := range entries {
 			if entry.soname != "" {
-				providers[atom.NewSonameAtom(entry.multilib_category, entry.soname)] = entry
+				providers[dep.NewSonameAtom(entry.multilib_category, entry.soname)] = entry
 			}
 		}
 
@@ -511,7 +517,7 @@ func (o*linkageMapELF) listBrokenBinaries( debug bool) {
 				in \
 				set(map(o._obj_key_cache.get,
 				libraries)){
-				WriteMsgLevel(
+				msg.WriteMsgLevel(
 				_("Found provider outside of findProviders:") + \
 				(" %s -> %s %s\n" % (filepath.Join(directory, soname),
 				o._obj_properties[cachedKey].alt_paths, libraries)),
@@ -524,7 +530,7 @@ func (o*linkageMapELF) listBrokenBinaries( debug bool) {
 				cachedKey
 				in
 			o._obj_properties{
-				WriteMsgLevel(fmt.Sprintf("Broken symlink or missing/bad soname: "+
+				msg.WriteMsgLevel(fmt.Sprintf("Broken symlink or missing/bad soname: "+
 					"%s -> %s with soname %s but expecting %s",
 					filepath.Join(directory, soname), o._obj_properties[cachedKey],
 					cachedSoname, soname)+"\n", 20, -1)
@@ -541,9 +547,9 @@ func (o*linkageMapELF) listBrokenBinaries( debug bool) {
 				rValue.setdefault(lib, set()).add(soname)
 				if debug {
 					if not atom.pathIsFile(lib) {
-						WriteMsgLevel(fmt.Sprintf("Missing library:"+" %s\n", lib, ), 20, -1)
+						msg.WriteMsgLevel(fmt.Sprintf("Missing library:"+" %s\n", lib, ), 20, -1)
 					}else {
-						WriteMsgLevel(fmt.Sprintf("Possibly missing symlink:"+
+						msg.WriteMsgLevel(fmt.Sprintf("Possibly missing symlink:"+
 							"%s\n", filepath.Join(filepath.Dir(lib), soname)), 20, -1)
 					}
 				}

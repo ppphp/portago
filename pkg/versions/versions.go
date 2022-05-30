@@ -14,20 +14,20 @@ import (
 )
 
 const (
-	unknownRepo = "__unknown__"
-	slot        = `([\w+][\w+.-]*)`
+	UnknownRepo = "__unknown__"
+	Slot        = `([\w+][\w+.-]*)`
 	cat         = `[\w+][\w+.-]*`
 	pkg         = `[\w+][\w+-]*?`
 	v           = `(?P<major>\d+)(?P<minors>(?P<minor>\.\d+)*)(?P<letter>[a-z]?)(?P<additional>(?P<suffix>_(?P<status>pre|p|beta|alpha|rc)\d*)*)`
 	rev         = `\d+`
-	vr          = v + "(?P<revision>-r(" + rev + "))?"
-	cp          = "(" + cat + "/" + pkg + "(-" + vr + ")?)"
-	cpv         = "(" + cp + "-" + vr + ")"
-	pv          = "(?P<pn>" + pkg + "(?P<pn_inval>-" + vr + ")?)" + "-(?P<ver>" + v + ")(-r(?P<rev>" + rev + "))?"
+	Vr          = v + "(?P<revision>-r(" + rev + "))?"
+	Cp          = "(" + cat + "/" + pkg + "(-" + Vr + ")?)"
+	Cpv         = "(" + Cp + "-" + Vr + ")"
+	pv          = "(?P<pn>" + pkg + "(?P<pn_inval>-" + Vr + ")?)" + "-(?P<ver>" + v + ")(-r(?P<rev>" + rev + "))?"
 )
 
 var (
-	verRegexp      = regexp.MustCompile(vr)
+	verRegexp      = regexp.MustCompile(Vr)
 	suffixRegexp   = regexp.MustCompile("^(alpha|beta|rc|pre|p)(\\d*)$")
 	suffix_value   = map[string]int{"pre": -2, "p": 0, "alpha": -4, "beta": -3, "rc": -1}
 	endversionKeys = []string{"pre", "p", "alpha", "beta", "rc"}
@@ -45,10 +45,10 @@ func getSlotRe(eapiAttrs eapi.EapiAttrs) *regexp.Regexp {
 
 	s := ""
 	if eapiAttrs.SlotOperator {
-		s = slot + "(/" + slot + ")?"
+		s = Slot + "(/" + Slot + ")?"
 	} else {
 
-		s = slot
+		s = Slot
 	}
 
 	slotRe = regexp.MustCompile("^" + s + "$")
@@ -339,21 +339,22 @@ func CatPkgSplit(mydata string, silent int, eapi string) [4]string {
 }
 
 type PkgStr[T interfaces.ISettings] struct {
-	string
+	interfaces.IPkgStr
+	String                                                        string
 	metadata                                                      map[string]string
 	settings                                                      T
-	eapi, repo, slot, fileSize, cp, version, subSlot, slotInvalid string
+	eapi, Repo, Slot, fileSize, Cp, Version, SubSlot, slotInvalid string
 
 	db                        interfaces.IDbApi
 	BuildId, BuildTime, mtime int
 	_stable                   *bool
-	cpvSplit                  [4]string
-	cpv                       *PkgStr[T]
+	CpvSplit                  [4]string
+	Cpv                       *PkgStr[T]
 }
 
 // nil, nil, "", "", "", 0, 0, "", 0, nil
 func NewPkgStr[T interfaces.ISettings](cpv string, metadata map[string]string, settings T, eapi1, repo, slot string, build_time, build_id int, file_size string, mtime int, db interfaces.IDbApi) *PkgStr[T] {
-	p := &PkgStr[T]{string: cpv}
+	p := &PkgStr[T]{String: cpv}
 	if metadata != nil {
 		p.metadata = metadata
 		if a, ok := metadata["SLOT"]; ok {
@@ -393,44 +394,44 @@ func NewPkgStr[T interfaces.ISettings](cpv string, metadata map[string]string, s
 	p.fileSize = file_size
 	p.BuildId = build_id
 	p.mtime = mtime
-	p.cpvSplit = CatPkgSplit(cpv, 1, eapi1)
-	if p.cpvSplit == [4]string{} {
+	p.CpvSplit = CatPkgSplit(cpv, 1, eapi1)
+	if p.CpvSplit == [4]string{} {
 		//raise InvalidData(cpv)
 	}
-	p.cp = p.cpvSplit[0] + "/" + p.cpvSplit[1]
-	if p.cpvSplit[len(p.cpvSplit)-1] == "r0" && cpv[len(cpv)-3:] != "-r0" {
-		p.version = strings.Join(p.cpvSplit[2:4], "-")
+	p.Cp = p.CpvSplit[0] + "/" + p.CpvSplit[1]
+	if p.CpvSplit[len(p.CpvSplit)-1] == "r0" && cpv[len(cpv)-3:] != "-r0" {
+		p.Version = strings.Join(p.CpvSplit[2:4], "-")
 	} else {
-		p.version = strings.Join(p.cpvSplit[2:], "-")
+		p.Version = strings.Join(p.CpvSplit[2:], "-")
 	}
-	p.cpv = p
+	p.Cpv = p
 	if slot != "" {
 		eapiAttrs := eapi.GetEapiAttrs(eapi1)
 		slotMatch := getSlotRe(eapiAttrs).FindAllString(slot, -1)
 		if len(slotMatch) == 0 {
-			p.slot = "0"
-			p.subSlot = "0"
+			p.Slot = "0"
+			p.SubSlot = "0"
 			p.slotInvalid = slot
 		} else {
 			if eapiAttrs.SlotOperator {
 				slotSplit := strings.Split(slot, "/")
-				p.slot = slotSplit[0]
+				p.Slot = slotSplit[0]
 				if len(slotSplit) > 1 {
-					p.subSlot = slotSplit[1]
+					p.SubSlot = slotSplit[1]
 				} else {
-					p.subSlot = slotSplit[0]
+					p.SubSlot = slotSplit[0]
 				}
 			} else {
-				p.slot = slot
-				p.subSlot = slot
+				p.Slot = slot
+				p.SubSlot = slot
 			}
 		}
 		if repo != "" {
 			repo = validrepo.GenValidRepo(repo)
 			if repo == "" {
-				repo = unknownRepo
+				repo = UnknownRepo
 			}
-			p.repo = repo
+			p.Repo = repo
 		}
 	}
 	return p

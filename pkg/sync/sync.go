@@ -75,7 +75,7 @@ type modules struct {
 
 var moduleController modules
 
-func moduleSpecificOptions(repo *repository.RepoConfig) map[string]bool {
+func ModuleSpecificOptions(repo *repository.RepoConfig) map[string]bool {
 	r := map[string]bool{}
 	if repo.SyncType != "" {
 		for _, v := range moduleController.modules[repo.SyncType]["module_specific_options"] {

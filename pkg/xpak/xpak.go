@@ -237,7 +237,7 @@ func xpand(myid []string, mydest string) {
 }
 
 type tbz2 struct {
-	file                                    string
+	File                                    string
 	filestat                                os.FileInfo
 	index                                   string
 	infosize, xpaksize, indexsize, datasize int
@@ -246,7 +246,7 @@ type tbz2 struct {
 
 func NewTbz2(myfile string) *tbz2 {
 	t := &tbz2{}
-	t.file = myfile
+	t.File = myfile
 	t.filestat = nil
 	t.index = ""
 	t.infosize = 0
@@ -291,19 +291,19 @@ func (t *tbz2) recompose_mem(xpdata string, break_hardlinks bool) int {
 	t.scan()
 
 	if break_hardlinks && t.filestat != nil && t.filestat.Sys().(*syscall.Stat_t).Nlink > 1 {
-		tmp_fname := fmt.Sprintf("%s.%d", t.file, os.Getpid())
-		src.Copyfile(t.file, tmp_fname)
+		tmp_fname := fmt.Sprintf("%s.%d", t.File, os.Getpid())
+		src.Copyfile(t.File, tmp_fname)
 		var mask os.FileMode
 		mask--
-		if ok := permissions.Apply_stat_permissions(t.file, t.filestat, mask, nil, true); !ok {
+		if ok := permissions.Apply_stat_permissions(t.File, t.filestat, mask, nil, true); !ok {
 			//except portage.exception.OperationNotPermitted{
 			//	pass
 		}
 
-		os.Rename(tmp_fname, t.file)
+		os.Rename(tmp_fname, t.File)
 	}
 
-	myfile, _ := os.OpenFile(t.file, os.O_APPEND|os.O_RDWR, 0755)
+	myfile, _ := os.OpenFile(t.File, os.O_APPEND|os.O_RDWR, 0755)
 	if myfile == nil {
 		//raise IOError
 	}
@@ -337,7 +337,7 @@ func (t *tbz2) scan() int {
 		}
 	}()
 	var err error
-	mystat, err := os.Stat(t.file)
+	mystat, err := os.Stat(t.File)
 	if err == nil {
 		if t.filestat != nil {
 			changed := false
@@ -351,7 +351,7 @@ func (t *tbz2) scan() int {
 		t.filestat = mystat
 	}
 	if err == nil {
-		a, err = os.Open(t.file)
+		a, err = os.Open(t.File)
 	}
 	if err == nil {
 		_, err = a.Seek(-16, 2)
@@ -422,7 +422,7 @@ func (t *tbz2) getfile(myfile string, mydefault string) string {
 	if myresult1 == 0 && myresult2 == 0 {
 		return ""
 	}
-	a, _ := os.Open(t.file)
+	a, _ := os.Open(t.File)
 	a.Seek(t.datapos+int64(myresult1), 0)
 
 	myreturn := make([]byte, myresult2)
@@ -446,7 +446,7 @@ func (t *tbz2) unpackinfo(mydest string) int {
 		return 0
 	}
 	mydest = msg.NormalizePath(mydest) + string(filepath.Separator)
-	a, _ := os.Open(t.file)
+	a, _ := os.Open(t.File)
 	if _, err := os.Stat(mydest); err == os.ErrNotExist {
 		os.MkdirAll(mydest, 0755)
 	}
@@ -483,7 +483,7 @@ func (t *tbz2) get_data() map[string]string {
 	if t.scan() == 0 {
 		return map[string]string{}
 	}
-	a, _ := os.Open(t.file)
+	a, _ := os.Open(t.File)
 	mydata := map[string]string{}
 	startpos := 0
 	for (startpos + 8) < t.indexsize {
@@ -506,7 +506,7 @@ func (t *tbz2) getboth() (string, string) {
 		return "", ""
 	}
 
-	a, _ := os.Open(t.file)
+	a, _ := os.Open(t.File)
 	a.Seek(t.datapos, 0)
 	d := make([]byte, t.datasize)
 	a.Read(d)

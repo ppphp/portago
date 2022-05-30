@@ -12,6 +12,7 @@ import (
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/versions"
 	"github.com/ppphp/shlex"
 	"io/ioutil"
@@ -24,8 +25,6 @@ import (
 	"syscall"
 	"time"
 )
-
-var VERSION = "HEAD"
 
 var shellQuoteRe = regexp.MustCompile("[\\s><=*\\\\\\\"'$`]")
 var InitializingGlobals *bool
@@ -43,12 +42,12 @@ func ShellQuote(s string) string {
 	return "\"" + s + "\""
 }
 
-var notInstalled bool
+var NotInstalled bool
 
 func init() {
 	ni, err := os.Stat(path.Join(_const.PORTAGE_BASE_PATH, ".portage_not_installed"))
 	if err != nil || !ni.IsDir() {
-		notInstalled = true
+		NotInstalled = true
 	}
 }
 
@@ -97,7 +96,13 @@ func absSymlink(symlink, target string) string {
 	return path.Clean(mylink)
 }
 
-var doebuildManifestExemptDepend = 0
+var DoebuildManifestExemptDepend = 0
+
+var (
+	pmsEapiRe = regexp.MustCompile("^[ \\t]*EAPI=(['\"]?)([A-Za-z0-9+_.-]*)\\1[ \\t]*([ \\t]#.*)?$")
+	commentOrBlankLine = regexp.MustCompile("^\\s*(#.*)?$")
+)
+
 
 func ParseEapiEbuildHead(f []string) (string, int) {
 	eapi := ""
@@ -105,10 +110,10 @@ func ParseEapiEbuildHead(f []string) (string, int) {
 	lineno := 0
 	for _, line := range f {
 		lineno += 1
-		if !ebuild2.commentOrBlankLine.MatchString(line) {
+		if !commentOrBlankLine.MatchString(line) {
 			eapiLineno = lineno
-			if ebuild2.pmsEapiRe.MatchString(line) {
-				eapi = ebuild2.pmsEapiRe.FindAllString(line, -1)[2]
+			if pmsEapiRe.MatchString(line) {
+				eapi = pmsEapiRe.FindAllString(line, -1)[2]
 			}
 			break
 		}
@@ -137,20 +142,20 @@ func NewHashPath(location string) *hashPath {
 	return &hashPath{location: location}
 }
 
-type cache struct {
+type Cache struct {
 	eclasses                                           map[string]*hashPath
 	eclassLocations                                    map[string]string
 	eclassLocationsStr, portTreeRoot, masterEclassRoot string
 	portTrees                                          []string
 }
 
-func (c *cache) updateEclasses() {
+func (c *Cache) updateEclasses() {
 	c.eclasses = map[string]*hashPath{}
 	c.eclassLocations = map[string]string{}
 	masterEclasses := map[string]time.Time{}
 	eclassLen := len(".eclass")
 	for _, y := range c.portTrees {
-		x := util.NormalizePath(path.Join(y, "eclass"))
+		x := msg.NormalizePath(path.Join(y, "eclass"))
 		eclassFileNames, _ := filepath.Glob(x + "/*")
 		for _, y := range eclassFileNames {
 			if !strings.HasSuffix(y, ".eclass") {
@@ -178,8 +183,8 @@ func (c *cache) updateEclasses() {
 	}
 }
 
-func (c *cache) copy() *cache {
-	d := &cache{eclasses: map[string]*hashPath{}, eclassLocations: map[string]string{}, portTreeRoot: c.portTreeRoot, portTrees: c.portTrees, masterEclassRoot: c.masterEclassRoot}
+func (c *Cache) Copy() *Cache {
+	d := &Cache{eclasses: map[string]*hashPath{}, eclassLocations: map[string]string{}, portTreeRoot: c.portTreeRoot, portTrees: c.portTrees, masterEclassRoot: c.masterEclassRoot}
 	for k, v := range c.eclasses {
 		d.eclasses[k] = v
 	}
@@ -189,7 +194,7 @@ func (c *cache) copy() *cache {
 	return d
 }
 
-func (c *cache) append(other *cache) {
+func (c *Cache) Append(other *Cache) {
 	c.portTrees = append(c.portTrees, other.portTrees...)
 	for k, v := range other.eclasses {
 		c.eclasses[k] = v
@@ -200,8 +205,8 @@ func (c *cache) append(other *cache) {
 	c.eclassLocationsStr = ""
 }
 
-func NewCache(portTreeRoot, overlays string) *cache {
-	c := &cache{}
+func NewCache(portTreeRoot, overlays string) *Cache {
+	c := &Cache{}
 	if overlays != "" {
 		//warnings.warn("overlays parameter of portage.eclass_cache.cache constructor is deprecated and no longer used",
 		//	DeprecationWarning, stacklevel=2)
@@ -211,13 +216,13 @@ func NewCache(portTreeRoot, overlays string) *cache {
 	c.eclassLocationsStr = ""
 	if portTreeRoot != "" {
 		c.portTreeRoot = portTreeRoot
-		c.portTrees = []string{util.NormalizePath(c.portTreeRoot)}
+		c.portTrees = []string{msg.NormalizePath(c.portTreeRoot)}
 		c.masterEclassRoot = path.Join(c.portTrees[0], "eclass")
 	}
 	return c
 }
 
-func unprivilegedMode(eroot string, erootSt os.FileInfo) bool {
+func UnprivilegedMode(eroot string, erootSt os.FileInfo) bool {
 	st, err := os.Stat(eroot)
 	if err != nil {
 		return false
@@ -294,7 +299,7 @@ func CreateTrees(config_root, target_root string, ts *TreesDict, env map[string]
 	}
 
 	if env == nil {
-		env = util.ExpandEnv()
+		env = msg.ExpandEnv()
 	}
 
 	settings := ebuild2.NewConfig(nil, nil, "", nil, config_root, target_root, sysroot, eprefix, true, env, false, nil)
@@ -527,7 +532,7 @@ func update_dbentries(updateIter [][]string, mydata map[string]string, eapi stri
 
 // nil
 func grab_updates(updpath string, prev_mtimes map[string]string) []struct{p string; s os.FileInfo; c string} {
-	mylist, err := myutil.listDir(updpath)
+	mylist, err := myutil.ListDir(updpath)
 	if err != nil {
 		//except OSError as oe:
 		if err == syscall.ENOENT {
@@ -592,7 +597,7 @@ func grab_updates(updpath string, prev_mtimes map[string]string) []struct{p stri
 }
 
 func parse_updates(mycontent string) ([][]string, []string) {
-	eapi_attrs := eapi.getEapiAttrs("")
+	eapi_attrs := eapi.GetEapiAttrs("")
 	slot_re := versions.getSlotRe(eapi_attrs)
 	myupd := [][]string{}
 	errors := []string{}
@@ -687,7 +692,7 @@ match_callback func(string,string,string)bool, case_insensitive bool) {
 			return true
 		}
 	}
-	config_root = util.NormalizePath(config_root)
+	config_root = msg.NormalizePath(config_root)
 	update_files := map[string] int {}
 	file_contents := map[string][]{}
 	myxfiles := []string{
@@ -709,7 +714,7 @@ match_callback func(string,string,string)bool, case_insensitive bool) {
 	recursivefiles := []string{}
 	for _, x := range myxfiles {
 		config_file := filepath.Join(abs_user_config, x)
-		if myutil.pathIsDir(config_file) {
+		if myutil.PathIsDir(config_file) {
 			filepath.Walk(config_file, func(path string, info os.FileInfo, err error) error {
 				if info.IsDir() {
 					if strings.HasPrefix(info.Name(), ".") || _const.VcsDirs[info.Name()] {
@@ -817,7 +822,7 @@ func dep_transform(mydep, oldkey, newkey string)  string {
 
 // false, true
 func Global_updates(trees *TreesDict, prev_mtimes map[string]string, quiet, if_mtime_changed bool) bool {
-	if _, ok := os.LookupEnv("SANDBOX_ACTIVE"); *data.secpass < 2 ||  ok ||len(trees.Values()) != 1{
+	if _, ok := os.LookupEnv("SANDBOX_ACTIVE"); *data.Secpass < 2 ||  ok ||len(trees.Values()) != 1{
 		return false
 	}
 	return _do_global_updates(trees, prev_mtimes,
@@ -833,7 +838,7 @@ func _do_global_updates(trees *TreesDict, prev_mtimes map[string]string, quiet, 
 	bindb := trees.Values()[root].BinTree().dbapi
 
 	world_file := filepath.Join(mysettings.ValueDict["EROOT"], _const.WorldFile)
-	world_list := util.grabFile(world_file, 0, false, false)
+	world_list := util.GrabFile(world_file, 0, false, false)
 	world_modified := false
 	world_warnings := map[[2]*dep.Atom]bool{}
 	updpath_map := map[string][]{}
@@ -847,7 +852,7 @@ func _do_global_updates(trees *TreesDict, prev_mtimes map[string]string, quiet, 
 	for _, repo_name:= range portdb.getRepositories("") {
 		repo := portdb.getRepositoryPath(repo_name)
 		updpath := filepath.Join(repo, "profiles", "updates")
-		if !myutil.pathIsDir(updpath) {
+		if !myutil.PathIsDir(updpath) {
 			continue
 		}
 
@@ -879,11 +884,11 @@ func _do_global_updates(trees *TreesDict, prev_mtimes map[string]string, quiet, 
 				mykey, mystat, mycontent := v.p, v.s, v.c
 				if !update_notice_printed {
 					update_notice_printed = true
-					util.WriteMsgStdout("\n", 0)
-					util.WriteMsgStdout(output.colorize("GOOD", "Performing Global Updates\n"), 0)
-					util.WriteMsgStdout("(Could take a couple of minutes if you have a lot of binary packages.)\n", 0)
+					msg.WriteMsgStdout("\n", 0)
+					msg.WriteMsgStdout(output.Colorize("GOOD", "Performing Global Updates\n"), 0)
+					msg.WriteMsgStdout("(Could take a couple of minutes if you have a lot of binary packages.)\n", 0)
 					if !quiet {
-						util.WriteMsgStdout(fmt.Sprintf("  %s='update pass'  %s='binary update'  "+
+						msg.WriteMsgStdout(fmt.Sprintf("  %s='update pass'  %s='binary update'  "+
 							"%s='/var/db update'  %s='/var/db move'\n"+
 							"  %s='/var/db SLOT move'  %s='binary move'  "+
 							"%s='binary SLOT move'\n  %s='update /etc/portage/package.*'\n",
@@ -893,14 +898,14 @@ func _do_global_updates(trees *TreesDict, prev_mtimes map[string]string, quiet, 
 				valid_updates, errors := parse_updates(mycontent)
 				myupd = append(myupd, valid_updates...)
 				if !quiet {
-					util.WriteMsgStdout(output.Bold(mykey), 0)
-					util.WriteMsgStdout(strings.Repeat(".", len(valid_updates))+"\n", 0)
+					msg.WriteMsgStdout(output.Bold(mykey), 0)
+					msg.WriteMsgStdout(strings.Repeat(".", len(valid_updates))+"\n", 0)
 				}
 				if len(errors) == 0 {
 					timestamps[mykey] = mystat.ModTime()
 				} else {
-					for _, msg := range errors {
-						util.WriteMsg(fmt.Sprintf("%s\n", msg), -1, nil)
+					for _, msg1 := range errors {
+						msg.WriteMsg(fmt.Sprintf("%s\n", msg1), -1, nil)
 					}
 				}
 			}
@@ -973,23 +978,23 @@ func _do_global_updates(trees *TreesDict, prev_mtimes map[string]string, quiet, 
 			if update_cmd[0] == "move" {
 				moves := vardb.move_ent(update_cmd,  repo_match)
 				if moves > 0 {
-					util.WriteMsgStdout(strings.Repeat("@", moves))
+					msg.WriteMsgStdout(strings.Repeat("@", moves))
 				}
 				if bindb != nil {
 					moves = bindb.move_ent(update_cmd,  repo_match)
 					if moves > 0 {
-						util.WriteMsgStdout(strings.Repeat("%", moves))
+						msg.WriteMsgStdout(strings.Repeat("%", moves))
 					}
 				}
 			} else if update_cmd[0] == "slotmove" {
 				moves := vardb.move_slot_ent(update_cmd, repo_match)
 				if moves > 0 {
-					util.WriteMsgStdout(strings.Repeat("s", moves), 0)
+					msg.WriteMsgStdout(strings.Repeat("s", moves), 0)
 				}
 				if bindb != nil {
 					moves = bindb.move_slot_ent(update_cmd, repo_match)
 					if moves > 0 {
-						util.WriteMsgStdout(strings.Repeat("S", moves), 0)
+						msg.WriteMsgStdout(strings.Repeat("S", moves), 0)
 					}
 				}
 			}
@@ -1043,7 +1048,7 @@ func _do_global_updates(trees *TreesDict, prev_mtimes map[string]string, quiet, 
 		do_upgrade_packagesmessage := false
 		onUpdate := func(_maxval, curval int) {
 			if curval > 0 {
-				util.WriteMsgStdout("#", 0)
+				msg.WriteMsgStdout("#", 0)
 			}
 		}
 		if quiet {
@@ -1053,7 +1058,7 @@ func _do_global_updates(trees *TreesDict, prev_mtimes map[string]string, quiet, 
 		if bindb != nil {
 			onUpdate := func(_maxval, curval int) {
 				if curval > 0 {
-					util.WriteMsgStdout("*", 0)
+					msg.WriteMsgStdout("*", 0)
 				}
 			}
 			if quiet {
@@ -1062,12 +1067,12 @@ func _do_global_updates(trees *TreesDict, prev_mtimes map[string]string, quiet, 
 			bindb.update_ents(repo_map, nil, onUpdate)
 		}
 
-		util.WriteMsgStdout("\n\n", 0)
+		msg.WriteMsgStdout("\n\n", 0)
 
 		if do_upgrade_packagesmessage && bindb != nil && len(bindb.cpv_all()) > 0 {
-			util.WriteMsgStdout(" ** Skipping packages. Run 'fixpackages' or set it in FEATURES to fix the tbz2's in the packages directory.\n", 0)
-			util.WriteMsgStdout(output.Bold(_("Note: This can take a very long time.")), 0)
-			util.WriteMsgStdout("\n", 0)
+			msg.WriteMsgStdout(" ** Skipping packages. Run 'fixpackages' or set it in FEATURES to fix the tbz2's in the packages directory.\n", 0)
+			msg.WriteMsgStdout(output.Bold(_("Note: This can take a very long time.")), 0)
+			msg.WriteMsgStdout("\n", 0)
 		}
 
 	}

@@ -81,13 +81,13 @@ func init() {
 	}
 }
 
-var sandbox_capable, fakeroot_capable bool
+var Sandbox_capable, Fakeroot_capable bool
 
 func init() {
 	sts, err := os.Stat(_const.SandboxBinary)
-	sandbox_capable = err != nil && sts != nil && !sts.IsDir() && sts.Mode()&syscall.O_EXCL != 0
+	Sandbox_capable = err != nil && sts != nil && !sts.IsDir() && sts.Mode()&syscall.O_EXCL != 0
 	stf, err := os.Stat(_const.FakerootBinary)
-	sandbox_capable = err != nil && stf != nil && !stf.IsDir() && stf.Mode()&syscall.O_EXCL != 0
+	Sandbox_capable = err != nil && stf != nil && !stf.IsDir() && stf.Mode()&syscall.O_EXCL != 0
 }
 
 func SanitizeFds() { // all file descriptors in golang are not inheritable without explicit mentioned
@@ -95,7 +95,7 @@ func SanitizeFds() { // all file descriptors in golang are not inheritable witho
 }
 
 // false, "", nil, **keywords
-func spawn_bash(mycommand string, debug bool, opt_name string, fd_pipes map[int]uintptr) ([]int, error) {
+func Spawn_bash(mycommand string, debug bool, opt_name string, fd_pipes map[int]uintptr) ([]int, error) {
 
 	args := []string{_const.BashBinary}
 	if opt_name == "" {
@@ -111,8 +111,8 @@ func spawn_bash(mycommand string, debug bool, opt_name string, fd_pipes map[int]
 
 // "", nil, **keywords
 func spawn_sandbox(mycommand, opt_name string, fd_pipes map[int]uintptr) ([]int, error) {
-	if !sandbox_capable {
-		return spawn_bash(mycommand, false, opt_name, fd_pipes) //, **keywords
+	if !Sandbox_capable {
+		return Spawn_bash(mycommand, false, opt_name, fd_pipes) //, **keywords
 	}
 	args := []string{_const.SandboxBinary}
 	if opt_name == "" {
@@ -147,7 +147,7 @@ func spawn_fakeroot(mycommand, fakeroot_state, opt_name string) ([]int, error) {
 
 var _exithandlers []func()
 
-func atexit_register(f func()) {
+func Atexit_register(f func()) {
 	_exithandlers = append(_exithandlers, f)
 }
 
@@ -165,7 +165,7 @@ func run_exitfuncs() {
 }
 
 func init() {
-	atexit_register(run_exitfuncs)
+	Atexit_register(run_exitfuncs)
 }
 
 // nil, "", nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, ""

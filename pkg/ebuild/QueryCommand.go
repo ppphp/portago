@@ -94,19 +94,19 @@ func (q *QueryCommand) __call__(argv []string) (string, string, int) {
 
 	if cmd == "has_version" {
 		returncode := 1
-		if len(vardb.match(atom1.value, 1)) > 0 {
+		if len(vardb.match(atom1.Value, 1)) > 0 {
 			returncode = 0
 		}
 		return "", warnings_str, returncode
 	} else if cmd == "best_version" {
 		ps := []string{}
-		for _, p := range vardb.match(atom1.value, 1) {
+		for _, p := range vardb.match(atom1.Value, 1) {
 			ps = append(ps, p.string)
 		}
 		m := versions.Best(ps, "")
 		return fmt.Sprintf("%s\n", m), warnings_str, 0
 	} else if myutil.Ins([]string{"master_repositories", "repository_path", "available_eclasses", "eclass_path", "license_path"}, cmd) {
-		if !dep.repoNameRe.MatchString(args[0]) {
+		if !dep.RepoNameRe.MatchString(args[0]) {
 			return "", fmt.Sprintf("%s: Invalid repository: %s\n", cmd, args[0]), 2
 		}
 		//try:
@@ -124,7 +124,7 @@ func (q *QueryCommand) __call__(argv []string) (string, string, int) {
 			for k := range repo.eclassDb.eclasses {
 				ree = append(ree, k)
 			}
-			return fmt.Sprintf("%s\n", strings.Join(myutil.sorted(ree), " ")), warnings_str, 0
+			return fmt.Sprintf("%s\n", strings.Join(myutil.Sorted(ree), " ")), warnings_str, 0
 		} else if cmd == "eclass_path" {
 			//try:
 			eclass := repo.eclassDb.eclasses[args[1]]
@@ -134,7 +134,7 @@ func (q *QueryCommand) __call__(argv []string) (string, string, int) {
 			return fmt.Sprintf("%s\n", eclass.location), warnings_str, 0
 		} else if cmd == "license_path" {
 			paths := []string{}
-			for _, x := range repo.mastersRepo {
+			for _, x := range repo.MastersRepo {
 				paths = append(paths, filepath.Join(x.Location, "licenses", args[1]))
 			}
 			paths = append(paths, filepath.Join(repo.Location, "licenses", args[1]))

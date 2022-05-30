@@ -24,6 +24,7 @@ import (
 	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/sets"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/versions"
 	"github.com/ppphp/portago/pkg/xpak"
 	"github.com/ppphp/shlex"
@@ -69,50 +70,6 @@ type ITask interface{
 
 type DepPriorityInterface interface{
 	__int__() int
-}
-
-type AbstractDepPriority struct {
-	// slot
-	buildtime bool
-	buildtime_slot_op,runtime,runtime_post,runtime_slot_op string
-}
-
-func(a *AbstractDepPriority) __int__() int{
-	return 0
-}
-
-func(a *AbstractDepPriority) __lt__( other DepPriorityInterface) bool {
-	return a.__int__() < other.__int__()
-}
-
-func(a *AbstractDepPriority) __le__(other DepPriorityInterface) bool{
-	return a.__int__() <= other.__int__()
-}
-
-func(a *AbstractDepPriority) __eq__(other DepPriorityInterface) bool{
-	return a.__int__() == other.__int__()
-}
-
-func(a *AbstractDepPriority) __ne__(other DepPriorityInterface) bool{
-	return a.__int__() != other.__int__()
-}
-
-func(a *AbstractDepPriority) __gt__(other DepPriorityInterface) bool{
-	return a.__int__() > other.__int__()
-}
-
-func(a *AbstractDepPriority) __ge__(other DepPriorityInterface) bool{
-	return a.__int__() >= other.__int__()
-}
-
-func(a *AbstractDepPriority) copy() DepPriorityInterface {
-	b := *a
-	return &b
-}
-
-func NewAbstractDepPriority() *AbstractDepPriority {
-	a := &AbstractDepPriority{}
-	return a
 }
 
 type AbstractEbuildProcess struct {
@@ -911,7 +868,7 @@ func(l *_LockProcess) _proc_exit(proc) {
 	if proc.returncode != 0 {
 		if !l._acquire {
 			if !(l.cancelled || l._kill_test) {
-				util.WriteMsgLevel(fmt.Sprintf("_LockProcess: %s\n",
+				msg.WriteMsgLevel(fmt.Sprintf("_LockProcess: %s\n",
 					fmt.Sprintf("failed to acquire lock on '%s'", l.path, )),
 					40, -1)
 			}
@@ -1297,7 +1254,7 @@ func (b *Binpkg) _start_fetcher( lock_task) {
 		}
 
 		lock_task.future.result()
-		atom.prepare_build_dirs(b.settings, true)
+		atom.Prepare_build_dirs(b.settings, true)
 		b._build_dir.clean_log()
 	}
 
@@ -1437,10 +1394,10 @@ func (b *Binpkg) _unpack_metadata() IFuture {
 
 	dir_mode := os.FileMode(0755)
 	for _, mydir := range []string{dir_path, b._image_dir, infloc} {
-		util.ensureDirs(mydir, uint32(*data.portage_uid), *data.portage_gid, dir_mode, -1, nil, true)
+		util.EnsureDirs(mydir, uint32(*data.portage_uid), *data.portage_gid, dir_mode, -1, nil, true)
 	}
 
-	atom.prepare_build_dirs(b.settings, true)
+	atom.Prepare_build_dirs(b.settings, true)
 	b._writemsg_level(">>> Extracting info\n", 0, 0)
 
 	yield
@@ -1533,7 +1490,7 @@ func (b *Binpkg) _unpack_contents_exit( unpack_contents) {
 	}
 
 	if b._build_prefix == b.settings.ValueDict["EPREFIX"] {
-		util.ensureDirs(b.settings.ValueDict["ED"], -1, -1, -1, -1, nil, true)
+		util.EnsureDirs(b.settings.ValueDict["ED"], -1, -1, -1, -1, nil, true)
 		b._current_task = nil
 		i := 0
 		b.returncode = &i
@@ -1569,13 +1526,13 @@ func (b *Binpkg) _chpathtool_exit( chpathtool) {
 		strings.TrimLeft(b._build_prefix, string(os.PathSeparator))), string(os.PathSeparator))
 	if myutil.pathIsDir(build_d) {
 		os.RemoveAll(b._image_dir)
-		util.ensureDirs(b.settings.ValueDict["ED"], -1, -1, -1, -1, nil, true)
+		util.EnsureDirs(b.settings.ValueDict["ED"], -1, -1, -1, -1, nil, true)
 	} else {
 		os.Rename(build_d, image_tmp_dir)
 		if build_d != b._image_dir {
 			os.RemoveAll(b._image_dir)
 		}
-		util.ensureDirs(strings.TrimRight(filepath.Dir(b.settings.ValueDict["ED"]), string(os.PathSeparator)), -1, -1, -1, -1, nil, true)
+		util.EnsureDirs(strings.TrimRight(filepath.Dir(b.settings.ValueDict["ED"]), string(os.PathSeparator)), -1, -1, -1, -1, nil, true)
 		os.Rename(image_tmp_dir, b.settings.ValueDict["ED"])
 	}
 
@@ -1785,7 +1742,7 @@ func(b *BinpkgExtractorAsync) _start() {
 		return
 	}
 
-	dbs, _ := shlex.Split(strings.NewReader(util.varExpand(decomp_cmd, b.env, nil)), false, true)
+	dbs, _ := shlex.Split(strings.NewReader(util.VarExpand(decomp_cmd, b.env, nil)), false, true)
 	decompression_binary := ""
 	if len(dbs) > 0 {
 		decompression_binary = dbs[0]
@@ -1795,7 +1752,7 @@ func(b *BinpkgExtractorAsync) _start() {
 		if decomp["decompress_alt"] != "" {
 			decomp_cmd = decomp["decompress_alt"]
 		}
-		dbs, _ := shlex.Split(strings.NewReader(util.varExpand(decomp_cmd, b.env, nil)), false, true)
+		dbs, _ := shlex.Split(strings.NewReader(util.VarExpand(decomp_cmd, b.env, nil)), false, true)
 		decompression_binary = ""
 		if len(dbs) > 0 {
 			decompression_binary = dbs[0]
@@ -1805,7 +1762,7 @@ func(b *BinpkgExtractorAsync) _start() {
 			missing_package := decomp["package"]
 			b.scheduler.output(fmt.Sprintf("!!! %s\n",
 				fmt.Sprintf("File compression unsupported %s.\n Command was: %s.\n Maybe missing package: %s",
-					b.pkg_path, util.varExpand(decomp_cmd, b.env, nil), missing_package)), b.logfile,
+					b.pkg_path, util.VarExpand(decomp_cmd, b.env, nil), missing_package)), b.logfile,
 				b.background, 40, -1)
 			i := 1
 			b.returncode = &i
@@ -1870,7 +1827,7 @@ func (b *BinpkgFetcher) _start() {
 		b.pretend, b.scheduler)
 
 	if not b.pretend {
-		util.ensureDirs(filepath.Dir(b.pkg_path),-1,-1,-1,-1,nil,true)
+		util.EnsureDirs(filepath.Dir(b.pkg_path),-1,-1,-1,-1,nil,true)
 		if "distlocks" in
 		b.pkg.root_config.settings.features
 		{
@@ -1984,7 +1941,7 @@ func (b *_BinpkgFetcherProcess) _start() {
 	}
 
 	if pretend {
-		util.WriteMsgStdout(fmt.Sprintf("\n%s\n", uri), -1)
+		msg.WriteMsgStdout(fmt.Sprintf("\n%s\n", uri), -1)
 		i := 0
 		b.returncode = &i
 		b._async_wait()
@@ -2017,7 +1974,7 @@ func (b *_BinpkgFetcherProcess) _start() {
 	fetch_args := []string{}
 	ss, _ := shlex.Split(strings.NewReader(fcmd), false, true)
 	for _, x := range ss {
-		fetch_args = append(fetch_args, util.varExpand(x, fcmd_vars, nil))
+		fetch_args = append(fetch_args, util.VarExpand(x, fcmd_vars, nil))
 	}
 
 	if b.fd_pipes == nil {
@@ -2301,9 +2258,9 @@ func (b *BinpkgVerifier) _display_success() {
 		path = path[:-len(".partial")]
 	}
 	eout := output.NewEOutput(false)
-	eout.ebegin(fmt.Sprintf("%s %s ;-)",filepath.Base(path),
-		" ".join(myutil.sorted(b._digests))))
-	eout.eend(0, "")
+	eout.Ebegin(fmt.Sprintf("%s %s ;-)",filepath.Base(path),
+		strings.Join(myutil.Sorted(b._digests)," ")))
+	eout.Eend(0, "")
 
 	os.Stdout = stdout_orig
 	os.Stderr = stderr_orig
@@ -2339,23 +2296,6 @@ func NewBinpkgVerifier(background bool, logfile string, pkg *versions.PkgStr, sc
 	b._pkg_path=pkg_path
 
 	return b
-}
-
-type Blocker struct {
-	*Task
-
-	//slot
-	root,atom,cp,eapi,priority,satisfied string
-}
-
-__hash__ = Task.__hash__
-
-func NewBlocker( **kwargs) {
-	b:=&Blocker{}
-	b.Task = NewTask( **kwargs)
-	b.cp = b.atom.cp
-	b._hash_key = ("blocks", b.root, b.atom, b.eapi)
-	b._hash_value = hash(b._hash_key)
 }
 
 type BlockerCache struct {
@@ -2586,7 +2526,7 @@ func (b *BlockerDB)findInstalledBlockers( new_pkg) {
 			if success == 0 {
 				pkg_location := filepath.Join(inst_pkg.root,
 					_const.VdbPath, inst_pkg.category, inst_pkg.pf)
-				util.WriteMsg(fmt.Sprintf("!!! %s/*DEPEND: %s\n",
+				msg.WriteMsg(fmt.Sprintf("!!! %s/*DEPEND: %s\n",
 					pkg_location, atoms), -1, nil)
 				continue
 			}
@@ -2678,65 +2618,6 @@ func (b *BlockerDB)discardBlocker(versions.pkg) {
 			b._fake_vartree.cpv_discard(slot_match)
 		}
 	}
-}
-
-// slot object
-type Dependency struct {
-	// slot
-	depth int
-	collapsed_priority, priority *DepPriority
-	atom,blocker,child,
-	parent,onlydeps,root,want_update,
-	collapsed_parent
-}
-
-func NewDependency()*Dependency {
-	d := &Dependency{}
-	SlotObject.__init__(d, **kwargs)
-	if d.priority ==nil {
-		d.priority = NewDepPriority(false)
-	}
-	if d.depth == 0 {
-		d.depth = 0
-	}
-	if d.collapsed_parent == nil {
-		d.collapsed_parent = d.parent
-	}
-	if d.collapsed_priority == nil {
-		d.collapsed_priority = d.priority
-	}
-	return d
-}
-
-type DependencyArg struct {
-	// slot
-	arg                                    string
-	root_config                            *RootConfig
-	force_reinstall, internal, reset_depth bool
-}
-
-func(d*DependencyArg) __eq__(other*DependencyArg) bool{
-	return d.arg == other.arg&& d.root_config.root == other.root_config.root
-}
-
-func(d*DependencyArg) __hash__() {
-	return hash((d.arg, d.root_config.root))
-}
-
-func(d*DependencyArg) __str__() string {
-	return fmt.Sprintf("%s" ,d.arg,)
-}
-
-// "", false, false, true, nil
-func NewDependencyArg(arg string, force_reinstall, internal,
-	reset_depth bool, root_config*RootConfig)*DependencyArg {
-	d := &DependencyArg{}
-	d.arg = arg
-	d.force_reinstall = force_reinstall
-	d.internal = internal
-	d.reset_depth = reset_depth
-	d.root_config = root_config
-	return d
 }
 
 type DepPriority struct{
@@ -2875,7 +2756,7 @@ type EbuildBuild struct {
 }
 
 func(e *EbuildBuild) _start() {
-	if not e.opts.fetchonly {
+	if ! e.opts.fetchonly {
 		rval := atom._check_temp_dir(e.settings)
 		if rval != 0 {
 			e.returncode = &rval
@@ -2933,7 +2814,7 @@ func(e *EbuildBuild) _start_with_metadata( aux_get_task) {
 		//pass
 	}else if prefetcher.isAlive() && prefetcher.poll() == nil {
 		if !e.background {
-			fetch_log := filepath.Join(atom._emerge_log_dir, "emerge-fetch.log")
+			fetch_log := filepath.Join(_emerge_log_dir, "emerge-fetch.log")
 			msg := []string{
 				"Fetching files in the background.",
 				"To view fetch progress, run in another terminal:",
@@ -2941,7 +2822,7 @@ func(e *EbuildBuild) _start_with_metadata( aux_get_task) {
 			}
 			out := output.NewEOutput(false)
 			for _, l := range msg {
-				out.einfo(l)
+				out.Einfo(l)
 			}
 		}
 
@@ -2962,7 +2843,7 @@ func(e *EbuildBuild) _check_manifest() bool {
 		quiet_setting := settings.ValueDict["PORTAGE_QUIET"]
 		settings.ValueDict["PORTAGE_QUIET"] = "1"
 	//try:
-		success = atom.digestcheck([]string{}, settings, true, nil)
+		success = ebuild2.Digestcheck([]string{}, settings, true, nil)
 	//finally:
 		if quiet_setting != ""{
 			settings.ValueDict["PORTAGE_QUIET"] = quiet_setting
@@ -3065,7 +2946,7 @@ func(e *EbuildBuild) _pre_clean_exit( pre_clean_phase) {
 		return
 	}
 
-	atom.prepare_build_dirs(e.settings, 1)
+	ebuild2.Prepare_build_dirs(e.settings, 1)
 
 	fetcher := NewEbuildFetcher(e.config_pool, e._ebuild_path, e.opts.fetch_all_uri,
 		 e.opts.fetchonly, e.background, e.settings.ValueDict["PORTAGE_LOG_FILE"],
@@ -3477,7 +3358,7 @@ func (e*EbuildBuildDir) async_lock() IFuture {
 		}
 
 		//try:
-		util.ensureDirs(catdir, -1, *data.portage_gid, 070, 0, nil, true)
+		util.EnsureDirs(catdir, -1, *data.portage_gid, 070, 0, nil, true)
 		//except PortageException as e:
 		//if ! filepath.Dir(catdir) {
 		//	result.set_exception(e)
@@ -3489,7 +3370,7 @@ func (e*EbuildBuildDir) async_lock() IFuture {
 	}
 
 	//try:
-	util.ensureDirs(filepath.Dir(catdir), -1, *data.portage_gid, 070, 0, nil, true)
+	util.EnsureDirs(filepath.Dir(catdir), -1, *data.portage_gid, 070, 0, nil, true)
 	//except PortageException:
 	//if not filepath.Dir(filepath.Dir(catdir)):
 	//raise
@@ -3565,9 +3446,9 @@ func (e*EbuildExecuter)_start() {
 	scheduler := e.scheduler
 	settings := e.settings
 	cleanup := 0
-	atom.prepare_build_dirs(settings, cleanup!=0)
+	ebuild2.Prepare_build_dirs(settings, cleanup!=0)
 
-	if eapi2.eapiExportsReplaceVars(settings.ValueDict["EAPI"]) {
+	if eapi2.EapiExportsReplaceVars(settings.ValueDict["EAPI"]) {
 		vardb := pkg.root_config.trees['vartree'].dbapi
 		settings.ValueDict["REPLACING_VERSIONS"] = " ".join(
 			set(versions.cpvGetVersion(match, "") \
@@ -4168,7 +4049,7 @@ func (e *EbuildIpcDaemon) _send_reply( reply) {
 		os.O_WRONLY|syscall.O_NONBLOCK, 0644)
 	if err != nil {
 		//except OSError as e:
-		util.WriteMsgLevel(fmt.Sprintf("!!! EbuildIpcDaemon %s: %s\n",
+		msg.WriteMsgLevel(fmt.Sprintf("!!! EbuildIpcDaemon %s: %s\n",
 			"failed to send reply", e), 40, -1)
 	} else {
 		//try:
@@ -4449,7 +4330,7 @@ func(e *EbuildMetadataPhase) _async_waitpid_cb( *args, **kwargs) {
 		if metadata_valid {
 			if e.eapi_supported {
 				if metadata["INHERITED"] != "" {
-					metadata["_eclasses_"] = e.portdb.repositories.getRepoForLocation(
+					metadata["_eclasses_"] = e.portdb.repositories.GetRepoForLocation(
 						e.repo_path).eclassDb.get_eclass_data(
 						metadata["INHERITED"].split())
 				} else {
@@ -4813,7 +4694,7 @@ func (e *EbuildPhase) _post_phase_exit( post_phase) {
 	}
 
 	if e._final_exit(post_phase) != 0 {
-		util.WriteMsg(fmt.Sprintf("!!! post %s failed; exiting.\n", e.phase),
+		msg.WriteMsg(fmt.Sprintf("!!! post %s failed; exiting.\n", e.phase),
 			-1, nil)
 		e._die_hooks()
 		return
@@ -5032,7 +4913,7 @@ func(p*_PostPhaseCommands) _soname_deps_qa() IFuture {
 		unresolved.sort()
 		qa_msg := []string{"QA Notice: Unresolved soname dependencies:"}
 		qa_msg = append(qa_msg, "")
-		qa_msg =append(qa_msg, fmt.Sprintf("\t%s: %s", filename, strings.Join(myutil.sorted(soname_deps)), " "))
+		qa_msg =append(qa_msg, fmt.Sprintf("\t%s: %s", filename, strings.Join(myutil.Sorted(soname_deps)), " "))
 		for filename, soname_deps
 			in
 		unresolved)
@@ -6011,7 +5892,7 @@ func(m*MetadataRegen) _next_task() {
 func(m*MetadataRegen) _iter_every_cp() []string {
 	cp_all := m._portdb.cp_all
 	cps := []string{}
-	for _, category:= range myutil.sorted(m._portdb.categories()) {
+	for _, category:= range myutil.Sorted(m._portdb.categories()) {
 		for _, cp := range cp_all(map[string]bool{category:true}, nil, false, true) {
 			cps = append(cps, cp)
 		}
@@ -6025,16 +5906,16 @@ func(m*MetadataRegen) _iter_metadata_processes() {
 	cp_set := m._cp_set
 	consumer := m._consumer
 
-	util.WriteMsgStdout("Regenerating cache entries...\n", 0)
+	msg.WriteMsgStdout("Regenerating cache entries...\n", 0)
 	for _, cp := range m._cp_iter {
 		if m._terminated.is_set() {
 			break
 		}
 		cp_set.add(cp)
-		util.WriteMsgStdout(fmt.Sprintf("Processing %s\n", cp), 0)
+		msg.WriteMsgStdout(fmt.Sprintf("Processing %s\n", cp), 0)
 		for _, mytree := range portdb.porttrees {
-			repo := portdb.repositories.getRepoForLocation(mytree)
-			cpv_list := portdb.cp_list(cp, 1, []string{repo.location})
+			repo := portdb.repositories.GetRepoForLocation(mytree)
+			cpv_list := portdb.cp_list(cp, 1, []string{repo.Location})
 			for _, cpv := range cpv_list {
 				if m._terminated.is_set() {
 					break
@@ -6081,7 +5962,7 @@ func(m*MetadataRegen) _cleanup() {
 			CacheError
 			as
 		e:
-			util.WriteMsg(fmt.Sprintf("Error listing cache entries for " +
+			msg.WriteMsg(fmt.Sprintf("Error listing cache entries for " +
 			"'%s': %s, continuing...\n" ,mytree, e), -1, nil)
 			del
 			e
@@ -6105,7 +5986,7 @@ func(m*MetadataRegen) _cleanup() {
 		CacheError
 		as
 	e:
-		util.WriteMsg(fmt.Sprintf("Error listing cache entries for "+
+		msg.WriteMsg(fmt.Sprintf("Error listing cache entries for "+
 			"'%s': %s, continuing...\n", mytree, e), -1, nil)
 		del
 		e
@@ -6148,7 +6029,7 @@ func(m*MetadataRegen) _task_exit(metadata_process) {
 	if metadata_process.returncode != 0 {
 		m._valid_pkgs.discard(metadata_process.cpv)
 		if not m._terminated_tasks {
-			util.WriteMsg(fmt.Sprintf("Error processing %s, continuing...\n", metadata_process.cpv, ), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("Error processing %s, continuing...\n", metadata_process.cpv, ), -1, nil)
 		}
 	}
 
@@ -6338,28 +6219,6 @@ func NewIUse(pkg string, tokens []string, iuseImplicitMatch func(string) bool, a
 	}
 
 	return i
-}
-
-type PackageArg struct {
-	*DependencyArg
-
-	atom *dep.Atom
-	pset *sets.InternalPackageSet
-}
-
-// nil
-func NewPackageArg(packagee=None, arg string, root_config *RootConfig, **kwargs)*PackaeArg {
-	p := &PackageArg{}
-	p.DependencyArg = NewDependencyArg(arg, false, false, true, root_config,**kwargs)
-	p.packagee = packagee
-	atom := "=" + packagee.cpv
-	if packagee.repo != Package.UNKNOWN_REPO {
-		atom += _repo_separator + packagee.repo
-	}
-	allow_repo := true
-	p.atom, _ = dep.NewAtom(atom, nil, false, &allow_repo, nil, "", nil, nil)
-	p.pset = atom.NewInternalPackageSet([]*dep.Atom{p.atom,}, true, true)
-	return p
 }
 
 type PackageMerge struct{
@@ -6566,7 +6425,7 @@ func(p*PackageUninstall) _start_unmerge( lock_task) {
 	}
 
 	lock_task.future.result()
-	atom.prepare_build_dirs(p.settings, true)
+	atom.Prepare_build_dirs(p.settings, true)
 
 	retval, pkgmap := _unmerge_display(p.pkg.root_config,
 		p.opts, "unmerge", [p.pkg.cpv], clean_delay = 0,
@@ -6637,7 +6496,7 @@ func(p*PackageUninstall) _writemsg_level(msg string, level, noiselevel int) {
 
 	if log_path == "" {
 		if !(background && level < 30) {
-			util.WriteMsgLevel(msg, level, noiselevel)
+			msg.WriteMsgLevel(msg, level, noiselevel)
 		}
 	}else {
 		p.scheduler.output(msg, log_path,false, level, noiselevel)
@@ -6797,7 +6656,7 @@ func(p*PackageVirtualDbapi) cp_list( mycp string, use_cache int) {
 // false
 func(p*PackageVirtualDbapi) cp_all( sort bool) {
 	if sort {
-		return myutil.sorted(p._cp_map)
+		return myutil.Sorted(p._cp_map)
 	}else {
 		return list(p._cp_map)
 	}
@@ -6974,34 +6833,6 @@ func NewPipeReader(input_files map[string]int, scheduler *SchedulerInterface)*Pi
 	return p
 }
 
-
-type ProgressHandler struct {
-	curval, maxval int
-	min_latency,_last_update float64
-}
-
-func NewProgressHandler()*ProgressHandler {
-	p := &ProgressHandler{}
-	p.curval = 0
-	p.maxval = 0
-	p._last_update = 0
-	p.min_latency = 0.2
-	return p
-}
-
-func(p *ProgressHandler) onProgress( maxval, curval int) {
-	p.maxval = maxval
-	p.curval = curval
-	cur_time := float64(time.Now().UnixMilli()) / 1000
-	if cur_time-p._last_update >= p.min_latency {
-		p._last_update = cur_time
-		p.display()
-	}
-}
-
-func(p *ProgressHandler) display() {
-	//raise NotImplementedError(p)
-}
 
 const FAILURE = 1
 
@@ -7274,14 +7105,14 @@ func NewScheduler(settings *ebuild2.Config, trees, atom.mtimedb, myopts, spinner
 	in
 	s.myopts):
 	if !features["distlocks"] {
-		util.WriteMsg(output.Red("!!!")+"\n", -1, nil)
-		util.WriteMsg(output.Red("!!!")+" parallel-fetching "+
+		msg.WriteMsg(output.Red("!!!")+"\n", -1, nil)
+		msg.WriteMsg(output.Red("!!!")+" parallel-fetching "+
 			"requires the distlocks feature enabled"+"\n",
 			-1, nil)
-		util.WriteMsg(output.Red("!!!")+" you have it disabled, "+
+		msg.WriteMsg(output.Red("!!!")+" you have it disabled, "+
 			"thus parallel-fetching is being disabled"+"\n",
 			-1, nil)
-		util.WriteMsg(output.Red("!!!")+"\n", -1, nil)
+		msg.WriteMsg(output.Red("!!!")+"\n", -1, nil)
 	} else if merge_count > 1 {
 		s._parallel_fetch = true
 	}
@@ -7411,7 +7242,7 @@ func (s*Scheduler) _background_mode() bool {
 		interactive_tasks := s._get_interactive_tasks()
 		if interactive_tasks{
 			background = false
-			util.WriteMsgLevel(">>> Sending package output to stdio due "+
+			msg.WriteMsgLevel(">>> Sending package output to stdio due "+
 				"to interactive package(s):\n",
 				10, -1)
 			msg := []string{""}
@@ -7425,16 +7256,16 @@ func (s*Scheduler) _background_mode() bool {
 				msg= append(msg, pkg_str)
 			}
 			msg= append(msg, "")
-			util.WriteMsgLevel(strings.Join(msg, "\n")+"\n", 20, -1)
+			msg.WriteMsgLevel(strings.Join(msg, "\n")+"\n", 20, -1)
 			if s._max_jobs is
 			true ||
 				s._max_jobs > 1
 			{
 				s._set_max_jobs(1)
-				util.WriteMsgLevel(">>> Setting --jobs=1 due "+
+				msg.WriteMsgLevel(">>> Setting --jobs=1 due "+
 					"to the above interactive package(s)\n",
 					20, -1)
-				util.WriteMsgLevel(">>> In order to temporarily mask "+
+				msg.WriteMsgLevel(">>> In order to temporarily mask "+
 					"interactive updates, you may\n"+
 					">>> specify --accept-properties=-interactive\n",
 					20, -1)
@@ -7711,7 +7542,7 @@ func (s *Scheduler) _generate_digests() int {
 	AssertionError("ebuild not found for '%s'" % x.cpv)
 	pkgsettings.ValueDict['O'] =  filepath.Dir(ebuild_path)
 	if atom.digestgen(nil,  pkgsettings, atom.portdb)==0 {
-		util.WriteMsgLevel(fmt.Sprintf("!!! Unable to generate manifest for '%s'.\n", x.cpv), 40,-1)
+		msg.WriteMsgLevel(fmt.Sprintf("!!! Unable to generate manifest for '%s'.\n", x.cpv), 40,-1)
 		return FAILURE
 	}
 
@@ -7766,7 +7597,7 @@ func (s *Scheduler) _check_manifests() int {
 		raise
 		AssertionError("ebuild not found for '%s'" % x.cpv)
 		quiet_config["O"] =  filepath.Dir(ebuild_path)
-		if not atom.digestcheck([], quiet_config, strict = true):
+		if not atom.Digestcheck([], quiet_config, strict = true):
 		failures |= 1
 	}
 
@@ -7849,7 +7680,7 @@ func (s *Scheduler) _run_pkg_pretend()  int {
 		}
 
 		out_str := ">>> Running pre-merge checks for " + output.colorize("INFORM", x.cpv) + "\n"
-		util.WriteMsgStdout(out_str, -1)
+		msg.WriteMsgStdout(out_str, -1)
 
 		root_config := x.root_config
 		settings := s.pkgsettings[root_config.root]
@@ -7925,7 +7756,7 @@ func (s *Scheduler) _run_pkg_pretend()  int {
 			bintree.inject(x.cpv, filename = fetched)
 
 			infloc = filepath.Join(build_dir_path, "build-info")
-			util.ensureDirs(infloc)
+			util.EnsureDirs(infloc)
 			s._sched_iface.run_until_complete(
 				bintree.dbapi.unpack_metadata(settings, infloc))
 			ebuild_path = filepath.Join(infloc, x.pf+".ebuild")
@@ -7950,7 +7781,7 @@ func (s *Scheduler) _run_pkg_pretend()  int {
 			"pretend", nil, settings, false, nil,
 			s.trees[settings.ValueDict["EROOT"]][tree].dbapi)
 
-		atom.prepare_build_dirs(settings, false)
+		atom.Prepare_build_dirs(settings, false)
 
 		vardb = root_config.trees['vartree'].dbapi
 		settings.ValueDict["REPLACING_VERSIONS"] = " ".join(
@@ -7994,7 +7825,7 @@ func (s *Scheduler) _run_pkg_pretend()  int {
 func (s *Scheduler) merge() int {
 	if "--resume" in
 	s.myopts{
-		util.WriteMsgStdout(
+		msg.WriteMsgStdout(
 			output.colorize("GOOD", "*** Resuming merge...\n"), -1)
 		s._logger.log(" *** Resuming merge...", "")
 	}
@@ -8068,7 +7899,7 @@ func (s *Scheduler) merge() int {
 		sighandler := func(signum int, frame) {
 			signal.signal(signal.SIGINT, signal.SIG_IGN)
 			signal.signal(signal.SIGTERM, signal.SIG_IGN)
-			util.WriteMsg(fmt.Sprintf("\n\nExiting on signal %s\n", signum), 0, nil)
+			msg.WriteMsg(fmt.Sprintf("\n\nExiting on signal %s\n", signum), 0, nil)
 			s.terminate()
 			received_signal = append(received_signal, 128+signum)
 		}
@@ -8183,12 +8014,12 @@ func (s *Scheduler) merge() int {
 		for line
 			in
 		log_file:
-		util.WriteMsgLevel(line, -1, 0)
+		msg.WriteMsgLevel(line, -1, 0)
 		except
 		zlib.error
 		as
 	e:
-		util.WriteMsgLevel("%s\n"%(e, ), level = 40,
+		msg.WriteMsgLevel("%s\n"%(e, ), level = 40,
 			noiselevel = -1)
 	finally:
 		log_file.close()
@@ -8956,7 +8787,7 @@ func (s *Scheduler) _failed_pkg_msg(failed_pkg *_failed_pkg, action, preposition
 
 func (s *Scheduler) _status_msg( msg string) {
 	if !s._background {
-		util.WriteMsgLevel("\n", 0, 0)
+		msg.WriteMsgLevel("\n", 0, 0)
 	}
 	s._status_display.displayMessage(msg)
 }
@@ -9151,7 +8982,7 @@ try:
 		(pkg_count.curval, pkg_count.maxval, versions.pkg.cpv))
 	world_set.add(atom)
 	else:
-	util.WriteMsgLevel("\n!!! Unable to record %s in \"world\"\n" %
+	msg.WriteMsgLevel("\n!!! Unable to record %s in \"world\"\n" %
 		(atom,), level = logging.WARN, noiselevel=-1)
 finally:
 	if world_locked:
@@ -9273,24 +9104,6 @@ func(s*SequentialTaskQueue) __bool__() bool {
 
 func(s*SequentialTaskQueue) __len__() int {
 	return len(s._task_queue) + len(s.running_tasks)
-}
-
-
-type SetArg struct{
-	*DependencyArg
-
-	// slot
-	name string
-	pset
-}
-
-// nil
-func NewSetArg( pset, **kwargs) *SetArg {
-	s := &SetArg{}
-	s.DependencyArg = NewDependencyArg(**kwargs)
-	s.pset = pset
-	s.name = s.arg[len(sets.SETPREFIX):]
-	return s
 }
 
 type SpawnProcess struct {
@@ -9476,7 +9289,7 @@ func(s *SpawnProcess) _cgroup_cleanup() {
 				if err != nil {
 					//except OSError as e:
 					if err == syscall.EPERM {
-						util.WriteMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n", p), 40, -1)
+						msg.WriteMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n", p), 40, -1)
 					} else if err != syscall.ESRCH {
 						//raise
 					}
@@ -9564,7 +9377,7 @@ func (s *SubProcess) _cancel() {
 		if err != nil {
 			//except OSError as e:
 			if err == syscall.EPERM {
-				util.WriteMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n", s.pid), 40, -1)
+				msg.WriteMsgLevel(fmt.Sprintf("!!! kill: (%i) - Operation not permitted\n", s.pid), 40, -1)
 			} else if err != syscall.ESRCH {
 				//raise
 			}
@@ -10293,7 +10106,7 @@ func (s *SchedulerInterface) output( msg , log_path string, background bool, lev
 
 	msg_shown := false
 	if !background {
-		util.WriteMsgLevel(msg, level, noiselevel)
+		msg.WriteMsgLevel(msg, level, noiselevel)
 		msg_shown = true
 	}
 
@@ -10305,7 +10118,7 @@ func (s *SchedulerInterface) output( msg , log_path string, background bool, lev
 				//raise
 			}
 			if !msg_shown {
-				util.WriteMsgLevel(msg, level, noiselevel)
+				msg.WriteMsgLevel(msg, level, noiselevel)
 			}
 		} else {
 			if strings.HasSuffix(log_path, ".gz") {
@@ -10355,32 +10168,6 @@ func NewAsyncTaskFuture(future IFuture)*AsyncTaskFuture {
 	a.AsynchronousTask = NewAsynchronousTask()
 	a.future = future
 	return a
-}
-
-func getloadavg() (float64,float64,float64,error) {
-	f, err := ioutil.ReadFile("/proc/loadavg")
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	loadavg_str := strings.Split(string(f), "\n")[0]
-	loadavg_split := strings.Fields(loadavg_str)
-	if len(loadavg_split) < 3 {
-		//raise OSError('unknown')
-		return 0, 0, 0, errors.New("unknown")
-	}
-	f0, err := strconv.ParseFloat(loadavg_split[0], 64)
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	f1, err := strconv.ParseFloat(loadavg_split[1], 64)
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	f2, err := strconv.ParseFloat(loadavg_split[2], 64)
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	return f0, f1, f2, nil
 }
 
 type AsyncScheduler struct {

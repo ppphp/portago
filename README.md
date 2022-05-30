@@ -28,8 +28,10 @@ now based on portage master, Feb 21, 2022
     - xpak
     - src
     - versions
-  - bad
+    - getbinpkg
     - binrepo
+    - env
+  - bad
     - cache
     - dbapi
     - dep
@@ -37,8 +39,6 @@ now based on portage master, Feb 21, 2022
     - elog
     - emaint
     - emerge
-    - env
-    - getbinpkg
     - locks
     - manifest
     - metadata

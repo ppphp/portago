@@ -2,7 +2,10 @@ package sets
 
 import (
 	"github.com/ppphp/portago/pkg/dep"
+	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/portago/pkg/versions"
+	"strings"
 )
 
 var OPERATIONS = []string{"merge", "unmerge"}
@@ -12,6 +15,11 @@ type PackageSet struct {
 	description string
 
 	_loaded, _loading, world_candidate, _allow_wildcard, _allow_repo bool
+
+	_atoms
+	_atommap
+	errors
+	_nonatoms
 }
 
 // false, false
@@ -24,22 +32,24 @@ func NewPackageSet(allow_wildcard, allow_repo bool) *PackageSet {
 	p._atommap = ExtendedAtomDict(set)
 	p._loaded = false
 	p._loading = false
-	p.errors = []
+	p.errors = []T{}
 p._nonatoms = set()
 p.world_candidate = false
 p._allow_wildcard = allow_wildcard
 p._allow_repo = allow_repo
+return p
 }
 
 func (p*PackageSet) __contains__(atom) bool {
 	p._load()
-	return atom
-	in
-	p._atoms
-	or
-	atom
-	in
-	p._nonatoms
+
+	_, ok := p._atoms[atom]
+	if ok {
+		return  true
+	}
+
+	_, ok = p._nonatoms[atom]
+	return ok
 }
 
 func (p*PackageSet) __iter__() {
@@ -56,23 +66,18 @@ func (p*PackageSet) __iter__() {
 	x
 }
 
-func (p*PackageSet) __bool__() {
+func (p*PackageSet) __bool__() bool {
 	p._load()
-	return bool(p._atoms
-	or
-	p._nonatoms)
+	return len(p._atoms) > 0 || len(p._nonatoms) > 0
 
 }
 
-func (p*PackageSet) supportsOperation(dep.op) {
-	if not dep.op
-	in
-OPERATIONS:
-	raise
-	ValueError(dep.op)
-	return dep.op
-	in
-	p._operations
+func (p*PackageSet) supportsOperation(op string) bool {
+	if ! myutil.Ins(OPERATIONS, op) {
+		//raise ValueError(dep.op)
+	}
+	return myutil.Ins(p._operations, op)
+
 }
 
 func (p*PackageSet) _load() {
@@ -111,24 +116,19 @@ try:
 InvalidAtom:
 	p._nonatoms.add(a)
 	continue
-	if not p._allow_wildcard
-	and
-	a.extended_syntax:
-	raise
-	InvalidAtom("extended atom syntax not allowed here")
-	if not p._allow_repo
-	and
-	a.repo:
-	raise
-	InvalidAtom("repository specification not allowed here")
+	if ! p._allow_wildcard && a.extended_syntax {
+		//raise InvalidAtom("extended atom syntax not allowed here")
+	}
+	if ! p._allow_repo && a.repo {
+		//raise InvalidAtom("repository specification not allowed here")
+	}
 	p._atoms.add(a)
 
-	p._updateAtomMap()
+	p._updateAtomMap(nil)
 }
 
 func (p*PackageSet) load() {
-	raise
-	NotImplementedError()
+	//raise NotImplementedError()
 }
 
 func (p*PackageSet) containsCPV(versions.cpv) {
@@ -148,6 +148,7 @@ func (p*PackageSet) getMetadata(key) {
 	return ""
 }
 
+// nil
 func (p*PackageSet) _updateAtomMap(atoms=None) {
 	if not atoms:
 	p._atommap.clear()
@@ -159,26 +160,19 @@ func (p*PackageSet) _updateAtomMap(atoms=None) {
 }
 
 // nil
-func (p*PackageSet) findAtomForPackage(versions.pkg, modified_use=None) {
+func (p*PackageSet) FindAtomForPackage(pkg, modified_use []string) {
+	if modified_use != nil && modified_use!= versions.pkg.use.enabled {
+		pkg = pkg.copy()
+	}
+	pkg._metadata["USE"] = strings.Join(modified_use, " ")
 
-	if modified_use is
-	not
-	None
-	and
-	modified_use
-	is
-	not
-	versions.pkg.use.enabled:
-	versions.pkg = versions.pkg.copy()
-	versions.pkg._metadata["USE"] = " ".join(modified_use)
-
-	rev_transform =
+	rev_transform :=
 	{
 	}
 	for atom
 		in
-	p.iterAtomsForPackage(versions.pkg):
-	if atom.cp == versions.pkg.cp:
+	p.iterAtomsForPackage(pkg):
+	if atom.cp == pkg.cp:
 	rev_transform[atom] = atom
 	else:
 	rev_transform
@@ -186,22 +180,24 @@ func (p*PackageSet) findAtomForPackage(versions.pkg, modified_use=None) {
 best_match = best_match_to_list(pkg, iter(rev_transform))
 if best_match:
 return rev_transform[best_match]
-return None
+return nil
 }
 
-func (p*PackageSet) iterAtomsForPackage(versions.pkg) {
-	cpv_slot_list = [pkg]
-cp = cpv_getkey(pkg.cpv)
+func (p*PackageSet) iterAtomsForPackage(pkg) {
+	cpv_slot_list := []T{pkg}
+cp := versions.CpvGetKey(pkg.cpv, "")
 p._load()
 
-atoms = p._atommap.get(cp)
-if atoms:
-for atom
-in
-atoms:
-if match_from_list(atom, cpv_slot_list):
-yield
-atom
+atoms := p._atommap.get(cp)
+if atoms {
+	for atom
+		in
+	atoms {
+		if match_from_list(atom, cpv_slot_list):
+		yield
+		atom
+	}
+}
 }
 
 type EditablePackageSet struct {
@@ -218,7 +214,7 @@ func NewEditablePackageSet(allow_wildcard, allow_repo bool)*EditablePackageSet {
 func(p*EditablePackageSet) update( atoms []*dep.Atom) {
 	p._load()
 	modified := false
-	normal_atoms := []
+	normal_atoms := []T{}
 for _, a:= range atoms:
 if not isinstance(a, Atom):
 try:
@@ -276,8 +272,7 @@ func(p*EditablePackageSet) removePackageAtoms(versions.cp) {
 }
 
 func(p*EditablePackageSet) write() {
-	raise
-	NotImplementedError()
+	//raise NotImplementedError()
 }
 
 type InternalPackageSet struct {
@@ -295,7 +290,7 @@ func NewInternalPackageSet(initial_atoms []*dep.Atom, allow_wildcard, allow_repo
 
 func(p*InternalPackageSet) clear() {
 	p._atoms.clear()
-	p._updateAtomMap()
+	p._updateAtomMap(nil)
 }
 
 func(p*InternalPackageSet) load() {

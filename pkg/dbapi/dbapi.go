@@ -17,167 +17,6 @@ import (
 	"strings"
 )
 
-//nil,1,nil
-func dep_expandS(myDep string, myDb *dbapi, useCache int, settings *ebuild.Config) *dep.Atom {
-	origDep := myDep
-	if myDep == "" {
-		return nil
-	}
-	if myDep[0] == '*' {
-		myDep = myDep[1:]
-		origDep = myDep
-	}
-	hasCat := strings.Contains(strings.Split(origDep, ":")[0], "/")
-	if !hasCat {
-		re := regexp.MustCompile("\\w")
-		alphanum := re.FindStringSubmatchIndex(origDep)
-		if len(alphanum) > 0 {
-			myDep = origDep[:alphanum[0]] + "null/" + origDep[alphanum[0]:]
-		}
-	}
-	allowRepo := true
-	myDepA, err := dep.NewAtom(myDep, nil, false, &allowRepo, nil, "", nil, nil)
-	if err != nil {
-		//except InvalidAtom:
-		if !dep.isValidAtom("="+myDep, false, false, true, "", false) {
-			//raise
-		}
-		myDepA, _ = dep.NewAtom("="+myDep, nil, false, &allowRepo, nil, "", nil, nil)
-		origDep = "=" + origDep
-	}
-
-	if !hasCat {
-		myDep = versions.catsplit(myDepA.cp)[1]
-	}
-
-	if hasCat {
-		if strings.HasPrefix(myDepA.cp, "virtual/") {
-			return myDepA
-		}
-		if len(myDb.cp_list(myDepA.cp, 1)) > 0 {
-			return myDepA
-		}
-		myDep = myDepA.cp
-	}
-
-	expanded := cpv_expand(myDep, myDb, useCache, settings)
-	r := true
-	a, _ := dep.NewAtom(strings.Replace(myDep, origDep, expanded, 1), nil, false, &r, nil, "", nil, nil)
-	return a
-}
-
-//nil,1,nil
-func dep_expand(myDep *dep.Atom, myDb *dbapi, useCache int, settings *ebuild.Config) *dep.Atom {
-	origDep := myDep
-	d := myDep.value
-	if !strings.HasPrefix(myDep.cp, "virtual/") {
-		return myDep
-	}
-	d = myDep.cp
-
-	expanded := cpv_expand(d, myDb, useCache, settings)
-	r := true
-	a, _ := dep.NewAtom(strings.Replace(d, origDep.value, expanded, 1), nil, false, &r, nil, "", nil, nil)
-	return a
-}
-
-func cpv_expand(myCpv string, myDb *dbapi, useCache int, settings *ebuild.Config) string { // n1n
-	mySlash := strings.Split(myCpv, "/")
-	mySplit := versions.pkgSplit(mySlash[len(mySlash)-1], "")
-	if settings == nil {
-		settings = myDb.settings
-	}
-	myKey := ""
-	if len(mySlash) > 2 {
-		mySplit = [3]string{}
-		myKey = myCpv
-	} else if len(mySlash) == 2 {
-		if mySplit != [3]string{} {
-			myKey = mySlash[0] + "/" + mySplit[0]
-		} else {
-			myKey = myCpv
-		}
-	}
-	if strings.HasPrefix(myKey, "virtual/") && len(myDb.cp_list(myKey, useCache)) == 0 {
-		//		if hasattr(myDb, "vartree"):
-		//		Settings._populate_treeVirtuals_if_needed(myDb.vartree)
-		//		virts = Settings.getvirtuals().get(myKey)
-		//		if virts:
-		//		mykey_orig = myKey
-		//		for vkey in virts:
-		//		if myDb.cp_list(vkey.cp):
-		//		myKey = str(vkey)
-		//		break
-		//		if myKey == mykey_orig:
-		//		myKey = str(virts[0])
-		//	}
-	} else {
-		//	if mySplit:
-		//	myp=mySplit[0]
-		//	else:
-		//	myp=myCpv
-		//	myKey=nil
-		//	matches=[]
-		//	if myDb && hasattr(myDb, "categories"):
-		//	for x in myDb.categories:
-		//	if myDb.cp_list(x+"/"+myp,use_cache=use_cache):
-		//	matches=append(,x+"/"+myp)
-		//	if len(matches) > 1:
-		//	virtual_name_collision = false
-		//	if len(matches) == 2:
-		//	for x in matches:
-		//	if not x.startswith("virtual/"):
-		//	myKey = x
-		//	else:
-		//	virtual_name_collision = true
-		//	if not virtual_name_collision:
-		//		raise AmbiguousPackageName(matches)
-		//	else if matches:
-		//	myKey=matches[0]
-		//
-		//	if not myKey && not isinstance(myDb, list):
-		//	if hasattr(myDb, "vartree"):
-		//	Settings._populate_treeVirtuals_if_needed(myDb.vartree)
-		//	virts_p = Settings.get_virts_p().get(myp)
-		//	if virts_p:
-		//	myKey = virts_p[0]
-		//	if not myKey:
-		//	myKey="null/"+myp
-	}
-	if mySplit != [3]string{} {
-		if mySplit[2] == "r0" {
-			return myKey + "-" + mySplit[1]
-		} else {
-			return myKey + "-" + mySplit[1] + "-" + mySplit[2]
-		}
-	} else {
-		return myKey
-	}
-}
-
-type IDbApi interface {
-	categories() []string
-	close_caches()
-	cp_list(cp string, useCache int) []*versions.PkgStr
-	_cmp_cpv(cpv1, cpv2 *versions.PkgStr) int
-	_cpv_sort_ascending(cpv_list []*versions.PkgStr)
-	cpv_all() []*versions.PkgStr
-	AuxGet(myCpv *versions.PkgStr, myList []string, myRepo string) []string
-	auxUpdate(cpv string, metadataUpdates map[string]string)
-	match(origdep *dep.Atom, useCache int) []*versions.PkgStr
-	_iter_match(atom *dep.Atom, cpvIter []*versions.PkgStr) []*versions.PkgStr
-	_pkg_str(cpv *versions.PkgStr, repo string) *versions.PkgStr
-	_iter_match_repo(atom *dep.Atom, cpvIter []*versions.PkgStr) []*versions.PkgStr
-	_iter_match_slot(atom *dep.Atom, cpvIter []*versions.PkgStr) []*versions.PkgStr
-	_iter_match_use(atom *dep.Atom, cpvIter []*versions.PkgStr) []*versions.PkgStr
-	_repoman_iuse_implicit_cnstr(pkg, metadata map[string]string) func(flag string) bool
-	_iuse_implicit_cnstr(pkg *versions.PkgStr, metadata map[string]string) func(string) bool
-	_match_use(atom *dep.Atom, pkg *versions.PkgStr, metadata map[string]string, ignore_profile bool) bool
-	invalidentry(mypath string)
-	update_ents(updates map[string][][]*dep.Atom, onProgress, onUpdate func(int, int))
-	move_slot_ent(mylist []*dep.Atom, repo_match func(string) bool) int
-}
-
 type dbapi struct {
 	_category_re      *regexp.Regexp
 	_use_mutable      bool
@@ -193,7 +32,7 @@ func (d *dbapi) categories() []string {
 	}
 	m := map[string]bool{}
 	for _, x := range d.cp_all(false) {
-		m[versions.catsplit(x)[0]] = true
+		m[versions.CatSplit(x)[0]] = true
 	}
 	d._categories = []string{}
 	for x := range m {
@@ -213,15 +52,15 @@ func (d *dbapi) cp_list(cp string, useCache int) []*versions.PkgStr {
 }
 
 func (d *dbapi) _cmp_cpv(cpv1, cpv2 *versions.PkgStr) int {
-	result, _ := versions.verCmp(cpv1.version, cpv2.version)
-	if result == 0 && cpv1.buildTime != 0 && cpv2.buildTime != 0 {
-		if (cpv1.buildTime > cpv2.buildTime) && (cpv1.buildTime < cpv2.buildTime) {
+	result, _ := versions.VerCmp(cpv1.version, cpv2.version)
+	if result == 0 && cpv1.BuildTime != 0 && cpv2.BuildTime != 0 {
+		if (cpv1.BuildTime > cpv2.BuildTime) && (cpv1.BuildTime < cpv2.BuildTime) {
 			result = 0
-		} else if !(cpv1.buildTime > cpv2.buildTime) && (cpv1.buildTime < cpv2.buildTime) {
+		} else if !(cpv1.BuildTime > cpv2.BuildTime) && (cpv1.BuildTime < cpv2.BuildTime) {
 			result = -2
-		} else if (cpv1.buildTime > cpv2.buildTime) && !(cpv1.buildTime < cpv2.buildTime) {
+		} else if (cpv1.BuildTime > cpv2.BuildTime) && !(cpv1.BuildTime < cpv2.BuildTime) {
 			result = 2
-		} else { // (cpv1.buildTime > cpv2.buildTime)&&(cpv1.buildTime < cpv2.buildTime)
+		} else { // (cpv1.BuildTime > cpv2.BuildTime)&&(cpv1.BuildTime < cpv2.BuildTime)
 			result = 0
 		}
 	}
@@ -259,7 +98,7 @@ func (d *dbapi) auxUpdate(cpv string, metadataUpdates map[string]string) {
 }
 
 func (d *dbapi) match(origdep *dep.Atom, useCache int) []*versions.PkgStr { // 1
-	mydep := dep_expand(origdep, d, 1, d.settings)
+	mydep := Dep_expand(origdep, d, 1, d.settings)
 	return d._iter_match(mydep, d.cp_list(mydep.cp, useCache))
 }
 
@@ -333,11 +172,11 @@ func (d *dbapi) _iter_match_use(atom *dep.Atom, cpvIter []*versions.PkgStr) []*v
 }
 
 func (d *dbapi) _repoman_iuse_implicit_cnstr(pkg, metadata map[string]string) func(flag string) bool {
-	eapiAttrs := eapi2.getEapiAttrs(metadata["EAPI"])
+	eapiAttrs := eapi2.GetEapiAttrs(metadata["EAPI"])
 	var iUseImplicitMatch func(flag string) bool = nil
-	if eapiAttrs.iuseEffective {
+	if eapiAttrs.IuseEffective {
 		iUseImplicitMatch = func(flag string) bool {
-			return d.settings.iuseEffectiveMatch(flag)
+			return d.settings.IuseEffectiveMatch(flag)
 		}
 	} else {
 		iUseImplicitMatch = func(flag string) bool {
@@ -348,15 +187,15 @@ func (d *dbapi) _repoman_iuse_implicit_cnstr(pkg, metadata map[string]string) fu
 }
 
 func (d *dbapi) _iuse_implicit_cnstr(pkg *versions.PkgStr, metadata map[string]string) func(string) bool {
-	eapiAttrs := eapi2.getEapiAttrs(metadata["EAPI"])
+	eapiAttrs := eapi2.GetEapiAttrs(metadata["EAPI"])
 	var iUseImplicitMatch func(string) bool
-	if eapiAttrs.iuseEffective {
-		iUseImplicitMatch = d.settings.iuseEffectiveMatch
+	if eapiAttrs.IuseEffective {
+		iUseImplicitMatch = d.settings.IuseEffectiveMatch
 	} else {
 		iUseImplicitMatch = d.settings.iuseImplicitMatch.call
 	}
 
-	if !d._use_mutable && eapiAttrs.iuseEffective {
+	if !d._use_mutable && eapiAttrs.IuseEffective {
 		profIuse := iUseImplicitMatch
 		enabled := strings.Fields(metadata["USE"])
 		iUseImplicitMatch = func(flag string) bool {

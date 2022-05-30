@@ -2,7 +2,10 @@ package emerge
 
 import (
 	"fmt"
+	"github.com/ppphp/portago/pkg/dep"
 	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/sets"
+	"github.com/ppphp/portago/pkg/util/msg"
 	"regexp"
 	"strings"
 )
@@ -43,45 +46,55 @@ func NewRepoDisplay(roots) *_RepoDisplay{
 	return r
 }
 
-func(r*_RepoDisplay) repoStr( repo_path_real) {
-	real_index = -1
-	if repo_path_real:
-	real_index = r._repo_paths_real.index(repo_path_real)
-	if real_index == -1:
-	s = "?"
-	r._unknown_repo = true
-	else:
-	shown_repos = r._shown_repos
-	repo_paths = r._repo_paths
-	repo_path = repo_paths[real_index]
-	index = shown_repos.get(repo_path)
-	if index is
-None:
-	index = len(shown_repos)
-	shown_repos[repo_path] = index
-	s = str(index)
+func(r*_RepoDisplay) repoStr( repo_path_real) string {
+	real_index := -1
+	s := ""
+	if repo_path_real {
+		real_index = r._repo_paths_real.index(repo_path_real)
+	}
+	if real_index == -1 {
+		s = "?"
+		r._unknown_repo = true
+	}else {
+		shown_repos := r._shown_repos
+		repo_paths := r._repo_paths
+		repo_path := repo_paths[real_index]
+		index, ok := shown_repos[repo_path]
+		if !ok {
+			index = len(shown_repos)
+			shown_repos[repo_path] = index
+		}
+		s = fmt.Sprint(index)
+	}
 	return s
 }
 
-func(r*_RepoDisplay) __str__() {
-	output := []string
-shown_repos = r._shown_repos
-unknown_repo = r._unknown_repo
-if shown_repos or r._unknown_repo:
-output.append("Repositories:\n")
-show_repo_paths = list(shown_repos)
-for repo_path, repo_index in shown_repos.items():
-show_repo_paths[repo_index] = repo_path
-if show_repo_paths:
-for index, repo_path in enumerate(show_repo_paths):
-output.append(" " + teal("[" + str(index) + "]") + " %s\n" % repo_path)
-if unknown_repo:
-output.append(
-" "
-+ teal("[?]")
-+ " indicates that the source repository could not be determined\n"
-)
-return "".join(output)
+func(r*_RepoDisplay) __str__() string {
+	output1 := []string{}
+	shown_repos := r._shown_repos
+	unknown_repo := r._unknown_repo
+	if len(shown_repos) > 0 || r._unknown_repo {
+		output1 = append(output1, "Repositories:\n")
+	}
+	show_repo_paths := list(shown_repos)
+	for repo_path, repo_index
+	in
+	shown_repos.items()
+	{
+		show_repo_paths[repo_index] = repo_path
+	}
+	if show_repo_paths {
+		for index, repo_path
+			in
+		enumerate(show_repo_paths)
+		{
+			output1=append(output1, " " + output.Teal("["+str(index)+"]") + " %s\n"%repo_path)
+		}
+	}
+	if unknown_repo {
+		output1=append(output1, " "+output.Teal("[?]")+" indicates that the source repository could not be determined\n")
+	}
+	return strings.Join(output1, "")
 }
 
 
@@ -204,72 +217,95 @@ func (p*_PackageCounters) __str__() string {
 }
 
 type _DisplayConfig struct {
-
+	favorites *sets.InternalPackageSet
+	columns,
+	tree_display,
+	alphabetical,
+	quiet,
+	all_flags,
+	print_use_string,
+	unordered_display,
+	oneshot bool
+	verbosity,
+	columnwidth int
+	repo_display *_RepoDisplay
+	mylist,
+	edebug,
+	trees,
+	pkgsettings,
+	target_root,
+	running_root,
+	roots,
+	selected_sets,
+	blocker_parents,
+	reinstall_nodes,
+	digraph,
+	blocker_uninstalls,
+	package_tracker,
+	set_nodes,
+	pkg_use_enabled,
+	pkg,
 }
 
-func NewDisplayConfig(depgraph, mylist, favorites, verbosity) *_DisplayConfig{
+func NewDisplayConfig(depgraph, mylist, favorites []*dep.Atom, verbosity int) *_DisplayConfig{
 	d := &_DisplayConfig{}
 	frozen_config := depgraph._frozen_config
 	dynamic_config := depgraph._dynamic_config
 
 	d.mylist = mylist
-	d.favorites = InternalPackageSet(favorites, allow_repo=true)
+	d.favorites = sets.NewInternalPackageSet(favorites, false, true)
 	d.verbosity = verbosity
 
-	if d.verbosity is None:
-	d.verbosity = (
-		"--quiet" in frozen_config.myopts
-	and 1
-	or "--verbose" in frozen_config.myopts
-	and 3
-	or 2
-	)
+	if d.verbosity == 0 {
+		if "--quiet" in frozen_config.myopts {
+			d.verbosity = 1
+		} else if "--verbose"in frozen_config.myopts {
+			d.verbosity = 3
+		} else {
+			d.verbosity = 2
+		}
+	}
 
-	d.oneshot = (
-		"--oneshot" in frozen_config.myopts or "--onlydeps" in frozen_config.myopts
-	)
+	d.oneshot = "--oneshot" in frozen_config.myopts || "--onlydeps" in frozen_config.myopts
+
 	d.columns = "--columns" in frozen_config.myopts
 	d.tree_display = "--tree" in frozen_config.myopts
 	d.alphabetical = "--alphabetical" in frozen_config.myopts
 	d.quiet = "--quiet" in frozen_config.myopts
 	d.all_flags = d.verbosity == 3 or d.quiet
-	d.print_use_string = (
-		d.verbosity != 1 or "--verbose" in frozen_config.myopts
-	)
+	d.print_use_string = d.verbosity != 1 || "--verbose" in frozen_config.myopts
+
 	d.edebug = frozen_config.edebug
 	d.unordered_display = "--unordered-display" in frozen_config.myopts
 
-	mywidth = 130
+	mywidth := 130
 	if "COLUMNWIDTH" in frozen_config.settings:
 try:
 	mywidth = int(frozen_config.settings["COLUMNWIDTH"])
 	except ValueError as e:
-	writemsg("!!! %s\n" % str(e), noiselevel=-1)
-	writemsg(
-		"!!! Unable to parse COLUMNWIDTH='%s'\n"
-	% frozen_config.settings["COLUMNWIDTH"],
-		noiselevel=-1,
-)
+	msg.WriteMsg(fmt.Sprintf("!!! %s\n" , str(e)),-1, nil)
+	msg.WriteMsg(
+		fmt.Sprintf("!!! Unable to parse COLUMNWIDTH='%s'\n",
+	 frozen_config.settings["COLUMNWIDTH"]),-1, nil)
 	del e
 	d.columnwidth = mywidth
 
-	if "--quiet-repo-display" in frozen_config.myopts:
-	d.repo_display = NewRepoDisplay(frozen_config.roots)
+	if "--quiet-repo-display" in frozen_config.myopts{
+		d.repo_display = NewRepoDisplay(frozen_config.roots)
+	}
 	d.trees = frozen_config.trees
 	d.pkgsettings = frozen_config.pkgsettings
 	d.target_root = frozen_config.target_root
 	d.running_root = frozen_config._running_root
 	d.roots = frozen_config.roots
 
-	# Create a set of selected packages for each root
 	d.selected_sets = {}
 	for root_name, root in d.roots.items():
 try:
 	d.selected_sets[root_name] = InternalPackageSet(
 		initial_atoms=root.setconfig.getSetAtoms("selected")
 	)
-	except PackageSetNotFound:
-	# A nested set could not be resolved, so ignore nested sets.
+	except PackageSetNotFound:=
 		d.selected_sets[root_name] = root.sets["selected"]
 
 	d.blocker_parents = dynamic_config._blocker_parents
@@ -287,51 +323,45 @@ try:
 var _alnum_sort_re = regexp.MustCompile("(\\d+)")
 
 func _alnum_sort_key(x) {
-	def
-	_convert_even_to_int(it):
-	it = iter(it)
-try:
-	while
-true:
-	yield
-	next(it)
-	yield
-	int(next(it))
-	except
-StopIteration:
-	pass
+	func _convert_even_to_int(it)
+	{
+		it = iter(it)
+	try:
+		for {
+			yield
+			next(it)
+			yield
+			int(next(it))
+		}
+		except
+	StopIteration:
+		pass
+	}
 
 	return tuple(_convert_even_to_int(_alnum_sort_re.split(x)))
 }
 
 
-func _create_use_string(
-conf,
-name,
-cur_iuse,
-iuse_forced,
-cur_use,
-old_iuse,
-old_use,
-is_new,
-feature_flags,
-reinst_flags,
-) {
+func _create_use_string(conf, name, cur_iuse, iuse_forced, cur_use, old_iuse,
+old_use, is_new, feature_flags, reinst_flags, ) string {
 
-	if not conf.print_use_string:
-	return ""
+	if !conf.print_use_string {
+		return ""
+	}
 
-	enabled = []
-if conf.alphabetical:
-disabled = enabled
-removed = enabled else:
-disabled = []
-removed = []
-cur_iuse = set(cur_iuse)
-enabled_flags = cur_iuse.intersection(cur_use)
-removed_iuse = set(old_iuse).difference(cur_iuse)
-any_iuse = cur_iuse.union(old_iuse)
-any_iuse = list(any_iuse)
+	enabled = []T{}
+if conf.alphabetical {
+	disabled = enabled
+	removed = enabled
+}else {
+	disabled = []T{}
+removed = []T{}
+}
+cur_iuse := set(cur_iuse)
+enabled_flags := cur_iuse.intersection(cur_use)
+removed_iuse := set(old_iuse).difference(cur_iuse)
+any_iuse := cur_iuse.union(old_iuse)
+any_iuse := list(any_iuse)
 any_iuse.sort(key = _alnum_sort_key)
 
 for flag in any_iuse:
@@ -388,22 +418,9 @@ return ret
 
 
 func _tree_display(conf, mylist) {
+	mygraph := conf.digraph.copy()
 
-	# If
-	there
-	are
-	any
-	Uninstall
-	instances, add
-	the
-	# corresponding
-	blockers
-	to
-	the
-	digraph.
-		mygraph = conf.digraph.copy()
-
-	executed_uninstalls = set(
+	executed_uninstalls := set(
 		node
 	for node
 	in
@@ -416,19 +433,10 @@ func _tree_display(conf, mylist) {
 	in
 	conf.blocker_uninstalls.leaf_nodes():
 	uninstall_parents = conf.blocker_uninstalls.parent_nodes(uninstall)
-	if not uninstall_parents:
-	continue
+	if not uninstall_parents {
+		continue
+	}
 
-	# Remove
-	the
-	corresponding
-	"nomerge"
-	node
-	and
-	substitute
-	# the
-	Uninstall
-	node.
 		inst_pkg = conf.pkg(
 		uninstall.cpv, "installed", uninstall.root_config, installed = true
 	)
@@ -445,25 +453,17 @@ try:
 KeyError:
 	inst_pkg_blockers = []
 
-# Break the Package -> Uninstall edges.
 mygraph.remove(uninstall)
 
-# Resolution of a package 's blockers
-# depend on it's own uninstallation.
 for blocker in inst_pkg_blockers:
 mygraph.add(uninstall, blocker)
 
-# Expand Package -> Uninstall edges into
-# Package -> Blocker -> Uninstall edges.
 for blocker in uninstall_parents:
 mygraph.add(uninstall, blocker)
 for parent in conf.blocker_parents.parent_nodes(blocker):
 if parent != inst_pkg:
 mygraph.add(blocker, parent)
 
-# If the uninstall task did not need to be executed because
-# of an upgrade, display Blocker -> Upgrade edges since the
-# corresponding Blocker -> Uninstall edges will not be shown.
 upgrade_node = next(
 conf.package_tracker.match(uninstall.root, uninstall.slot_atom), None
 )
@@ -483,92 +483,126 @@ return display_list
 
 
 func _unordered_tree_display(mygraph, mylist) {
-	display_list = []
-seen_nodes = set()
+	display_list := []T{}
+	seen_nodes = set()
 
-def print_node(node, depth):
+print_node:=func(node, depth) {
 
-if node in seen_nodes:
-pass else:
-seen_nodes.add(node)
+		if node in
+	seen_nodes{
+		//pass
+	}else{
+			seen_nodes[node] = true
 
-if isinstance(node, (Blocker, Package)):
-display_list.append((node, depth, true)) else:
-depth = -1
+			if isinstance(node, (Blocker, Package)):
+			display_list.append((node, depth, true)) else:
+			depth = -1
 
-for child_node in mygraph.child_nodes(node):
-print_node(child_node, depth + 1)
+			for child_node
+				in
+			mygraph.child_nodes(node) {
+				print_node(child_node, depth+1)
+			}
+		}
+	}
 
-for root_node in mygraph.root_nodes():
-print_node(root_node, 0)
+	for root_node
+	in
+	mygraph.root_nodes()
+	{
+		print_node(root_node, 0)
+	}
 
-return display_list
+	return display_list
 }
 
 func _ordered_tree_display(conf, mygraph, mylist) {
 	depth = 0
 	shown_edges = set()
-	tree_nodes = []
-display_list = []
+	tree_nodes = []T{}
+	display_list = []T{}
 
-for x in mylist:
-depth = len(tree_nodes)
-while depth and x not in mygraph.child_nodes(tree_nodes[depth - 1]):
-depth -= 1
-if depth:
-tree_nodes = tree_nodes[:depth]
-tree_nodes.append(x)
-display_list.append((x, depth, true))
-shown_edges.add((x, tree_nodes[depth - 1])) else:
-traversed_nodes = set()  # prevent endless circles
-traversed_nodes.add(x)
+	for x
+	in
+mylist:
+	depth = len(tree_nodes)
+	while
+	depth
+	and
+	x
+	not
+	in
+	mygraph.child_nodes(tree_nodes[depth-1]):
+	depth -= 1
+	if depth:
+	tree_nodes = tree_nodes[:depth]
+	tree_nodes.append(x)
+	display_list.append((x, depth, true))
+	shown_edges.add((x, tree_nodes[depth-1])) else:
+	traversed_nodes = set()  # prevent
+	endless
+	circles
+	traversed_nodes.add(x)
 
-def add_parents(current_node, ordered):
-parent_nodes = None
-# Do not traverse to parents if this node is an
-# an argument or a direct member of a set that has
-# been specified as an argument (system or world).
-if current_node not in conf.set_nodes:
-parent_nodes = mygraph.parent_nodes(current_node)
-if parent_nodes:
-child_nodes = set(mygraph.child_nodes(current_node))
-selected_parent = None
-# First, try to avoid a direct cycle.
-for node in parent_nodes:
-if not isinstance(node, (Blocker, Package)):
-continue
-if node not in traversed_nodes and node not in child_nodes:
-edge = (current_node, node)
-if edge in shown_edges:
-continue
-selected_parent = node
-break
-if not selected_parent:
-# A direct cycle is unavoidable.
-for node in parent_nodes:
-if not isinstance(node, (Blocker, Package)):
-continue
-if node not in traversed_nodes:
-edge = (current_node, node)
-if edge in shown_edges:
-continue
-selected_parent = node
-break
-if selected_parent:
-shown_edges.add((current_node, selected_parent))
-traversed_nodes.add(selected_parent)
-add_parents(selected_parent, false)
-display_list.append((current_node, len(tree_nodes), ordered))
-tree_nodes.append(current_node)
+	def
+	add_parents(current_node, ordered):
+	parent_nodes = None
+	if current_node not
+	in
+	conf.set_nodes:
+	parent_nodes = mygraph.parent_nodes(current_node)
+	if parent_nodes:
+	child_nodes = set(mygraph.child_nodes(current_node))
+	selected_parent = None
+	for node
+	in
+parent_nodes:
+	if not isinstance(node, (Blocker, Package)):
+	continue
+	if node not
+	in
+	traversed_nodes
+	and
+	node
+	not
+	in
+child_nodes:
+	edge = (current_node, node)
+	if edge in
+shown_edges:
+	continue
+	selected_parent = node
+	break
+	if not selected_parent:
+	for node
+	in
+parent_nodes:
+	if not isinstance(node, (Blocker, Package)):
+	continue
+	if node not
+	in
+traversed_nodes:
+	edge = (current_node, node)
+	if edge in
+shown_edges:
+	continue
+	selected_parent = node
+	break
+	if selected_parent:
+	shown_edges.add((current_node, selected_parent))
+	traversed_nodes.add(selected_parent)
+	add_parents(selected_parent, false)
+	display_list.append((current_node, len(tree_nodes), ordered))
+	tree_nodes.append(current_node)
 
-tree_nodes = []
-add_parents(x, true)
+	tree_nodes = []T{}
+	add_parents(x, true)
 
-return display_list
+	return display_list
 }
 
 func _prune_tree_display(display_list) {
-	last_merge_depth = 0
+	last_merge_depth := 0
 	for i
 	in range
 	(len(display_list) - 1, -1, -1):
@@ -584,20 +618,6 @@ func _prune_tree_display(display_list) {
 	and
 	display_list[i-1][1] == 0
 	):
-	# An
-	ordered
-	node
-	got
-	a
-	consecutive
-	duplicate
-	# when
-	the
-	tree
-	was
-	being
-	filled
-	in.
 		del
 	display_list[i]
 	continue
@@ -622,56 +642,41 @@ func _prune_tree_display(display_list) {
 	display_list[i]
 }
 
-func _strip_header_comments(lines) {
-	# strip
-	leading
-	and
-	trailing
-	blank
-	or
-	header / comment
-	lines
-	i = 0
-	while
-	i < len(lines)
-	and(not
-	lines[i]
-	or
-	lines[i][:1] == "#"):
-	i += 1
-	if i:
-	lines = lines[i:]
-	while
-	lines
-	and(not
-	lines[-1]
-	or
-	lines[-1][:1] == "#"):
-	lines.pop()
+func _strip_header_comments(lines []string) []string {
+	i := 0
+	for i < len(lines) && (lines[i] == "" || strings.HasPrefix(lines[i], "#")) {
+		i += 1
+	}
+	if i != 0 {
+		lines = lines[i:]
+	}
+	for len(lines) > 0 && (lines[len(lines)-1] == "" || lines[len(lines)-1][:1] == "#") {
+		lines = lines[:len(lines)-1]
+	}
 	return lines
 }
 
 type PkgInfo struct {
 	// slots
-	attr_display,
-	built,
+	operation,
 	cp,
 	ebuild_path,
 	fetch_symbol,
 	merge,
 	oldbest,
-	oldbest_list,
-	operation,
-	ordered,
-	previous_pkg,
 	repo_name,
 	repo_path_real,
 	slot,
 	sub_slot,
-	system,
 	use,
-	ver,
+	ver string
+	ordered,
+	system,
 	world,
+	built bool
+	oldbest_list[]
+	attr_display *PkgAttrDisplay
+	previous_pkg,
 }
 
 func NewPkgInfo() *PkgInfo {
@@ -682,10 +687,10 @@ func NewPkgInfo() *PkgInfo {
 	p.fetch_symbol = ""
 	p.merge = ""
 	p.oldbest = ""
-	p.oldbest_list = []
+	p.oldbest_list = []T{}
 	p.operation = ""
 	p.ordered = false
-	p.previous_pkg = None
+	p.previous_pkg = nil
 	p.repo_path_real = ""
 	p.repo_name = ""
 	p.slot = ""
@@ -694,7 +699,7 @@ func NewPkgInfo() *PkgInfo {
 	p.use = ""
 	p.ver = ""
 	p.world = false
-	p.attr_display = PkgAttrDisplay()
+	p.attr_display = &PkgAttrDisplay{}
 	return p
 }
 
@@ -713,42 +718,61 @@ type PkgAttrDisplay struct {
 	replace,
 }
 
-func (p*PkgAttrDisplay) __str__() {
+func (p*PkgAttrDisplay) __str__() string {
 
-	output = []
+	output1 := []string{}
 
-if p.interactive:
-output.append(colorize("WARN", "I")) else:
-output.append(" ")
+	if p.interactive {
+		output1 = append(output1, output.Colorize("WARN", "I"))
+	} else {
+		output1 = append(output1, " ")
+	}
 
-if p.new or p.force_reinstall:
-if p.force_reinstall:
-output.append(red("r")) else:
-output.append(green("N")) else:
-output.append(" ")
+	if p.new || p.force_reinstall{
+	if p.force_reinstall {
+		output1 = append(output1, output.Red("r"))
+	}else {
+		output1 = append(output1, output.Green("N"))
+	}
+	}else{
+			output1 = append(output1, " ")
+		}
 
-if p.new_slot or p.replace:
-if p.replace:
-output.append(yellow("R")) else:
-output.append(green("S")) else:
-output.append(" ")
+	if p.new_slot || p.replace {
+		if p.replace {
+			output1 = append(output1, yellow("R"))
+		} else {
+			output1 = append(output1, output.Green("S"))
+		}
+	}else {
+		output1 = append(output1, " ")
+	}
 
-if p.fetch_restrict or p.fetch_restrict_satisfied:
-if p.fetch_restrict_satisfied:
-output.append(green("f")) else:
-output.append(red("F")) else:
-output.append(" ")
+	if p.fetch_restrict || p.fetch_restrict_satisfied {
+		if p.fetch_restrict_satisfied {
+			output1 = append(output1, output.Green("f"))
+		} else {
+			output1 = append(output1, output.Red("F"))
+		}
+	}else {
+		output1 = append(output1, " ")
+	}
 
-if p.new_version:
-output.append(turquoise("U")) else:
-output.append(" ")
+	if p.new_version {
+		output1 = append(output1, output.Turquoise("U"))
+	}else {
+		output1 = append(output1, " ")
+	}
 
-if p.downgrade:
-output.append(blue("D")) else:
-output.append(" ")
+	if p.downgrade {
+		output1 = append(output1, output.Blue("D"))
+	}else {
+		output1 = append(output1, " ")
+	}
 
-if p.mask is not None:
-output.append(p.mask)
+	if p.mask != nil {
+		output1 = append(output1, p.mask)
+	}
 
-return "".join(output)
+	return strings.Join(output1, "")
 }

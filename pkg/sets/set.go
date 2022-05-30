@@ -240,7 +240,7 @@ func(s*SetConfig) _parse( update bool) {
 
 func (s*SetConfig) getSets() map[string]string{
 	s._parse(false)
-	return myutil.CopyMapT[string, string](s.psets)
+	return myutil.CopyMapT(s.psets)
 }
 
 // nil

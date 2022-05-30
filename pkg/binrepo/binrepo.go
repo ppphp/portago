@@ -5,9 +5,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/ppphp/configparser"
-	"github.com/ppphp/portago/pkg/ebuild"
 	"github.com/ppphp/portago/pkg/myutil"
-	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/configs"
+	"github.com/ppphp/portago/pkg/util/grab"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"strconv"
 	"strings"
@@ -68,12 +68,12 @@ func (b *BinRepoConfigLoader) _parse(paths []string, defaults map[string]string)
 	recursive_paths := []string{}
 	for _, p := range paths {
 		//if isinstance(p, str):
-		recursive_paths = append(recursive_paths, util.RecursiveFileList(p)...)
+		recursive_paths = append(recursive_paths, grab.RecursiveFileList(p)...)
 		//else:
 		//recursive_paths.append(p)
 	}
 
-	util.ReadConfigs(parser, recursive_paths)
+	configs.ReadConfigs(parser, recursive_paths)
 	return parser
 }
 
@@ -94,14 +94,14 @@ func (b *BinRepoConfigLoader) __len__() int {
 	return len(b._data)
 }
 
-func NewBinRepoConfigLoader(paths []string, settings *ebuild.Config) *BinRepoConfigLoader {
+func NewBinRepoConfigLoader(paths []string, eprefix, eroot, portageConfigRoot, root, portageBinHost string) *BinRepoConfigLoader {
 	b := &BinRepoConfigLoader{}
 
 	parser_defaults := map[string]string{
-		"EPREFIX":            settings.ValueDict["EPREFIX"],
-		"EROOT":              settings.ValueDict["EROOT"],
-		"PORTAGE_CONFIGROOT": settings.ValueDict["PORTAGE_CONFIGROOT"],
-		"ROOT":               settings.ValueDict["ROOT"],
+		"EPREFIX":            eprefix,
+		"EROOT":              eroot,
+		"PORTAGE_CONFIGROOT": portageConfigRoot,
+		"ROOT":               root,
 	}
 
 	//try:
@@ -141,7 +141,7 @@ func NewBinRepoConfigLoader(paths []string, settings *ebuild.Config) *BinRepoCon
 		sync_urisM[s] = true
 	}
 	current_priority := 0
-	for _, sync_uri := range myutil.Reversed(strings.Fields(settings.ValueDict["PORTAGE_BINHOST"])) {
+	for _, sync_uri := range myutil.Reversed(strings.Fields(portageBinHost)) {
 		sync_uri = b._normalize_uri(sync_uri)
 		if !sync_urisM[sync_uri] {
 			current_priority += 1

@@ -9,7 +9,9 @@ import (
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/repository"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/grab"
 	"github.com/ppphp/portago/pkg/util/msg"
+	"github.com/ppphp/shlex"
 	"os"
 	"path"
 	"path/filepath"
@@ -57,7 +59,7 @@ func (l *LocationsManager) loadProfiles(repositories *repository.RepoConfigLoade
 		if repo == nil {
 			layoutData, _ = repository.ParseLayoutConf(x, "")
 		} else {
-			layoutData = map[string][]string{"profile-formats": repo.profileFormats, "profile-eapi_when_unspecified": {repo.eapi}}
+			layoutData = map[string][]string{"profile-formats": repo.ProfileFormats, "profile-eapi_when_unspecified": {repo.Eapi}}
 		}
 		knownRepos = append(knownRepos, SMSSS{S: x + "/", MSSS: layoutData})
 	}
@@ -157,9 +159,9 @@ func (l *LocationsManager) addProfile(currentPath string, repositories *reposito
 			}
 		}
 		if !allowDirectories {
-			allowDirectories = eapi.EapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi)
+			allowDirectories = eapi.EapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi1)
 		}
-		compatMode = !eapi.EapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi) && len(layoutData["profile-formats"]) == 1 && layoutData["profile-formats"][0] == "portage-1-compat"
+		compatMode = !eapi.EapiAllowsDirectoriesOnProfileLevelAndRepositoryLevel(eapi1) && len(layoutData["profile-formats"]) == 1 && layoutData["profile-formats"][0] == "portage-1-compat"
 		for _, x := range layoutData["profile-formats"] {
 			if "portage-2" == x {
 				allowParentColon = true
@@ -198,7 +200,7 @@ func (l *LocationsManager) addProfile(currentPath string, repositories *reposito
 	}
 	parentsFile := path.Join(currentPath, "parent")
 	if util.ExistsRaiseEaccess(parentsFile) {
-		parents := util.GrabFile(parentsFile, 0, false, false)
+		parents := grab.GrabFile(parentsFile, 0, false, false)
 		if len(parents) == 0 {
 			//raise ParseError(
 			//	_("Empty parent file: '%s'") % parentsFile)
@@ -223,7 +225,7 @@ func (l *LocationsManager) addProfile(currentPath string, repositories *reposito
 		}
 	}
 	l.profiles = append(l.profiles, currentPath)
-	l.profilesComplex = append(l.profilesComplex, &profileNode{location: currentPath, portage1Directories: allowDirectories, userConfig: false, profileFormats: currentFormats, eapi: eapi, allowBuildId: myutil.Ins(currentFormats, "build-id")})
+	l.profilesComplex = append(l.profilesComplex, &profileNode{location: currentPath, portage1Directories: allowDirectories, userConfig: false, profileFormats: currentFormats, eapi: eapi1, allowBuildId: myutil.Ins(currentFormats, "build-id")})
 }
 
 func (l *LocationsManager) expandParentColon(parentsFile, parentPath, repoLoc string, repositories *repository.RepoConfigLoader) string {
@@ -278,7 +280,7 @@ func (l *LocationsManager) setPortDirs(portdir, portdirOverlay string) {
 	l.portdir = portdir
 	l.portdirOverlay = portdirOverlay
 	l.overlayProfiles = []string{}
-	ovs, _ := shlex.Split(l.portdirOverlay)
+	ovs, _ := shlex.Split(strings.NewReader(l.portdirOverlay), false, true)
 	for _, ov := range ovs {
 		ov = msg.NormalizePath(ov)
 		profilesDir := path.Join(ov, "profiles")

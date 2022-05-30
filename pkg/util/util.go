@@ -2,18 +2,15 @@ package util
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
-	"github.com/ppphp/configparser"
-	"github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/pkg/checksum"
 	"github.com/ppphp/portago/pkg/const"
-	"github.com/ppphp/portago/pkg/data"
 	"github.com/ppphp/portago/pkg/dep"
 	"github.com/ppphp/portago/pkg/ebuild"
-	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/portage"
 	"github.com/ppphp/portago/pkg/process"
+	src1 "github.com/ppphp/portago/pkg/src"
+	"github.com/ppphp/portago/pkg/util/grab"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/util/permissions"
 	"github.com/ppphp/shlex"
@@ -23,155 +20,11 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
 )
-
-// 0, false, false
-func GrabFile(myFileName string, compatLevel int, recursive, rememberSourceFile bool) [][2]string {
-	myLines := grabLines(myFileName, recursive, true)
-	var newLines [][2]string
-
-	for _, line := range myLines {
-		x := line[0]
-		sourceFile := line[1]
-		myLine := strings.Fields(x)
-		if x != "" && x[0] != '#' {
-			tmp := []string{}
-			for _, item := range myLine {
-				if item[:1] != "#" {
-					tmp = append(tmp, item)
-				} else {
-					break
-				}
-			}
-			myLine = tmp
-		}
-
-		m := strings.Join(myLine, " ")
-		if m == "" {
-			continue
-		}
-		if m[0] == '#' {
-			myLineTest := strings.SplitN(m, "<==", 1)
-			if len(myLineTest) == 2 {
-				myLinePotential := myLineTest[1]
-				myLineTest = strings.Split(myLineTest[0], "##COMPAT==>")
-				if len(myLineTest) == 2 {
-					l, _ := strconv.Atoi(myLineTest[1])
-					if compatLevel >= l {
-						if rememberSourceFile {
-							newLines = append(newLines, [2]string{myLinePotential, sourceFile})
-						} else {
-							newLines = append(newLines, [2]string{myLinePotential})
-						}
-					}
-				}
-				continue
-			} else {
-				continue
-			}
-		}
-		if rememberSourceFile {
-			newLines = append(newLines, [2]string{m, sourceFile})
-		} else {
-			newLines = append(newLines, [2]string{m, ""})
-		}
-	}
-	return newLines
-}
-
-func mapDictListVals(f func(string) string, mydict map[string][]string) {
-	newDl := map[string][]string{}
-	for key := range mydict {
-		newDl[key] = []string{}
-		for _, x := range mydict[key] {
-			newDl[key] = append(newDl[key], f(x))
-		}
-	}
-}
-
-// false, []string{}, false
-func StackDictList(originalDicts []map[string][]string, incremental int, incrementalS []string, ignoreNone int) map[string][]string {
-	finalDict := map[string][]string{}
-	for _, myDict := range originalDicts {
-		if myDict == nil {
-			continue
-		}
-		for y := range myDict {
-			if _, ok := finalDict[y]; !ok {
-				finalDict[y] = []string{}
-			}
-			for _, thing := range myDict[y] {
-				if thing != "" {
-					c := false
-					for _, v := range incrementalS {
-						if v == y {
-							c = true
-							break
-						}
-					}
-					if incremental != 0 || c {
-						if thing == "-*" {
-							finalDict[y] = []string{}
-							continue
-						} else if thing[:1] == "-" {
-							tmp := []string{}
-							for _, v := range finalDict[y] {
-								if thing[:1] != v {
-									tmp = append(tmp, v)
-								}
-							}
-							finalDict[y] = tmp
-							continue
-						}
-					}
-					c2 := false
-					for _, v := range finalDict[y] {
-						if v == thing {
-							c2 = true
-							break
-						}
-					}
-					if c2 {
-						finalDict[y] = append(finalDict[y], thing)
-					}
-				}
-			}
-			if _, ok := finalDict[y]; ok && finalDict[y] != nil {
-				delete(finalDict, y)
-			}
-		}
-	}
-	return finalDict
-}
-
-func stackDicts(dicts []map[string]string, incremental int, incrementals map[string]bool, ignoreNone int) map[string]string { // 0[]0
-	finalDict := map[string]string{}
-	for _, myDict := range dicts {
-		if myDict == nil {
-			continue
-		}
-		for k, v := range myDict {
-			c := false
-			for r := range incrementals {
-				if r == k {
-					c = true
-					break
-				}
-			}
-			if _, ok := finalDict[k]; ok && incremental != 0 && c {
-				finalDict[k] += " " + v
-			} else {
-			}
-			finalDict[k] = v
-		}
-	}
-	return finalDict
-}
 
 type SB struct {
 	S string
@@ -187,9 +40,9 @@ func AppendRepo(atomList map[*dep.Atom]string, repoName string, rememberSourceFi
 	sb := []AS{}
 	if rememberSourceFile {
 		for atom, source := range atomList {
-			if atom.repo != "" && atom != nil {
+			if atom.Repo != "" && atom != nil {
 				sb = append(sb, AS{atom, source})
-			} else if a := atom.withRepo(repoName); a != nil {
+			} else if a := atom.WithRepo(repoName); a != nil {
 				sb = append(sb, AS{a, source})
 			} else {
 				sb = append(sb, AS{nil, source})
@@ -197,9 +50,9 @@ func AppendRepo(atomList map[*dep.Atom]string, repoName string, rememberSourceFi
 		}
 	} else {
 		for atom := range atomList {
-			if atom.repo != "" && atom != nil {
+			if atom.Repo != "" && atom != nil {
 				sb = append(sb, AS{atom, ""})
-			} else if a := atom.withRepo(repoName); a != nil {
+			} else if a := atom.WithRepo(repoName); a != nil {
 				sb = append(sb, AS{a, ""})
 			} else {
 				sb = append(sb, AS{nil, ""})
@@ -235,9 +88,9 @@ func StackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 						toBeRemoved := []*dep.Atom{}
 						tokenSlice := token[1:]
 						for atom := range newList {
-							atomWithoutRepo := atom.value
-							if atom.repo != "" {
-								atomWithoutRepo = strings.Replace(atom.value, "::"+atom.repo, "", 1)
+							atomWithoutRepo := atom.Value
+							if atom.Repo != "" {
+								atomWithoutRepo = strings.Replace(atom.Value, "::"+atom.Repo, "", 1)
 							}
 							if atomWithoutRepo == tokenSlice {
 								toBeRemoved = append(toBeRemoved, atom)
@@ -251,7 +104,7 @@ func StackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 						}
 					} else {
 						for v := range newList {
-							if v.value == token[1:] {
+							if v.Value == token[1:] {
 								delete(newList, v)
 								matched = true
 							}
@@ -269,10 +122,10 @@ func StackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 						matchedRemovals[tokenKey] = true
 					}
 				} else {
-					newList[&dep.Atom{value: token}] = sourceFile
+					newList[&dep.Atom{Value: token}] = sourceFile
 				}
 			} else {
-				newList[&dep.Atom{value: token}] = sourceFile
+				newList[&dep.Atom{Value: token}] = sourceFile
 			}
 		}
 	}
@@ -288,50 +141,6 @@ func StackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 		}
 	}
 	return newList
-}
-
-// false, false, false, true, false
-func GrabDict(myFileName string, justStrings, empty, recursive, incremental, newLines bool) map[string][]string {
-	newDict := map[string][]string{}
-	for _, x := range grabLines(myFileName, recursive, false) {
-		v := x[0]
-		if strings.HasPrefix(v, "#") {
-			continue
-		}
-		myLine := strings.Fields(v)
-		myLineTemp := []string{}
-		for _, item := range myLine {
-			if item[:1] != "#" {
-				myLineTemp = append(myLineTemp, item)
-			} else {
-				break
-			}
-		}
-		myLine = myLineTemp
-		if len(myLine) < 2 && !empty {
-			continue
-		}
-		if len(myLine) < 1 && empty {
-			continue
-		}
-		if newLines {
-			myLine = append(myLine, "\n")
-		}
-		if incremental {
-			if _, ok := newDict[myLine[0]]; !ok {
-				newDict[myLine[0]] = []string{}
-			}
-			newDict[myLine[0]] = myLine[1:]
-		} else {
-			newDict[myLine[0]] = myLine[1:]
-		}
-	}
-	if justStrings {
-		for k, v := range newDict {
-			newDict[k] = []string{strings.Join(v, " ")}
-		}
-	}
-	return newDict
 }
 
 var eapiFileCache = map[string]string{}
@@ -367,17 +176,18 @@ func ReadCorrespondingEapiFile(filename, defaults string) string { // "0"
 	return eapi
 }
 
-func GrabDictPackage(myfilename string, juststrings, recursive, newlines bool, allowWildcard, allowRepo, allowBuildId, allowUse, verifyEapi bool, eapi, eapiDefault string) map[*dep.Atom][]string { //000ffftf none 0
+//000ffftf none 0
+func GrabDictPackage(myfilename string, juststrings, recursive, newlines bool, allowWildcard, allowRepo, allowBuildId, allowUse, verifyEapi bool, eapi, eapiDefault string) map[*dep.Atom][]string {
 	fileList := []string{}
 	if recursive {
-		fileList = RecursiveFileList(myfilename)
+		fileList = grab.RecursiveFileList(myfilename)
 	} else {
 		fileList = []string{myfilename}
 	}
 	atoms := map[*dep.Atom][]string{}
 	var d map[string][]string
 	for _, filename := range fileList {
-		d = GrabDict(filename, false, true, false, true, newlines)
+		d = grab.GrabDict(filename, false, true, false, true, newlines)
 		if len(d) == 0 {
 			continue
 		}
@@ -410,7 +220,7 @@ func GrabDictPackage(myfilename string, juststrings, recursive, newlines bool, a
 }
 
 func GrabFilePackage(myFileName string, compatLevel int, recursive, allowWildcard, allowRepo, allowBuildId, rememberSourceFile, verifyEapi bool, eapi, eapiDefault string) [][2]string { // 0,false,false,false,false,false,false,nil,0
-	pkgs := GrabFile(myFileName, compatLevel, recursive, true)
+	pkgs := grab.GrabFile(myFileName, compatLevel, recursive, true)
 	if len(pkgs) == 0 {
 		return pkgs
 	}
@@ -456,64 +266,6 @@ func GrabFilePackage(myFileName string, compatLevel int, recursive, allowWildcar
 		}
 	}
 	return atoms
-}
-
-func recursiveBasenameFilter(f string) bool {
-	return (!strings.HasPrefix(f, ".")) && (!strings.HasSuffix(f, "~"))
-}
-
-func RecursiveFileList(p string) []string {
-	d, f := path.Split(p)
-	stack := [][2]string{{d, f}}
-	ret := make([]string, 0)
-	for len(stack) > 0 {
-		parent := stack[len(stack)-1][0]
-		fname := stack[len(stack)-1][1]
-		stack = stack[:len(stack)-1]
-		fullPath := path.Join(parent, fname)
-		st, err := os.Stat(fullPath)
-		if err != nil {
-			continue
-		}
-		if st.Mode().IsDir() {
-			if _const.VcsDirs[fname] || !recursiveBasenameFilter(fname) {
-				continue
-			}
-			children, err := ioutil.ReadDir(fullPath)
-			if err != nil {
-				continue
-			}
-			for _, v := range children {
-				stack = append(stack, [2]string{fullPath, v.Name()})
-			}
-		} else if st.Mode().IsRegular() {
-			if recursiveBasenameFilter(fname) {
-				ret = append(ret, fullPath)
-			}
-		}
-	}
-	return ret
-}
-
-func grabLines(fname string, recursive, rememberSourceFile bool) [][2]string { // 0f
-	myLines := make([][2]string, 0)
-	if recursive {
-		for _, f := range RecursiveFileList(fname) {
-			myLines = append(myLines, grabLines(f, false, rememberSourceFile)...)
-		}
-	} else {
-		f, _ := os.Open(fname)
-		s, _ := ioutil.ReadAll(f)
-		lines := strings.Split(string(s), "\n")
-		for _, l := range lines {
-			if rememberSourceFile {
-				myLines = append(myLines, [2]string{l, fname})
-			} else {
-				myLines = append(myLines, [2]string{l, ""})
-			}
-		}
-	}
-	return myLines
 }
 
 type ConfigProtect struct {
@@ -680,13 +432,13 @@ func new_protect_filename(myDest, newMd5 string, force bool) string {
 	return newPfile
 }
 
-type sss struct {
+type Sss struct {
 	S  string
 	SS []string
 }
 
-func findUpdatedConfigFiles(targetRoot string, configProtect []string) []sss {
-	var ssss []sss
+func findUpdatedConfigFiles(targetRoot string, configProtect []string) []Sss {
+	var ssss []Sss
 	if configProtect != nil {
 		for _, x := range configProtect {
 			x = path.Join(targetRoot, strings.TrimPrefix(x, string(os.PathSeparator)))
@@ -727,9 +479,9 @@ func findUpdatedConfigFiles(targetRoot string, configProtect []string) []sss {
 			}
 			if len(files) > 0 {
 				if myMode.IsDir() {
-					ssss = append(ssss, sss{S: x, SS: files})
+					ssss = append(ssss, Sss{S: x, SS: files})
 				} else {
-					ssss = append(ssss, sss{S: x, SS: nil})
+					ssss = append(ssss, Sss{S: x, SS: nil})
 				}
 			}
 		}
@@ -750,7 +502,7 @@ func (g *getConfigShlex) allowSourcing(varExpandMap map[string]string) {
 }
 
 func (g *getConfigShlex) SourceHook(newfile string) (string, *os.File, error) {
-	newfile = varExpand(newfile, g.varExpandMap, nil)
+	newfile = VarExpand(newfile, g.varExpandMap, nil)
 	return g.Shlex.SourceHook(newfile)
 }
 
@@ -777,7 +529,7 @@ func GetConfig(myCfg string, tolerant, allowSourcing, expand, recursive bool, ex
 			expandMap = map[string]string{}
 		}
 		fname := ""
-		for _, fname = range RecursiveFileList(myCfg) {
+		for _, fname = range grab.RecursiveFileList(myCfg) {
 			newKeys := GetConfig(fname, tolerant, allowSourcing, true, false, expandMap)
 			for k, v := range newKeys {
 				myKeys[k] = v
@@ -858,7 +610,7 @@ func GetConfig(myCfg string, tolerant, allowSourcing, expand, recursive bool, ex
 			}
 		}
 		if expand {
-			myKeys[key] = varExpand(val, expandMap, "") //TODO lex.error_leader
+			myKeys[key] = VarExpand(val, expandMap, nil) //TODO lex.error_leader
 			expandMap[key] = myKeys[key]
 		} else {
 			myKeys[key] = val
@@ -873,7 +625,7 @@ var (
 )
 
 // nil, nil
-func varExpand(myString string, myDict map[string]string, errorLeader func() string) string {
+func VarExpand(myString string, myDict map[string]string, errorLeader func() string) string {
 	if myDict == nil {
 		myDict = map[string]string{}
 	}
@@ -1009,7 +761,7 @@ var ldSoIncludeRe = regexp.MustCompile(`^include\s+(\S.*)`)
 
 func readLdSoConf(p string) []string {
 	conf := []string{}
-	for _, l := range GrabFile(p, 0, false, false) {
+	for _, l := range grab.GrabFile(p, 0, false, false) {
 		includeMatch := ldSoIncludeRe.MatchString(l[0])
 		if includeMatch {
 			subpath := path.Join(path.Dir(p),
@@ -1052,24 +804,6 @@ func uniqueArray(a []interface{}) []interface{} {
 		r = append(r, k)
 	}
 	return r
-}
-
-// return access
-func ExistsRaiseEaccess(path string) bool {
-	_, err := os.Stat(path)
-	return err != os.ErrPermission
-}
-
-// if access return
-func IsdirRaiseEaccess(path string) bool {
-	f, err := os.Stat(path)
-	if err != nil {
-		if err == os.ErrPermission {
-			//raise PermissionDenied("stat('%s')" % path)
-		}
-		return false
-	}
-	return f.IsDir()
 }
 
 type slotObject struct {
@@ -1146,14 +880,14 @@ func NewAtomic_ofstream(filename string, mode int, follow_links bool) *atomic_of
 }
 
 // 0 (i dont know), true
-func write_atomic(filePath string, content string, mode int, followLinks bool) {
+func Write_atomic(filePath string, content string, mode int, followLinks bool) {
 	f := NewAtomic_ofstream(filePath, mode, followLinks)
 	f.Write([]byte(content))
 	f.Close()
 	//except (IOError, OSError) as e:
 	//if f:
 	//f.abort()
-	//func_call = "write_atomic('%s')" % file_path
+	//func_call = "Write_atomic('%s')" % file_path
 	//if err == syscall.EPERM:
 	//raise OperationNotPermitted(func_call)
 	//else if err == syscall.EACCES:
@@ -1224,21 +958,7 @@ func NewProjectFilename(myDest, newMd5 string, force bool) string {
 	return newPFile
 }
 
-func ReadConfigs(parser configparser.ConfigParser, paths []string) error {
-	for _, p := range paths {
-		f, err := os.Open(p)
-		if err != nil {
-			continue
-		}
-		defer f.Close()
-		if err := parser.ReadFile(f, p); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-var _compressors = map[string]map[string]string{
+var Compressors = map[string]map[string]string{
 	"bzip2": {
 		"compress":       "${PORTAGE_BZIP2_COMMAND} ${BINPKG_COMPRESS_FLAGS}",
 		"decompress":     "${PORTAGE_BUNZIP2_COMMAND}",
@@ -1309,14 +1029,14 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 
 	xattr_enabled := mysettings.Features.Features["xattr"]
 
-	selinux_enabled := mysettings.selinux_enabled()
+	selinux_enabled := mysettings.Selinux_enabled()
 	//// TODO: selinux
 	//if selinux_enabled{
 	//	selinux = _unicode_module_wrapper(_selinux, encoding = encoding)
 	//	_copyfile = selinux.copyfile
 	//	_rename = selinux.rename
 	//} else{
-	_copyfile := copyfile
+	_copyfile := src1.Copyfile
 	_rename := os.Rename
 	//}
 
@@ -1508,7 +1228,7 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 				return 0
 			}
 		} else {
-			a, _ := atom.spawn([]string{_const.MoveBinary, "-f", src, dest}, ExpandEnv(), "", nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
+			a, _ := process.Spawn([]string{_const.MoveBinary, "-f", src, dest}, msg.ExpandEnv(), "", nil, false, 0, 0, nil, 0, "", "", true, nil, false, false, false, false, false, "")
 			if len(a) != 0 && a[0] != syscall.F_OK {
 				msg.WriteMsg(fmt.Sprintf("!!! Failed to move special file:\n"), -1, nil)
 				msg.WriteMsg(fmt.Sprintf("!!! '%s' to '%s'\n", src, dest), -1, nil)
@@ -1554,108 +1274,6 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 	//}
 
 	return newmtime
-}
-
-type MtimeDB struct {
-	dict        map[string]interface{}
-	filename    string
-	_json_write bool
-
-	_clean_data map[string]interface{}
-}
-
-func (m *MtimeDB) _load(filename string) {
-	content, err := ioutil.ReadFile(filename)
-	if err != nil {
-		//except EnvironmentError as e:
-		if err == syscall.ENOENT || err == syscall.EACCES {
-			//pass
-		} else {
-			msg.WriteMsg(fmt.Sprintf("!!! Error loading '%s': %s\n", filename, err), -1, nil)
-		}
-	}
-
-	var d map[string]interface{} = nil
-	if len(content) > 0 {
-		if err := json.Unmarshal(content, &d); err != nil {
-			msg.WriteMsg(fmt.Sprintf("!!! Error loading '%s': %s\n", filename, err), -1, nil)
-		}
-	}
-
-	if d == nil {
-		d = map[string]interface{}{}
-	}
-
-	if _, ok := d["old"]; ok {
-		d["updates"] = d["old"]
-		delete(d, "old")
-	}
-	if _, ok := d["cur"]; ok {
-		delete(d, "cur")
-	}
-
-	if _, ok := d["starttime"]; !ok {
-		d["version"] = 0
-	}
-	if _, ok := d["version"]; !ok {
-		d["version"] = ""
-	}
-	for _, k := range []string{"info", "ldpath", "updates"} {
-		if _, ok := d[k]; !ok {
-			d[k] = map[string]interface{}{}
-		}
-	}
-
-	mtimedbkeys := map[string]bool{"info": true, "ldpath": true, "resume": true, "resume_backup": true,
-		"starttime": true, "updates": true, "version": true}
-
-	for k := range d {
-		if !mtimedbkeys[k] {
-			msg.WriteMsg(fmt.Sprintf("Deleting invalid mtimedb key: %s\n", k), -1, nil)
-			delete(d, k)
-		}
-	}
-	for k, v := range d {
-		m.dict[k] = v
-	}
-	d = myutil.CopyMapT[string, any](m._clean_data)
-}
-
-func (m *MtimeDB) Commit() {
-	if m.filename == "" {
-		return
-	}
-	d := map[string]interface{}{}
-	for k, v := range m.dict {
-		d[k] = v
-	}
-	if !reflect.DeepEqual(d, m._clean_data) {
-		d["version"] = fmt.Sprint(portage.VERSION)
-		//try:
-		f := NewAtomic_ofstream(m.filename, os.O_CREATE|os.O_RDWR|os.O_TRUNC, true)
-		//except
-		//EnvironmentError:
-		//	pass
-		//	else:
-		if m._json_write {
-			jd, _ := json.MarshalIndent(d, "", "\t")
-			f.Write(jd)
-		}
-		f.Close()
-		permissions.Apply_secpass_permissions(m.filename,
-			uint32(data.Uid), *data.Portage_gid, 0o644, -1, nil, true)
-		m._clean_data = myutil.CopyMapT[string, any](d)
-	}
-}
-func NewMtimeDB(filename string) *MtimeDB {
-	m := &MtimeDB{}
-
-	m._json_write = true
-
-	m.dict = map[string]interface{}{}
-	m.filename = filename
-	m._load(filename)
-	return m
 }
 
 type NeededEntry struct {

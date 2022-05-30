@@ -2,7 +2,7 @@ package env
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/grab"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -106,7 +106,7 @@ type fileLoader struct {
 func (f *fileLoader) Load() (map[string][]string, map[string][]string) {
 	data, errors := map[string][]string{}, map[string][]string{}
 	fun := f.lineParser
-	for _, fn := range util.RecursiveFileList(f.fname) {
+	for _, fn := range grab.RecursiveFileList(f.fname) {
 		f, _ := os.Open(fn)
 		m, _ := ioutil.ReadAll(f)
 		lines := strings.Split(string(m), "\n")

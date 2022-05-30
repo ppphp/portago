@@ -37,7 +37,7 @@ func(s*SpawnNofetchWithoutBuilddir) _start() {
 	settings = s.settings
 
 	portage_tmpdir := settings.ValueDict["PORTAGE_TMPDIR"]
-	if portage_tmpdir == "" || myutil.osAccess(portage_tmpdir, 0) {
+	if portage_tmpdir == "" || myutil.OsAccess(portage_tmpdir, 0) {
 		portage_tmpdir = ""
 	}
 
@@ -64,7 +64,7 @@ func(s*SpawnNofetchWithoutBuilddir) _start() {
 		return
 	}
 
-	prepare_build_dirs(settings, false)
+	Prepare_build_dirs(settings, false)
 
 	ebuild_phase := emerge.NewEbuildPhase(nil, s.background,
 		"nofetch", s.scheduler, settings, s.fd_pipes)

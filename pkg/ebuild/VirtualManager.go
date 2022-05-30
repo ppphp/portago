@@ -5,7 +5,7 @@ import (
 	"github.com/ppphp/portago/pkg/dbapi"
 	"github.com/ppphp/portago/pkg/dep"
 	"github.com/ppphp/portago/pkg/myutil"
-	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/grab"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/versions"
 	"path"
@@ -20,7 +20,7 @@ func (v *VirtualManager) read_dirVirtuals(profiles []string) {
 	virtualsList := []map[string][]string{}
 	for _, x := range profiles {
 		virtualsFile := path.Join(x, "virtuals")
-		virtualsDict := util.GrabDict(virtualsFile, false, false, false, false, false)
+		virtualsDict := grab.GrabDict(virtualsFile, false, false, false, false, false)
 		atomsDict := map[string][]string{}
 		for k, v := range virtualsDict {
 			virtAtom, err := dep.NewAtom(k, nil, false, nil, nil, "", nil, nil)
@@ -68,7 +68,7 @@ func (v *VirtualManager) read_dirVirtuals(profiles []string) {
 		}
 	}
 
-	v._dirVirtuals = util.stackDictList(virtualsList, 1, nil, 0)
+	v._dirVirtuals = grab.StackDictList(virtualsList, 1, nil, 0)
 
 	for virt := range v._dirVirtuals {
 		myutil.ReverseSlice(v._dirVirtuals[virt])
@@ -94,7 +94,7 @@ func (v *VirtualManager) _compile_virtuals() {
 		}
 	}
 
-	virtuals := util.stackDictList([]map[string][]string{ptVirtuals, v._treeVirtuals, v._dirVirtuals, v._depgraphVirtuals}, 0, nil, 0)
+	virtuals := grab.StackDictList([]map[string][]string{ptVirtuals, v._treeVirtuals, v._dirVirtuals, v._depgraphVirtuals}, 0, nil, 0)
 	v._virtuals = virtuals
 	v._virts_p = nil
 }
@@ -160,7 +160,7 @@ func (v *VirtualManager) add_depgraph_virtuals(mycpv string, virts []string) {
 	}
 
 	modified := false
-	cp, _ := dep.NewAtom(versions.cpvGetKey(mycpv, ""), nil, false, nil, nil, "", nil, nil)
+	cp, _ := dep.NewAtom(versions.CpvGetKey(mycpv, ""), nil, false, nil, nil, "", nil, nil)
 	for _, virt := range virts {
 		a, err := dep.NewAtom(virt, nil, false, nil, nil, "", nil, nil)
 		if err != nil {

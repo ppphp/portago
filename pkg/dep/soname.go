@@ -18,6 +18,7 @@ var (
 		elf.EM_ALTERA_NIOS2: "nios2",
 		elf.EM_ARM:          "arm",
 		elf.EM_IA_64:        "ia64",
+		elf.EM_LOONGARCH:    "loong",
 		elf.EM_MIPS:         "mips",
 		elf.EM_PARISC:       "hppa",
 		elf.EM_PPC:          "ppc",
@@ -30,6 +31,15 @@ var (
 		elf.EM_X86_64:       "x86",
 	}
 
+	_loong_abi_map = map[uint32]string{
+		elf.EF_LOONGARCH_ABI_LP64_SOFT_FLOAT:    "lp64s",
+		elf.EF_LOONGARCH_ABI_LP64_SINGLE_FLOAT:  "lp64f",
+		elf.EF_LOONGARCH_ABI_LP64_DOUBLE_FLOAT:  "lp64d",
+		elf.EF_LOONGARCH_ABI_ILP32_SOFT_FLOAT:   "ilp32s",
+		elf.EF_LOONGARCH_ABI_ILP32_SINGLE_FLOAT: "ilp32f",
+		elf.EF_LOONGARCH_ABI_ILP32_DOUBLE_FLOAT: "ilp32d",
+	}
+
 	_mips_abi_map = map[uint32]string{
 		elf.E_MIPS_ABI_EABI32: "eabi32",
 		elf.E_MIPS_ABI_EABI64: "eabi64",
@@ -37,6 +47,11 @@ var (
 		elf.E_MIPS_ABI_O64:    "o64",
 	}
 )
+
+func _compute_suffix_loong(elf_header elf.ELFHeader) string {
+	loong_abi := elf_header.EFlags & elf.EF_LOONGARCH_ABI_MASK
+	return _loong_abi_map[loong_abi]
+}
 
 func _compute_suffix_mips(elf_header elf.ELFHeader) string {
 	mipsAbi := elf_header.EFlags & elf.EF_MIPS_ABI
@@ -71,6 +86,7 @@ func _compute_suffix_riscv(elf_header elf.ELFHeader) string {
 }
 
 var _specialized_funcs = map[string]func(header elf.ELFHeader) string{
+	"loong": _compute_suffix_loong,
 	"mips":  _compute_suffix_mips,
 	"riscv": _compute_suffix_riscv,
 }

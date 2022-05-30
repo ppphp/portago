@@ -67,7 +67,7 @@ func(r *RsyncSync) update() (int,bool) {
 	if strings.ToLower(r.repo.moduleSpecificOptions["sync-rsync-vcs-ignore"]) == "true" {
 	} else {
 		vcs_dirs = myutil.CopyMapSB(_const.VcsDirs)
-		old, _ := myutil.listDir(r.repo.Location)
+		old, _ := myutil.ListDir(r.repo.Location)
 		for k := range vcs_dirs {
 			if !myutil.Ins(old, k) {
 				delete(vcs_dirs, k)
