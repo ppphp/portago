@@ -1,12 +1,12 @@
 package dbapi
 
 import (
-	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/versions"
 	"strings"
 )
 
-func cpv_expand(myCpv string, myDb *dbapi, useCache int, settings *ebuild.Config) string { // n1n
+func cpv_expand(myCpv string, myDb *dbapi, useCache int, settings *config.Config) string { // n1n
 	mySlash := strings.Split(myCpv, "/")
 	mySplit := versions.PkgSplit_(mySlash[len(mySlash)-1], "")
 	if settings == nil {

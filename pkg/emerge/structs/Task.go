@@ -1,4 +1,4 @@
-package emerge
+package structs
 
 type Task struct {
 	hashKey   string

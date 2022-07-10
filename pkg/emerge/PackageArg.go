@@ -2,6 +2,7 @@ package emerge
 
 import (
 	"github.com/ppphp/portago/pkg/dep"
+	"github.com/ppphp/portago/pkg/emerge/structs"
 	"github.com/ppphp/portago/pkg/sets"
 )
 
@@ -18,7 +19,7 @@ func NewPackageArg(packagee=None, arg string, root_config *RootConfig, **kwargs)
 	p.DependencyArg = NewDependencyArg(arg, false, false, true, root_config,**kwargs)
 	p.packagee = packagee
 	atom := "=" + packagee.cpv
-	if packagee.repo != Package.UNKNOWN_REPO {
+	if packagee.repo != structs.Package.UNKNOWN_REPO {
 		atom += _repo_separator + packagee.repo
 	}
 	allow_repo := true

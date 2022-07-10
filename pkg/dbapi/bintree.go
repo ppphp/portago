@@ -9,6 +9,7 @@ import (
 	_const "github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/dep"
 	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/emerge"
 	"github.com/ppphp/portago/pkg/exception"
 	"github.com/ppphp/portago/pkg/getbinpkg"
@@ -306,7 +307,7 @@ func (b *bindbapi) getfetchsizes(pkg) map[string]int {
 }
 
 // nil, true, false
-func NewBinDbApi(mybintree *BinaryTree, settings *ebuild.Config, exclusive_slots, multi_instance bool) *bindbapi { //
+func NewBinDbApi(mybintree *BinaryTree, settings *config.Config, exclusive_slots, multi_instance bool) *bindbapi { //
 	b := &bindbapi{}
 	b.fakedbapi = NewFakeDbApi(settings, false, true)
 	b.bintree = mybintree
@@ -320,7 +321,7 @@ func NewBinDbApi(mybintree *BinaryTree, settings *ebuild.Config, exclusive_slots
 type BinaryTree struct {
 	pkgdir, _pkgindex_file                                                                                       string
 	PkgIndexFile                                                                                                 interface{}
-	settings                                                                                                     *ebuild.Config
+	settings                                                                                                     *config.Config
 	populated, _populating, _multi_instance, _remote_has_index, _all_directory                                   bool
 	_pkgindex_version                                                                                            int
 	_pkgindex_hashes, _pkgindex_aux_keys, _pkgindex_use_evaluated_keys, _pkgindex_inherited_keys []string
@@ -337,7 +338,7 @@ type BinaryTree struct {
 	_binrepos_conf *binrepo.BinRepoConfigLoader
 }
 
-func NewBinaryTree(pkgDir string, settings *ebuild.Config) *BinaryTree {
+func NewBinaryTree(pkgDir string, settings *config.Config) *BinaryTree {
 	b := &BinaryTree{}
 	if pkgDir == "" {
 		//raise TypeError("pkgdir parameter is required")
@@ -1421,7 +1422,7 @@ func (b *BinaryTree) _merge_pkgindex_header(src, dest map[string]string) {
 	}
 }
 
-func (b *BinaryTree) _propagate_config(config *ebuild.Config) bool {
+func (b *BinaryTree) _propagate_config(config *config.Config) bool {
 
 	if b._pkgindex_header == nil {
 		return false

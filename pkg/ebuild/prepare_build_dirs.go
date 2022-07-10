@@ -4,8 +4,10 @@ import (
 	"compress/gzip"
 	"fmt"
 	"github.com/ppphp/portago/pkg/data"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/bad"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/util/permissions"
 	"io"
@@ -16,7 +18,7 @@ import (
 )
 
 // myroot ignored, nil, false
-func Prepare_build_dirs(settings *Config, cleanup bool) int {
+func Prepare_build_dirs(settings *config.Config, cleanup bool) int {
 	if settings == nil {
 		//raise TypeError("settings argument is required")
 	}
@@ -39,7 +41,7 @@ func Prepare_build_dirs(settings *Config, cleanup bool) int {
 					clean_dir), -1, nil)
 				return 1
 			} else {
-				util.Raise_exc(err)
+				bad.Raise_exc(err)
 			}
 		}
 	}
@@ -102,7 +104,7 @@ func Prepare_build_dirs(settings *Config, cleanup bool) int {
 	return 0
 }
 
-func _adjust_perms_msg(settings *Config, msg1 string) {
+func _adjust_perms_msg(settings *config.Config, msg1 string) {
 
 	write := func(msg1 string) {
 		msg.WriteMsg(msg1, -1, nil)

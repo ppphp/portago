@@ -3,7 +3,7 @@ package elog
 import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/const"
-	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/exception"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/process"
@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-func _preload_elog_modules(settings *ebuild.Config) {
+func _preload_elog_modules(settings *config.Config) {
 	logsystems := strings.Fields(settings.ValueDict["PORTAGE_ELOG_SYSTEM"])
 	for _, s:= range logsystems{
 		if strings.Contains(s, ":") {
@@ -100,14 +100,14 @@ func _combine_logentries(logentries map[string][]struct {s  string;ss []string} 
 //	return m
 //}
 
-var _elog_listeners = []func(*ebuild.Config, string, interface{}, interface{}){}
+var _elog_listeners = []func(*config.Config, string, interface{}, interface{}){}
 
-func add_listener(listener func(*ebuild.Config, string, interface{}, interface{})) {
+func add_listener(listener func(*config.Config, string, interface{}, interface{})) {
 	_elog_listeners = append(_elog_listeners, listener)
 }
 
-func remove_listener(listener func(*ebuild.Config, string, interface{}, interface{})) {
-	el:= []func(*ebuild.Config, string, interface{}, interface{}){}
+func remove_listener(listener func(*config.Config, string, interface{}, interface{})) {
+	el:= []func(*config.Config, string, interface{}, interface{}){}
 	for _, e :=range _elog_listeners {
 		for &e != &listener {
 			el =append(el, e)
@@ -118,7 +118,7 @@ func remove_listener(listener func(*ebuild.Config, string, interface{}, interfac
 var _elog_atexit_handlers = []{}
 
 // nil
-func elog_process(cpv string, mysettings *ebuild.Config, phasefilter []string) {
+func elog_process(cpv string, mysettings *config.Config, phasefilter []string) {
 
 	logsystems1 := strings.Fields(mysettings.ValueDict["PORTAGE_ELOG_SYSTEM"])
 	for _, s := range logsystems1 {

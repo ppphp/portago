@@ -1,6 +1,8 @@
 package emerge
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type DependencyArg struct {
 	// slot

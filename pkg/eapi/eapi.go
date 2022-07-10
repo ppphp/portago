@@ -168,7 +168,7 @@ type EapiAttrs struct {
 	AllowsPackageProvided, bdepend, Broot, exportsAa, ExportsEbuildPhaseFunc,
 	ExportsEclassdir, exportsKv, exportsMergeType, ExportsPortdir,
 	exportsReplaceVars, FeatureFlagTest, idepend, iuseDefaults,
-	IuseEffective, posixishLocale, PathVariablesEndWithTrailingSlash,
+	IuseEffective, PosixishLocale, PathVariablesEndWithTrailingSlash,
 	prefix, RepoDeps, requiredUse, RequiredUseAtMostOneOf,
 	SelectiveSrcUriRestriction, SlotOperator, SlotDeps, SrcUriArrows,
 	StrongBlocks, UseDeps, UseDepDefaults, EmptyGroupsAlwaysTrue, Sysroot bool

@@ -3,6 +3,7 @@ package ebuild
 import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/checksum"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/manifest"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
@@ -11,7 +12,7 @@ import (
 )
 
 // false, nil, nil
-func Digestcheck(myfiles []string, mysettings *Config, strict bool, mf *manifest.Manifest) int {
+func Digestcheck(myfiles []string, mysettings *config.Config, strict bool, mf *manifest.Manifest) int {
 
 	if mysettings.ValueDict["EBUILD_SKIP_MANIFEST"] == "1" {
 		return 1

@@ -1,7 +1,7 @@
 package dbapi
 
 import (
-	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/portage"
 	"github.com/ppphp/portago/pkg/versions"
 	"sort"
@@ -234,7 +234,7 @@ func (f *fakedbapi) aux_update(cpv *versions.PkgStr, values map[string]string) {
 }
 
 // nil, true, false
-func NewFakeDbApi(settings *ebuild.Config, exclusive_slots, multi_instance bool) *fakedbapi {
+func NewFakeDbApi(settings *config.Config, exclusive_slots, multi_instance bool) *fakedbapi {
 	f := &fakedbapi{dbapi: NewDbapi(), _exclusive_slots: exclusive_slots,
 		cpvdict: map[string]map[string]string{},
 		cpdict:  map[string][]*versions.PkgStr{}}

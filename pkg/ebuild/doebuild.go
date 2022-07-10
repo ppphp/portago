@@ -8,12 +8,15 @@ import (
 	"github.com/ppphp/portago/pkg/dbapi"
 	"github.com/ppphp/portago/pkg/dep"
 	eapi2 "github.com/ppphp/portago/pkg/eapi"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/elog"
 	"github.com/ppphp/portago/pkg/emerge"
+	"github.com/ppphp/portago/pkg/emerge/structs"
 	"github.com/ppphp/portago/pkg/manifest"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/portage"
+	"github.com/ppphp/portago/pkg/portage/vars"
 	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/repository"
 	"github.com/ppphp/portago/pkg/util"
@@ -74,7 +77,7 @@ var (
 )
 
 // nil
-func _doebuild_spawn(phase string, settings *Config, actionmap Actionmap, **kwargs)([]int,error) {
+func _doebuild_spawn(phase string, settings *config.Config, actionmap Actionmap, **kwargs)([]int,error) {
 
 	if _unsandboxed_phases[phase] {
 		kwargs["free"] = true
@@ -102,7 +105,7 @@ func _doebuild_spawn(phase string, settings *Config, actionmap Actionmap, **kwar
 		if phase == "cleanrm" {
 			ebuild_sh_arg = "clean"
 		}
-		cmd = fmt.Sprintf("%s %s", portage.ShellQuote(
+		cmd = fmt.Sprintf("%s %s", vars.ShellQuote(
 			filepath.Join(settings.ValueDict["PORTAGE_BIN_PATH"],
 				filepath.Base(_const.EBUILD_SH_BINARY))),
 			ebuild_sh_arg)
@@ -114,7 +117,7 @@ func _doebuild_spawn(phase string, settings *Config, actionmap Actionmap, **kwar
 }
 
 // nil, false, "",
-func _spawn_phase(phase string, settings *Config, actionmap Actionmap, returnpid bool,
+func _spawn_phase(phase string, settings *config.Config, actionmap Actionmap, returnpid bool,
 	logfile string, **kwargs) ([]int, error){
 
 	if returnpid {
@@ -132,7 +135,7 @@ func _spawn_phase(phase string, settings *Config, actionmap Actionmap, returnpid
 }
 
 // ""
-func _doebuild_path(settings *Config, eapi string) {
+func _doebuild_path(settings *config.Config, eapi string) {
 
 	portage_bin_path := []string{settings.ValueDict["PORTAGE_BIN_PATH"]}
 	if portage_bin_path[0] != _const.PORTAGE_BIN_PATH {
@@ -216,7 +219,7 @@ func _doebuild_path(settings *Config, eapi string) {
 }
 
 // nil, nil, false, nil, nil
-func doebuild_environment(myebuild , mydo string, myroot=None, settings *Config,
+func doebuild_environment(myebuild , mydo string, myroot=None, settings *config.Config,
 	debug bool, use_cache=None, db dbapi.IDbApi) {
 
 	if settings == nil {
@@ -539,7 +542,7 @@ var (
 )
 
 // 0, 0, 0, 0, 1, 0, "", nil, nil, nil, nil, false
-func doebuild(myebuild, mydo string, settings *Config, debug, listonly,
+func doebuild(myebuild, mydo string, settings *config.Config, debug, listonly,
 	fetchonly, cleanup, use_cache, fetchall int, tree string,
 	mydbapi dbapi.IDbApi, vartree *dbapi.varTree, prev_mtimes=None,
 	fd_pipes map[int]int, returnpid bool) int {
@@ -1023,7 +1026,7 @@ func doebuild(myebuild, mydo string, settings *Config, debug, listonly,
 			dist_digests = mf.getTypeDigests("DIST")
 		}
 
-		_fetch_subprocess := func(fetchme, mysettings *Config, listonly, dist_digests) {
+		_fetch_subprocess := func(fetchme, mysettings *config.Config, listonly, dist_digests) {
 
 			if atom._want_userfetch(mysettings) {
 				atom._drop_privs_userfetch(mysettings)
@@ -1209,7 +1212,7 @@ func doebuild(myebuild, mydo string, settings *Config, debug, listonly,
 	return retval
 }
 
-func _check_temp_dir(settings *Config)  int{
+func _check_temp_dir(settings *config.Config)  int{
 	if !myutil.Inmss(settings.ValueDict, "PORTAGE_TMPDIR") ||
 		!myutil.pathIsDir(settings.ValueDict["PORTAGE_TMPDIR"]) {
 		msg.WriteMsg(fmt.Sprintf(("The directory specified in your "+
@@ -1243,7 +1246,7 @@ func _check_temp_dir(settings *Config)  int{
 	return 0
 }
 
-func _prepare_env_file(settings *Config) int {
+func _prepare_env_file(settings *config.Config) int {
 
 	env_extractor := emerge.NewBinpkgEnvExtractor(false, asyncio._safe_loop(), settings)
 
@@ -1275,7 +1278,7 @@ type Actionmap map[string]*struct {
 	dep  string
 }
 
-func _spawn_actionmap(settings *Config) Actionmap {
+func _spawn_actionmap(settings *config.Config) Actionmap {
 	features := settings.Features.Features
 	restrict := strings.Fields(settings.ValueDict["PORTAGE_RESTRICT"])
 	nosandbox := (features["userpriv"]) &&
@@ -1301,8 +1304,8 @@ func _spawn_actionmap(settings *Config) Actionmap {
 		filepath.Base(_const.EBUILD_SH_BINARY))
 	misc_sh_binary := filepath.Join(portage_bin_path,
 		filepath.Base(_const.MISC_SH_BINARY))
-	ebuild_sh := portage.ShellQuote(ebuild_sh_binary) + " %s"
-	misc_sh := portage.ShellQuote(misc_sh_binary) + " __dyn_%s"
+	ebuild_sh := vars.ShellQuote(ebuild_sh_binary) + " %s"
+	misc_sh := vars.ShellQuote(misc_sh_binary) + " __dyn_%s"
 
 	actionmap := Actionmap{
 		"pretend":   {cmd: ebuild_sh, args: ActionMapArgs{droppriv: false, free: true, sesandbox: false, fakeroot: false}},
@@ -1321,9 +1324,9 @@ func _spawn_actionmap(settings *Config) Actionmap {
 	return actionmap
 }
 
-func _validate_deps(mysettings *Config, myroot, mydo string, mydbapi dbapi.IDbApi)int {
+func _validate_deps(mysettings *config.Config, myroot, mydo string, mydbapi dbapi.IDbApi)int {
 	invalid_dep_exempt_phases := map[string]bool{"clean": true, "cleanrm": true, "help": true, "prerm": true, "postrm": true}
-	all_keys := myutil.CopyMapSB(emerge.NewPackage(false, nil, false, nil, nil, "").metadataKeys)
+	all_keys := myutil.CopyMapSB(structs.NewPackage(false, nil, false, nil, nil, "").metadataKeys)
 	all_keys["SRC_URI"] = true
 	metadata := mysettings.configDict["pkg"]
 	if myutil.Inmss(metadata, "PORTAGE_REPO_NAME") || myutil.Inmss(metadata, "SRC_URI") {
@@ -1367,7 +1370,7 @@ func _validate_deps(mysettings *Config, myroot, mydo string, mydbapi dbapi.IDbAp
 
 	root_config := emerge.NewRootConfig(mysettings, &portage.Tree{_porttree: NewFakeTree(mydbapi)}, nil)
 
-	pkg := emerge.NewPackage(false, mysettings.mycpv, false, metadata, root_config, "ebuild")
+	pkg := structs.NewPackage(false, mysettings.mycpv, false, metadata, root_config, "ebuild")
 
 	msgs := []string{}
 	if pkg.invalid {
@@ -1426,7 +1429,7 @@ func _validate_deps(mysettings *Config, myroot, mydo string, mydbapi dbapi.IDbAp
 }
 
 // false, false, false, false, false, true, true, false, false, nil
-func spawnE(mystring string, mysettings  *Config, debug, free, droppriv,
+func spawnE(mystring string, mysettings  *config.Config, debug, free, droppriv,
 	sesandbox, fakeroot, networked, ipc, mountns, pidns bool, fd_pipes map[int]int, **keywords) {
 
 	if fd_pipes == nil {
@@ -1615,7 +1618,7 @@ func spawnE(mystring string, mysettings  *Config, debug, free, droppriv,
 }
 
 // 0, nil, "", false
-func spawnebuild(mydo string, actionmap Actionmap, mysettings *Config, debug, alwaysdep int,
+func spawnebuild(mydo string, actionmap Actionmap, mysettings *config.Config, debug, alwaysdep int,
 	logfile string, fd_pipes map[int]int, returnpid bool) int {
 
 	if returnpid {
@@ -1695,7 +1698,7 @@ var _post_phase_cmds = {
 "postinst_qa_check"],
 }
 
-func _post_phase_userpriv_perms(mysettings *Config) {
+func _post_phase_userpriv_perms(mysettings *config.Config) {
 	if  mysettings.Features.Features["userpriv"] && *data.Secpass >= 2 {
 		for _, path := range []string{mysettings.ValueDict["HOME"], mysettings.ValueDict["T"]}{
 			apply_recursive_permissions(path,
@@ -1706,7 +1709,7 @@ func _post_phase_userpriv_perms(mysettings *Config) {
 }
 
 // nil
-func _check_build_log(mysettings *Config, out io.Writer) {
+func _check_build_log(mysettings *config.Config, out io.Writer) {
 
 	logfile := mysettings.ValueDict["PORTAGE_LOG_FILE"]
 	if logfile == "" {
@@ -1915,7 +1918,7 @@ func _check_build_log(mysettings *Config, out io.Writer) {
 	}
 }
 
-func _post_src_install_write_metadata(settings *Config){
+func _post_src_install_write_metadata(settings *config.Config){
 
 	eapi_attrs := eapi2.GetEapiAttrs(settings.configDict["pkg"]["EAPI"])
 
@@ -2005,7 +2008,7 @@ func _post_src_install_write_metadata(settings *Config){
 	}
 }
 
-func _preinst_bsdflags(mysettings *Config){
+func _preinst_bsdflags(mysettings *config.Config){
 	//if bsd_chflags{
 	//
 	//os.system(fmt.Sprintf("mtree -c -p %s -k flags > %s" %
@@ -2019,7 +2022,7 @@ func _preinst_bsdflags(mysettings *Config){
 	//}
 }
 
-func _postinst_bsdflags(mysettings *Config) {
+func _postinst_bsdflags(mysettings *config.Config) {
 	//if bsd_chflags {
 	//	exec.Command("sh", "-c", fmt.Sprintf("mtree -e -p %s -U -k flags < %s > /dev/null",
 	//		ShellQuote(mysettings.ValueDict["ROOT"]),
@@ -2027,7 +2030,7 @@ func _postinst_bsdflags(mysettings *Config) {
 	//}
 }
 
-func _post_src_install_uid_fix(mysettings *Config, out){
+func _post_src_install_uid_fix(mysettings *config.Config, out){
 
 	inst_uid, _ := strconv.Atoi(mysettings.ValueDict["PORTAGE_INST_UID"])
 	inst_gid, _ := strconv.Atoi(mysettings.ValueDict["PORTAGE_INST_GID"])
@@ -2196,7 +2199,7 @@ f.close()
 _reapply_bsdflags_to_image(mysettings)
 }
 
-func _reapply_bsdflags_to_image(mysettings *Config) {
+func _reapply_bsdflags_to_image(mysettings *config.Config) {
 	//if bsd_chflags {
 	//	exec.Command("sh", "-c", fmt.Sprintf("mtree -e -p %s -U -k flags < %s > /dev/null",
 	//		ShellQuote(mysettings.ValueDict["D"]),
@@ -2204,7 +2207,7 @@ func _reapply_bsdflags_to_image(mysettings *Config) {
 	//}
 }
 
-func _post_src_install_soname_symlinks(mysettings *Config, out io.Writer) {
+func _post_src_install_soname_symlinks(mysettings *config.Config, out io.Writer) {
 
 	image_dir := mysettings.ValueDict["D"]
 	needed_filename := filepath.Join(mysettings.ValueDict["PORTAGE_BUILDDIR"],
@@ -2477,7 +2480,7 @@ func _merge_unicode_error(errors []string) []string {
 	return lines
 }
 
-func _prepare_self_update(settings *Config) {
+func _prepare_self_update(settings *config.Config) {
 
 	if portage._bin_path != _const.PORTAGE_BIN_PATH {
 		return
@@ -2512,7 +2515,7 @@ func _prepare_self_update(settings *Config) {
 	}
 }
 
-func _handle_self_update(settings *Config) bool {
+func _handle_self_update(settings *config.Config) bool {
 	cpv := settings.mycpv
 	a, _ := dep.NewAtom(_const.PortagePackageAtom, nil, false, nil, nil, "", nil, nil)
 	if settings.ValueDict["ROOT"] == "/" && len(dep.matchFromList(a, []*versions.PkgStr{cpv})) > 0 {
@@ -2522,7 +2525,7 @@ func _handle_self_update(settings *Config) bool {
 	return false
 }
 
-func _prepare_features_dirs(mysettings *Config) {
+func _prepare_features_dirs(mysettings *config.Config) {
 
 	libdir := ""
 	default_abi := mysettings.ValueDict["DEFAULT_ABI"]
@@ -2640,7 +2643,7 @@ func _prepare_features_dirs(mysettings *Config) {
 	}
 }
 
-func _prepare_workdir(mysettings *Config) {
+func _prepare_workdir(mysettings *config.Config) {
 	workdir_mode := 0700
 	//try:
 	mode := mysettings.ValueDict["PORTAGE_WORKDIR_MODE"]
@@ -2801,7 +2804,7 @@ func Ensure_log_subdirs(logdir, subdir string) {
 	}
 }
 
-func _prepare_fake_filesdir(settings *Config) {
+func _prepare_fake_filesdir(settings *config.Config) {
 	real_filesdir := settings.ValueDict["O"] + "/files"
 	symlink_path := settings.ValueDict["FILESDIR"]
 
@@ -2818,7 +2821,7 @@ func _prepare_fake_filesdir(settings *Config) {
 	}
 }
 
-func _prepare_fake_distdir(settings *Config, alist[]string){
+func _prepare_fake_distdir(settings *config.Config, alist[]string){
 	orig_distdir := settings.ValueDict["DISTDIR"]
 	edpath := filepath.Join(settings.ValueDict["PORTAGE_BUILDDIR"], "distdir")
 	util.EnsureDirs(edpath, -1, *data.Portage_gid, 0755, -1, nil,true)

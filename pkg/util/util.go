@@ -4,12 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/ppphp/portago/pkg/checksum"
-	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/dep"
-	"github.com/ppphp/portago/pkg/ebuild"
-	"github.com/ppphp/portago/pkg/portage"
+	"github.com/ppphp/portago/pkg/interfaces"
 	"github.com/ppphp/portago/pkg/process"
-	src1 "github.com/ppphp/portago/pkg/src"
 	"github.com/ppphp/portago/pkg/util/grab"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/util/permissions"
@@ -31,41 +28,41 @@ type SB struct {
 	B bool
 }
 
-type AS struct {
-	A *dep.Atom
+type AS[T interfaces.ISettings] struct {
+	A *dep.Atom[T]
 	S string
 }
 
-func AppendRepo(atomList map[*dep.Atom]string, repoName string, rememberSourceFile bool) []AS {
-	sb := []AS{}
+func AppendRepo[T interfaces.ISettings](atomList map[*dep.Atom[T]]string, repoName string, rememberSourceFile bool) []AS[T] {
+	sb := []AS[T]{}
 	if rememberSourceFile {
 		for atom, source := range atomList {
 			if atom.Repo != "" && atom != nil {
-				sb = append(sb, AS{atom, source})
+				sb = append(sb, AS[T]{atom, source})
 			} else if a := atom.WithRepo(repoName); a != nil {
-				sb = append(sb, AS{a, source})
+				sb = append(sb, AS[T]{a, source})
 			} else {
-				sb = append(sb, AS{nil, source})
+				sb = append(sb, AS[T]{nil, source})
 			}
 		}
 	} else {
 		for atom := range atomList {
 			if atom.Repo != "" && atom != nil {
-				sb = append(sb, AS{atom, ""})
+				sb = append(sb, AS[T]{atom, ""})
 			} else if a := atom.WithRepo(repoName); a != nil {
-				sb = append(sb, AS{a, ""})
+				sb = append(sb, AS[T]{a, ""})
 			} else {
-				sb = append(sb, AS{nil, ""})
+				sb = append(sb, AS[T]{nil, ""})
 			}
 		}
 	}
 	return sb
 }
 
-func StackLists(lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[*dep.Atom]string { //1,false,false,false,false
+func StackLists[T interfaces.ISettings](lists [][][2]string, incremental int, rememberSourceFile, warnForUnmatchedRemoval, strictWarnForUnmatchedRemoval, ignoreRepo bool) map[*dep.Atom[T]]string { //1,false,false,false,false
 	matchedRemovals := map[[2]string]bool{}
 	unmatchedRemovals := map[string][]string{}
-	newList := map[*dep.Atom]string{}
+	newList := map[*dep.Atom[T]]string{}
 	for _, subList := range lists {
 		for _, t := range subList {
 			tokenKey := t
@@ -81,11 +78,11 @@ func StackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 			}
 			if incremental != 0 {
 				if token == "-*" {
-					newList = map[*dep.Atom]string{}
+					newList = map[*dep.Atom[T]]string{}
 				} else if token[:1] == "-" {
 					matched := false
 					if ignoreRepo && !strings.Contains(token, "::") {
-						toBeRemoved := []*dep.Atom{}
+						toBeRemoved := []*dep.Atom[T]{}
 						tokenSlice := token[1:]
 						for atom := range newList {
 							atomWithoutRepo := atom.Value
@@ -122,10 +119,10 @@ func StackLists(lists [][][2]string, incremental int, rememberSourceFile, warnFo
 						matchedRemovals[tokenKey] = true
 					}
 				} else {
-					newList[&dep.Atom{Value: token}] = sourceFile
+					newList[&dep.Atom[T]{Value: token}] = sourceFile
 				}
 			} else {
-				newList[&dep.Atom{Value: token}] = sourceFile
+				newList[&dep.Atom[T]{Value: token}] = sourceFile
 			}
 		}
 	}
@@ -176,15 +173,15 @@ func ReadCorrespondingEapiFile(filename, defaults string) string { // "0"
 	return eapi
 }
 
-//000ffftf none 0
-func GrabDictPackage(myfilename string, juststrings, recursive, newlines bool, allowWildcard, allowRepo, allowBuildId, allowUse, verifyEapi bool, eapi, eapiDefault string) map[*dep.Atom][]string {
+//false, false, false, false, false, false, true, false, nil, 0
+func GrabDictPackage[T interfaces.ISettings](myfilename string, juststrings, recursive, newlines bool, allowWildcard, allowRepo, allowBuildId, allowUse, verifyEapi bool, eapi, eapiDefault string) map[*dep.Atom[T]][]string {
 	fileList := []string{}
 	if recursive {
 		fileList = grab.RecursiveFileList(myfilename)
 	} else {
 		fileList = []string{myfilename}
 	}
-	atoms := map[*dep.Atom][]string{}
+	atoms := map[*dep.Atom[T]][]string{}
 	var d map[string][]string
 	for _, filename := range fileList {
 		d = grab.GrabDict(filename, false, true, false, true, newlines)
@@ -195,7 +192,7 @@ func GrabDictPackage(myfilename string, juststrings, recursive, newlines bool, a
 			eapi = ReadCorrespondingEapiFile(myfilename, eapiDefault)
 		}
 		for k, v := range d {
-			a, err := dep.NewAtom(k, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId)
+			a, err := dep.NewAtom[T](k, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId)
 			if err != nil {
 				msg.WriteMsg(fmt.Sprintf("--- Invalid Atom in %s: %s\n", filename, err), -1, nil)
 			} else {
@@ -219,7 +216,7 @@ func GrabDictPackage(myfilename string, juststrings, recursive, newlines bool, a
 	return atoms
 }
 
-func GrabFilePackage(myFileName string, compatLevel int, recursive, allowWildcard, allowRepo, allowBuildId, rememberSourceFile, verifyEapi bool, eapi, eapiDefault string) [][2]string { // 0,false,false,false,false,false,false,nil,0
+func GrabFilePackage[T interfaces.ISettings](myFileName string, compatLevel int, recursive, allowWildcard, allowRepo, allowBuildId, rememberSourceFile, verifyEapi bool, eapi, eapiDefault string) [][2]string { // 0,false,false,false,false,false,false,nil,0
 	pkgs := grab.GrabFile(myFileName, compatLevel, recursive, true)
 	if len(pkgs) == 0 {
 		return pkgs
@@ -247,7 +244,7 @@ func GrabFilePackage(myFileName string, compatLevel int, recursive, allowWildcar
 			pkg = pkg[1:]
 		}
 
-		if _, err := dep.NewAtom(pkg, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId); err != nil {
+		if _, err := dep.NewAtom[T](pkg, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId); err != nil {
 			msg.WriteMsg(fmt.Sprintf("--- Invalid Atom in %s: %s\n", sourceFile, err), -1, nil)
 		} else {
 			if pkgOrig == pkg {
@@ -833,7 +830,9 @@ func (a *atomic_ofstream) Close() error {
 	}
 	if !a._aborted {
 		st, _ := os.Stat(realName)
-		permissions.Apply_stat_permissions(f.Name(), st, -1, nil, true)
+		var m1 os.FileMode
+		m1--
+		permissions.Apply_stat_permissions(f.Name(), st, m1, nil, true)
 		if err := os.Rename(f.Name(), realName); err != nil {
 			return err
 		}
@@ -1021,6 +1020,7 @@ func _compression_probe_file(f *os.File) string {
 	return ""
 }
 
+/*
 // 0, nil, nil, nil
 func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *ebuild.Config, hardlink_candidates []string) int64 {
 	if mysettings == nil {
@@ -1275,6 +1275,7 @@ func _movefile(src, dest string, newmtime int64, sstat os.FileInfo, mysettings *
 
 	return newmtime
 }
+*/
 
 type NeededEntry struct {
 	// slots

@@ -6,7 +6,7 @@ import (
 	"github.com/ppphp/portago/pkg/data"
 	"github.com/ppphp/portago/pkg/dep"
 	eapi2 "github.com/ppphp/portago/pkg/eapi"
-	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/emerge"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/portage"
@@ -88,7 +88,7 @@ type portdbapi struct {
 	_use_mutable             bool
 	repositories             *repository.RepoConfigLoader
 	treemap                  map[string]string
-	doebuild_settings        *ebuild.Config
+	doebuild_settings        *config.Config
 	depcachedir              string
 	porttrees                []string
 	_have_root_eclass_dir    bool
@@ -483,7 +483,7 @@ func (p *portdbapi) _aux_get_return(future emerge.IFuture, mycpv, mylist, myebui
 }
 
 // nil, nil
-func (p *portdbapi) getFetchMap(mypkg string, useflags []string, mytree string) []string {
+func (p *portdbapi) GetFetchMap(mypkg string, useflags []string, mytree string) []string {
 	loop = p._event_loop
 	return loop.run_until_complete(
 		p.async_fetch_map(mypkg, useflags,
@@ -625,7 +625,7 @@ func (p *portdbapi) getfetchsizes(mypkg string, useflags []string, debug int, my
 }
 
 // nil, nil, false, ""
-func (p *portdbapi) fetch_check(mypkg string, useflags []string, mysettings *ebuild.Config, all bool, myrepo string) bool {
+func (p *portdbapi) fetch_check(mypkg string, useflags []string, mysettings *config.Config, all bool, myrepo string) bool {
 	if all {
 		useflags = nil
 	} else if useflags == nil {
@@ -1019,19 +1019,19 @@ func (p *portdbapi) _visible(cpv *versions.PkgStr, metadata map[string]string) b
 }
 
 // nil
-func NewPortDbApi(mysettings *ebuild.Config) *portdbapi {
+func NewPortDbApi(mysettings *config.Config) *portdbapi {
 	p := &portdbapi{}
 	p._use_mutable = true
 	if mysettings != nil {
 		p.settings = mysettings
 	} else {
-		p.settings = ebuild.NewConfig(portage.Settings(), nil, "", nil, "", "", "", "", true, nil, false, nil)
+		p.settings = config.NewConfig(portage.Settings(), nil, "", nil, "", "", "", "", true, nil, false, nil)
 	}
 
 	p.repositories = p.settings.Repositories
 	p.treemap = p.repositories.treeMap
 
-	p.doebuild_settings = ebuild.NewConfig(p.settings, nil, "", nil, "", "", "", "", true, nil, false, nil)
+	p.doebuild_settings = config.NewConfig(p.settings, nil, "", nil, "", "", "", "", true, nil, false, nil)
 	p.depcachedir, _ = filepath.EvalSymlinks(p.settings.depcachedir)
 
 	if os.Getenv("SANDBOX_ON") == "1" {
@@ -1135,7 +1135,7 @@ func NewPortDbApi(mysettings *ebuild.Config) *portdbapi {
 }
 
 type PortageTree struct {
-	settings *ebuild.Config
+	settings *config.Config
 	dbapi    *portdbapi
 }
 
@@ -1173,7 +1173,7 @@ func (p *PortageTree) getslot(mycatpkg *versions.PkgStr) string {
 	return myslot
 }
 
-func NewPortageTree(settings *ebuild.Config) *PortageTree {
+func NewPortageTree(settings *config.Config) *PortageTree {
 	p := &PortageTree{}
 	if settings == nil {
 		settings = portage.Settings()
@@ -1181,51 +1181,6 @@ func NewPortageTree(settings *ebuild.Config) *PortageTree {
 	p.settings = settings
 	p.dbapi = NewPortDbApi(settings)
 	return p
-}
-
-type FetchlistDict struct {
-	pkgdir, cp, mytree string
-	settings           *ebuild.Config
-	portdb             *portdbapi
-}
-
-func (f *FetchlistDict) __getitem__(pkg_key string) {
-	return list(f.portdb.getFetchMap(pkg_key, nil, f.mytree))
-
-}
-
-func (f *FetchlistDict) __contains__(cpv *versions.PkgStr) bool {
-	for _, i := range f.__iter__() {
-		if cpv.string == i.string {
-			return true
-		}
-	}
-	return false
-}
-
-func (f *FetchlistDict) __iter__() []*versions.PkgStr {
-	return f.portdb.cp_list(f.cp, 1, f.mytree)
-
-}
-
-func (f *FetchlistDict) __len__() int {
-	return len(f.portdb.cp_list(f.cp, 1, f.mytree))
-
-}
-
-func (f *FetchlistDict) keys() []*versions.PkgStr {
-	return f.portdb.cp_list(f.cp, 1, f.mytree)
-}
-
-func NewFetchlistDict(pkgdir string, settings *ebuild.Config, mydbapi *portdbapi) *FetchlistDict {
-	f := &FetchlistDict{}
-	f.pkgdir = pkgdir
-	f.cp = filepath.Join(strings.Split(pkgdir, string(os.PathSeparator))[len(strings.Split(pkgdir, string(os.PathSeparator)))-2:]...)
-	f.settings = settings
-	f.mytree, _ = filepath.EvalSymlinks(filepath.Dir(filepath.Dir(pkgdir)))
-	f.portdb = mydbapi
-
-	return f
 }
 
 // nil, nil, nil, nil

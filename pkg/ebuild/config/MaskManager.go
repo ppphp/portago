@@ -1,4 +1,4 @@
-package ebuild
+package config
 
 import (
 	"fmt"
@@ -7,24 +7,25 @@ import (
 	"github.com/ppphp/portago/pkg/repository"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/portago/pkg/util/msg"
+	"github.com/ppphp/portago/pkg/versions"
 	"path"
 	"strings"
 )
 
 type maskManager struct {
-	_punmaskdict, _pmaskdict, _pmaskdict_raw map[string][]*dep.Atom
+	_punmaskdict, _pmaskdict, _pmaskdict_raw map[string][]*dep.Atom[*Config]
 }
 
-func (m *maskManager) _getMaskAtom(cpv *PkgStr, slot, repo string, unmask_atoms []*dep.Atom) *dep.Atom { // nil
-	var pkg *PkgStr = nil
-	if cpv.slot == "" {
-		pkg = NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
+func (m *maskManager) _getMaskAtom(cpv *versions.PkgStr[*Config], slot, repo string, unmask_atoms []*dep.Atom[*Config]) *dep.Atom[*Config] { // nil
+	var pkg *versions.PkgStr[*Config] = nil
+	if cpv.Slot == "" {
+		pkg = versions.NewPkgStr[*Config](cpv.String, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 	} else {
 		pkg = cpv
 	}
-	maskAtoms := m._punmaskdict[pkg.cp]
+	maskAtoms := m._punmaskdict[pkg.Cp]
 	if len(maskAtoms) > 0 {
-		pkgList := []*PkgStr{pkg}
+		pkgList := []*versions.PkgStr[*Config]{pkg}
 		for _, x := range maskAtoms {
 			if len(dep.MatchFromList(x, pkgList)) == 0 {
 				continue
@@ -42,28 +43,28 @@ func (m *maskManager) _getMaskAtom(cpv *PkgStr, slot, repo string, unmask_atoms 
 	return nil
 }
 
-func (m *maskManager) getMaskAtom(cpv *PkgStr, slot, repo string) *dep.Atom {
-	var pkg *PkgStr = nil
-	if cpv.slot == "" {
-		pkg = NewPkgStr(cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
+func (m *maskManager) getMaskAtom(cpv *versions.PkgStr[*Config], slot, repo string) *dep.Atom[*Config] {
+	var pkg *versions.PkgStr[*Config] = nil
+	if cpv.Slot == "" {
+		pkg = versions.NewPkgStr[*Config](cpv.String, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 	} else {
 		pkg = cpv
 	}
-	return m._getMaskAtom(pkg, slot, repo, m._punmaskdict[pkg.cp])
+	return m._getMaskAtom(pkg, slot, repo, m._punmaskdict[pkg.Cp])
 }
 
-func (m *maskManager) getRawMaskAtom(cpv *PkgStr, slot, repo string) *dep.Atom {
+func (m *maskManager) getRawMaskAtom(cpv *versions.PkgStr[*Config], slot, repo string) *dep.Atom[*Config] {
 	return m._getMaskAtom(cpv, slot, repo, nil)
 }
 
 func NewMaskManager(repositories *repository.RepoConfigLoader, profiles []*profileNode, abs_user_config string, user_config, strict_umatched_removal bool) *maskManager { // true, false
 	m := &maskManager{}
-	m._punmaskdict, m._pmaskdict, m._pmaskdict_raw = map[string][]*dep.Atom{}, map[string][]*dep.Atom{}, map[string][]*dep.Atom{}
+	m._punmaskdict, m._pmaskdict, m._pmaskdict_raw = map[string][]*dep.Atom[*Config]{}, map[string][]*dep.Atom[*Config]{}, map[string][]*dep.Atom[*Config]{}
 	pmaskCache := map[string][][2]string{}
 	grabPMask := func(loc string, repoConfig *repository.RepoConfig) [][2]string {
 		if _, ok := pmaskCache[loc]; !ok {
 			path := path.Join(loc, "profiles", "package.mask")
-			pmaskCache[loc] = util.GrabFilePackage(path, 0, repoConfig.portage1Profiles, false, false, myutil.Ins(repoConfig.profileFormats, "build-id"), true, true, "", repoConfig.eapi)
+			pmaskCache[loc] = util.GrabFilePackage[*Config](path, 0, repoConfig.Portage1Profiles, false, false, myutil.Ins(repoConfig.ProfileFormats, "build-id"), true, true, "", repoConfig.Eapi)
 			//if repo_config.portage1_profiles_compat and os.path.isdir(path):
 			//warnings.warn(_("Repository '%(repo_name)s' is implicitly using "
 			//"'portage-1' profile format in its profiles/package.mask, but "
@@ -75,9 +76,9 @@ func NewMaskManager(repositories *repository.RepoConfigLoader, profiles []*profi
 		}
 		return pmaskCache[loc]
 	}
-	repoPkgMaskLines := []util.AS{}
+	repoPkgMaskLines := []util.AS[*Config]{}
 	for _, repo := range repositories.ReposWithProfiles() {
-		lines := []map[*dep.Atom]string{}
+		lines := []map[*dep.Atom[*Config]]string{}
 		repoLines := grabPMask(repo.Location, repo)
 		removals := map[string]bool{}
 		for _, line := range repoLines {
@@ -93,7 +94,7 @@ func NewMaskManager(repositories *repository.RepoConfigLoader, profiles []*profi
 					matchedRemovals[line[0]] = true
 				}
 			}
-			lines = append(lines, util.StackLists([][][2]string{masterLines, repoLines}, 1, true, false, false, false))
+			lines = append(lines, util.StackLists[*Config]([][][2]string{masterLines, repoLines}, 1, true, false, false, false))
 		}
 		if len(repo.MastersRepo) > 0 {
 			unmatchedRemovals := map[string]bool{}
@@ -118,7 +119,7 @@ func NewMaskManager(repositories *repository.RepoConfigLoader, profiles []*profi
 				}
 			}
 		} else {
-			lines = append(lines, util.StackLists([][][2]string{repoLines}, 1, true, !user_config, strict_umatched_removal, false))
+			lines = append(lines, util.StackLists[*Config]([][][2]string{repoLines}, 1, true, !user_config, strict_umatched_removal, false))
 		}
 		ls := [][2]string{}
 		for _, l := range lines {
@@ -126,33 +127,33 @@ func NewMaskManager(repositories *repository.RepoConfigLoader, profiles []*profi
 				ls = append(ls, [2]string{a.Value, s})
 			}
 		}
-		repoPkgMaskLines = append(repoPkgMaskLines, util.AppendRepo(util.StackLists([][][2]string{ls}, 1, false, false, false, false), repo.Name, true)...)
+		repoPkgMaskLines = append(repoPkgMaskLines, util.AppendRepo(util.StackLists[*Config]([][][2]string{ls}, 1, false, false, false, false), repo.Name, true)...)
 	}
-	repoPkgUnmaskLines := []util.AS{}
+	repoPkgUnmaskLines := []util.AS[*Config]{}
 	for _, repo := range repositories.ReposWithProfiles() {
 		if !repo.Portage1Profiles {
 			continue
 		}
-		repoLines := util.GrabFilePackage(path.Join(repo.Location, "profiles", "package.unmask"), 0, true, false, false, myutil.Ins(repo.ProfileFormats, "build-id"), true, true, "", repo.Eapi)
-		lines := util.StackLists([][][2]string{repoLines}, 1, true, true, strict_umatched_removal, false)
+		repoLines := util.GrabFilePackage[*Config](path.Join(repo.Location, "profiles", "package.unmask"), 0, true, false, false, myutil.Ins(repo.ProfileFormats, "build-id"), true, true, "", repo.Eapi)
+		lines := util.StackLists[*Config]([][][2]string{repoLines}, 1, true, true, strict_umatched_removal, false)
 		repoPkgUnmaskLines = append(repoPkgUnmaskLines, util.AppendRepo(lines, repo.Name, true)...)
 	}
 	profilePkgMaskLiness := [][][2]string{}
 	profilePkgUnmaskLiness := [][][2]string{}
 	for _, x := range profiles {
-		profilePkgMaskLiness = append(profilePkgMaskLiness, util.GrabFilePackage(path.Join(x.location, "package.mask"), 0, x.portage1Directories, false, false, true, true, true, x.eapi, ""))
+		profilePkgMaskLiness = append(profilePkgMaskLiness, util.GrabFilePackage[*Config](path.Join(x.location, "package.mask"), 0, x.portage1Directories, false, false, true, true, true, x.eapi, ""))
 		if x.portage1Directories {
-			profilePkgUnmaskLiness = append(profilePkgUnmaskLiness, util.GrabFilePackage(path.Join(x.location, "package.unmask"), 0, x.portage1Directories, false, false, true, true, true, x.eapi, ""))
+			profilePkgUnmaskLiness = append(profilePkgUnmaskLiness, util.GrabFilePackage[*Config](path.Join(x.location, "package.unmask"), 0, x.portage1Directories, false, false, true, true, true, x.eapi, ""))
 		}
 	}
-	profilePkgmasklines := util.StackLists(profilePkgMaskLiness, 1, true, true, strict_umatched_removal, false)
-	profilePkgunmasklines := util.StackLists(profilePkgUnmaskLiness, 1, true, true, strict_umatched_removal, false)
+	profilePkgmasklines := util.StackLists[*Config](profilePkgMaskLiness, 1, true, true, strict_umatched_removal, false)
+	profilePkgunmasklines := util.StackLists[*Config](profilePkgUnmaskLiness, 1, true, true, strict_umatched_removal, false)
 
 	userPkgMaskLines := [][2]string{}
 	userPkgUnmaskLines := [][2]string{}
 	if user_config {
-		userPkgMaskLines = util.GrabFilePackage(path.Join(abs_user_config, "package.mask"), 0, true, true, true, true, true, true, "", "")
-		userPkgUnmaskLines = util.GrabFilePackage(path.Join(abs_user_config, "package.mask"), 0, true, true, true, true, true, true, "", "")
+		userPkgMaskLines = util.GrabFilePackage[*Config](path.Join(abs_user_config, "package.mask"), 0, true, true, true, true, true, true, "", "")
+		userPkgUnmaskLines = util.GrabFilePackage[*Config](path.Join(abs_user_config, "package.mask"), 0, true, true, true, true, true, true, "", "")
 	}
 
 	var r1, r2, p1, p2 [][2]string
@@ -169,23 +170,23 @@ func NewMaskManager(repositories *repository.RepoConfigLoader, profiles []*profi
 		p2 = append(p2, [2]string{a.Value, s})
 	}
 
-	rawPkgMaskLines := util.StackLists([][][2]string{r1, p1}, 1, true, false, false, false)
-	pkgMaskLines := util.StackLists([][][2]string{r1, p1, userPkgMaskLines}, 1, true, false, false, false)
-	pkgUnmaskLines := util.StackLists([][][2]string{r2, p2, userPkgUnmaskLines}, 1, true, false, false, false)
+	rawPkgMaskLines := util.StackLists[*Config]([][][2]string{r1, p1}, 1, true, false, false, false)
+	pkgMaskLines := util.StackLists[*Config]([][][2]string{r1, p1, userPkgMaskLines}, 1, true, false, false, false)
+	pkgUnmaskLines := util.StackLists[*Config]([][][2]string{r2, p2, userPkgUnmaskLines}, 1, true, false, false, false)
 
 	for x := range rawPkgMaskLines {
 		if _, ok := m._pmaskdict_raw[x.Cp]; !ok {
-			m._pmaskdict_raw[x.Cp] = []*dep.Atom{x}
+			m._pmaskdict_raw[x.Cp] = []*dep.Atom[*Config]{x}
 		}
 	}
 	for x := range pkgMaskLines {
 		if _, ok := m._pmaskdict[x.Cp]; !ok {
-			m._pmaskdict[x.Cp] = []*dep.Atom{x}
+			m._pmaskdict[x.Cp] = []*dep.Atom[*Config]{x}
 		}
 	}
 	for x := range pkgUnmaskLines {
 		if _, ok := m._punmaskdict[x.Cp]; !ok {
-			m._punmaskdict[x.Cp] = []*dep.Atom{x}
+			m._punmaskdict[x.Cp] = []*dep.Atom[*Config]{x}
 		}
 	}
 

@@ -1,4 +1,4 @@
-package ebuild
+package config
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 	"github.com/ppphp/portago/pkg/util/grab"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/versions"
-	"path"
+	"path/filepath"
 	"strings"
 )
 
@@ -19,12 +19,10 @@ type UseManager struct {
 	userConfig                                                                                         bool
 	isStable                                                                                           func(str interfaces.IPkgStr) bool
 	repoUsemaskDict, repoUsestablemaskDict, repoUseforceDict, repoUsestableforceDict                   map[string][]string
-	repoPusemaskDict, repoPusestablemaskDict, repoPuseforceDict, repoPusestableforceDict, repoPuseDict map[string]map[string]map[*dep.Atom][]string
+	repoPusemaskDict, repoPusestablemaskDict, repoPuseforceDict, repoPusestableforceDict, repoPuseDict map[string]map[string]map[*dep.Atom[*Config]][]string
 	usemaskList, usestablemaskList, useforceList, usestableforceList                                   [][]string
-	pusemaskList, pusestablemaskList, pkgprofileuse, puseforceList, pusestableforceList                []map[string]map[*dep.Atom][]string
-	pUseDict                                                                                           map[string]map[*dep.Atom][]string // extatom
-	repoUsealiasesDict                                                                                 map[string]map[string][]string
-	repoPusealiasesDict                                                                                map[string]map[string]map[*dep.Atom]map[string][]string
+	pusemaskList, pusestablemaskList, pkgprofileuse, puseforceList, pusestableforceList                []map[string]map[*dep.Atom[*Config]][]string
+	pUseDict                                                                                           map[string]map[*dep.Atom[*Config]][]string // extatom
 	repositories                                                                                       *repository.RepoConfigLoader
 }
 
@@ -55,9 +53,6 @@ func NewUseManager(repositories *repository.RepoConfigLoader, profiles []*profil
 
 	u.pUseDict = u.parseUserFilesToExtatomdict("package.use", absUserConfig, userConfig)
 
-	u.repoUsealiasesDict = u.parseRepositoryUsealiases(repositories)
-	u.repoPusealiasesDict = u.parseRepositoryPackageusealiases(repositories)
-
 	u.repositories = repositories
 	return u
 }
@@ -70,7 +65,7 @@ func (u *UseManager) parseFileToTuple(fileName string, recursive bool, eapiFilte
 	}
 	if eapiFilter != nil && !eapiFilter(eapi) {
 		if len(lines) > 0 {
-			msg.WriteMsg(fmt.Sprintf("--- EAPI '%s' does not support '%s': '%s'\n", eapi, path.Base(fileName), fileName), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("--- EAPI '%s' does not support '%s': '%s'\n", eapi, filepath.Base(fileName), fileName), -1, nil)
 		}
 		return ret
 	}
@@ -78,7 +73,7 @@ func (u *UseManager) parseFileToTuple(fileName string, recursive bool, eapiFilte
 	for _, v := range lines {
 		prefixedUseflag := v[0]
 		useflag := ""
-		if prefixedUseflag[:1] == "-" {
+		if strings.HasPrefix(prefixedUseflag, "-") {
 			useflag = prefixedUseflag[1:]
 		} else {
 			useflag = prefixedUseflag
@@ -93,22 +88,25 @@ func (u *UseManager) parseFileToTuple(fileName string, recursive bool, eapiFilte
 	return ret
 }
 
-func (u *UseManager) parseFileToDict(fileName string, justStrings, recursive bool, eapiFilter func(string) bool, userConfig bool, eapi, eapiDefault string, allowBuildId bool) map[string]map[*dep.Atom][]string { //ftnfn"0"f
-	ret := map[string]map[*dep.Atom][]string{}
-	locationDict := map[*dep.Atom][]string{}
+//false, true, nil, false, nil, "0", false, false
+func (u *UseManager) parseFileToDict(fileName string, justStrings, recursive bool, eapiFilter func(string) bool, userConfig bool, eapi, eapiDefault string, allowRepo bool, allowBuildId bool) map[string]map[*dep.Atom[*Config]][]string {
+	ret := map[string]map[*dep.Atom[*Config]][]string{}
+	locationDict := map[*dep.Atom[*Config]][]string{}
 	if eapi == "" {
 		eapi = util.ReadCorrespondingEapiFile(fileName, eapiDefault)
 	}
 	extendedSyntax := eapi == "" && userConfig
 	if extendedSyntax {
-		ret = map[string]map[*dep.Atom][]string{}
+		ret = map[string]map[*dep.Atom[*Config]][]string{}
 	} else {
-		ret = map[string]map[*dep.Atom][]string{}
+		ret = map[string]map[*dep.Atom[*Config]][]string{}
 	}
-	fileDict := util.GrabDictPackage(fileName, false, recursive, false, extendedSyntax, extendedSyntax, !extendedSyntax, allowBuildId, false, eapi, eapiDefault)
+	allowRepo = allowRepo || extendedSyntax
+	fileDict := util.GrabDictPackage[*Config](
+		fileName, false, recursive, false, extendedSyntax, allowRepo, allowBuildId, false, !extendedSyntax, eapi, eapiDefault)
 	if eapi != "" && eapiFilter != nil && !eapiFilter(eapi) {
 		if len(fileDict) > 0 {
-			msg.WriteMsg(fmt.Sprintf("--- EAPI '%s' does not support '%s': '%s'\n", eapi, path.Base(fileName), fileName), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("--- EAPI '%s' does not support '%s': '%s'\n", eapi, filepath.Base(fileName), fileName), -1, nil)
 		}
 		return ret
 	}
@@ -150,19 +148,19 @@ func (u *UseManager) parseFileToDict(fileName string, justStrings, recursive boo
 		if justStrings {
 			s = []string{strings.Join(v, " ")}
 		}
-		if _, ok := ret[k.cp]; !ok {
-			ret[k.cp] = map[*dep.Atom][]string{k: s}
+		if _, ok := ret[k.Cp]; !ok {
+			ret[k.Cp] = map[*dep.Atom[*Config]][]string{k: s}
 		} else {
-			ret[k.cp][k] = v
+			ret[k.Cp][k] = v
 		}
 	}
 	return ret
 }
 
-func (u *UseManager) parseUserFilesToExtatomdict(fileName, location string, userConfig bool) map[string]map[*dep.Atom][]string {
-	ret := map[string]map[*dep.Atom][]string{}
+func (u *UseManager) parseUserFilesToExtatomdict(fileName, location string, userConfig bool) map[string]map[*dep.Atom[*Config]][]string {
+	ret := map[string]map[*dep.Atom[*Config]][]string{}
 	if userConfig {
-		puseDict := util.GrabDictPackage(path.Join(location, fileName), false, true, true, true, true, true, false, false, "", "")
+		puseDict := util.GrabDictPackage[*Config](filepath.Join(location, fileName), false, true, true, true, true, true, false, false, "", "")
 		for k, v := range puseDict {
 			l := []string{}
 			useExpandPrefix := ""
@@ -183,10 +181,10 @@ func (u *UseManager) parseUserFilesToExtatomdict(fileName, location string, user
 				}
 				l = append(l, nv)
 			}
-			if ret[k.cp] == nil {
-				ret[k.cp] = map[*dep.Atom][]string{k: l}
+			if ret[k.Cp] == nil {
+				ret[k.Cp] = map[*dep.Atom[*Config]][]string{k: l}
 			} else {
-				ret[k.cp][k] = l
+				ret[k.Cp][k] = l
 			}
 		}
 	}
@@ -196,15 +194,15 @@ func (u *UseManager) parseUserFilesToExtatomdict(fileName, location string, user
 func (u *UseManager) parseRepositoryFilesToDictOfTuples(fileName string, repositories *repository.RepoConfigLoader, eapiFilter func(string) bool) map[string][]string { // n
 	ret := map[string][]string{}
 	for _, repo := range repositories.ReposWithProfiles() {
-		ret[repo.Name] = u.parseFileToTuple(path.Join(repo.Location, "profiles", fileName), true, eapiFilter, "", repo.eapi)
+		ret[repo.Name] = u.parseFileToTuple(filepath.Join(repo.Location, "profiles", fileName), true, eapiFilter, "", repo.Eapi)
 	}
 	return ret
 }
 
-func (u *UseManager) parseRepositoryFilesToDictOfDicts(fileName string, repositories *repository.RepoConfigLoader, eapiFilter func(string) bool) map[string]map[string]map[*dep.Atom][]string {
-	ret := map[string]map[string]map[*dep.Atom][]string{}
+func (u *UseManager) parseRepositoryFilesToDictOfDicts(fileName string, repositories *repository.RepoConfigLoader, eapiFilter func(string) bool) map[string]map[string]map[*dep.Atom[*Config]][]string {
+	ret := map[string]map[string]map[*dep.Atom[*Config]][]string{}
 	for _, repo := range repositories.ReposWithProfiles() {
-		ret[repo.Name] = u.parseFileToDict(path.Join(repo.Location, "profiles", fileName), false, true, eapiFilter, false, "0", repo.eapi, myutil.Ins(repo.profileFormats, "build-id"))
+		ret[repo.Name] = u.parseFileToDict(filepath.Join(repo.Location, "profiles", fileName), false, true, eapiFilter, false, "0", repo.Eapi, false, myutil.Ins(repo.ProfileFormats, "build-id"))
 	}
 	return ret
 }
@@ -212,138 +210,30 @@ func (u *UseManager) parseRepositoryFilesToDictOfDicts(fileName string, reposito
 func (u *UseManager) parseProfileFilesToTupleOfTuples(fileName string, locations []*profileNode, eapiFilter func(string) bool) [][]string {
 	ret := [][]string{}
 	for _, profile := range locations {
-		ret = append(ret, u.parseFileToTuple(path.Join(profile.location, fileName), profile.portage1Directories, eapiFilter, profile.eapi, ""))
+		ret = append(ret, u.parseFileToTuple(filepath.Join(profile.location, fileName), profile.portage1Directories, eapiFilter, profile.eapi, ""))
 	}
 	return ret
 }
 
-func (u *UseManager) parseProfileFilesToTupleOfDicts(fileName string, locations []*profileNode, justStrings bool, eapiFilter func(string) bool) []map[string]map[*dep.Atom][]string { // fn
-	ret := []map[string]map[*dep.Atom][]string{}
+func (u *UseManager) parseProfileFilesToTupleOfDicts(fileName string, locations []*profileNode, justStrings bool, eapiFilter func(string) bool) []map[string]map[*dep.Atom[*Config]][]string { // fn
+	ret := []map[string]map[*dep.Atom[*Config]][]string{}
 	for _, profile := range locations {
-		ret = append(ret, u.parseFileToDict(path.Join(profile.location, fileName), justStrings, profile.portage1Directories, eapiFilter, profile.userConfig, profile.eapi, "", profile.allowBuildId))
+		ret = append(ret, u.parseFileToDict(filepath.Join(profile.location, fileName), justStrings, profile.portage1Directories, eapiFilter, profile.userConfig, profile.eapi, "", false, profile.allowBuildId))
 	}
 	return ret
 }
 
-func (u *UseManager) parseRepositoryUsealiases(repositorires *repository.RepoConfigLoader) map[string]map[string][]string {
-	ret := map[string]map[string][]string{}
-	for _, repo := range repositorires.ReposWithProfiles() {
-		fileName := path.Join(repo.Location, "profiles", "use.aliases")
-		eapi := util.ReadCorrespondingEapiFile(fileName, repo.eapi)
-		useFlagRe := dep.GetUseflagRe(eapi)
-		rawFileDict := grab.GrabDict(fileName, false, false, true, false, false)
-		fileDict := map[string][]string{}
-		for realFlag, aliases := range rawFileDict {
-			if !useFlagRe.MatchString(realFlag) {
-				msg.WriteMsg(fmt.Sprintf("--- Invalid real USE flag in '%s': '%s'\n", fileName, realFlag), -1, nil)
-			} else {
-				for _, alias := range aliases {
-					if !useFlagRe.MatchString(alias) {
-						msg.WriteMsg(fmt.Sprintf("--- Invalid USE flag alias for '%s' real USE flag in '%s': '%s'\n", realFlag, fileName, alias), -1, nil)
-					} else {
-						in := false
-						for k, v := range fileDict {
-							if k != realFlag {
-								for _, x := range v {
-									if x == alias {
-										in = true
-									}
-								}
-							}
-						}
-						if in {
-							msg.WriteMsg(fmt.Sprintf("--- Duplicated USE flag alias in '%s': '%s'\n", fileName, alias), -1, nil)
-						} else {
-							if _, ok := fileDict[realFlag]; ok {
-								fileDict[realFlag] = append(fileDict[realFlag], alias)
-							} else {
-								fileDict[realFlag] = []string{alias}
-							}
-						}
-					}
-				}
-			}
-		}
-		ret[repo.Name] = fileDict
-	}
-
-	return ret
-}
-
-func (u *UseManager) parseRepositoryPackageusealiases(repositorires *repository.RepoConfigLoader) map[string]map[string]map[*dep.Atom]map[string][]string {
-	ret := map[string]map[string]map[*dep.Atom]map[string][]string{}
-	for _, repo := range repositorires.ReposWithProfiles() {
-		fileName := path.Join(repo.Location, "profiles", "package.use.aliases")
-		eapi := util.ReadCorrespondingEapiFile(fileName, repo.eapi)
-		useFlagRe := dep.GetUseflagRe(eapi)
-		lines := grab.GrabFile(fileName, 0, true, false)
-		fileDict := map[string]map[*dep.Atom]map[string][]string{}
-		for _, line := range lines {
-			elements := strings.Fields(line[0])
-			atom1, err := dep.NewAtom(elements[0], nil, false, nil, nil, eapi, nil, nil)
-			if err != nil {
-				msg.WriteMsg(fmt.Sprintf("--- Invalid atom1 in '%s': '%v'\n", fileName, atom1), 0, nil)
-				continue
-			}
-			if len(elements) == 1 {
-				msg.WriteMsg(fmt.Sprintf("--- Missing real USE flag for '%s' in '%v'\n", fileName, atom1), -1, nil)
-				continue
-			}
-			realFlag := elements[1]
-			if !useFlagRe.MatchString(realFlag) {
-				msg.WriteMsg(fmt.Sprintf("--- Invalid real USE flag in '%s': '%v'\n", fileName, realFlag), -1, nil)
-			} else {
-				for _, alias := range elements[2:] {
-					if !useFlagRe.MatchString(alias) {
-						msg.WriteMsg(fmt.Sprintf("--- Invalid USE flag alias for '%s' real USE flag in '%s': '%s'\n", realFlag, fileName, alias), -1, nil)
-					} else {
-						in := false
-						if _, ok := fileDict[atom1.cp]; ok {
-							if _, ok := fileDict[atom1.cp][atom1]; ok {
-								for k, v := range fileDict[atom1.cp][atom1] {
-									if k != realFlag {
-										for _, x := range v {
-											if x == alias {
-												in = true
-											}
-										}
-									}
-								}
-							}
-						}
-						if in {
-							msg.WriteMsg(fmt.Sprintf("--- Duplicated USE flag alias in '%s': '%s'\n", fileName, alias), -1, nil)
-						} else {
-							if _, ok := fileDict[atom1.cp]; !ok {
-								fileDict[atom1.cp] = map[*dep.Atom]map[string][]string{atom1: {realFlag: {alias}}}
-							} else if _, ok := fileDict[atom1.cp][atom1]; !ok {
-								fileDict[atom1.cp][atom1] = map[string][]string{realFlag: {alias}}
-							} else if _, ok := fileDict[atom1.cp][atom1][realFlag]; !ok {
-								fileDict[atom1.cp][atom1][realFlag] = []string{alias}
-							} else {
-								fileDict[atom1.cp][atom1][realFlag] = append(fileDict[atom1.cp][atom1][realFlag], alias)
-							}
-						}
-					}
-				}
-			}
-		}
-		ret[repo.Name] = fileDict
-	}
-	return ret
-}
-
-func (u *UseManager) _isStable(pkg *versions.PkgStr) bool {
+func (u *UseManager) _isStable(pkg *versions.PkgStr[*Config]) bool {
 	if u.userConfig {
-		return pkg.stable()
+		return pkg.Stable()
 	}
-	if pkg.metadata == nil {
+	if pkg.Metadata == nil {
 		return false
 	}
 	return u.isStable(pkg)
 }
 
-func (u *UseManager) getUseMask(pkg *versions.PkgStr, stable *bool) map[*dep.Atom]string { //nn
+func (u *UseManager) getUseMask(pkg *versions.PkgStr[*Config], stable *bool) map[*dep.Atom[*Config]]string { //nn
 	if pkg == nil {
 		p := [][][2]string{}
 		for _, v := range u.usemaskList {
@@ -353,19 +243,25 @@ func (u *UseManager) getUseMask(pkg *versions.PkgStr, stable *bool) map[*dep.Ato
 			}
 			p = append(p, q)
 		}
-		return util.StackLists(p, 1, false, false, false, false)
+		return util.StackLists[*Config](p, 1, false, false, false, false)
 	}
-	cp := pkg.cp
+	cp := pkg.Cp
+	if cp == "" {
+		slot := dep.DepGetslot(pkg.String)
+		repo := dep.DepGetrepo(pkg.String)
+		pkg = versions.NewPkgStr[*Config](dep.RemoveSlot(pkg.String), nil, nil, "", repo, slot, 0, 0, "", 0, nil)
+		cp = pkg.Cp
+	}
 	if stable == nil {
 		stable = new(bool)
 		*stable = u.isStable(pkg)
 	}
 	useMask := [][]string{}
-	if pkg.repo != "" && pkg.repo != versions.unknownRepo {
+	if pkg.Repo != "" && pkg.Repo != versions.UnknownRepo {
 		repos := []string{}
-		for range u.repositories.Getitem(pkg.repo).masters {
+		for range u.repositories.Getitem(pkg.Repo).Masters {
 		}
-		repos = append(repos, pkg.repo)
+		repos = append(repos, pkg.Repo)
 		for _, repo := range repos {
 			useMask = append(useMask, u.repoUsemaskDict[repo])
 			if *stable {
@@ -421,10 +317,10 @@ func (u *UseManager) getUseMask(pkg *versions.PkgStr, stable *bool) map[*dep.Ato
 		}
 		p = append(p, q)
 	}
-	return util.StackLists(p, 1, false, false, false, false)
+	return util.StackLists[*Config](p, 1, false, false, false, false)
 }
 
-func (u *UseManager) getUseForce(pkg *versions.PkgStr, stable *bool) map[*dep.Atom]string { //n
+func (u *UseManager) getUseForce(pkg *versions.PkgStr[*Config], stable *bool) map[*dep.Atom[*Config]]string { //n
 
 	if pkg == nil {
 		p := [][][2]string{}
@@ -435,19 +331,19 @@ func (u *UseManager) getUseForce(pkg *versions.PkgStr, stable *bool) map[*dep.At
 			}
 			p = append(p, q)
 		}
-		return util.StackLists(p, 1, false, false, false, false)
+		return util.StackLists[*Config](p, 1, false, false, false, false)
 	}
-	cp := pkg.cp
+	cp := pkg.Cp
 	if stable == nil {
 		stable = new(bool)
 		*stable = u.isStable(pkg)
 	}
 	useForce := [][]string{}
-	if pkg.repo != "" && pkg.repo != versions.unknownRepo {
+	if pkg.Repo != "" && pkg.Repo != versions.UnknownRepo {
 		repos := []string{}
-		for range u.repositories.Getitem(pkg.repo).masters {
+		for range u.repositories.Getitem(pkg.Repo).Masters {
 		}
-		repos = append(repos, pkg.repo)
+		repos = append(repos, pkg.Repo)
 		for _, repo := range repos {
 			useForce = append(useForce, u.repoUseforceDict[repo])
 			if *stable {
@@ -503,107 +399,16 @@ func (u *UseManager) getUseForce(pkg *versions.PkgStr, stable *bool) map[*dep.At
 		}
 		p = append(p, q)
 	}
-	return util.StackLists(p, 1, false, false, false, false)
+	return util.StackLists[*Config](p, 1, false, false, false, false)
 }
 
-func (u *UseManager) getUseAliases(pkg *versions.PkgStr) map[string][]string {
-	if pkg.eapi != "" && !eapi.eapiHasUseAliases(pkg.eapi) {
-		return map[string][]string{}
-	}
-	cp := pkg.cp
+func (u *UseManager) getPUSE(pkg *versions.PkgStr[*Config]) string {
+	cp := pkg.Cp
 	if cp == "" {
-		slot := dep.DepGetslot(pkg.string)
-		repo := dep.DepGetrepo(pkg.string)
-		pkg := versions.NewPkgStr(dep.RemoveSlot(pkg.string), nil, nil, "", repo, slot, 0, 0, "", 0, nil)
-		cp = pkg.cp
-	}
-	useAliases := map[string][]string{}
-	if pkg.repo != "" && pkg.repo != versions.unknownRepo {
-		repos := []string{}
-		for _, repo := range u.repositories.Prepos[pkg.repo].masters {
-			repos = append(repos, repo)
-		}
-		for _, repo := range repos {
-			usealiasesDict := u.repoUsealiasesDict[repo]
-			if usealiasesDict == nil {
-				usealiasesDict = map[string][]string{}
-			}
-			for realFlag, aliases := range usealiasesDict {
-				for _, alias := range aliases {
-					in := false
-					for k, v := range useAliases {
-						if k != realFlag {
-							for _, a := range v {
-								if alias == a {
-									in = true
-									break
-								}
-							}
-							if in {
-								break
-							}
-						}
-					}
-					if in {
-						msg.WriteMsg(fmt.Sprintf("--- Duplicated USE flag alias for '%v%s%s': '%s'\n", pkg.cpv, dep.repoSeparator, pkg.repo, alias), -1, nil)
-					} else {
-						if _, ok := useAliases[realFlag]; ok {
-							useAliases[realFlag] = append(useAliases[realFlag], alias)
-						} else {
-							useAliases[realFlag] = []string{alias}
-						}
-					}
-				}
-			}
-
-			var cpUsealiasesDict map[*dep.Atom]map[string][]string = nil
-			if _, ok := u.repoPusealiasesDict[repo]; ok {
-				cpUsealiasesDict = u.repoPusealiasesDict[repo][cp]
-			}
-			if len(cpUsealiasesDict) > 0 {
-				usealiasesDictList := orderedByAtomSpecificity2(cpUsealiasesDict, pkg, "")
-				for _, usealiasesDict := range usealiasesDictList {
-					for realFlag, aliases := range usealiasesDict {
-						for _, alias := range aliases {
-							in := false
-							for k, v := range useAliases {
-								if k != realFlag {
-									for _, a := range v {
-										if alias == a {
-											in = true
-											break
-										}
-									}
-									if in {
-										break
-									}
-								}
-							}
-							if in {
-								msg.WriteMsg(fmt.Sprintf("--- Duplicated USE flag alias for '%v%s%s': '%s'\n", pkg.cpv, dep.repoSeparator, pkg.repo, alias), -1, nil)
-							} else {
-								if _, ok := useAliases[realFlag]; ok {
-									useAliases[realFlag] = append(useAliases[realFlag], alias)
-								} else {
-									useAliases[realFlag] = []string{alias}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	return useAliases
-}
-
-func (u *UseManager) getPUSE(pkg *versions.PkgStr) string {
-	cp := pkg.cp
-	if cp == "" {
-		slot := dep.DepGetslot(pkg.string)
-		repo := dep.DepGetrepo(pkg.string)
-		pkg := versions.NewPkgStr(dep.RemoveSlot(pkg.string), nil, nil, "", repo, slot, 0, 0, "", 0, nil)
-		cp = pkg.cp
+		slot := dep.DepGetslot(pkg.String)
+		repo := dep.DepGetrepo(pkg.String)
+		pkg := versions.NewPkgStr(dep.RemoveSlot(pkg.String), nil, nil, "", repo, slot, 0, 0, "", 0, nil)
+		cp = pkg.Cp
 	}
 	ret := ""
 	cpDict := u.pUseDict[cp]
@@ -627,7 +432,7 @@ func (u *UseManager) extract_global_USE_changes(old string) string { //""
 	if cpdict != nil {
 		var v []string = nil
 		for a := range cpdict {
-			if a.value == "*/*" {
+			if a.Value == "*/*" {
 				v = cpdict[a]
 				delete(cpdict, a)
 				break

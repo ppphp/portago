@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/dep"
 	eapi2 "github.com/ppphp/portago/pkg/eapi"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/elog"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
@@ -19,7 +20,7 @@ import (
 
 type QueryCommand struct {
 	phase    string
-	settings *Config
+	settings *config.Config
 }
 
 var QueryCommand_db *portage.TreesDict = nil
@@ -31,7 +32,7 @@ func (q *QueryCommand) get_db() *portage.TreesDict {
 	return portage.Db()
 }
 
-func NewQueryCommand(settings *Config, phase string) *QueryCommand {
+func NewQueryCommand(settings *config.Config, phase string) *QueryCommand {
 	q := &QueryCommand{}
 	q.settings = settings
 	q.phase = phase

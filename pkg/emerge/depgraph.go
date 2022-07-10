@@ -3,9 +3,10 @@ package emerge
 import (
 	"github.com/ppphp/portago/pkg/dbapi"
 	"github.com/ppphp/portago/pkg/dep"
+	"github.com/ppphp/portago/pkg/emerge/structs"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/sets"
-	"github.com/ppphp/portago/pkg/util"
+	bad2 "github.com/ppphp/portago/pkg/util/bad"
 	"golang.org/x/net/html/atom"
 )
 
@@ -169,7 +170,7 @@ d := &_depgraph_sets{}
 
 
 type _rebuild_config struct {
-	_graph *util.Digraph
+	_graph *bad2.Digraph
 	_frozen_config
 	rebuild_list
 	orig_rebuild_list
@@ -181,7 +182,7 @@ type _rebuild_config struct {
 }
 func New_rebuild_config(frozen_config, backtrack_parameters)*_rebuild_config {
 	r := &_rebuild_config{}
-	r._graph = util.NewDigraph()
+	r._graph = bad2.NewDigraph()
 	r._frozen_config = frozen_config
 	r.rebuild_list = backtrack_parameters.rebuild_list.copy()
 	r.orig_rebuild_list = r.rebuild_list.copy()
@@ -201,13 +202,13 @@ func (r*_rebuild_config) add( dep_pkg, dep) {
 	if (
 		r.rebuild
 		and
-	isinstance(parent, Package)
+	isinstance(parent, structs.Package)
 	and
 	parent.built
 	and
 	priority.buildtime
 	and
-	isinstance(dep_pkg, Package)
+	isinstance(dep_pkg, structs.Package)
 	and
 	not
 	rebuild_exclude.findAtomForPackage(parent)
@@ -386,7 +387,7 @@ type _dynamic_depgraph_config struct{
 	_blocker_parents,
 	_irrelevant_blockers,
 	_unsolvable_blockers,
-	digraph *util.Digraph
+	digraph *bad2.Digraph
 	myparams
 	_allow_backtracking
 	_reinstall_nodes
@@ -452,15 +453,15 @@ func New_dynamic_depgraph_config(depgraph, myparams, allow_backtracking, backtra
 	{
 	}
 	d._initial_arg_list = []T{}
-	d.digraph = util.NewDigraph()
+	d.digraph = bad2.NewDigraph()
 	d.sets =
 	{
 	}
 	d._set_nodes = set()
-	d._blocker_uninstalls = util.NewDigraph()
-	d._blocker_parents = util.NewDigraph()
-	d._irrelevant_blockers = util.NewDigraph()
-	d._unsolvable_blockers = util.NewDigraph()
+	d._blocker_uninstalls = bad2.NewDigraph()
+	d._blocker_parents = bad2.NewDigraph()
+	d._irrelevant_blockers = bad2.NewDigraph()
+	d._unsolvable_blockers = bad2.NewDigraph()
 	d._blocked_pkgs = nil
 	d._blocked_world_pkgs =
 	{
@@ -1959,7 +1960,7 @@ func (d*depgraph) _slot_conflict_backtrack_abi( pkg, slot_nodes, conflict_atoms)
 	conflict_atoms.items():
 	parent, atom = parent_atom
 
-	if not isinstance(parent, Package):
+	if not isinstance(parent, structs.Package):
 	continue
 
 	if not parent.built:
@@ -1995,7 +1996,7 @@ nil:
 
 func (d*depgraph) _slot_change_probe( dep) {
 	if not(
-		isinstance(dep.parent, Package) and
+		isinstance(dep.parent, structs.Package) and
 	not
 	dep.parent.built
 	and
@@ -2207,7 +2208,7 @@ dep, new_child_slot=false, slot_conflict=false, autounmask_level=nil
 	d._dynamic_config._parent_atoms.get(
 		existing_pkg,[]
 	):
-	if isinstance(parent, Package):
+	if isinstance(parent, structs.Package):
 	if parent in
 built_slot_operator_parents:
 	if hasattr(atom, "_orig_atom"):
@@ -2766,7 +2767,7 @@ nil:
 
 	if not(
 		dep.parent and
-	isinstance(dep.parent, Package)
+	isinstance(dep.parent, structs.Package)
 	and
 	dep.parent.built
 	):
@@ -2848,9 +2849,9 @@ nil:
 	changed = false
 	else:
 	if d._dynamic_config.myparams.get("bdeps") in("y", "auto"):
-	depvars = Package._dep_keys
+	depvars = structs.Package._dep_keys
 	else:
-	depvars = Package._runtime_keys
+	depvars = structs.Package._runtime_keys
 
 try:
 	built_deps = []
@@ -2907,7 +2908,7 @@ dep_disjunctive_stack:
 	while
 dep_stack:
 	dep = dep_stack.pop()
-	if isinstance(dep, Package):
+	if isinstance(dep, structs.Package):
 	if not d._add_pkg_deps(dep, allow_unsatisfied = allow_unsatisfied):
 	return 0
 	continue
@@ -3042,7 +3043,7 @@ nil:
 	if (
 		d._dynamic_config._complete_mode
 		and
-	isinstance(dep.parent, Package)
+	isinstance(dep.parent, structs.Package)
 	and
 	dep.parent.installed
 	and(
@@ -3343,7 +3344,7 @@ e:
 	elif(
 		pkg.installed
 	and
-	isinstance(myparent, Package)
+	isinstance(myparent, structs.Package)
 	and
 	pkg.root == myparent.root
 	and
@@ -3657,7 +3658,7 @@ func (d*depgraph) _add_pkg_deps( pkg, allow_unsatisfied=false) {
 	}
 	for k
 	in
-	Package._dep_keys:
+	structs.Package._dep_keys:
 	edepend[k] = metadata[k]
 
 	use_enabled = d._pkg_use_enabled(pkg)
@@ -5221,7 +5222,7 @@ try:
 	for node
 	in
 graph_copy:
-	if not isinstance(node, Package)
+	if not isinstance(node, structs.Package)
 	or
 	node.operation == "nomerge":
 	removed_nodes.add(node)
@@ -5256,7 +5257,7 @@ graph_copy:
 	in
 	d._dynamic_config.digraph:
 	if (
-		isinstance(node, Package)
+		isinstance(node, structs.Package)
 		and
 	node.operation
 	in("merge", "uninstall")
@@ -5303,7 +5304,7 @@ func (d*depgraph) _apply_autounmask_continue_state() {
 	for node
 	in
 	d._dynamic_config._serialized_tasks_cache:
-	if isinstance(node, Package):
+	if isinstance(node, structs.Package):
 	effective_use = d._pkg_use_enabled(node)
 	if effective_use != node.use.enabled:
 	node._metadata["USE"] = " ".join(effective_use)
@@ -7162,7 +7163,7 @@ old_use:
 
 	for key
 	in
-	Package._dep_keys + ("LICENSE",):
+	structs.Package._dep_keys + ("LICENSE",):
 	dep = pkg._metadata[key]
 	old_val = set(
 		portage.dep.use_reduce(
@@ -7878,7 +7879,7 @@ func (d*depgraph) _complete_graph(required_sets) {
 	for node
 	in
 	d._dynamic_config.digraph:
-	if not isinstance(node, Package)
+	if not isinstance(node, structs.Package)
 	or
 	node.operation != "merge":
 	continue
@@ -8108,7 +8109,7 @@ func (d*depgraph) _pkg(cpv, type_name, root_config, installed=false, onlydeps=fa
 
 	root_config = d._frozen_config.roots[root_config.root]
 	pkg = d._frozen_config._pkg_cache.get(
-		Package._gen_hash_key(
+		structs.Package._gen_hash_key(
 			cpv = cpv,
 		type_name = type_name,
 		repo_name=myrepo,
@@ -8168,7 +8169,7 @@ KeyError:
 db:
 	cpv = _pkg_str(cpv, db = db)
 
-	pkg = Package(
+	pkg = structs.Package(
 		built = (type_name != "ebuild"),
 		cpv = cpv,
 		installed=installed,
@@ -8208,7 +8209,7 @@ func (d*depgraph) _validate_blockers() {
 	return true
 
 	if true:
-	dep_keys = Package._runtime_keys
+	dep_keys = structs.Package._runtime_keys
 	for myroot
 	in
 	d._frozen_config.trees:
@@ -8614,7 +8615,7 @@ implicit_libc_roots:
 	for pkg
 	in
 mergelist:
-	if not isinstance(pkg, Package):
+	if not isinstance(pkg, structs.Package):
 	continue
 	root_libc_pkgs = libc_pkgs.get(pkg.root)
 	if root_libc_pkgs is
@@ -8744,7 +8745,7 @@ func (d*depgraph) _serialize_tasks() {
 	for node
 	in
 	scheduler_graph
-	if isinstance(node, Package) and
+	if isinstance(node, structs.Package) and
 	node.operation == "merge"
 ],
 scheduler_graph,

@@ -1,19 +1,20 @@
-package dep
+package dep_check
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/dep"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/interfaces"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/portage"
-	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/bad"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/versions"
 	"strings"
 )
 
 // "/", nil, 0, 0
-func _expand_new_virtuals(mysplit []string, edebug bool, mydbapi, mysettings *ebuild.Config, myroot string,
+func _expand_new_virtuals(mysplit []string, edebug bool, mydbapi, mysettings *config.Config, myroot string,
 	trees portage.TreesDict, use_mask, use_force int, **kwargs){
 
 	newsplit := []string{}
@@ -79,7 +80,7 @@ func _expand_new_virtuals(mysplit []string, edebug bool, mydbapi, mysettings *eb
 			continue
 		}
 
-		if!isinstance(x, Atom) {
+		if!isinstance(x, dep.Atom) {
 			raise
 			ParseError(
 				_("invalid token: '%s'") % x)
@@ -111,14 +112,14 @@ func _expand_new_virtuals(mysplit []string, edebug bool, mydbapi, mysettings *eb
 			if portdb.cp_list(x.cp) {
 				newsplit = append(newsplit, x)
 			} else {
-				a := []*Atom{}
+				a := []*dep.Atom{}
 				myvartree := mytrees.VarTree()
 				if myvartree != nil {
 					mysettings._populate_treeVirtuals_if_needed(myvartree)
 				}
 				mychoices := mysettings.getVirtuals()[mykey]
 				for _, y := range mychoices {
-					a = append(a, Atom(x.replace(x.cp, y.cp, 1)))
+					a = append(a, dep.Atom(x.replace(x.cp, y.cp, 1)))
 				}
 				if len(a) == 0 {
 					newsplit = append(newsplit, x)
@@ -220,7 +221,7 @@ func _expand_new_virtuals(mysplit []string, edebug bool, mydbapi, mysettings *eb
 
 		if!a && mychoices{
 			for _, y := range mychoices{
-				new_atom = Atom(x.replace(x.cp, y.cp, 1))
+				new_atom = dep.Atom(x.replace(x.cp, y.cp, 1))
 				if match_from_list(new_atom,
 					pprovideddict.get(new_atom.cp, [])){
 					a = append(a, new_atom)
@@ -773,7 +774,7 @@ return nil
 }
 
 // "yes", nil, nil, 1, 0, "", nil
-func dep_check(depstring string, mydbapi, mysettings *ebuild.Config, use string, mode=None, myuse []string,
+func dep_check(depstring string, mydbapi, mysettings *config.Config, use string, mode=None, myuse []string,
 	use_cache , use_binaries int, myroot string, trees *portage.TreesDict) (int, []string) {
 	myroot = mysettings.ValueDict["EROOT"]
 	edebug := mysettings.ValueDict["PORTAGE_DEBUG"] == "1"
@@ -836,10 +837,10 @@ func dep_check(depstring string, mydbapi, mysettings *ebuild.Config, use string,
 		mysplit = depstring
 	} else {
 		//try{
-		mysplit = UseReduce(depstring, myusesplit,
+		mysplit = dep.UseReduce(depstring, myusesplit,
 			mymasks, use == "all", useforce, false, eapi,
-			true, false, nil, func(s string) *Atom {
-				a, _ := NewAtom(s, nil, false, nil, nil, "", nil, nil)
+			true, false, nil, func(s string) *dep.Atom {
+				a, _ := dep.NewAtom(s, nil, false, nil, nil, "", nil, nil)
 				return a
 			}, false)
 		//except InvalidDependString as e{
@@ -888,7 +889,7 @@ func _overlap_dnf(dep_struct) {
 	}
 
 	cp_map := map[string][]string{}
-	overlap_graph := util.NewDigraph()
+	overlap_graph := bad.NewDigraph()
 	order_map := map[string]string{}
 	order_key = lambda
 x:
@@ -910,7 +911,7 @@ x:
 			in
 		_iter_flatten(x)
 		{
-			if isinstance(atom, Atom) && !atom.blocker {
+			if isinstance(atom, dep.Atom) && !atom.blocker {
 				cp_map[atom.cp] = append(cp_map[atom.cp], x)
 				overlap_graph.add(atom.cp, parent = prev_cp)
 				prev_cp = atom.cp
@@ -979,7 +980,7 @@ func _iter_flatten(dep_struct) {
 
 
 // 1
-func dep_wordreduce(mydeplist []string,mysettings *ebuild.Config,mydbapi,mode,use_cache int) {
+func dep_wordreduce(mydeplist []string,mysettings *config.Config,mydbapi,mode,use_cache int) {
 	deplist := mydeplist[:]
 	for mypos, token:= range deplist{
 		if isinstance(deplist[mypos], list) {
@@ -992,7 +993,7 @@ func dep_wordreduce(mydeplist []string,mysettings *ebuild.Config,mydbapi,mode,us
 			mykey := deplist[mypos].cp
 			if mysettings!= nil &&  myutil.Inmsss(
 				mysettings.pprovideddict,mykey) &&
-				MatchFromList(deplist[mypos], mysettings.pprovideddict[mykey]) {
+				dep.MatchFromList(deplist[mypos], mysettings.pprovideddict[mykey]) {
 				deplist[mypos] = true
 			}else if mydbapi == nil {
 				deplist[mypos] = false

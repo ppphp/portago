@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/dep"
 	"github.com/ppphp/portago/pkg/output"
-	"github.com/ppphp/portago/pkg/portage"
+	"github.com/ppphp/portago/pkg/portage/vars"
 	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
 	"os"
@@ -981,7 +981,7 @@ func EmergeMain(args []string) int { // nil
 		fmt.Printf(COWSAY_MOO, runtime.GOOS)
 		return 0
 	case "sync":
-		portage.SyncMode = true
+		vars.SyncMode = true
 	}
 	dnst, err := os.Stat(os.DevNull)
 	if err != nil {

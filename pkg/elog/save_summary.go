@@ -2,7 +2,7 @@ package elog
 
 import (
 	"github.com/ppphp/portago/pkg/data"
-	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/portago/pkg/util/msg"
@@ -12,7 +12,7 @@ import (
 	"syscall"
 )
 
-func save_summary_process(mysettings *ebuild.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
+func save_summary_process(mysettings *config.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
 	logdir := ""
 	if mysettings.ValueDict["PORTAGE_LOGDIR"] != "" {
 		logdir = msg.NormalizePath(mysettings.ValueDict["PORTAGE_LOGDIR"])

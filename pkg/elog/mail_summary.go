@@ -2,7 +2,7 @@ package elog
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/exception"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/util/msg"
@@ -14,7 +14,7 @@ import (
 var _config_keys = []string{"PORTAGE_ELOG_MAILURI", "PORTAGE_ELOG_MAILFROM",
 	"PORTAGE_ELOG_MAILSUBJECT",}
 var mail_summary_items = map[string]*struct{ms1, ms2 map[string]string}{}
-func mail_summary_process(mysettings *ebuild.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
+func mail_summary_process(mysettings *config.Config, key string, logentries map[string][]struct {s string;ss []string}, fulltext string) {
 	time_str := time.Now().Format("20060102-150405 07:00") //%Y%m%d-%H%M%S %Z
 	header := fmt.Sprintf(">>> Messages generated for package %s by process %d on %s:\n\n", key, os.Getpid(),  time_str)
 	config_root := mysettings.ValueDict["PORTAGE_CONFIGROOT"]

@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/ppphp/portago/pkg/emerge"
 	"github.com/ppphp/portago/pkg/portage"
+	"github.com/ppphp/portago/pkg/portage/vars"
 	"github.com/ppphp/portago/pkg/process"
 	"os"
 	"os/signal"
@@ -26,7 +27,7 @@ func init() {
 		}
 	}
 	go signalHandler()
-	portage.InternalCaller = true
+	vars.InternalCaller = true
 	portage.DisableLegacyGlobals()
 }
 

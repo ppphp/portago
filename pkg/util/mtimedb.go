@@ -111,8 +111,10 @@ func (m *MtimeDB) Commit() {
 			f.Write(jd)
 		}
 		f.Close()
+		var m1 os.FileMode
+		m1--
 		permissions.Apply_secpass_permissions(m.filename,
-			uint32(data.Uid), *data.Portage_gid, 0o644, -1, nil, true)
+			uint32(data.Uid), *data.Portage_gid, 0o644, m1, nil, true)
 		m._clean_data = myutil.CopyMapT(d)
 	}
 }

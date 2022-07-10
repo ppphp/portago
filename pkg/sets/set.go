@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/ppphp/configparser"
 	"github.com/ppphp/portago/pkg/const"
-	ebuild2 "github.com/ppphp/portago/pkg/ebuild"
+	ebuild2 "github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/portage"
 	"github.com/ppphp/portago/pkg/util"
@@ -238,7 +238,7 @@ func(s*SetConfig) _parse( update bool) {
 	s._parsed = true
 }
 
-func (s*SetConfig) getSets() map[string]string{
+func (s*SetConfig) GetSets() map[string]string{
 	s._parse(false)
 	return myutil.CopyMapT(s.psets)
 }

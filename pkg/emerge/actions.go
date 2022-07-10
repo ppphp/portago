@@ -5,6 +5,7 @@ import (
 	"github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/pkg/const"
 	ebuild2 "github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/emaint"
 	"github.com/ppphp/portago/pkg/emerge"
 	"github.com/ppphp/portago/pkg/myutil"
@@ -73,7 +74,7 @@ func adjust_configs(myopts map[string]string, trees *portage.TreesDict) {
 		mysettings.Unlock()
 
 		if _, ok := myopts["--usepkgonly"]; ok && mytrees.BinTree()._propagate_config(mysettings) {
-			mytrees.PortTree().dbapi.doebuild_settings = ebuild2.NewConfig(mysettings, nil, "", nil, "", "", "", "", true, nil, false, nil)
+			mytrees.PortTree().dbapi.doebuild_settings = config.NewConfig(mysettings, nil, "", nil, "", "", "", "", true, nil, false, nil)
 		}
 
 		adjust_config(myopts, mysettings)
@@ -81,7 +82,7 @@ func adjust_configs(myopts map[string]string, trees *portage.TreesDict) {
 	}
 }
 
-func adjust_config(myopts map[string]string, settings *ebuild2.Config) {
+func adjust_config(myopts map[string]string, settings *config.Config) {
 
 	if settings.Features.Features["noauto"] {
 		delete(settings.Features.Features, "noauto")

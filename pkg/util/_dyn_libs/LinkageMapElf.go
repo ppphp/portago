@@ -6,7 +6,7 @@ import (
 	"github.com/ppphp/portago/atom"
 	_const "github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/dbapi"
-	"github.com/ppphp/portago/pkg/dep"
+	"github.com/ppphp/portago/pkg/dep/soname"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/portago/pkg/util/elf"
@@ -351,7 +351,7 @@ func (o*linkageMapELF) rebuild(exclude_pkgs []*versions.PkgStr, include_file str
 		}
 		for _, entry := range entries {
 			if entry.soname != "" {
-				providers[dep.NewSonameAtom(entry.multilib_category, entry.soname)] = entry
+				providers[soname.NewSonameAtom(entry.multilib_category, entry.soname)] = entry
 			}
 		}
 

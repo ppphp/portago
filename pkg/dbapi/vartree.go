@@ -11,16 +11,18 @@ import (
 	_const "github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/dep"
 	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/elog"
 	"github.com/ppphp/portago/pkg/emerge"
 	"github.com/ppphp/portago/pkg/exception"
+	"github.com/ppphp/portago/pkg/interfaces"
 	"github.com/ppphp/portago/pkg/locks"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/portage"
 	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/portago/pkg/util/_dyn_libs"
-	"github.com/ppphp/portago/pkg/util/elf"
+	"github.com/ppphp/portago/pkg/util/bad"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/versions"
 	"github.com/spf13/pflag"
@@ -64,7 +66,7 @@ type Vardbapi struct {
 	_aux_cache_obj              *auxCache
 	_cached_counter             interface{}
 	_lock_count, _fs_lock_count int
-	vartree                     *varTree
+	vartree                     *VarTree
 	_aux_cache_keys             map[string]bool
 	_cache_delta                *vdbMetadataDelta
 	_plib_registry              *_dyn_libs.preservedLibsRegistry
@@ -1436,7 +1438,7 @@ func (o *_owners_db)  _iter_owners_low_mem(path_list []string) []struct{d *dblin
 	return ret
 }
 
-func NewVarDbApi(settings *ebuild.Config, vartree *varTree) *Vardbapi { // nil, nil
+func NewVarDbApi(settings *config.Config, vartree *VarTree) *Vardbapi { // nil, nil
 	v := &Vardbapi{}
 	e := []string{}
 	for _, v := range []string{"CVS", "lost+found"} {
@@ -1502,31 +1504,31 @@ func NewVarDbApi(settings *ebuild.Config, vartree *varTree) *Vardbapi { // nil, 
 	return v
 }
 
-type varTree struct {
-	settings  *ebuild.Config
+type VarTree struct {
+	settings  *config.Config
 	populated int
 	dbapi     *Vardbapi
 }
 
 // ""
-func (v *varTree) getpath(myKey, filename string) string {
+func (v *VarTree) getpath(myKey, filename string) string {
 	return v.dbapi.getpath(myKey, filename)
 }
 
-func (v *varTree) zap() {}
+func (v *VarTree) zap() {}
 
-func (v *varTree) inject() {}
+func (v *VarTree) inject() {}
 
-func (v *varTree) getprovide() []string {
+func (v *VarTree) getprovide() []string {
 	return []string{}
 }
 
-func (v *varTree) get_all_provides() map[string][]*versions.PkgStr {
-	return map[string][]*versions.PkgStr{}
+func (v *VarTree) Get_all_provides() map[string][]interfaces.IPkgStr {
+	return map[string][]interfaces.IPkgStr{}
 }
 
 // 1
-func (v *varTree) dep_bestmatch(myDep string, useCache int) string {
+func (v *VarTree) dep_bestmatch(myDep string, useCache int) string {
 	s := []string{}
 	for _, p := range v.dbapi.match(dep_expandS(myDep, v.dbapi.dbapi, 1, v.settings), useCache) {
 		s = append(s, p.string)
@@ -1540,7 +1542,7 @@ func (v *varTree) dep_bestmatch(myDep string, useCache int) string {
 }
 
 // 1
-func (v *varTree) dep_match(myDep *dep.Atom, useCache int) []*versions.PkgStr {
+func (v *VarTree) dep_match(myDep *dep.Atom, useCache int) []*versions.PkgStr {
 	myMatch := v.dbapi.match(myDep, useCache)
 	if myMatch == nil {
 		return []*versions.PkgStr{}
@@ -1550,33 +1552,33 @@ func (v *varTree) dep_match(myDep *dep.Atom, useCache int) []*versions.PkgStr {
 
 }
 
-func (v *varTree) exists_specific(cpv string) bool {
+func (v *VarTree) exists_specific(cpv string) bool {
 	return v.dbapi.cpv_exists(cpv, "")
 }
 
-func (v *varTree) getallcpv() []*versions.PkgStr {
+func (v *VarTree) getallcpv() []*versions.PkgStr {
 	return v.dbapi.cpv_all(1)
 }
 
-func (v *varTree) getallnodes() []string {
+func (v *VarTree) getallnodes() []string {
 	return v.dbapi.cp_all(1, false)
 }
 
-func (v *varTree) getebuildpath(fullPackage string) string {
+func (v *VarTree) getebuildpath(fullPackage string) string {
 	packagee := versions.catsplit(fullPackage)[1]
 	return v.getpath(fullPackage, packagee+".ebuild")
 }
 
-func (v *varTree) getslot(myCatPkg *versions.PkgStr) string {
+func (v *VarTree) getslot(myCatPkg *versions.PkgStr) string {
 	return v.dbapi._pkg_str(myCatPkg, "").slot
 }
 
-func (v *varTree) populate() {
+func (v *VarTree) populate() {
 	v.populated = 1
 }
 
-func NewVarTree(categories map[string]bool, settings *ebuild.Config) *varTree {
-	v := &varTree{}
+func NewVarTree(categories map[string]bool, settings *config.Config) *VarTree {
+	v := &VarTree{}
 	if settings == nil {
 		settings = portage.Settings()
 	}
@@ -1595,8 +1597,8 @@ type dblink struct {
 	_eroot, cat, pkg, treetype, dbroot, dbcatdir, dbtmpdir, dbpkgdir, dbdir, myroot string
 	mycpv                                                                           *versions.PkgStr
 	mysplit                                                                         []string
-	vartree                                                                         *varTree
-	settings                                                                        *ebuild.Config
+	vartree                                                                         *VarTree
+	settings                                                                        *config.Config
 	_verbose, _linkmap_broken, _postinst_failure, _preserve_libs                    bool
 	_contents                                                                       *ContentsCaseSensitivityManager
 	contentscache                                                                   map[string][]string
@@ -2928,7 +2930,7 @@ func (d *dblink) _unmerge_dirs(dirs map[struct{s string; i [2]uint64}]bool, info
 						for _, p := range recursive_parents {
 							rpa[p] = true
 						}
-						for _, parent := range myutil.sortedmsb(rpa) {
+						for _, parent := range myutil.SortedMS(rpa) {
 							ds = append(ds, struct {
 								s string;
 								i [2]uint64
@@ -3063,13 +3065,13 @@ func (d *dblink) _find_libs_to_preserve(unmerge bool) map[string]bool{
 	old_contents := installed_instance.getcontents()
 	root := d.settings.ValueDict["ROOT"]
 	root_len := len(root) - 1
-	lib_graph := util.NewDigraph()
-	path_node_map := map[string]*util._obj_properties_class{}
+	lib_graph := bad.NewDigraph()
+	path_node_map := map[string]*_dyn_libs._obj_properties_class{}
 
 	path_to_node:= func(path string) {
 		node := path_node_map[path]
 		if node == nil {
-			node = util.New_LibGraphNode(linkmap._obj_key(path))
+			node = _dyn_libs.New_LibGraphNode(linkmap._obj_key(path))
 			alt_path_node := lib_graph.get(node)
 			if alt_path_node != nil {
 				node = alt_path_node
@@ -3167,28 +3169,25 @@ func (d *dblink) _find_libs_to_preserve(unmerge bool) map[string]bool{
 
 }
 
-func (d *dblink) _add_preserve_libs_to_contents(preserve_paths) {
+func (d *dblink) _add_preserve_libs_to_contents(preserve_paths map[string]bool) {
 
-	if not preserve_paths {
+	if len(preserve_paths) == 0 {
 		return
 	}
 
-	os = _os_merge
+	//os = _os_merge
 	showMessage := d._display_merge
 	root := d.settings.ValueDict["ROOT"]
 
-	new_contents := myutil.CopyMapSSS(d.getcontents())
+	new_contents := myutil.CopyMapT(d.getcontents())
 	old_contents := d._installed_instance.getcontents()
-	for f
-		in
-	myutil.sorted(preserve_paths)
-	{
+	for _, f := range myutil.SortedMS(preserve_paths) {
 		f_abs := filepath.Join(root, strings.TrimLeft(f, string(os.PathSeparator)))
 		contents_entry := old_contents[f_abs]
 		if contents_entry == nil {
 			showMessage(fmt.Sprintf("!!! File '%s' will not be preserved "+
 				"due to missing contents entry\n", f_abs, ), 40, -1)
-			preserve_paths.remove(f)
+			delete(preserve_paths, f)
 			continue
 		}
 		new_contents[f_abs] = contents_entry
@@ -3209,7 +3208,6 @@ func (d *dblink) _add_preserve_libs_to_contents(preserve_paths) {
 	write_contents(new_contents, root, outfile)
 	outfile.Close()
 	d._clear_contents_cache()
-
 }
 
 func (d *dblink) _find_unused_preserved_libs(unmerge_no_replacement bool) map[string]map[string]bool {
@@ -3218,9 +3216,9 @@ func (d *dblink) _find_unused_preserved_libs(unmerge_no_replacement bool) map[st
 		return map[string]map[string]bool{}
 	}
 
-	plib_dict := d.vartree.dbapi._plib_registry.getPreservedLibs()
+	plib_dict := d.vartree.dbapi._plib_registry.GetPreservedLibs()
 	linkmap := d.vartree.dbapi._linkmap
-	lib_graph := util.NewDigraph()
+	lib_graph := bad.NewDigraph()
 	preserved_nodes := map[string]bool{}
 	preserved_paths := map[string]bool{}
 	path_cpv_map := {}
@@ -3230,7 +3228,7 @@ func (d *dblink) _find_unused_preserved_libs(unmerge_no_replacement bool) map[st
 	path_to_node:= func(path string) {
 		node := path_node_map[path]
 		if node == nil {
-			node = util.New_LibGraphNode(linkmap._obj_key(path))
+			node = _dyn_libs.New_LibGraphNode(linkmap._obj_key(path))
 			alt_path_node := lib_graph.get(node)
 			if alt_path_node != nil {
 				node = alt_path_node
@@ -3245,7 +3243,7 @@ func (d *dblink) _find_unused_preserved_libs(unmerge_no_replacement bool) map[st
 		for _, f:= range plibs{
 			path_cpv_map[f] = cpv
 			preserved_node := path_to_node(f)
-			if not preserved_node.file_exists() {
+			if ! preserved_node.file_exists() {
 				continue
 			}
 			lib_graph.add(preserved_node, nil)
@@ -3416,7 +3414,7 @@ func (d *dblink) _collision_protect(srcroot string, mypkglist []*dblink, file_li
 	plib_inodes := map[[2]uint64]map[string]bool{}
 	if d.vartree.dbapi._plib_registry == nil {
 	} else {
-		plib_dict := d.vartree.dbapi._plib_registry.getPreservedLibs()
+		plib_dict := d.vartree.dbapi._plib_registry.GetPreservedLibs()
 		plib_cpv_map = map[string]string{}
 		for cpv, paths := range plib_dict {
 			for _,k := range paths{
@@ -3881,7 +3879,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup bool, mydb
 
 	others_in_slot := []*dblink{}
 	for _, cur_cpv := range slot_matches {
-		settings_clone := ebuild.NewConfig(d.settings, nil, "", nil, "", "", "", "", true, nil, false, nil)
+		settings_clone := config.NewConfig(d.settings, nil, "", nil, "", "", "", "", true, nil, false, nil)
 		delete(settings_clone.ValueDict, "PORTAGE_BUILDDIR_LOCKED")
 		settings_clone.SetCpv(cur_cpv, d.vartree.dbapi)
 		if d._preserve_libs && myutil.Ins(strings.Fields(settings_clone.ValueDict["PORTAGE_RESTRICT"]), "preserve-libs") {
@@ -3924,7 +3922,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup bool, mydb
 		//except EnvironmentError:
 		//install_mask = nil
 	}
-	install_mask := util.NewInstallMask(string(f))
+	install_mask := bad.NewInstallMask(string(f))
 
 	if install_mask != nil {
 		util.install_mask_dir(d.settings.ValueDict["ED"], install_mask, nil)
@@ -4470,7 +4468,7 @@ func (d *dblink) treewalk(srcroot, inforoot, myebuild string, cleanup bool, mydb
 				myutil.sortedmsb(preserve_paths))
 		}
 
-		plib_dict := plib_registry.getPreservedLibs()
+		plib_dict := plib_registry.GetPreservedLibs()
 		for cpv, paths := range plib_collisions {
 			if !myutil.Inmsss(plib_dict, cpv) {
 				continue
@@ -5226,8 +5224,8 @@ func (d *dblink) _quickpkg_dblink(backup_dblink *dblink, background bool, logfil
 }
 
 // "", nil, "", nil, nil, nil, 0
-func NewDblink(cat, pkg, myroot string, settings *ebuild.Config, treetype string,
-	vartree *varTree, blockers []*dblink, scheduler *emerge.SchedulerInterface, pipe int) *dblink {
+func NewDblink(cat, pkg, myroot string, settings *config.Config, treetype string,
+	vartree *VarTree, blockers []*dblink, scheduler *emerge.SchedulerInterface, pipe int) *dblink {
 	d := &dblink{}
 
 	d._normalize_needed = regexp.MustCompile("//|^[^/]|./$|(^|/)\\.\\.?(/|$)")
@@ -5297,8 +5295,8 @@ func NewDblink(cat, pkg, myroot string, settings *ebuild.Config, treetype string
 }
 
 // nil, "", "", nil, nil, nil, nil, nil, nil
-func merge(mycat, mypkg, pkgloc, infloc string, settings *ebuild.Config, myebuild, mytree string,
-	mydbapi IDbApi, vartree *varTree, prev_mtimes=nil, blockers=nil, scheduler=nil, fd_pipes=nil) int {
+func merge(mycat, mypkg, pkgloc, infloc string, settings *config.Config, myebuild, mytree string,
+	mydbapi IDbApi, vartree *VarTree, prev_mtimes=nil, blockers=nil, scheduler=nil, fd_pipes=nil) int {
 	if settings == nil{
 		//raise TypeError("Settings argument is required")
 	}
@@ -5320,8 +5318,8 @@ func merge(mycat, mypkg, pkgloc, infloc string, settings *ebuild.Config, myebuil
 }
 
 // nil, nil, nil, nil, nil
-func unmerge(cat, pkg string, settings *ebuild.Config,
-	vartree *varTree, ldpath_mtimes=nil, scheduler=nil) int {
+func unmerge(cat, pkg string, settings *config.Config,
+	vartree *VarTree, ldpath_mtimes=nil, scheduler=nil) int {
 
 	if settings == nil {
 		//raise TypeError("Settings argument is required")

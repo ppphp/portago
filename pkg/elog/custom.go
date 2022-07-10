@@ -1,12 +1,12 @@
 package elog
 
 import (
-	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/process"
 	"strings"
 )
 
-func custom_process(mysettings *ebuild.Config, key string, logentries map[string][]struct {
+func custom_process(mysettings *config.Config, key string, logentries map[string][]struct {
 	s  string
 	ss []string
 }, fulltext string) {

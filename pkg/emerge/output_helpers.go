@@ -3,6 +3,7 @@ package emerge
 import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/dep"
+	"github.com/ppphp/portago/pkg/emerge/structs"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/sets"
 	"github.com/ppphp/portago/pkg/util/msg"
@@ -425,7 +426,7 @@ func _tree_display(conf, mylist) {
 	for node
 	in
 	mylist
-	if isinstance(node, Package) and
+	if isinstance(node, structs.Package) and
 	node.operation == "unmerge"
 	)
 
@@ -494,7 +495,7 @@ print_node:=func(node, depth) {
 	}else{
 			seen_nodes[node] = true
 
-			if isinstance(node, (Blocker, Package)):
+			if isinstance(node, (Blocker, structs.Package)):
 			display_list.append((node, depth, true)) else:
 			depth = -1
 
@@ -557,7 +558,7 @@ mylist:
 	for node
 	in
 parent_nodes:
-	if not isinstance(node, (Blocker, Package)):
+	if not isinstance(node, (Blocker, structs.Package)):
 	continue
 	if node not
 	in
@@ -577,7 +578,7 @@ shown_edges:
 	for node
 	in
 parent_nodes:
-	if not isinstance(node, (Blocker, Package)):
+	if not isinstance(node, (Blocker, structs.Package)):
 	continue
 	if node not
 	in
@@ -624,7 +625,7 @@ func _prune_tree_display(display_list) {
 	if (
 		ordered
 		and
-	isinstance(node, Package)
+	isinstance(node, structs.Package)
 	and
 	node.operation
 	in("merge", "uninstall")

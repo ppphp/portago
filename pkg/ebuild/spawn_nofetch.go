@@ -2,6 +2,7 @@ package ebuild
 
 import (
 	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/elog"
 	"github.com/ppphp/portago/pkg/emerge"
 	"github.com/ppphp/portago/pkg/myutil"
@@ -13,7 +14,7 @@ type SpawnNofetchWithoutBuilddir struct {
 	*emerge.CompositeTask
 
 	// slot
-	settings *Config
+	settings *config.Config
 	ebuild_path string
 	fd_pipes map[int]int
 	portdb
@@ -33,7 +34,7 @@ func(s*SpawnNofetchWithoutBuilddir) _start() {
 		return
 	}
 
-	s.settings = NewConfig(settings, nil, "", nil, "", "", "", "", true, nil, false, nil)
+	s.settings = config.NewConfig(settings, nil, "", nil, "", "", "", "", true, nil, false, nil)
 	settings = s.settings
 
 	portage_tmpdir := settings.ValueDict["PORTAGE_TMPDIR"]
@@ -85,7 +86,7 @@ func NewSpawnNofetchWithoutBuilddir(
 	ebuild_path string,
 	scheduler *emerge.SchedulerInterface,
 fd_pipes map[int]int,
-settings *Config)*SpawnNofetchWithoutBuilddir {
+settings *config.Config)*SpawnNofetchWithoutBuilddir {
 	s := &SpawnNofetchWithoutBuilddir{}
 	s.CompositeTask = emerge.NewCompositeTask()
 
@@ -100,7 +101,7 @@ settings *Config)*SpawnNofetchWithoutBuilddir {
 }
 
 // nil, nil
-func spawn_nofetch(portdb, ebuild_path string, settings *Config, fd_pipes map[int]int) {
+func spawn_nofetch(portdb, ebuild_path string, settings *config.Config, fd_pipes map[int]int) {
 	nofetch := NewSpawnNofetchWithoutBuilddir(false,
 		portdb = portdb,
 		ebuild_path,

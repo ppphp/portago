@@ -17,36 +17,21 @@ now based on portage master, Feb 21, 2022
 # Roadmap
 
 - package dependency and file split
-  - good
-    - const
-    - eapi
-    - process
-    - checksum
-    - output
-    - data
-    - progress
-    - xpak
-    - src
-    - versions
-    - getbinpkg
-    - binrepo
-    - env
   - bad
     - cache
     - dbapi
-    - dep
+    - dep/dep_check
     - ebuild
     - elog
     - emaint
-    - emerge
-    - locks
+    - emerge/*
     - manifest
     - metadata
     - portage
     - repository
     - sets
     - sync
-    - util
+    - util/bad
 - ebuild sync runnable
   - [ ] can build binary (used to)
   - [ ] can synchronize repo

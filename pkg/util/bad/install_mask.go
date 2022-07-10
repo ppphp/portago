@@ -1,4 +1,4 @@
-package util
+package bad
 
 import (
 	"github.com/ppphp/portago/pkg/util/msg"

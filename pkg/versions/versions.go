@@ -341,9 +341,9 @@ func CatPkgSplit(mydata string, silent int, eapi string) [4]string {
 type PkgStr[T interfaces.ISettings] struct {
 	interfaces.IPkgStr
 	String                                                        string
-	metadata                                                      map[string]string
+	Metadata                                                      map[string]string
 	settings                                                      T
-	eapi, Repo, Slot, fileSize, Cp, Version, SubSlot, slotInvalid string
+	Eapi, Repo, Slot, fileSize, Cp, Version, SubSlot, slotInvalid string
 
 	db                        interfaces.IDbApi
 	BuildId, BuildTime, mtime int
@@ -356,7 +356,7 @@ type PkgStr[T interfaces.ISettings] struct {
 func NewPkgStr[T interfaces.ISettings](cpv string, metadata map[string]string, settings T, eapi1, repo, slot string, build_time, build_id int, file_size string, mtime int, db interfaces.IDbApi) *PkgStr[T] {
 	p := &PkgStr[T]{String: cpv}
 	if metadata != nil {
-		p.metadata = metadata
+		p.Metadata = metadata
 		if a, ok := metadata["SLOT"]; ok {
 			slot = a
 		}
@@ -388,7 +388,7 @@ func NewPkgStr[T interfaces.ISettings](cpv string, metadata map[string]string, s
 		p.db = db
 	}
 	if eapi1 != "" {
-		p.eapi = eapi1
+		p.Eapi = eapi1
 	}
 	p.BuildTime = build_time
 	p.fileSize = file_size
@@ -451,7 +451,7 @@ func (p PkgStr[T]) _long(vari, defaulti int) int {
 	return vari
 }
 
-func (p *PkgStr[T]) stable() bool {
+func (p *PkgStr[T]) Stable() bool {
 	if p._stable != nil {
 		return *p._stable
 	}
@@ -467,9 +467,17 @@ func (p *PkgStr[T]) stable() bool {
 
 func (p *PkgStr[T]) binpkg_format() string {
 	//try:
-	return p.metadata["BINPKG_FORMAT"]
+	return p.Metadata["BINPKG_FORMAT"]
 	//except (AttributeError, KeyError):
 	//raise AttributeError("binpkg_format")
+}
+
+// interface
+func (p *PkgStr[T]) GetCp() string {
+	return p.Cp
+}
+func (p *PkgStr[T]) GetString() string {
+	return p.String
 }
 
 // 1, nil

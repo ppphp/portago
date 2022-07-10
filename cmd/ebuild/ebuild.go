@@ -5,11 +5,14 @@ import (
 	"github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/dbapi"
-	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/dbapi/FetchlistDict"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/emerge"
+	"github.com/ppphp/portago/pkg/emerge/structs"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/portage"
+	"github.com/ppphp/portago/pkg/portage/vars"
 	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/portago/pkg/versions"
@@ -124,7 +127,7 @@ func main() {
 	if ebuild_portdir != vdb_path &&
 		!myutil.Ins(portage.Portdb().porttrees, ebuild_portdir) {
 		portdir_overlay := portage.Settings().ValueDict["PORTDIR_OVERLAY"]
-		os.Setenv("PORTDIR_OVERLAY", portdir_overlay+" "+portage.ShellQuote(ebuild_portdir))
+		os.Setenv("PORTDIR_OVERLAY", portdir_overlay+" "+vars.ShellQuote(ebuild_portdir))
 
 		print(fmt.Sprintf("Appending %s to PORTDIR_OVERLAY...", ebuild_portdir))
 		portage.ResetLegacyGlobals()
@@ -231,16 +234,16 @@ func main() {
 		mydbapi = portage.Db().Values()[portage.Settings().ValueDict["EROOT"]].VarTree().dbapi
 	}
 
-	metadata := dict(zip(emerge.NewPackage(false, nil, false, nil, nil, "").metadata_keys,
+	metadata := dict(zip(structs.NewPackage(false, nil, false, nil, nil, "").metadata_keys,
 		mydbapi.aux_get(
-			cpv, emerge.NewPackage(false, nil, false, nil, nil, "").metadata_keys, myrepo = myrepo)))
+			cpv, structs.NewPackage(false, nil, false, nil, nil, "").metadata_keys, myrepo = myrepo)))
 	if err != nil {
 		//except PortageKeyError{
 		syscall.Exit(1)
 	}
 	root_config := emerge.NewRootConfig(portage.Settings(),
 		portage.Db().Values()[portage.Settings().ValueDict["EROOT"]], nil)
-	pkg := emerge.NewPackage(pkg_type != "ebuild", cpv,
+	pkg := structs.NewPackage(pkg_type != "ebuild", cpv,
 		pkg_type == "installed",
 		metadata, root_config,
 		pkg_type)
@@ -293,13 +296,13 @@ func err(txt string) {
 	os.Exit(1)
 }
 
-func discard_digests(myebuild string, mysettings *ebuild.Config, mydbapi *atom.portdbapi) {
+func discard_digests(myebuild string, mysettings *config.Config, mydbapi *atom.portdbapi) {
 	//try{
 	atom._doebuild_manifest_exempt_depend += 1
 	defer atom._doebuild_manifest_exempt_depend -= 1
 
 	pkgdir := filepath.Dir(myebuild)
-	fetchlist_dict := dbapi.NewFetchlistDict(pkgdir, mysettings, mydbapi)
+	fetchlist_dict := FetchlistDict.NewFetchlistDict(pkgdir, mysettings, mydbapi)
 	rc := mysettings.Repositories.getRepoForLocation(
 		filepath.Dir(filepath.Dir(pkgdir)))
 	mf := rc.load_manifest(pkgdir, mysettings.ValueDict["DISTDIR"],
@@ -316,7 +319,7 @@ func discard_digests(myebuild string, mysettings *ebuild.Config, mydbapi *atom.p
 	//finally{
 }
 
-func stale_env_warning(pargs []string, tmpsettings*ebuild.Config, build_dir_phases map[string]bool, debug, ebuild_changed bool, ebuild string) {
+func stale_env_warning(pargs []string, tmpsettings*config.Config, build_dir_phases map[string]bool, debug, ebuild_changed bool, ebuild string) {
 	inter := map[string]bool{}
 	for _, p :=range pargs{
 		if !build_dir_phases[p]{

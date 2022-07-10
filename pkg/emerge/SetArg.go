@@ -1,6 +1,8 @@
 package emerge
 
-import "github.com/ppphp/portago/pkg/sets"
+import (
+	"github.com/ppphp/portago/pkg/sets"
+)
 
 type SetArg struct {
 	*DependencyArg

@@ -7,10 +7,11 @@ import (
 	"github.com/ppphp/portago/pkg/dbapi"
 	"github.com/ppphp/portago/pkg/dep"
 	"github.com/ppphp/portago/pkg/eapi"
-	ebuild2 "github.com/ppphp/portago/pkg/ebuild"
+	ebuild2 "github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/emerge"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/portage/vars"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/versions"
@@ -25,34 +26,6 @@ import (
 	"syscall"
 	"time"
 )
-
-var shellQuoteRe = regexp.MustCompile("[\\s><=*\\\\\\\"'$`]")
-var InitializingGlobals *bool
-
-func ShellQuote(s string) string {
-
-	if shellQuoteRe.MatchString(s) {
-		return s
-	}
-	for _, letter := range "\\\"$`" {
-		if strings.Contains(s, string(letter)) {
-			s = strings.Replace(s, string(letter), "\\"+string(letter), -1)
-		}
-	}
-	return "\"" + s + "\""
-}
-
-var NotInstalled bool
-
-func init() {
-	ni, err := os.Stat(path.Join(_const.PORTAGE_BASE_PATH, ".portage_not_installed"))
-	if err != nil || !ni.IsDir() {
-		NotInstalled = true
-	}
-}
-
-var InternalCaller = false
-var SyncMode = false
 
 func getStdin() *os.File {
 	return os.Stdin
@@ -80,6 +53,7 @@ var auxdbkeys = map[string]bool{
 	"PROPERTIES": true, "DEFINED_PHASES": true, "HDEPEND": true, "UNUSED_04": true,
 	"UNUSED_03": true, "UNUSED_02": true, "UNUSED_01": true,
 }
+
 var auxdbkeylen = len(auxdbkeys)
 
 func absSymlink(symlink, target string) string {
@@ -129,115 +103,14 @@ type newsManager struct {
 //	n := &newsManager{portdb:portdb, unread_path:unread_path, language_id:language_id, config: vardb.setting, vdb: vardb, portdb:portdb}
 //}
 
-type hashPath struct {
-	location, eclassDir string
-}
-
-func (h *hashPath) mtime() time.Time {
-	s, _ := os.Stat(h.location)
-	return s.ModTime()
-}
-
-func NewHashPath(location string) *hashPath {
-	return &hashPath{location: location}
-}
-
-type Cache struct {
-	eclasses                                           map[string]*hashPath
-	eclassLocations                                    map[string]string
-	eclassLocationsStr, portTreeRoot, masterEclassRoot string
-	portTrees                                          []string
-}
-
-func (c *Cache) updateEclasses() {
-	c.eclasses = map[string]*hashPath{}
-	c.eclassLocations = map[string]string{}
-	masterEclasses := map[string]time.Time{}
-	eclassLen := len(".eclass")
-	for _, y := range c.portTrees {
-		x := msg.NormalizePath(path.Join(y, "eclass"))
-		eclassFileNames, _ := filepath.Glob(x + "/*")
-		for _, y := range eclassFileNames {
-			if !strings.HasSuffix(y, ".eclass") {
-				continue
-			}
-			obj := NewHashPath(path.Join(x, y))
-			obj.eclassDir = x
-			mtime := obj.mtime()
-			ys := y[:len(y)-eclassLen]
-			if x == c.masterEclassRoot {
-				masterEclasses[ys] = mtime
-				c.eclasses[ys] = obj
-				c.eclassLocations[ys] = x
-				continue
-			}
-			masterMTime, ok := masterEclasses[ys]
-			if ok {
-				if masterMTime == mtime {
-					continue
-				}
-			}
-			c.eclasses[ys] = obj
-			c.eclassLocations[ys] = x
-		}
-	}
-}
-
-func (c *Cache) Copy() *Cache {
-	d := &Cache{eclasses: map[string]*hashPath{}, eclassLocations: map[string]string{}, portTreeRoot: c.portTreeRoot, portTrees: c.portTrees, masterEclassRoot: c.masterEclassRoot}
-	for k, v := range c.eclasses {
-		d.eclasses[k] = v
-	}
-	for k, v := range c.eclassLocations {
-		d.eclassLocations[k] = v
-	}
-	return d
-}
-
-func (c *Cache) Append(other *Cache) {
-	c.portTrees = append(c.portTrees, other.portTrees...)
-	for k, v := range other.eclasses {
-		c.eclasses[k] = v
-	}
-	for k, v := range other.eclassLocations {
-		c.eclassLocations[k] = v
-	}
-	c.eclassLocationsStr = ""
-}
-
-func NewCache(portTreeRoot, overlays string) *Cache {
-	c := &Cache{}
-	if overlays != "" {
-		//warnings.warn("overlays parameter of portage.eclass_cache.cache constructor is deprecated and no longer used",
-		//	DeprecationWarning, stacklevel=2)
-	}
-	c.eclasses = map[string]*hashPath{}
-	c.eclassLocations = map[string]string{}
-	c.eclassLocationsStr = ""
-	if portTreeRoot != "" {
-		c.portTreeRoot = portTreeRoot
-		c.portTrees = []string{msg.NormalizePath(c.portTreeRoot)}
-		c.masterEclassRoot = path.Join(c.portTrees[0], "eclass")
-	}
-	return c
-}
-
-func UnprivilegedMode(eroot string, erootSt os.FileInfo) bool {
-	st, err := os.Stat(eroot)
-	if err != nil {
-		return false
-	}
-	return os.Getuid() != 0 && st.Mode()&2 != 0 && erootSt.Mode()&00002 == 0
-}
-
 // my data structure, a lazy Tree
 type Tree struct {
 	_virtuals map[string][]string
-	_vartree  *dbapi.varTree
+	_vartree  *dbapi.VarTree
 	_porttree *dbapi.PortageTree
 	_bintree  *dbapi.BinaryTree
 	virtuals  func() map[string][]string
-	vartree   func() *dbapi.varTree
+	vartree   func() *dbapi.VarTree
 	porttree  func() *dbapi.PortageTree
 	bintree   func() *dbapi.BinaryTree
 
@@ -252,7 +125,7 @@ func (t *Tree) Virtuals() map[string][]string {
 	return t._virtuals
 }
 
-func (t *Tree) VarTree() *dbapi.varTree {
+func (t *Tree) VarTree() *dbapi.VarTree {
 	if t._vartree != nil {
 		t._vartree = t.vartree()
 	}
@@ -415,10 +288,10 @@ func Mtimedbfile() string {
 
 func _get_legacy_global() { // a fake copy, just init no return
 	_portdb = Db().valueDict[Root()].PortTree().dbapi
-	InitializingGlobals = new(bool)
-	*InitializingGlobals = true
+	vars.InitializingGlobals = new(bool)
+	*vars.InitializingGlobals = true
 	_db = CreateTrees(os.Getenv("PORTAGE_CONFIGROOT"), os.Getenv("ROOT"), nil, nil, os.Getenv("SYSROOT"), os.Getenv("EPREFIX"))
-	InitializingGlobals = nil
+	vars.InitializingGlobals = nil
 	_settings = _db.valueDict[_db._target_eroot].VarTree().settings
 	_root = new(string)
 	*_root = _db._target_eroot

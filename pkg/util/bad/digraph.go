@@ -1,4 +1,4 @@
-package util
+package bad
 
 type Digraph struct {
 	nodes interface{}

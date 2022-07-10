@@ -3,7 +3,7 @@ package elog
 import (
 	"fmt"
 	_const "github.com/ppphp/portago/pkg/const"
-	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"log/syslog"
 	"strings"
 )
@@ -16,7 +16,7 @@ var _pri = map[string]syslog.Priority{
 	"QA":    syslog.LOG_WARNING,
 }
 
-func syslog_process(mysettings *ebuild.Config, key string, logentries map[string][]struct {
+func syslog_process(mysettings *config.Config, key string, logentries map[string][]struct {
 	s  string
 	ss []string
 }, fulltext string) {

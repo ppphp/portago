@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/checksum"
 	"github.com/ppphp/portago/pkg/const"
-	"github.com/ppphp/portago/pkg/dbapi"
+	"github.com/ppphp/portago/pkg/dbapi/FetchlistDict"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/exception"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/repository"
 	"github.com/ppphp/portago/pkg/util"
+	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/versions"
 	"io/ioutil"
 	"os"
@@ -155,11 +157,11 @@ type Manifest struct {
 	thin, allow_missing, allow_create, strict_misc_digests bool
 	guessType                                              func(string) string
 	parsers                                                []func(string) *Manifest2Entry
-	fetchlist_dict                                         *dbapi.FetchlistDict
+	fetchlist_dict                                         *FetchlistDict.FetchlistDict[*config.Config]
 }
 
 // "", nil, false, false, false, true, nil, nil, nil, true
-func NewManifest( pkgdir, distdir string, fetchlist_dict *dbapi.FetchlistDict, from_scratch,
+func NewManifest( pkgdir, distdir string, fetchlist_dict *FetchlistDict.FetchlistDict[*config.Config], from_scratch,
 	thin, allow_missing, allow_create bool, hashes map[string]bool, required_hashes map[string]bool,
 find_invalid_path_char func(string)int, strict_misc_digests bool)*Manifest {
 	m := &Manifest{}
@@ -215,7 +217,7 @@ find_invalid_path_char func(string)int, strict_misc_digests bool)*Manifest {
 	if fetchlist_dict != nil {
 		m.fetchlist_dict = fetchlist_dict
 	} else {
-		m.fetchlist_dict = dbapi.NewFetchlistDict("", nil, nil)
+		m.fetchlist_dict = FetchlistDict.NewFetchlistDict("", nil, nil)
 	}
 	m.distdir = distdir
 	m.thin = thin
@@ -416,7 +418,7 @@ func (m*Manifest) write( sign, force bool) bool {
 				for _, myentry := range myentries {
 					ms = append(ms, fmt.Sprintf(myentry.__str__()))
 				}
-				util.write_atomic(m.getFullname(), strings.Join(ms, " "), os.O_RDWR|os.O_CREATE, true)
+				util.Write_atomic(m.getFullname(), strings.Join(ms, " "), os.O_RDWR|os.O_CREATE, true)
 				m._apply_max_mtime(preserved_stats, myentries)
 				rval = true
 			} else {
@@ -493,7 +495,7 @@ func (m*Manifest) _apply_max_mtime( preserved_stats map[string]*syscall.Stat_t, 
 		for path := range preserved_stats {
 			if err := syscall.Utime(path, &syscall.Utimbuf{max_mtime, max_mtime}); err != nil {
 				//except OSError as e:
-				util.WriteMsgLevel(fmt.Sprintf("!!! utime('%s', (%s, %s)): %s\n",
+				msg.WriteMsgLevel(fmt.Sprintf("!!! utime('%s', (%s, %s)): %s\n",
 					path, max_mtime, max_mtime, err),
 				30, -1)
 			}

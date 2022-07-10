@@ -2,14 +2,14 @@ package dbapi
 
 import (
 	"github.com/ppphp/portago/pkg/dep"
-	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/versions"
 	"regexp"
 	"strings"
 )
 
 //nil,1,nil
-func dep_expandS(myDep string, myDb *dbapi, useCache int, settings *ebuild.Config) *dep.Atom {
+func dep_expandS(myDep string, myDb *dbapi, useCache int, settings *config.Config) *dep.Atom {
 	origDep := myDep
 	if myDep == "" {
 		return nil
@@ -58,7 +58,7 @@ func dep_expandS(myDep string, myDb *dbapi, useCache int, settings *ebuild.Confi
 }
 
 //nil,1,nil
-func Dep_expand(myDep *dep.Atom, myDb *dbapi, useCache int, settings *ebuild.Config) *dep.Atom {
+func Dep_expand(myDep *dep.Atom, myDb *dbapi, useCache int, settings *config.Config) *dep.Atom {
 	origDep := myDep
 	d := myDep.value
 	if !strings.HasPrefix(myDep.cp, "virtual/") {

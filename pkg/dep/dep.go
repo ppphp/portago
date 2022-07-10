@@ -21,9 +21,9 @@ const (
 	slotLoose     = "([\\w+./*=-]+)"
 	use           = "\\[.*\\]"
 	op            = "([=~]|[><]=?)"
-	repoSeparator = "::"
+	RepoSeparator = "::"
 	repoName      = "[\\w][\\w-]*"
-	repo          = "(?:" + repoSeparator + "(" + repoName + ")" + ")?"
+	repo          = "(?:" + RepoSeparator + "(" + repoName + ")" + ")?"
 	extendedCat   = "[\\w+*][\\w+.*-]*"
 )
 
@@ -103,7 +103,7 @@ func getAtomWildcardRe(attrs eapi.EapiAttrs) *regexp.Regexp {
 		"((?P<simple>(" + extendedCat + ")/(" + pkg_re + "(-" +
 			versions.Vr + ")?))" + "|(?P<star>=((" + extendedCat +
 			")/(" + pkg_re + "))-(?P<version>\\*\\w+\\*)))" + "(:(?P<slot>" +
-			slotLoose + "))?(" + repoSeparator + "(?P<repo>" + repoName + "))?$")
+			slotLoose + "))?(" + RepoSeparator + "(?P<repo>" + repoName + "))?$")
 	return _atom_wildcard_re
 }
 
@@ -129,10 +129,11 @@ func GetUseflagRe(eapi1 string) *regexp.Regexp {
 	return _useflag_re
 }
 
-func cpvequal(cpv1, cpv2 string) bool {
-	c1 := versions.NewPkgStr(cpv1, nil, nil, "", "", "", 0, 0, "", 0, nil)
+func cpvequal[T interfaces.ISettings](cpv1, cpv2 string) bool {
+	var Nil T
+	c1 := versions.NewPkgStr[T](cpv1, nil, Nil, "", "", "", 0, 0, "", 0, nil)
 	split1 := c1.CpvSplit
-	c2 := versions.NewPkgStr(cpv2, nil, nil, "", "", "", 0, 0, "", 0, nil)
+	c2 := versions.NewPkgStr[T](cpv2, nil, Nil, "", "", "", 0, 0, "", 0, nil)
 	split2 := c2.CpvSplit
 	if split1[0] != split2[0] || split1[1] != split2[1] {
 		return false
@@ -141,24 +142,30 @@ func cpvequal(cpv1, cpv2 string) bool {
 	return v == 0
 }
 
-func ParenEncloses[T string | []string | interface {
-	UnevaluatedAtom() *Atom[interfaces.ISettings]
-}](myList []T, unevaluatedAtom, opconvert bool) string {
+func ParenEnclose(myList []string, unevaluatedAtom, opconvert bool) string {
 	myStrParts := []string{}
 	for _, x := range myList {
-		switch y := x.(type) {
-		case []string:
-			if opconvert && len(y) > 0 && y[0] != "||" {
-				myStrParts = append(myStrParts, fmt.Sprintf("%s ( %s )", y[0], ParenEncloses(y[1:], false, false)))
-			} else {
-				myStrParts = append(myStrParts, fmt.Sprintf("( %s )", ParenEncloses(y, false, false)))
-			}
-		case string:
-			myStrParts = append(myStrParts, y)
-		case interface {
-			UnevaluatedAtom() *Atom[interfaces.ISettings]
-		}:
-			myStrParts = append(myStrParts, y.UnevaluatedAtom().Value)
+		myStrParts = append(myStrParts, x)
+	}
+	return strings.Join(myStrParts, " ")
+}
+
+func ParenEncloseA[T interfaces.ISettings](myList []*Atom[T], unevaluatedAtom, opconvert bool) string {
+	myStrParts := []string{}
+	for _, x := range myList {
+		myStrParts = append(myStrParts, x.UnevaluatedAtom().Value)
+
+	}
+	return strings.Join(myStrParts, " ")
+}
+
+func ParenEncloses(myList [][]string, unevaluatedAtom, opconvert bool) string {
+	myStrParts := []string{}
+	for _, x := range myList {
+		if opconvert && len(x) > 0 && x[0] != "||" {
+			myStrParts = append(myStrParts, fmt.Sprintf("%s ( %s )", x[0], ParenEnclose(x[1:], false, false)))
+		} else {
+			myStrParts = append(myStrParts, fmt.Sprintf("( %s )", ParenEnclose(x, false, false)))
 		}
 	}
 	return strings.Join(myStrParts, " ")
@@ -481,7 +488,7 @@ var conditionalStrings = map[string]string{
 	"not_equal": "!%s=",
 }
 
-type useDep struct {
+type UseDep struct {
 	EapiAttrs                                                    *eapi.EapiAttrs
 	missingEnabled, missingDisabled, disabled, enabled, required map[string]bool
 	conditional                                                  *conditionalClass
@@ -490,8 +497,8 @@ type useDep struct {
 }
 
 // nil, nil, nil, nil, nil, nil
-func NewUseDep(use []string, EapiAttrs *eapi.EapiAttrs, enabledFlags, disabledFlags, missingEnabled, missingDisabled map[string]bool, conditional map[string]map[string]bool, required map[string]bool) *useDep {
-	u := &useDep{conditionalStrings: conditionalStrings}
+func NewUseDep(use []string, EapiAttrs *eapi.EapiAttrs, enabledFlags, disabledFlags, missingEnabled, missingDisabled map[string]bool, conditional map[string]map[string]bool, required map[string]bool) *UseDep {
+	u := &UseDep{conditionalStrings: conditionalStrings}
 	u.EapiAttrs = EapiAttrs
 	if enabledFlags != nil {
 		u.tokens = use
@@ -627,22 +634,22 @@ func NewUseDep(use []string, EapiAttrs *eapi.EapiAttrs, enabledFlags, disabledFl
 	return u
 }
 
-func (u *useDep) bool() bool {
+func (u *UseDep) bool() bool {
 	return len(u.tokens) != 0
 }
 
-func (u *useDep) str() string {
+func (u *UseDep) str() string {
 	if len(u.tokens) == 0 {
 		return ""
 	}
 	return fmt.Sprintf("[%s]", strings.Join(u.tokens, ","))
 }
 
-func (u *useDep) repr() string {
+func (u *UseDep) repr() string {
 	return fmt.Sprintf("portage.dep._use_dep(%s)", u.tokens)
 }
 
-func (u *useDep) evaluateConditionals(use map[string]bool) *useDep {
+func (u *UseDep) evaluateConditionals(use map[string]bool) *UseDep {
 	enabledFlags := myutil.CopyMapT(u.enabled)
 	disabledFlags := myutil.CopyMapT(u.disabled)
 	tokens := []string{}
@@ -684,7 +691,7 @@ func (u *useDep) evaluateConditionals(use map[string]bool) *useDep {
 	return NewUseDep(tokens, u.EapiAttrs, enabledFlags, disabledFlags, u.missingEnabled, u.missingDisabled, nil, u.required)
 }
 
-func (u *useDep) violatedConditionals(otherUse map[string]bool, isValidFlag func(string) bool, parentUse map[string]bool) *useDep {
+func (u *UseDep) violatedConditionals(otherUse map[string]bool, isValidFlag func(string) bool, parentUse map[string]bool) *UseDep {
 	if parentUse == nil && u.conditional != nil {
 		//raise InvalidAtom("violated_conditionals needs 'parent_use'" +
 		//" parameter for conditional flags.")
@@ -877,7 +884,7 @@ func (u *useDep) violatedConditionals(otherUse map[string]bool, isValidFlag func
 	return NewUseDep(tokens, u.EapiAttrs, enabledFlags, disabledFlags, u.missingEnabled, u.missingDisabled, conditional, u.required)
 }
 
-func (u *useDep) evalQaConditionals(useMask, useForce map[string]bool) *useDep {
+func (u *UseDep) evalQaConditionals(useMask, useForce map[string]bool) *UseDep {
 	enabledFlags := myutil.CopyMapT(u.enabled)
 	disabledFlags := myutil.CopyMapT(u.disabled)
 	tokens := []string{}
@@ -952,12 +959,12 @@ type Atom[T interfaces.ISettings] struct {
 	Blocker                                                        *blocker
 	slotOperator, subSlot, Repo, slot, eapi, Cp, version, Operator string
 	cpv                                                            *versions.PkgStr[T]
-	Use                                                            *useDep
+	Use                                                            *UseDep
 	withoutUse, unevaluatedAtom                                    *Atom[T]
 }
 
 //s, nil, false, nil, nil, "", nil, nil
-func NewAtom[T interfaces.ISettings](s string, unevaluatedAtom *Atom[T], allowWildcard bool, allowRepo *bool, _use *useDep, eapi1 string, isValidFlag func(string) bool, allowBuildId *bool) (*Atom[T], error) {
+func NewAtom[T interfaces.ISettings](s string, unevaluatedAtom *Atom[T], allowWildcard bool, allowRepo *bool, _use *UseDep, eapi1 string, isValidFlag func(string) bool, allowBuildId *bool) (*Atom[T], error) {
 	a := &Atom[T]{Value: s, ispackage: true, soname: false}
 	EapiAttrs := eapi.GetEapiAttrs(eapi1)
 	atomRe := getAtomRe(EapiAttrs)
@@ -1106,7 +1113,8 @@ func NewAtom[T interfaces.ISettings](s string, unevaluatedAtom *Atom[T], allowWi
 		return nil, fmt.Errorf("required group!found in Atom: '%v'", a)
 	}
 	a.Cp = cp
-	a.cpv = versions.NewPkgStr[T](cpv, nil, nil, "", "", "", 0, 0, "", 0, nil)
+	var Nil T
+	a.cpv = versions.NewPkgStr[T](cpv, nil, Nil, "", "", "", 0, 0, "", 0, nil)
 	a.version = extendedVersion
 	a.version = a.cpv.Version
 	a.Repo = repo
@@ -1153,7 +1161,7 @@ func NewAtom[T interfaces.ISettings](s string, unevaluatedAtom *Atom[T], allowWi
 	if !(repo == "" || *allowRepo) {
 		//raise InvalidAtom(self)
 	}
-	use := &useDep{}
+	use := &UseDep{}
 	withoutUse := &Atom[T]{}
 	if useStr != "" {
 		if _use != nil {
@@ -1161,11 +1169,11 @@ func NewAtom[T interfaces.ISettings](s string, unevaluatedAtom *Atom[T], allowWi
 		} else {
 			use = NewUseDep(strings.Split(useStr[1:len(useStr)-1], ","), &EapiAttrs, nil, nil, nil, nil, nil, nil)
 		}
-		withoutUse, _ = NewAtom(blockerPrefix+myutil.GetNamedRegexp(atomRe, s, "without_use"), nil, false, allowRepo, nil, "", nil, nil)
+		withoutUse, _ = NewAtom[T](blockerPrefix+myutil.GetNamedRegexp(atomRe, s, "without_use"), nil, false, allowRepo, nil, "", nil, nil)
 	} else {
 		use = nil
 		if unevaluatedAtom != nil && unevaluatedAtom.Use != nil {
-			withoutUse, _ = NewAtom(blockerPrefix+myutil.GetNamedRegexp(atomRe, s, "without_use"), nil, false, allowRepo, nil, "", nil, nil)
+			withoutUse, _ = NewAtom[T](blockerPrefix+myutil.GetNamedRegexp(atomRe, s, "without_use"), nil, false, allowRepo, nil, "", nil, nil)
 		} else {
 			withoutUse = a
 		}
@@ -1235,7 +1243,7 @@ func (a *Atom[T]) withoutSlot() *Atom[T] {
 	}
 	atom := RemoveSlot(a.Value)
 	if a.Repo != "" {
-		atom += repoSeparator + a.Repo
+		atom += RepoSeparator + a.Repo
 	}
 	if a.Use != nil {
 		atom += a.Use.str()
@@ -1259,7 +1267,7 @@ func (a *Atom[T]) WithRepo(repo string) *Atom[T] {
 			atom += a.slotOperator
 		}
 	}
-	atom += repoSeparator + repo
+	atom += RepoSeparator + repo
 	if a.Use != nil {
 		atom += a.Use.str()
 	}
@@ -1271,7 +1279,7 @@ func (a *Atom[T]) WithRepo(repo string) *Atom[T] {
 func (a *Atom[T]) withSlot(slot string) *Atom[T] {
 	atom := RemoveSlot(a.Value) + slotSeparator + slot
 	if a.Repo != "" {
-		atom += repoSeparator + a.Repo
+		atom += RepoSeparator + a.Repo
 	}
 	if a.Use != nil {
 		atom += a.Use.str()
@@ -1361,7 +1369,7 @@ func (a *Atom[T]) withoutRepo() *Atom[T] {
 	if a.Repo == "" {
 		return a
 	}
-	b, _ := NewAtom[T](strings.Replace(a.Value, repoSeparator+a.Repo, "", 1), nil, true, nil, nil, "", nil, nil)
+	b, _ := NewAtom[T](strings.Replace(a.Value, RepoSeparator+a.Repo, "", 1), nil, true, nil, nil, "", nil, nil)
 	return b
 }
 
@@ -1541,8 +1549,8 @@ func extractUnpackDependencies(srcUri string, unpackers map[string]string) strin
 }
 
 //false, false, false, "", false
-func IsValidAtom(atom string, allowBlockers, allowWildcard, allowRepo bool, eapi string, allowBuildId bool) bool {
-	a, err := NewAtom(atom, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId)
+func IsValidAtom[T interfaces.ISettings](atom string, allowBlockers, allowWildcard, allowRepo bool, eapi string, allowBuildId bool) bool {
+	a, err := NewAtom[T](atom, nil, allowWildcard, &allowRepo, nil, eapi, nil, &allowBuildId)
 	if err != nil {
 		return false
 	}
@@ -1576,8 +1584,8 @@ func RemoveSlot(mydep string) string {
 	return mydep
 }
 
-func getOperator(mydep string) string {
-	a, _ := NewAtom(mydep, nil, false, nil, nil, "", nil, nil)
+func getOperator[T interfaces.ISettings](mydep string) string {
+	a, _ := NewAtom[T](mydep, nil, false, nil, nil, "", nil, nil)
 	return a.Operator
 }
 
@@ -1587,7 +1595,7 @@ func depGetcpv[T interfaces.ISettings](mydep string) *versions.PkgStr[T] {
 }
 
 func DepGetslot(mydep string) string {
-	mydep = strings.Split(mydep, repoSeparator)[0]
+	mydep = strings.Split(mydep, RepoSeparator)[0]
 	colon := strings.Index(mydep, slotSeparator)
 	if colon != -1 {
 		bracket := strings.Index(mydep[colon:], "[")
@@ -1601,7 +1609,7 @@ func DepGetslot(mydep string) string {
 }
 
 func DepGetrepo(mydep string) string {
-	colon := strings.Index(mydep, repoSeparator)
+	colon := strings.Index(mydep, RepoSeparator)
 	if colon != -1 {
 		bracket := strings.Index(mydep[colon:], "[")
 		if bracket == -1 {
@@ -1658,8 +1666,8 @@ func depGetUseDeps(depend string) []string {
 	return useList
 }
 
-func IsJustName(mypkg string) bool {
-	a, err := NewAtom(mypkg, nil, false, nil, nil, "", nil, nil)
+func IsJustName[T interfaces.ISettings](mypkg string) bool {
+	a, err := NewAtom[T](mypkg, nil, false, nil, nil, "", nil, nil)
 	if err == nil {
 		return mypkg == a.Cp
 	}
@@ -1672,16 +1680,16 @@ func IsJustName(mypkg string) bool {
 	return true
 }
 
-func isSpecific(mypkg string) bool {
-	a, err := NewAtom(mypkg, nil, false, nil, nil, "", nil, nil)
+func isSpecific[T interfaces.ISettings](mypkg string) bool {
+	a, err := NewAtom[T](mypkg, nil, false, nil, nil, "", nil, nil)
 	if err == nil {
 		return mypkg != a.Cp
 	}
-	return !IsJustName(mypkg)
+	return !IsJustName[T](mypkg)
 }
 
-func DepGetKey(mydep string) string {
-	a, _ := NewAtom(mydep, nil, false, nil, nil, "", nil, nil)
+func DepGetKey[T interfaces.ISettings](mydep string) string {
+	a, _ := NewAtom[T](mydep, nil, false, nil, nil, "", nil, nil)
 	return a.Cp
 }
 
@@ -1738,7 +1746,8 @@ func BestMatchToList[T interfaces.ISettings](mypkg *versions.PkgStr[T], mylist [
 				mypkgCpv = mypkg.Cpv
 			}
 			if mypkgCpv == nil {
-				mypkgCpv = versions.NewPkgStr[T](RemoveSlot(mypkg.String), nil, nil, "", "", "", 0, 0, "", 0, nil)
+				var Nil T
+				mypkgCpv = versions.NewPkgStr[T](RemoveSlot(mypkg.String), nil, Nil, "", "", "", 0, 0, "", 0, nil)
 			}
 			if bestm.cpv == mypkgCpv || bestm.cpv == x.cpv {
 			} else if x.cpv == mypkgCpv {
@@ -1865,7 +1874,7 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 			if xcpv == nil {
 				xcpv = &versions.PkgStr[T]{String: RemoveSlot(x.String)}
 			}
-			if !cpvequal(xcpv.String, mycpv.String) {
+			if !cpvequal[T](xcpv.String, mycpv.String) {
 				continue
 			}
 			if buildId != 0 {
@@ -1887,7 +1896,8 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 		for _, x := range candidateList {
 			pkg := x
 			if pkg.Cp == "" {
-				pkg = versions.NewPkgStr[T](RemoveSlot(x.String), nil, nil, "", "", "", 0, 0, "", 0, nil)
+				var Nil T
+				pkg = versions.NewPkgStr[T](RemoveSlot(x.String), nil, Nil, "", "", "", 0, 0, "", 0, nil)
 			}
 			xs := pkg.CpvSplit
 			myver := strings.TrimPrefix(xs[2], "0")
@@ -1916,7 +1926,7 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 			if xs == [4]string{} {
 				//raise InvalidData(x)
 			}
-			if !cpvequal(xs[0]+"/"+xs[1]+"-"+xs[2], mycpvCps[0]+"/"+mycpvCps[1]+"-"+mycpvCps[2]) {
+			if !cpvequal[T](xs[0]+"/"+xs[1]+"-"+xs[2], mycpvCps[0]+"/"+mycpvCps[1]+"-"+mycpvCps[2]) {
 				continue
 			}
 			if xs[2] != ver {
@@ -1928,7 +1938,8 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 		for _, x := range candidateList {
 			pkg := x
 			if x.Cp == "" {
-				pkg = versions.NewPkgStr[T](RemoveSlot(x.String), nil, nil, "", "", "", 0, 0, "", 0, nil)
+				var Nil T
+				pkg = versions.NewPkgStr[T](RemoveSlot(x.String), nil, Nil, "", "", "", 0, 0, "", 0, nil)
 			}
 
 			if pkg.Cp != mydepA.Cp {
@@ -1971,7 +1982,8 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 			if xPkg.Cpv == nil {
 				xslot := DepGetslot(x.String)
 				if xslot != "" {
-					xPkg = versions.NewPkgStr[T](RemoveSlot(x.String), nil, nil, "", "", xslot, 0, 0, "", 0, nil)
+					var Nil T
+					xPkg = versions.NewPkgStr[T](RemoveSlot(x.String), nil, Nil, "", "", xslot, 0, 0, "", 0, nil)
 				} else {
 					continue
 				}

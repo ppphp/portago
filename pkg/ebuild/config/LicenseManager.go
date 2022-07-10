@@ -1,4 +1,4 @@
-package ebuild
+package config
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ import (
 type LicenseManager struct {
 	acceptLicenseStr string
 	acceptLicense    []string
-	_plicensedict    map[string]map[*dep.Atom][]string
+	_plicensedict    map[string]map[*dep.Atom[*Config]][]string
 	undefLicGroups   map[string]bool
 	licenseGroups    map[string]map[string]bool
 }
@@ -25,7 +25,7 @@ func NewLicenseManager(licenseGroupLocations []string, absUserConfig string, use
 	l.acceptLicenseStr = ""
 	l.acceptLicense = nil
 	l.licenseGroups = map[string]map[string]bool{}
-	l._plicensedict = map[string]map[*dep.Atom][]string{}
+	l._plicensedict = map[string]map[*dep.Atom[*Config]][]string{}
 	l.undefLicGroups = map[string]bool{}
 	if userConfig {
 		licenseGroupLocations = append(licenseGroupLocations, absUserConfig)
@@ -38,12 +38,12 @@ func NewLicenseManager(licenseGroupLocations []string, absUserConfig string, use
 }
 
 func (l *LicenseManager) readUserConfig(absUserConfig string) {
-	licDictt := util.GrabDictPackage(path.Join(absUserConfig, "package.license"), false, true, false, true, true, false, false, false, "", "")
+	licDictt := util.GrabDictPackage[*Config](path.Join(absUserConfig, "package.license"), false, true, false, true, true, false, false, false, "", "")
 	for k, v := range licDictt {
-		if _, ok := l._plicensedict[k.cp]; !ok {
-			l._plicensedict[k.cp] = map[*dep.Atom][]string{k: v}
+		if _, ok := l._plicensedict[k.Cp]; !ok {
+			l._plicensedict[k.Cp] = map[*dep.Atom[*Config]][]string{k: v}
 		} else {
-			l._plicensedict[k.cp][k] = v
+			l._plicensedict[k.Cp][k] = v
 		}
 	}
 }
@@ -67,7 +67,7 @@ func (l *LicenseManager) extractGlobalChanges(old string) string { // ""
 	if len(atomLicenseMap) > 0 {
 		var v []string = nil
 		for a, m := range atomLicenseMap {
-			if a.value == "*/*" {
+			if a.Value == "*/*" {
 				v = m
 				delete(atomLicenseMap, a)
 				break
@@ -143,11 +143,11 @@ func (l *LicenseManager) _expandLicenseToken(token string, traversedGroups map[s
 
 func (l *LicenseManager) _getPkgAcceptLicense(cpv *versions.PkgStr[*Config], slot, repo string) []string {
 	acceptLicense := l.acceptLicense
-	cp := versions.CpvGetKey(cpv.string, "")
+	cp := versions.CpvGetKey(cpv.String, "")
 	cpdict := l._plicensedict[cp]
 	if len(cpdict) > 0 {
-		if cpv.slot == "" {
-			cpv = versions.NewPkgStr[*Config](cpv.string, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
+		if cpv.Slot == "" {
+			cpv = versions.NewPkgStr[*Config](cpv.String, nil, nil, "", repo, slot, 0, 0, "", 0, nil)
 		}
 		plicenceList := orderedByAtomSpecificity(cpdict, cpv, "")
 		if len(plicenceList) > 0 {
@@ -162,7 +162,7 @@ func (l *LicenseManager) _getPkgAcceptLicense(cpv *versions.PkgStr[*Config], slo
 
 func (l *LicenseManager) getPrunnedAcceptLicense(cpv *versions.PkgStr[*Config], use map[string]bool, lic, slot, repo string) string {
 	licenses := map[string]bool{}
-	for _, u := range dep.UseReduce(lic, use, nil, false, nil, false, "", false, true, nil, nil, false) {
+	for _, u := range dep.UseReduce[*Config](lic, use, nil, false, nil, false, "", false, true, nil, nil, false, nil) {
 		licenses[u] = true
 	}
 	acceptLicense := l._getPkgAcceptLicense(cpv, slot, repo)
@@ -193,7 +193,7 @@ func (l *LicenseManager) getPrunnedAcceptLicense(cpv *versions.PkgStr[*Config], 
 
 func (l *LicenseManager) getMissingLicenses(cpv *versions.PkgStr[*Config], use, lic, slot, repo string) []string {
 	licenses := map[string]bool{}
-	for _, u := range dep.UseReduce(lic, nil, nil, true, nil, false, "", false, true, nil, nil, false) {
+	for _, u := range dep.UseReduce[*Config](lic, nil, nil, true, nil, false, "", false, true, nil, nil, false, nil) {
 		licenses[u] = true
 	}
 	delete(licenses, "||")
@@ -219,7 +219,7 @@ func (l *LicenseManager) getMissingLicenses(cpv *versions.PkgStr[*Config], use, 
 			useM[u] = true
 		}
 	}
-	licenseStruct := dep.UseReduce(licenseStr, useM, []string{}, false, []string{}, false, "", false, false, nil, nil, false)
+	licenseStruct := dep.UseReduce[*Config](licenseStr, useM, []string{}, false, []string{}, false, "", false, false, nil, nil, false, nil)
 
 	return l._getMaskedLicenses(licenseStruct, acceptableLicenses)
 }

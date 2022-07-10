@@ -1,4 +1,4 @@
-package ebuild
+package config
 
 import (
 	"bufio"

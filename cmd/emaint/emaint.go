@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/ppphp/portago/pkg/portage"
+	"github.com/ppphp/portago/pkg/portage/vars"
 	"os"
 	"os/signal"
 	"syscall"
@@ -26,7 +26,7 @@ func init() {
 		}
 	}
 	go signalHandler()
-	portage.InternalCaller = true
+	vars.InternalCaller = true
 }
 
 func main() {

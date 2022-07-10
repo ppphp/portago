@@ -2,7 +2,7 @@ package mail
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/myutil"
 	"mime"
 	"os"
@@ -78,7 +78,7 @@ attachments:
 	return mymessage
 }
 
-func Send_mail(mysettings *ebuild.Config, message string) {
+func Send_mail(mysettings *config.Config, message string) {
 
 	import smtplib
 

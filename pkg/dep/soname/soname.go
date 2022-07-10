@@ -1,10 +1,10 @@
-package dep
+package soname
 
 // an ugly tranlation of lib/portage/util/{endian,elf}
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/pkg/emerge"
+	"github.com/ppphp/portago/pkg/emerge/structs"
 	"github.com/ppphp/portago/pkg/util/elf"
 	"strings"
 )
@@ -161,7 +161,7 @@ func (s *SonameAtom) eq(sa *SonameAtom) bool {
 	return s.multilib_category == sa.multilib_category && s.soname == sa.soname
 }
 
-func (s *SonameAtom) match(pkg *emerge.Package) bool {
+func (s *SonameAtom) match(pkg *structs.Package) bool {
 	return pkg.Provides != nil && pkg.Provides[[2]string{s.multilib_category, s.soname}] == s
 }
 

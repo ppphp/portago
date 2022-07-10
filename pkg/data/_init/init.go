@@ -2,11 +2,11 @@ package _init
 
 import (
 	"github.com/ppphp/portago/pkg/data"
-	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"syscall"
 )
 
-func Data_init(settings *ebuild.Config) {
+func Data_init(settings *config.Config) {
 	if data.Portage_gid == nil && data._portage_username == nil {
 		v := ""
 		if w, ok := settings.ValueDict["PORTAGE_GRPNAME"]; ok {

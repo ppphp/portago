@@ -3,7 +3,7 @@ package interfaces
 type IDbApi interface {
 	categories() []string
 	close_caches()
-	cp_list(cp string, useCache int) []IPkgStr
+	Cp_list(cp string, useCache int, mytree string) []IPkgStr
 	_cmp_cpv(cpv1, cpv2 IPkgStr) int
 	_cpv_sort_ascending(cpv_list []IPkgStr)
 	cpv_all() []IPkgStr
@@ -21,4 +21,20 @@ type IDbApi interface {
 	invalidentry(mypath string)
 	update_ents(updates map[string][][]IAtom, onProgress, onUpdate func(int, int))
 	move_slot_ent(mylist []IAtom, repo_match func(string) bool) int
+}
+
+type IVarDbApi interface {
+	IDbApi
+}
+
+type IPortDbApi interface {
+	IDbApi
+	GetFetchMap(mypkg string, useflags []string, mytree string) []string
+}
+
+type IVarTree interface {
+	Get_all_provides() map[string][]IPkgStr
+}
+
+type IPortTree interface {
 }

@@ -1,9 +1,9 @@
-package ebuild
+package config
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/pkg/dbapi"
 	"github.com/ppphp/portago/pkg/dep"
+	"github.com/ppphp/portago/pkg/interfaces"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/util/grab"
 	"github.com/ppphp/portago/pkg/util/msg"
@@ -27,7 +27,7 @@ func (v *VirtualManager) read_dirVirtuals(profiles []string) {
 			if err != nil {
 				virtAtom = nil
 			} else {
-				if virtAtom.Blocker != nil || virtAtom.value != virtAtom.cp {
+				if virtAtom.Blocker != nil || virtAtom.Value != virtAtom.Cp {
 					virtAtom = nil
 				}
 			}
@@ -52,7 +52,7 @@ func (v *VirtualManager) read_dirVirtuals(profiles []string) {
 				if atomA == nil {
 					msg.WriteMsg(fmt.Sprintf("--- Invalid Atom in %s: %s\n", virtualsFile, atomOrig), -1, nil)
 				} else {
-					if atomOrig == atomA.value {
+					if atomOrig == atomA.Value {
 						providers = append(providers, atom)
 					} else {
 						providers = append(providers, atomOrig)
@@ -60,7 +60,7 @@ func (v *VirtualManager) read_dirVirtuals(profiles []string) {
 				}
 			}
 			if len(providers) > 0 {
-				atomsDict[virtAtom.value] = providers
+				atomsDict[virtAtom.Value] = providers
 			}
 		}
 		if len(atomsDict) > 0 {
@@ -129,25 +129,25 @@ func (v *VirtualManager) getVirtsP() map[string][]string {
 	return virtsP
 }
 
-func (v *VirtualManager) _populate_treeVirtuals(vartree *dbapi.varTree) {
+func (v *VirtualManager) _populate_treeVirtuals(vartree interfaces.IVarTree) {
 	if v._treeVirtuals != nil {
 		panic("treeVirtuals must not be reinitialized")
 	}
 	v._treeVirtuals = map[string][]string{}
 
-	for provide, cpvList := range vartree.get_all_provides() {
+	for provide, cpvList := range vartree.Get_all_provides() {
 		provideA, err := dep.NewAtom(provide, nil, false, nil, nil, "", nil, nil)
 		if err != nil {
 			continue
 		}
-		v._treeVirtuals[provideA.cp] = []string{}
+		v._treeVirtuals[provideA.Cp] = []string{}
 		for _, cpv := range cpvList {
-			v._treeVirtuals[provideA.cp] = append(v._treeVirtuals[provideA.cp], cpv.cp)
+			v._treeVirtuals[provideA.Cp] = append(v._treeVirtuals[provideA.Cp], cpv.GetCp())
 		}
 	}
 }
 
-func (v *VirtualManager) populate_treeVirtuals_if_needed(vartree *dbapi.varTree) {
+func (v *VirtualManager) populate_treeVirtuals_if_needed(vartree interfaces.IVarTree) {
 	if v._treeVirtuals != nil {
 		return
 	}
@@ -166,14 +166,14 @@ func (v *VirtualManager) add_depgraph_virtuals(mycpv string, virts []string) {
 		if err != nil {
 			continue
 		}
-		virt = a.cp
+		virt = a.Cp
 		providers := v._depgraphVirtuals[virt]
 		if providers == nil {
 			providers = []string{}
 			v._depgraphVirtuals[virt] = providers
 		}
-		if !myutil.Ins(providers, cp.value) {
-			providers = append(providers, cp.value)
+		if !myutil.Ins(providers, cp.Value) {
+			providers = append(providers, cp.Value)
 			modified = true
 		}
 	}

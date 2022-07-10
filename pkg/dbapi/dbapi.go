@@ -6,8 +6,9 @@ import (
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/dep"
 	eapi2 "github.com/ppphp/portago/pkg/eapi"
-	"github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/emerge"
+	"github.com/ppphp/portago/pkg/emerge/structs"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/versions"
@@ -23,7 +24,7 @@ type dbapi struct {
 	_categories       []string
 	_known_keys       map[string]bool
 	_pkg_str_aux_keys []string
-	settings          *ebuild.Config
+	settings          *config.Config
 }
 
 func (d *dbapi) categories() []string {
@@ -372,7 +373,7 @@ func (d *dbapi) update_ents(updates map[string][][]*dep.Atom, onProgress, onUpda
 	maxval := len(cpvAll)
 	auxGet := d.AuxGet
 	auxUpdate := d.auxUpdate
-	updateKeys := emerge.NewPackage(false, nil, false, nil, nil, "").depKeys
+	updateKeys := structs.NewPackage(false, nil, false, nil, nil, "").depKeys
 	metaKeys := append(updateKeys, d._pkg_str_aux_keys...)
 	repoDict := updates // is dict, else nil
 	if onUpdate != nil {

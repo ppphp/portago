@@ -14,16 +14,20 @@ import (
 	"github.com/ppphp/portago/pkg/dep"
 	eapi2 "github.com/ppphp/portago/pkg/eapi"
 	ebuild2 "github.com/ppphp/portago/pkg/ebuild"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/elog"
+	"github.com/ppphp/portago/pkg/emerge/structs"
 	"github.com/ppphp/portago/pkg/exception"
 	"github.com/ppphp/portago/pkg/locks"
 	"github.com/ppphp/portago/pkg/manifest"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/portage"
+	"github.com/ppphp/portago/pkg/portage/vars"
 	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/sets"
 	"github.com/ppphp/portago/pkg/util"
+	bad2 "github.com/ppphp/portago/pkg/util/bad"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/versions"
 	"github.com/ppphp/portago/pkg/xpak"
@@ -75,7 +79,7 @@ type DepPriorityInterface interface{
 type AbstractEbuildProcess struct {
 	*SpawnProcess
 	// slot
-	settings *ebuild2.Config
+	settings *config.Config
 	phase, _build_dir_unlock, _exit_command, _exit_timeout_id, _start_future string
 	_build_dir *EbuildBuildDir
 	_ipc_daemon *EbuildIpcDaemon
@@ -542,7 +546,7 @@ func (a *AbstractEbuildProcess)_unlock_builddir_exit( unlock_future IFuture, ret
 	}
 }
 
-func NewAbstractEbuildProcess(actionmap ebuild2.Actionmap, background bool, fd_pipes map[int]int, logfile, phase string, scheduler *SchedulerInterface, settings *ebuild2.Config, **kwargs)*AbstractEbuildProcess {
+func NewAbstractEbuildProcess(actionmap ebuild2.Actionmap, background bool, fd_pipes map[int]int, logfile, phase string, scheduler *SchedulerInterface, settings *config.Config, **kwargs)*AbstractEbuildProcess {
 	a := &AbstractEbuildProcess{}
 	a._phases_without_builddir = []string{"clean", "cleanrm", "depend", "help",}
 	a._phases_interactive_whitelist = []string{"config",}
@@ -1154,7 +1158,7 @@ type Binpkg struct {
 	pkg_count *_pkg_count_class
 	world_atom func()
 	_build_prefix, _ebuild_path, _image_dir, _infloc, _pkg_path, _tree, _verify string
-	settings                                                                    *ebuild2.Config
+	settings                                                                    *config.Config
 	pkg                                                                         *versions.PkgStr
 	_build_dir                                                                  *EbuildBuildDir
 	_bintree                                                                    *dbapi.BinaryTree
@@ -1602,7 +1606,7 @@ func (b *Binpkg) _install_exit(task) {
 
 func NewBinpkg(background bool, find_blockers , ldpath_mtimes, logger*_emerge_log_class,
 	opts *_binpkg_opts_class, pkg *versions.PkgStr, pkg_count*_pkg_count_class, prefetcher ,
-	settings *ebuild2.Config, scheduler *SchedulerInterface,
+	settings *config.Config, scheduler *SchedulerInterface,
 	world_atom func())*Binpkg {
 	b := &Binpkg{}
 	b.CompositeTask = NewCompositeTask()
@@ -1622,7 +1626,7 @@ func NewBinpkg(background bool, find_blockers , ldpath_mtimes, logger*_emerge_lo
 
 type BinpkgEnvExtractor struct {
 	*CompositeTask
-	settings *ebuild2.Config
+	settings *config.Config
 }
 
 func(b *BinpkgEnvExtractor) saved_env_exists() bool {
@@ -1646,8 +1650,8 @@ func(b *BinpkgEnvExtractor) _start() {
 	saved_env_path := b._get_saved_env_path()
 	dest_env_path := b._get_dest_env_path()
 	shell_cmd := fmt.Sprintf("${PORTAGE_BUNZIP2_COMMAND:-${PORTAGE_BZIP2_COMMAND} -d} -c -- %s > %s" ,
-		portage.ShellQuote(saved_env_path),
-		portage.ShellQuote(dest_env_path))
+		vars.ShellQuote(saved_env_path),
+		vars.ShellQuote(dest_env_path))
 	extractor_proc := NewSpawnProcess([]string{_const.BashBinary, "-c", shell_cmd}, b.background, b.settings.environ(), nil, b.scheduler, b.settings.ValueDict["PORTAGE_LOG_FILE"])
 
 	b._start_task(extractor_proc, b._extractor_exit)
@@ -1679,7 +1683,7 @@ func(b *BinpkgEnvExtractor) _extractor_exit( extractor_proc *SpawnProcess) {
 	b.wait()
 }
 
-func NewBinpkgEnvExtractor(background bool, scheduler *SchedulerInterface, settings *ebuild2.Config)*BinpkgEnvExtractor {
+func NewBinpkgEnvExtractor(background bool, scheduler *SchedulerInterface, settings *config.Config)*BinpkgEnvExtractor {
 	b :=&BinpkgEnvExtractor{}
 	b.CompositeTask = NewCompositeTask()
 	b.background = background
@@ -1713,7 +1717,7 @@ func(b *BinpkgExtractorAsync) _start() {
 			ss, _ := shlex.Split(strings.NewReader(b.env["PORTAGE_XATTR_EXCLUDE"]), false, true)
 
 			for _, x := range ss {
-				tar_options2 = append(tar_options2, portage.ShellQuote(fmt.Sprintf("--xattrs-exclude=%s", x)))
+				tar_options2 = append(tar_options2, vars.ShellQuote(fmt.Sprintf("--xattrs-exclude=%s", x)))
 			}
 			tar_options = strings.Join(tar_options2, " ")
 		}
@@ -1786,10 +1790,10 @@ func(b *BinpkgExtractorAsync) _start() {
 			"failed with status ${p[$i]} ; exit ${p[$i]} ; fi ; "+
 			"exit 0 ;",
 			int(pkg_xpak.filestat.Size())-pkg_xpak.xpaksize,
-			portage.ShellQuote(b.pkg_path),
+			vars.ShellQuote(b.pkg_path),
 			decomp_cmd,
 			tar_options,
-			portage.ShellQuote(b.image_dir),
+			vars.ShellQuote(b.image_dir),
 			128+int(unix.SIGPIPE))}
 
 	b.SpawnProcess._start()
@@ -2501,7 +2505,7 @@ func NewBlockerDB( fake_vartree)*BlockerDB {
 func (b *BlockerDB)findInstalledBlockers( new_pkg) {
 	blocker_cache := NewBlockerCache("",
 		b._vartree.dbapi)
-	dep_keys := NewPackage().runtimeKeys
+	dep_keys := structs.NewPackage().runtimeKeys
 	settings := b._vartree.settings
 	stale_cache := set(blocker_cache)
 	fake_vartree := b._fake_vartree
@@ -2547,7 +2551,7 @@ func (b *BlockerDB)findInstalledBlockers( new_pkg) {
 	}
 	blocker_cache.flush()
 
-	blocker_parents := util.NewDigraph()
+	blocker_parents := bad2.NewDigraph()
 	blocker_atoms1 := []*dep.Atom{}
 	for _, pkg := range installed_pkgs {
 		for blocker_atom
@@ -2681,7 +2685,7 @@ func NewDepPriority(buildTime bool)*DepPriority {
 type EbuildBinpkg struct {
 	*CompositeTask
 	// slot
-	settings *ebuild2.Config
+	settings *config.Config
 	_binpkg_tmpfile string
 	versions.pkg, _binpkg_info
 }
@@ -2729,7 +2733,7 @@ func (e *EbuildBinpkg) get_binpkg_info() {
 	return e._binpkg_info
 }
 
-func NewEbuildBinpkg(background bool, pkg *versions.PkgStr, scheduler *SchedulerInterface, settings *ebuild2.Config)*EbuildBinpkg {
+func NewEbuildBinpkg(background bool, pkg *versions.PkgStr, scheduler *SchedulerInterface, settings *config.Config)*EbuildBinpkg {
 	e := &EbuildBinpkg{}
 	e.CompositeTask = NewCompositeTask()
 	e.background = background
@@ -2742,7 +2746,7 @@ func NewEbuildBinpkg(background bool, pkg *versions.PkgStr, scheduler *Scheduler
 
 type EbuildBuild struct {
 	*CompositeTask
-	settings            *ebuild2.Config
+	settings            *config.Config
 
 	// slot
 	_tree, _ebuild_path string
@@ -3267,11 +3271,11 @@ type EbuildBuildDir struct {
 	scheduler *SchedulerInterface
 	_catdir string
 	_lock_obj *AsynchronousLock
-	settings *ebuild2.Config
+	settings *config.Config
 	locked bool
 }
 
-func NewEbuildBuildDir(scheduler *SchedulerInterface, settings *ebuild2.Config **kwargs)*EbuildBuildDir {
+func NewEbuildBuildDir(scheduler *SchedulerInterface, settings *config.Config **kwargs)*EbuildBuildDir {
 	e := &EbuildBuildDir{}
 	e.scheduler = scheduler
 	e.settings = settings
@@ -3436,7 +3440,7 @@ type EbuildExecuter struct {
 	*CompositeTask
 	// slot
 	pkg *versions.PkgStr
-	settings *ebuild2.Config
+	settings *config.Config
 }
 
 var _phases = []string{"prepare", "configure", "compile", "test", "install"}
@@ -3511,7 +3515,7 @@ phases {
 	e._start_task(ebuild_phases, e._default_final_exit)
 }
 
-func NewEbuildExecuter(background bool, pkg *versions.PkgStr, scheduler *SchedulerInterface, settings *ebuild2.Config)*EbuildExecuter {
+func NewEbuildExecuter(background bool, pkg *versions.PkgStr, scheduler *SchedulerInterface, settings *config.Config)*EbuildExecuter {
 	e := &EbuildExecuter{}
 	e.CompositeTask = NewCompositeTask()
 	e.background = background
@@ -3553,7 +3557,7 @@ func NewEbuildFetcher(config_pool *_ConfigPool,ebuild_path string,
 
 }
 
-func (e*EbuildFetcher) async_already_fetched(settings *ebuild2.Config) {
+func (e*EbuildFetcher) async_already_fetched(settings *config.Config) {
 	return e._fetcher_proc.async_already_fetched(settings)
 }
 
@@ -3612,7 +3616,7 @@ type _EbuildFetcherProcess struct {
 	ebuild_path string
 	_manifest *manifest.Manifest
 	_digests map[string]map[string]string
-	_settings *ebuild2.Config
+	_settings *config.Config
 	config_pool *_ConfigPool
 	src_uri string
 	pkg *versions.PkgStr
@@ -3621,7 +3625,7 @@ type _EbuildFetcherProcess struct {
 	_uri_map
 }
 
-func(e*_EbuildFetcherProcess) async_already_fetched(settings *ebuild2.Config) {
+func(e*_EbuildFetcherProcess) async_already_fetched(settings *config.Config) {
 	result := e.scheduler.create_future()
 
 	uri_map_done:= func(uri_map_future) {
@@ -3657,7 +3661,7 @@ result:
 	return result
 }
 
-func(e*_EbuildFetcherProcess) _check_already_fetched( settings *ebuild2.Config, uri_map) {
+func(e*_EbuildFetcherProcess) _check_already_fetched( settings *config.Config, uri_map) {
 	digests := e._get_digests()
 	distdir := settings.ValueDict["DISTDIR"]
 	allow_missing := e._get_manifest().allow_missing
@@ -3860,7 +3864,7 @@ func(e*_EbuildFetcherProcess) _async_uri_map() IFuture {
 	return result
 }
 
-func(e*_EbuildFetcherProcess) _prefetch_size_ok(uri_map, settings *ebuild2.Config, ebuild_path string) bool{
+func(e*_EbuildFetcherProcess) _prefetch_size_ok(uri_map, settings *config.Config, ebuild_path string) bool{
 	distdir := settings.ValueDict["DISTDIR"]
 
 	sizes :=map[string]int64{}
@@ -3949,7 +3953,7 @@ func NewEbuildFetcherProcess()*_EbuildFetcherProcess {
 }
 
 type EbuildFetchonly struct {
-	settings *ebuild2.Config
+	settings *config.Config
 	pretend int
 	pkg *versions.PkgStr
 	fetch_all,
@@ -3976,7 +3980,7 @@ func (e *EbuildFetchonly) execute() int {
 	return rval
 }
 
-func NewEbuildFetchonly(fetch_all , pkg *versions.PkgStr, pretend int, settings *ebuild2.Config)*EbuildFetchonly {
+func NewEbuildFetchonly(fetch_all , pkg *versions.PkgStr, pretend int, settings *config.Config)*EbuildFetchonly {
 	e := &EbuildFetchonly{}
 	e.settings = settings
 
@@ -4073,7 +4077,7 @@ type EbuildMerge struct {
 	*CompositeTask
 
 	// slot
-	settings *ebuild2.Config
+	settings *config.Config
 	tree string
 	exit_hook func()
 	logger*_emerge_log_class
@@ -4145,7 +4149,7 @@ func (e*EbuildMerge) _exit_hook_exit(returncode *int, task) {
 func NewEbuildMerge(exit_hook func(), find_blockers , ldpath_mtimes,
 	logger *_emerge_log_class, pkg, pkg_count *_pkg_count_class,
 	pkg_path string, scheduler *SchedulerInterface,
-	settings *ebuild2.Config, tree string, world_atom func())*EbuildMerge {
+	settings *config.Config, tree string, world_atom func())*EbuildMerge {
 	e := &EbuildMerge{}
 	e.CompositeTask = NewCompositeTask()
 	e.exit_hook = exit_hook
@@ -4171,7 +4175,7 @@ type EbuildMetadataPhase struct {
 	_eapi_lineno   int
 	eapi_supported bool
 	metadata map[string]string
-	settings *ebuild2.Config
+	settings *config.Config
 	fd_pipes map[int]int
 	portdb *dbapi.portdbapi
 	_raw_metadata []string
@@ -4381,7 +4385,7 @@ func(e *EbuildMetadataPhase) _eapi_invalid( metadata map[string]string) {
 		eapi_var, e._eapi, e._eapi_lineno)
 }
 
-func NewEbuildMetadataPhase(cpv string, ebuild_hash, portdb dbapi.portdbapi, repo_path string, scheduler = loop, settings *ebuild2.Config)*EbuildMetadataPhase {
+func NewEbuildMetadataPhase(cpv string, ebuild_hash, portdb dbapi.portdbapi, repo_path string, scheduler = loop, settings *config.Config)*EbuildMetadataPhase {
 	e := &EbuildMetadataPhase{}
 	e.SubProcess = NewSubProcess()
 	e.cpv = cpv
@@ -4400,14 +4404,14 @@ type EbuildPhase struct {
 	actionmap ebuild2.Actionmap
 	phase     string
 	_ebuild_lock *AsynchronousLock
-	settings     *ebuild2.Config
+	settings     *config.Config
 	fd_pipes     map[int]int
 
 	_features_display []string
 	_locked_phases    []string
 }
 
-func NewEbuildPhase(actionmap ebuild2.Actionmap, background bool, phase string, scheduler *SchedulerInterface, settings *ebuild2.Config, fd_pipes map[int]int) *EbuildPhase {	e := &EbuildPhase{}
+func NewEbuildPhase(actionmap ebuild2.Actionmap, background bool, phase string, scheduler *SchedulerInterface, settings *config.Config, fd_pipes map[int]int) *EbuildPhase {	e := &EbuildPhase{}
 	e._features_display = []string{
 		"ccache", "compressdebug", "distcc", "fakeroot",
 		"installsources", "keeptemp", "keepwork", "network-sandbox",
@@ -4825,7 +4829,7 @@ type _PostPhaseCommands struct {
 	fd_pipes       map[int]int
 	logfile, phase string
 	commands       []struct{ a map[string]string; b []string}
-	settings       *ebuild2.Config
+	settings       *config.Config
 }
 
 func(p*_PostPhaseCommands) _start() {
@@ -4927,7 +4931,7 @@ func(p*_PostPhaseCommands) _soname_deps_qa() IFuture {
 func NewPostPhaseCommands(background bool,
 	commands = , elog func(string,[]string,bool), fd_pipes map[int]int,
 	logfile string, phase string, scheduler *SchedulerInterface,
-	settings *ebuild2.Config)*_PostPhaseCommands {
+	settings *config.Config)*_PostPhaseCommands {
 	p := &_PostPhaseCommands{}
 	p.CompositeTask = NewCompositeTask()
 	p.background = background
@@ -4961,7 +4965,7 @@ func (e *EbuildProcess) _spawn(args, **kwargs) ([]int, error) {
 	return atom._doebuild_spawn(e.phase, e.settings, actionmap, **kwargs)
 }
 
-func NewEbuildProcess(actionmap ebuild2.Actionmap, background bool, fd_pipes map[int]int, logfile, phase string, scheduler *SchedulerInterface, settings *ebuild2.Config) *EbuildProcess {
+func NewEbuildProcess(actionmap ebuild2.Actionmap, background bool, fd_pipes map[int]int, logfile, phase string, scheduler *SchedulerInterface, settings *config.Config) *EbuildProcess {
 	e := &EbuildProcess{}
 	e.actionmap = actionmap
 	e.AbstractEbuildProcess = NewAbstractEbuildProcess(actionmap, background, fd_pipes, logfile, phase, scheduler, settings)
@@ -4989,7 +4993,7 @@ func (e *EbuildSpawnProcess)_spawn( args, **kwargs) {
 }
 
 func NewEbuildSpawnProcess(background bool, args []string, scheduler *SchedulerInterface,
-spawn_func = spawn_func, settings *ebuild2.Config, **keywords)*EbuildSpawnProcess {
+spawn_func = spawn_func, settings *config.Config, **keywords)*EbuildSpawnProcess {
 	e := &EbuildSpawnProcess{}
 	e.AbstractEbuildProcess = NewAbstractEbuildProcess()
 	e.background = background
@@ -5018,7 +5022,7 @@ type _DynamicDepsNotApplicable struct {
 type FakeVartree struct {
 	*vartree
 	_dynamic_deps, _ignore_built_slot_operator_deps bool
-	settings                                        *ebuild2.Config
+	settings                                        *config.Config
 	_db_keys, _portdb_keys                          []string
 	_global_updates                                 map[string][][]string
 	_portdb                                         *dbapi.portdbapi
@@ -5066,7 +5070,7 @@ dynamic_deps, ignore_built_slot_operator_deps, soname_deps bool)*FakeVartree {
 		f.dbapi.match = f._match_wrapper
 	}
 	f._aux_get_history = set()
-	f._portdb_keys = Package._dep_keys + ("EAPI", "KEYWORDS")
+	f._portdb_keys = structs.Package._dep_keys + ("EAPI", "KEYWORDS")
 	f._portdb = portdb
 	f._global_updates = None
 
@@ -5152,7 +5156,7 @@ _DynamicDepsNotApplicable:
 		f._global_updates = grab_global_updates(f._portdb)
 	}
 
-	aux_keys = Package._dep_keys + f.dbapi._pkg_str_aux_keys
+	aux_keys = structs.Package._dep_keys + f.dbapi._pkg_str_aux_keys
 	aux_dict = dict(zip(aux_keys, f._aux_get(versions.pkg.cpv, aux_keys)))
 	perform_global_updates(
 		versions.pkg.cpv, aux_dict, f.dbapi, f._global_updates)
@@ -5224,7 +5228,7 @@ func(f*FakeVartree) _sync() {
 	validation_keys := []string{"COUNTER", "_mtime_"}
 	for cpv := range current_cpv_set {
 
-		pkg_hash_key := &Package{}._gen_hash_key(cpv = cpv,
+		pkg_hash_key := &structs.Package{}._gen_hash_key(cpv = cpv,
 			installed = true, root_config = root_config,
 			type_name = "installed")
 		versions.pkg = pkg_vardb.get(pkg_hash_key)
@@ -5260,8 +5264,8 @@ func(f*FakeVartree) _sync() {
 	real_vardb.flush_cache()
 }
 
-func(f*FakeVartree) _pkg(cpv *versions.PkgStr) *Package {
-	pkg := NewPackage(true,  cpv, true,
+func(f*FakeVartree) _pkg(cpv *versions.PkgStr) *structs.Package {
+	pkg := structs.NewPackage(true,  cpv, true,
 		zip(f._db_keys, f._real_vardb.aux_get(cpv, f._db_keys)),
 		f._pkg_root_config, "installed")
 
@@ -5307,7 +5311,7 @@ func perform_global_updates(mycpv string, aux_dict map[string]string, mydb dbapi
 	//except InvalidData:
 	//return
 	aux_dict2 := map[string]string{}
-	for _, k := range NewPackage().depKeys {
+	for _, k := range structs.NewPackage().depKeys {
 		aux_dict2[k] = aux_dict[k]
 	}
 	aux_dict = aux_dict2
@@ -5720,7 +5724,7 @@ type MergeListItem struct {
 	config_pool   *_ConfigPool
 	logger        *_emerge_log_class
 	pkg_count     *_pkg_count_class
-	settings      *ebuild2.Config
+	settings      *config.Config
 	statusMessage func(string)
 	world_atom    func()
 	emerge_opts, find_blockers, mtimedb, pkg,
@@ -5832,7 +5836,7 @@ func NewMergeListItem(args_set *sets.InternalPackageSet, background bool,
 	logger *_emerge_log_class,
 mtimedb , pkg, pkg_count *_pkg_count_class, pkg_to_replace,
 prefetcher , scheduler *SchedulerInterface,
-settings *ebuild2.Config, statusMessage func(string) , world_atom func() )*MergeListItem {
+settings *config.Config, statusMessage func(string) , world_atom func() )*MergeListItem {
 	m := &MergeListItem{}
 	m.CompositeTask = NewCompositeTask()
 	m.args_set = args_set
@@ -6056,7 +6060,7 @@ func (m *MiscFunctionsProcess)_start() {
 	misc_sh_binary := filepath.Join(portage_bin_path,
 		filepath.Base(_const.MISC_SH_BINARY))
 
-	m.args = append([]string{portage.ShellQuote(misc_sh_binary)}, m.commands...)
+	m.args = append([]string{vars.ShellQuote(misc_sh_binary)}, m.commands...)
 	if m.logfile == "" &&m.settings.ValueDict["PORTAGE_BACKGROUND"] != "subprocess" {
 		m.logfile = settings.ValueDict["PORTAGE_LOG_FILE"]
 	}
@@ -6096,7 +6100,7 @@ func (m *MiscFunctionsProcess) _spawn(args []string, debug bool, free *bool, dro
 		sesandbox, fakeroot, networked, ipc, mountns, pidns, **keywords)
 }
 
-func NewMiscFunctionsProcess(background bool, commands []string, phase string, logfile string, fd_pipe map[int]int, scheduler *SchedulerInterface, settings *ebuild2.Config)*MiscFunctionsProcess {
+func NewMiscFunctionsProcess(background bool, commands []string, phase string, logfile string, fd_pipe map[int]int, scheduler *SchedulerInterface, settings *config.Config)*MiscFunctionsProcess {
 	m := &MiscFunctionsProcess{}
 	m.AbstractEbuildProcess = NewAbstractEbuildProcess(nil, background, fd_pipe, logfile, phase, scheduler, settings, )
 	m.background = background
@@ -6287,8 +6291,8 @@ type PackagePhase struct {
 	_shell_binary string
 
 	// slots
-	_pkg_install_mask *util.InstallMask
-	settings          *ebuild2.Config
+	_pkg_install_mask *bad2.InstallMask
+	settings          *config.Config
 	fd_pipes        map[int]int
 	actionmap       ebuild2.Actionmap
 	logfile, _proot string
@@ -6300,14 +6304,14 @@ func(p*PackagePhase) _start() {
 	if err != nil {
 		p._pkg_install_mask = nil
 	} else {
-		p._pkg_install_mask = util.NewInstallMask(string(f))
+		p._pkg_install_mask = bad2.NewInstallMask(string(f))
 	}
 	if p._pkg_install_mask != nil {
 		p._proot = filepath.Join(p.settings.ValueDict["T"], "packaging")
 		p._start_task(NewSpawnProcess(
 			[]string{p._shell_binary, "-e", "-c", fmt.Sprintf("rm -rf {PROOT}; "+
 			"cp -pPR $(cp --help | grep -q -- \" ^ [[: space:]]*-l, \" && echo -l)"+
-			" \"${{D}}\" {%s}",  portage.ShellQuote(p._proot))},
+			" \"${{D}}\" {%s}",  vars.ShellQuote(p._proot))},
 			 p.background, p.settings.environ(), nil,
 			 p.scheduler,  p.logfile),
 		p._copy_proot_exit)
@@ -6365,7 +6369,7 @@ func(p*PackagePhase) _pkg_install_mask_cleanup( proc) {
 }
 
 func NewPackagePhase(actionmap ebuild2.Actionmap, background bool, fd_pipes map[int]int,
-	logfile string, scheduler *SchedulerInterface, settings *ebuild2.Config)*PackagePhase {
+	logfile string, scheduler *SchedulerInterface, settings *config.Config)*PackagePhase {
 	p := &PackagePhase{}
 	p.CompositeTask = NewCompositeTask()
 	p._shell_binary = _const.BashBinary
@@ -6384,7 +6388,7 @@ type PackageUninstall struct{
 	*CompositeTask
 
 	// slot
-	settings *ebuild2.Config
+	settings *config.Config
 	pkg *versions.PkgStr
 	_builddir_lock *EbuildBuildDir
 	world_atom
@@ -6504,7 +6508,7 @@ func(p*PackageUninstall) _writemsg_level(msg string, level, noiselevel int) {
 }
 
 func NewPackageUninstall(background bool, ldpath_mtimes = ldpath_mtimes, opts=m.emerge_opts,
-	pkg *versions.PkgStr, scheduler *SchedulerInterface, settings *ebuild2.Config, world_atom=world_atom)*PackageUninstall {
+	pkg *versions.PkgStr, scheduler *SchedulerInterface, settings *config.Config, world_atom=world_atom)*PackageUninstall {
 	p := &PackageUninstall{}
 	p.CompositeTask = NewCompositeTask()
 	p.background = background
@@ -6841,7 +6845,7 @@ type  Scheduler struct {
 	_loadavg_latency, _max_display_latency                           int
 	_opts_ignore_blockers, _opts_no_background, _opts_no_self_update map[string]bool
 
-	settings        *ebuild2.Config
+	settings        *config.Config
 	target_root     string
 	trees           interface{}
 	myopts          interface{}
@@ -6864,14 +6868,14 @@ type  Scheduler struct {
 	_failed_pkgs_all         []*_failed_pkg
 	_jobs                    int
 	_pkg_count               *_pkg_count_class
-	_config_pool             map[string][]*ebuild2.Config
+	_config_pool             map[string][]*config.Config
 	_failed_pkgs             []*_failed_pkg
 	_blocker_db              map[string]*BlockerDB
-	pkgsettings              map[string]*ebuild2.Config
+	pkgsettings              map[string]*config.Config
 	_binpkg_opts             *_binpkg_opts_class
 	_task_queues             *_task_queues_class
 	_fetch_log               string
-	_running_portage         *Package
+	_running_portage         *structs.Package
 	_running_root            *RootConfig
 	_previous_job_start_time int
 	_status_display          *JobStatusDisplay
@@ -6935,11 +6939,11 @@ type  _failed_pkg struct {
 type  _ConfigPool struct {
 	// slot
 	_root       string
-	_allocate   func(string)*ebuild2.Config
-	_deallocate func(*ebuild2.Config)
+	_allocate   func(string)*config.Config
+	_deallocate func(*config.Config)
 }
 
-func NewConfigPool(root string, allocate func(string)*ebuild2.Config, deallocate func(*ebuild2.Config)) *_ConfigPool {
+func NewConfigPool(root string, allocate func(string)*config.Config, deallocate func(*config.Config)) *_ConfigPool {
 	c := &_ConfigPool{}
 	c._root = root
 	c._allocate = allocate
@@ -6947,11 +6951,11 @@ func NewConfigPool(root string, allocate func(string)*ebuild2.Config, deallocate
 	return c
 }
 
-func (c *_ConfigPool) allocate() *ebuild2.Config {
+func (c *_ConfigPool) allocate() *config.Config {
 	return c._allocate(c._root)
 }
 
-func(c *_ConfigPool) deallocate( settings *ebuild2.Config) {
+func(c *_ConfigPool) deallocate( settings *config.Config) {
 	c._deallocate(settings)
 }
 
@@ -6966,7 +6970,7 @@ func New_unknown_internal_error(value string) *_unknown_internal_error {
 }
 
 // nil, nil, nil
-func NewScheduler(settings *ebuild2.Config, trees, atom.mtimedb, myopts, spinner, mergelist, favorites, graph_config) *Scheduler {
+func NewScheduler(settings *config.Config, trees, atom.mtimedb, myopts, spinner, mergelist, favorites, graph_config) *Scheduler {
 	s := &Scheduler{}
 
 	s._loadavg_latency = 30
@@ -7038,12 +7042,12 @@ func NewScheduler(settings *ebuild2.Config, trees, atom.mtimedb, myopts, spinner
 	if settings.ValueDict["PORTAGE_DEBUG"] == "1" {
 		s.edebug = 1
 	}
-	s.pkgsettings = map[string]*ebuild2.Config{}
-	s._config_pool = map[string][]*ebuild2.Config{}
+	s.pkgsettings = map[string]*config.Config{}
+	s._config_pool = map[string][]*config.Config{}
 	for root
 		in
 	s.trees {
-		s._config_pool[root] = []*ebuild2.Config{}
+		s._config_pool[root] = []*config.Config{}
 	}
 
 	s._fetch_log = filepath.Join(atom._emerge_log_dir, "emerge-fetch.log")
@@ -7077,7 +7081,7 @@ func NewScheduler(settings *ebuild2.Config, trees, atom.mtimedb, myopts, spinner
 	for x
 		in
 	s._mergelist {
-		if isinstance(x, Package) &&
+		if isinstance(x, structs.Package) &&
 			x.operation == "merge" {
 			merge_count++
 		}
@@ -7148,7 +7152,7 @@ func (s *Scheduler) _handle_self_update() int {
 	for x
 		in
 	s._mergelist {
-		if not isinstance(x, Package):
+		if not isinstance(x, structs.Package):
 		continue
 		if x.operation != "merge" {
 			continue
@@ -7386,7 +7390,7 @@ func (s *Scheduler) _prune_digraph() {
 	removed_nodes := map[string]bool{}
 	for {
 		for node in graph.root_nodes(){
-			if not isinstance(node, Package) ||(node.installed && node.operation == "nomerge") ||
+			if not isinstance(node, structs.Package) ||(node.installed && node.operation == "nomerge") ||
 				node.onlydeps || node in completed_tasks{
 				removed_nodes[node] = true
 			}
@@ -7408,7 +7412,7 @@ func (s *Scheduler) _prevent_builddir_collisions() {
 	for versions.pkg
 		in
 	s._mergelist {
-		if not isinstance(versions.pkg, Package) {
+		if not isinstance(versions.pkg, structs.Package) {
 			continue
 		}
 		if versions.pkg.installed {
@@ -7520,7 +7524,7 @@ func (s *Scheduler) _generate_digests() int {
 	for x
 		in
 	s._mergelist:
-	if not isinstance(x, Package) ||
+	if not isinstance(x, structs.Package) ||
 		x.type_name != 'ebuild' ||
 		x.operation != 'merge':
 	continue
@@ -7561,9 +7565,9 @@ func (s *Scheduler) _check_manifests() int {
 	}
 
 	shown_verifying_msg := false
-	quiet_settings :=map[string]*ebuild2.Config{}
+	quiet_settings :=map[string]*config.Config{}
 	for myroot, pkgsettings := range s.pkgsettings{
-		quiet_config := ebuild2.NewConfig(pkgsettings,nil, "", nil, "","","","",true, nil, false, nil)
+		quiet_config := config.NewConfig(pkgsettings,nil, "", nil, "","","","",true, nil, false, nil)
 		quiet_config.ValueDict["PORTAGE_QUIET"] = "1"
 		quiet_config.BackupChanges("PORTAGE_QUIET")
 		quiet_settings[myroot] = quiet_config
@@ -7575,7 +7579,7 @@ func (s *Scheduler) _check_manifests() int {
 	for x
 		in
 	s._mergelist {
-		if not isinstance(x, Package) ||
+		if not isinstance(x, structs.Package) ||
 			x.type_name != "ebuild" {
 			continue
 		}
@@ -7620,7 +7624,7 @@ func (s *Scheduler) _add_prefetchers() {
 		for versions.pkg
 			in
 		s._mergelist {
-			if not isinstance(versions.pkg, Package) ||
+			if not isinstance(versions.pkg, structs.Package) ||
 				versions.pkg.operation == "uninstall" {
 				continue
 			}
@@ -7633,7 +7637,7 @@ func (s *Scheduler) _add_prefetchers() {
 	}
 }
 
-func (s *Scheduler) _create_prefetcher( pkg *Package) {
+func (s *Scheduler) _create_prefetcher( pkg *structs.Package) {
 	prefetcher = nil
 
 	if pkg.type_name == "ebuild" {
@@ -7661,7 +7665,7 @@ func (s *Scheduler) _run_pkg_pretend()  int {
 	for x
 		in
 	s._mergelist {
-		if not isinstance(x, Package) {
+		if not isinstance(x, structs.Package) {
 			continue
 		}
 
@@ -7867,7 +7871,7 @@ func (s *Scheduler) merge() int {
 			root_config.settings.lock()
 		}
 
-		s.pkgsettings[root] = ebuild2.NewConfig(root_config.settings, nil, "", nil, "", "", "", "", true, nil, false, nil)
+		s.pkgsettings[root] = config.NewConfig(root_config.settings, nil, "", nil, "", "", "", "", true, nil, false, nil)
 	}
 
 	keep_going := "--keep-going"
@@ -7969,7 +7973,7 @@ func (s *Scheduler) merge() int {
 		for x
 			in
 		s._mergelist {
-			if isinstance(x, Package) &&
+			if isinstance(x, structs.Package) &&
 				x.operation == "merge" {
 				s._pkg_count.maxval += 1
 			}
@@ -8113,7 +8117,7 @@ func (s *Scheduler) merge() int {
 	return 0
 }
 
-func (s *Scheduler) _elog_listener(mysettings *ebuild2.Config, key, logentries logentries map[string][][2]string, fulltext) {
+func (s *Scheduler) _elog_listener(mysettings *config.Config, key, logentries logentries map[string][][2]string, fulltext) {
 	errors := elog.filter_loglevels(logentries, map[string]bool{"ERROR": true})
 	if len(errors) > 0 {
 		s._failed_pkgs_die_msgs = append(s._failed_pkgs_die_msgs,
@@ -8151,7 +8155,7 @@ func (s *Scheduler) _add_packages() {
 	for versions.pkg
 		in
 	s._mergelist {
-		if isinstance(versions.pkg, Package) {
+		if isinstance(versions.pkg, structs.Package) {
 			pkg_queue.append(versions.pkg)
 		}else if
 		isinstance(versions.pkg, Blocker) {
@@ -8190,7 +8194,7 @@ func (s *Scheduler) _system_merge_started(dbapi.merge) {
 		in
 	graph.child_nodes(versions.pkg,
 		ignore_priority = ignore_non_runtime_or_satisfied):
-	if not isinstance(child, Package) ||
+	if not isinstance(child, structs.Package) ||
 		child.operation == "uninstall":
 	continue
 	if child is
@@ -8504,20 +8508,20 @@ node_stack.extend(graph.child_nodes(node))
 return dependent
 }
 
-func (s *Scheduler) _allocate_config( root string) *ebuild2.Config {
-	var temp_settings *ebuild2.Config
+func (s *Scheduler) _allocate_config( root string) *config.Config {
+	var temp_settings *config.Config
 	if s._config_pool[root] != nil {
 		temp_settings = s._config_pool[root][len(s._config_pool[root])-1]
 		s._config_pool[root]=s._config_pool[root][:len(s._config_pool[root])-1]
 	}else {
-		temp_settings = ebuild2.NewConfig(s.pkgsettings[root], nil, "", nil, "", "", "", "", true, nil, false, nil)
+		temp_settings = config.NewConfig(s.pkgsettings[root], nil, "", nil, "", "", "", "", true, nil, false, nil)
 	}
 	temp_settings.reload()
 	temp_settings.reset(0)
 	return temp_settings
 }
 
-func (s *Scheduler) _deallocate_config(settings *ebuild2.Config) {
+func (s *Scheduler) _deallocate_config(settings *config.Config) {
 	s._config_pool[settings.ValueDict["EROOT"]]=append(s._config_pool[settings.ValueDict["EROOT"]], settings)
 }
 
@@ -8807,7 +8811,7 @@ func (s *Scheduler) _save_resume_list() {
 	for x
 	in
 	s._mergelist{
-		if isinstance(x, Package) && x.operation == "merge"{
+		if isinstance(x, structs.Package) && x.operation == "merge"{
 		rm = append(rm, list(x))
 	}
 	}
@@ -8893,7 +8897,7 @@ exc:
 	for task, atoms
 		in
 	dropped_tasks.items():
-	if not(isinstance(task, Package) &&
+	if not(isinstance(task, structs.Package) &&
 		task.operation == "merge"):
 	continue
 	versions.pkg = task
@@ -8991,9 +8995,9 @@ finally:
 
 // false, "", nil
 func (s *Scheduler) _pkg( cpv *versions.PkgStr, type_name string, root_config *RootConfig, installed bool,
-	operation string, myrepo=nil) *Package {
+	operation string, myrepo=nil) *structs.Package {
 
-	versions.pkg = s._pkg_cache.get(NewPackage()._gen_hash_key(cpv = cpv,
+	versions.pkg = s._pkg_cache.get(structs.NewPackage()._gen_hash_key(cpv = cpv,
 		type_name = type_name, repo_name=myrepo, root_config = root_config,
 		installed=installed, operation = operation))
 
@@ -9006,7 +9010,7 @@ func (s *Scheduler) _pkg( cpv *versions.PkgStr, type_name string, root_config *R
 	db_keys = list(s.trees[root_config.root][
 		tree_type].dbapi._aux_cache_keys)
 	metadata = zip(db_keys, db.aux_get(cpv, db_keys, myrepo = myrepo))
-	pkg := NewPackage(type_name != "ebuild",
+	pkg := structs.NewPackage(type_name != "ebuild",
 		cpv, installed, metadata,
 		root_config, type_name)
 	s._pkg_cache[pkg] = pkg
@@ -9626,7 +9630,7 @@ func NewForkProcess() *ForkProcess {
 
 type MergeProcess struct {
 	*ForkProcess
-	settings *ebuild2.Config
+	settings *config.Config
 	mydbapi *dbapi.vardbapi
 	vartree *dbapi.varTree
 	mycat, mypkg,  treetype, blockers, pkgloc, infloc, myebuild,
@@ -9864,7 +9868,7 @@ func(m *MergeProcess) _unregister() {
 	m.ForkProcess._unregister()
 }
 
-func NewMergeProcess(mycat, mypkg string, settings *ebuild2.Config,treetype string,
+func NewMergeProcess(mycat, mypkg string, settings *config.Config,treetype string,
 	vartree *dbapi.varTree, scheduler *SchedulerInterface, background bool, blockers interface{},
 pkgloc, infloc, myebuild string,mydbapi dbapi.IDbApi,prev_mtimes interface{},
 logfile string, fd_pipes map[int]int) *MergeProcess {

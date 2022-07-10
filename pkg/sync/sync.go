@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/pkg/const"
-	ebuild2 "github.com/ppphp/portago/pkg/ebuild"
+	ebuild2 "github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/emerge"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/portage"
+	"github.com/ppphp/portago/pkg/portage/vars"
 	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/repository"
 	"github.com/ppphp/portago/pkg/util"
@@ -334,7 +335,7 @@ func (s *SyncRepos) _sync(selected_repos []*repository.RepoConfig, return_messag
 		*/
 	}
 
-	portage.SyncMode = false
+	vars.SyncMode = false
 	s._reload_config()
 	s._do_pkg_moves()
 	msgs = append(msgs, s._check_updates()...)

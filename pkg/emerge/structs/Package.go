@@ -1,8 +1,10 @@
-package emerge
+package structs
 
 import (
 	_const "github.com/ppphp/portago/pkg/const"
-	"github.com/ppphp/portago/pkg/dep"
+	"github.com/ppphp/portago/pkg/dep/soname"
+	"github.com/ppphp/portago/pkg/emerge"
+	"github.com/ppphp/portago/pkg/interfaces"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/versions"
 	"strconv"
@@ -11,31 +13,31 @@ import (
 
 const _unknown_repo = "__unknown__"
 
-type Package struct {
+type Package[T interfaces.ISettings] struct {
 	*Task
 	metadataKeys, buildtimeKeys, runtimeKeys, useConditionalMiscKeys                                                                                                                                 map[string]bool
 	depKeys                                                                                                                                                                                          []string
 	UnknownRepo                                                                                                                                                                                      string
 	built, installed                                                                                                                                                                                 bool
-	cpv                                                                                                                                                                                              *versions.PkgStr
+	cpv                                                                                                                                                                                              *versions.PkgStr[T]
 	counter, mtime                                                                                                                                                                                   int
-	metadata                                                                                                                                                                                         *packageMetadataWrapper
+	metadata                                                                                                                                                                                         *packageMetadataWrapper[T]
 	_raw_metadata                                                                                                                                                                                    map[string]string
 	inherited                                                                                                                                                                                        map[string]bool
 	depth, onlydeps, operation, type_name, category, cp, cpv_split, iuse, pf, root, slot, sub_slot, slot_atom, version, _invalid, _masks, _provided_cps, _requires, _use, _validated_atoms, _visible string
-	Provides                                                                                                                                                                                         map[[2]string]*dep.SonameAtom
-	root_config                                                                                                                                                                                      *RootConfig
+	Provides                                                                                                                                                                                         map[[2]string]*soname.SonameAtom
+	//root_config                                                                                                                                                                                      *RootConfig
 }
 
-func (p *Package) eapi() string {
+func (p *Package[T]) eapi() string {
 	return p.metadata.valueDict["EAPI"]
 }
 
-func (p *Package) buildId() int {
+func (p *Package[T]) buildId() int {
 	return p.cpv.BuildId
 }
 
-func (p *Package) buildTime() int {
+func (p *Package[T]) buildTime() int {
 	return p.cpv.BuildTime
 }
 
@@ -43,14 +45,14 @@ func (p *Package) buildTime() int {
 //	return p.metadata
 //}
 
-func (p *Package) masks() {
+func (p *Package[T]) masks() {
 	if p._masks == "" {
 
 	}
 }
 
-func NewPackage(built bool, cpv *versions.PkgStr, installed bool, metadata map[string]string, root_config *RootConfig, type_name string) *Package {
-	p := &Package{metadataKeys: map[string]bool{
+func NewPackage[T interfaces.ISettings](built bool, cpv *versions.PkgStr[T], installed bool, metadata map[string]string, root_config *emerge.RootConfig, type_name string) *Package[T] {
+	p := &Package[T]{metadataKeys: map[string]bool{
 		"BDEPEND": true, "BUILD_ID": true, "BUILD_TIME": true, "CHOST": true, "COUNTER": true, "DEFINED_PHASES": true,
 		"DEPEND": true, "EAPI": true, "HDEPEND": true, "INHERITED": true, "IUSE": true, "KEYWORDS": true,
 		"LICENSE": true, "MD5": true, "PDEPEND": true, "PROVIDES": true, "RDEPEND": true, "repository": true, "REQUIRED_USE": true,
@@ -63,13 +65,13 @@ func NewPackage(built bool, cpv *versions.PkgStr, installed bool, metadata map[s
 	p.built = built
 	p.cpv = cpv
 	p.installed = installed
-	p.root_config = root_config
+	//p.root_config = root_config
 	p.type_name = type_name
 
 	//p.root = p.root_config.root
 	p._raw_metadata = metadata
 
-	p.metadata = NewPackageMetadataWrapper(p, metadata)
+	p.metadata = NewPackageMetadataWrapper[T](p, metadata)
 
 	return p
 }
@@ -92,13 +94,13 @@ var useConditionalKeys = map[string]bool{
 	"LICENSE": true, "PROPERTIES": true, "RESTRICT": true,
 }
 
-type packageMetadataWrapper struct {
+type packageMetadataWrapper[T interfaces.ISettings] struct {
 	valueDict                                        map[string]string
-	pkg                                              *Package
+	pkg                                              *Package[T]
 	allMetadataKeys, wrappedKeys, useConditionalKeys map[string]bool
 }
 
-func (p *packageMetadataWrapper) setItem(k, v string) {
+func (p *packageMetadataWrapper[T]) setItem(k, v string) {
 	if p.allMetadataKeys[k] {
 		p.valueDict[k] = v
 	}
@@ -114,19 +116,19 @@ func (p *packageMetadataWrapper) setItem(k, v string) {
 	}
 }
 
-func (p *packageMetadataWrapper) setInherited(k, v string) {
+func (p *packageMetadataWrapper[T]) setInherited(k, v string) {
 	p.pkg.inherited = map[string]bool{}
 	for _, f := range strings.Fields(v) {
 		p.pkg.inherited[f] = true
 	}
 }
 
-func (p *packageMetadataWrapper) setCounter(k, v string) {
+func (p *packageMetadataWrapper[T]) setCounter(k, v string) {
 	n, _ := strconv.Atoi(v)
 	p.pkg.counter = n
 }
 
-func (p *packageMetadataWrapper) setUse(k, v string) {
+func (p *packageMetadataWrapper[T]) setUse(k, v string) {
 	p.pkg._use = ""
 	rawMetadata := p.pkg._raw_metadata
 	for x := range p.useConditionalKeys {
@@ -136,20 +138,20 @@ func (p *packageMetadataWrapper) setUse(k, v string) {
 	}
 }
 
-func (p *packageMetadataWrapper) setMtime(k, v string) {
+func (p *packageMetadataWrapper[T]) setMtime(k, v string) {
 	n, _ := strconv.Atoi(v)
 	p.pkg.mtime = n
 }
 
-func (p *packageMetadataWrapper) properties() []string {
+func (p *packageMetadataWrapper[T]) properties() []string {
 	return strings.Fields(p.valueDict["PROPERTIES"])
 }
 
-func (p *packageMetadataWrapper) restrict() []string {
+func (p *packageMetadataWrapper[T]) restrict() []string {
 	return strings.Fields(p.valueDict["RESTRICT"])
 }
 
-func (p *packageMetadataWrapper) definedPhases() map[string]bool {
+func (p *packageMetadataWrapper[T]) definedPhases() map[string]bool {
 	if s, ok := p.valueDict["DEFINED_PHASES"]; ok {
 		phases := map[string]bool{}
 		for _, v := range strings.Fields(s) {
@@ -160,8 +162,8 @@ func (p *packageMetadataWrapper) definedPhases() map[string]bool {
 	return _const.EBUILD_PHASES
 }
 
-func NewPackageMetadataWrapper(pkg *Package, metadata map[string]string) *packageMetadataWrapper {
-	p := &packageMetadataWrapper{pkg: pkg, valueDict: make(map[string]string), useConditionalKeys: useConditionalKeys, wrappedKeys: wrappedKeys, allMetadataKeys: myutil.CopyMapSB(allMetadataKeys)}
+func NewPackageMetadataWrapper[T interfaces.ISettings](pkg *Package[T], metadata map[string]string) *packageMetadataWrapper[T] {
+	p := &packageMetadataWrapper[T]{pkg: pkg, valueDict: make(map[string]string), useConditionalKeys: useConditionalKeys, wrappedKeys: wrappedKeys, allMetadataKeys: myutil.CopyMapSB(allMetadataKeys)}
 	if !pkg.built {
 		p.valueDict["USE"] = ""
 	}

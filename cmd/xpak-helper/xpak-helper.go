@@ -2,14 +2,14 @@ package main
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/pkg/portage"
+	"github.com/ppphp/portago/pkg/portage/vars"
 	"github.com/ppphp/portago/pkg/xpak"
 	"github.com/spf13/pflag"
 	"os"
 )
 
 func init() {
-	portage.InternalCaller = true
+	vars.InternalCaller = true
 }
 func command_recompose(args []string) int {
 

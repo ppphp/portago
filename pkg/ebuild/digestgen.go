@@ -4,7 +4,9 @@ import (
 	"fmt"
 	_const "github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/dbapi"
+	"github.com/ppphp/portago/pkg/dbapi/FetchlistDict"
 	"github.com/ppphp/portago/pkg/dep"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/portage"
@@ -18,14 +20,14 @@ import (
 )
 
 // nil, nil, nil
-func digestgen(myarchives interface{}, mysettings *Config, myportdb *dbapi.portdbapi) int {
+func digestgen(myarchives interface{}, mysettings *config.Config, myportdb *dbapi.portdbapi) int {
 	if mysettings != nil|| myportdb == nil {
 		//raise TypeError("portage.digestgen(): 'mysettings' and 'myportdb' parameter are required.")
 	}
 	portage.DoebuildManifestExemptDepend += 1
 	defer func() { portage.DoebuildManifestExemptDepend -= 1}()
 	distfiles_map := map[string][]string{}
-	fetchlist_dict := dbapi.NewFetchlistDict(mysettings.ValueDict["O"], mysettings, myportdb)
+	fetchlist_dict := FetchlistDict.NewFetchlistDict(mysettings.ValueDict["O"], mysettings, myportdb)
 	for _, cpv:= range fetchlist_dict.__iter__(){
 		//try:
 		for myfile := range fetchlist_dict.__getitem__(cpv.string) {

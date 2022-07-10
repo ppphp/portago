@@ -7,10 +7,12 @@ import (
 	"github.com/ppphp/portago/pkg/checksum"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/data"
+	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/locks"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/portage"
+	"github.com/ppphp/portago/pkg/portage/vars"
 	"github.com/ppphp/portago/pkg/process"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/portago/pkg/util/msg"
@@ -43,11 +45,11 @@ func _hide_url_passwd(url string) string {
 	return r1.ReplaceAllString(url, "//\\1:*password*@")
 }
 
-func _want_userfetch(settings *Config) bool {
+func _want_userfetch(settings *config.Config) bool {
 	return settings.Features.Features["userfetch"] && *data.Secpass >= 2 && os.Getuid() == 0
 }
 
-func _drop_privs_userfetch(settings *Config) {
+func _drop_privs_userfetch(settings *config.Config) {
 	//try:
 	_ensure_distdir(settings, settings.ValueDict["DISTDIR"])
 	//except PortageException:
@@ -61,7 +63,7 @@ func _drop_privs_userfetch(settings *Config) {
 	*data.Secpass = 1
 }
 
-func _spawn_fetch(settings *Config, args []string, **kwargs) int {
+func _spawn_fetch(settings *config.Config, args []string, **kwargs) int {
 
 	global
 	_userpriv_spawn_kwargs
@@ -115,7 +117,7 @@ var _userpriv_test_write_file_cache = map[string]int{}
 
 const _userpriv_test_write_cmd_script = ">> %s 2>/dev/null ; rval=$? ; " + "rm -f  %s ; exit $rval"
 
-func _userpriv_test_write_file(settings *Config, file_path string) int {
+func _userpriv_test_write_file(settings *config.Config, file_path string) int {
 	rval, ok := _userpriv_test_write_file_cache[file_path]
 	if ok {
 		return rval
@@ -124,7 +126,7 @@ func _userpriv_test_write_file(settings *Config, file_path string) int {
 	args := []string{
 		_const.BashBinary,
 		"-c",
-		fmt.Sprintf(_userpriv_test_write_cmd_script, portage.ShellQuote(file_path), portage.ShellQuote(file_path)),
+		fmt.Sprintf(_userpriv_test_write_cmd_script, vars.ShellQuote(file_path), vars.ShellQuote(file_path)),
 	}
 
 	returncode := _spawn_fetch(settings, args)
@@ -134,7 +136,7 @@ func _userpriv_test_write_file(settings *Config, file_path string) int {
 	return rval
 }
 
-func _ensure_distdir(settings *Config, distdir string) {
+func _ensure_distdir(settings *config.Config, distdir string) {
 	dirmode := 0o070
 	filemode := 0o60
 	modemask := 0o2
@@ -181,7 +183,7 @@ func _ensure_distdir(settings *Config, distdir string) {
 	}
 }
 
-func _checksum_failure_temp_file(settings *Config, distdir, basename string) string {
+func _checksum_failure_temp_file(settings *config.Config, distdir, basename string) string {
 
 	filename := filepath.Join(distdir, basename)
 	normal_basename := basename
@@ -556,7 +558,7 @@ func (m *MirrorLayoutConfig) get_all_layouts() {
 }
 
 // ""
-func get_mirror_url(mirror_url string, filename string, mysettings *Config, cache_path string) string {
+func get_mirror_url(mirror_url string, filename string, mysettings *config.Config, cache_path string) string {
 
 	mirror_conf := NewMirrorLayoutConfig()
 
@@ -620,7 +622,7 @@ func get_mirror_url(mirror_url string, filename string, mysettings *Config, cach
 }
 
 // 0,0,".locks", 1,1,nil, true, false
-func fetch(myuris map[string]map[string]bool, mysettings *Config, listonly,
+func fetch(myuris map[string]map[string]bool, mysettings *config.Config, listonly,
 	fetchonly int, locks_in_subdir string, use_locks, try_mirrors int,
 	digests map[string]map[string]bool, allow_missing_digests, force bool, ) int {
 

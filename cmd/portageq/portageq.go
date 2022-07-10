@@ -8,10 +8,12 @@ import (
 	"github.com/ppphp/portago/pkg/dep"
 	eapi2 "github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/emerge"
+	"github.com/ppphp/portago/pkg/emerge/structs"
 	metadata2 "github.com/ppphp/portago/pkg/metadata"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/portage"
+	"github.com/ppphp/portago/pkg/portage/vars"
 	"github.com/ppphp/portago/pkg/sets"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/portago/pkg/versions"
@@ -47,7 +49,7 @@ func init() {
 		}
 	}
 	go signalHandler()
-	portage.InternalCaller = true
+	vars.InternalCaller = true
 }
 
 func eval_atom_use(atom *dep.Atom) *dep.Atom {
@@ -124,7 +126,7 @@ func init() {
 		elog = func(elog_funcname string, lines []string) {
 			cmd := fmt.Sprintf("source '%s/isolated-functions.sh' ; ", os.Getenv("PORTAGE_BIN_PATH"))
 			for _, line := range lines {
-				cmd += fmt.Sprintf("%s %s ; ", elog_funcname, portage.ShellQuote(line))
+				cmd += fmt.Sprintf("%s %s ; ", elog_funcname, vars.ShellQuote(line))
 			}
 			c := exec.Command(_const.BashBinary, "-c", cmd)
 			c.Run()
@@ -216,7 +218,7 @@ func main() {
 		os.Setenv("ROOT", root)
 		if !function.UsesConfigroot {
 			os.Setenv("PORTAGE_CONFIGROOT", eroot)
-			portage.SyncMode = true
+			vars.SyncMode = true
 		}
 	}
 
@@ -666,7 +668,7 @@ func bestVisible(argv []string) int {
 				for i, v := range db.AuxGet(cpv, NewPackage().metadata_keys, repo){
 					metadata[NewPackage().metadata_keys[i]] = v
 				}
-				pkg := emerge.NewPackage(pkgtype != "ebuild", cpv,
+				pkg := structs.NewPackage(pkgtype != "ebuild", cpv,
 					pkgtype == "installed", metadata,
 					root_config, pkgtype)
 				if !atom_set.findAtomForPackage(pkg) {
@@ -892,7 +894,7 @@ func envvar(argv []string) int {
 		}
 
 		if verbose {
-			println(a + "=" + portage.ShellQuote(value))
+			println(a + "=" + vars.ShellQuote(value))
 		} else {
 			println(value)
 		}
@@ -1091,17 +1093,17 @@ func pquery(opts Opts, args []string) int {
 	root_config := emerge.NewRootConfig(portdb.settings,
 		portage.Db().Values()[portage.Root()], nil)
 
-	_pkg := func(cpv *versions.PkgStr, repo_name string) *emerge.Package {
+	_pkg := func(cpv *versions.PkgStr, repo_name string) *structs.Package {
 		metadata := map[string]string{}
 		//try:
-		for i := range emerge.NewPackage(false, nil, false, nil, nil, "").metadata_keys {
-			metadata[emerge.NewPackage(false, nil, false, nil, nil, "").metadata_keys[i]] = portdb.auxGet(cpv,
-				emerge.NewPackage(false, nil, false, nil, nil, "").metadata_keys,
+		for i := range structs.NewPackage(false, nil, false, nil, nil, "").metadata_keys {
+			metadata[structs.NewPackage(false, nil, false, nil, nil, "").metadata_keys[i]] = portdb.auxGet(cpv,
+				structs.NewPackage(false, nil, false, nil, nil, "").metadata_keys,
 				repo_name)[i]
 		}
 		//except KeyError:
 		//raise portage.exception.PackageNotFound(cpv)
-		return emerge.NewPackage(false, cpv,
+		return structs.NewPackage(false, cpv,
 			false, metadata,
 			root_config,
 			"ebuild")
@@ -1255,7 +1257,7 @@ func pquery(opts Opts, args []string) int {
 				cpv_list := portdb.cp_list(cp, 1, []string{repo.location})
 				if len(atoms) > 0 {
 					for _, cpv := range cpv_list {
-						var pkg *Package
+						var pkg *structs
 						for _, atom2 := range atoms {
 							if atom2.repo != nil &&
 								atom2.repo != repo.name {

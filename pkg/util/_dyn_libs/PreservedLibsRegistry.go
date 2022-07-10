@@ -192,7 +192,7 @@ func (p *preservedLibsRegistry) hasEntries() bool {
 	return len(p._data) > 0
 }
 
-func (p *preservedLibsRegistry) getPreservedLibs() map[string][]string {
+func (p *preservedLibsRegistry) GetPreservedLibs() map[string][]string {
 	if p._data == nil {
 		p.load()
 	}

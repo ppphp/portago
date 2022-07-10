@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/env"
 	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/util/grab"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/shlex"
 	"io/ioutil"
@@ -62,7 +63,7 @@ func ExtractKernelVersion(base_dir string) (string, error) {
 	sort.Strings(localversions)
 
 	for _, lv := range localversions {
-		gf := GrabFile(base_dir+"/"+lv, 0, false, false)
+		gf := grab.GrabFile(base_dir+"/"+lv, 0, false, false)
 		fs := []string{}
 		for _, k := range gf {
 			fs = append(fs, k[0])
