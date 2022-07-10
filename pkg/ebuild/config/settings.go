@@ -2700,7 +2700,6 @@ func (c *Config) archlist() map[string]bool {
 	return archlist
 }
 
-
 func (c *Config) Selinux_enabled() *bool {
 	if c._selinux_enabled == nil {
 		f := false
@@ -2718,6 +2717,17 @@ func (c *Config) Selinux_enabled() *bool {
 	}
 
 	return c._selinux_enabled
+}
+
+// interface
+func (c *Config) GetValueDict() map[string]string{
+	return c.ValueDict
+}
+func (c *Config) GetLocalConfig() bool{
+	return c.LocalConfig
+}
+func (c *Config) GetGlobalConfigPath() string{
+	return c.GlobalConfigPath
 }
 
 /*

@@ -5,10 +5,10 @@ import (
 	"github.com/ppphp/portago/pkg/checksum"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/dbapi/FetchlistDict"
-	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/exception"
+	"github.com/ppphp/portago/pkg/interfaces"
 	"github.com/ppphp/portago/pkg/myutil"
-	"github.com/ppphp/portago/pkg/repository"
+	"github.com/ppphp/portago/pkg/repository/FindInvalidPathChar"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/portago/pkg/util/msg"
 	"github.com/ppphp/portago/pkg/versions"
@@ -23,14 +23,14 @@ import (
 )
 
 var _manifest_re = regexp.MustCompile(
-"^(" + "BLAKE2B|SHA512" + //strings.Join(MANIFEST2_HASH_DEFAULTS, "|") +
-	") (\\S+)( \\d+( \\S+ \\S+)+)$")
+	"^(" + "BLAKE2B|SHA512" + //strings.Join(MANIFEST2_HASH_DEFAULTS, "|") +
+		") (\\S+)( \\d+( \\S+ \\S+)+)$")
 
 type FileNotInManifestException struct {
 	*exception.PortageException
 }
 
-func manifest2AuxfileFilter(filename string)bool {
+func manifest2AuxfileFilter(filename string) bool {
 	filename = strings.Trim(filename, string(os.PathSeparator))
 	mysplit := strings.Split(filename, string(os.PathSeparator))
 	if myutil.Ins(mysplit, "CVS") {
@@ -44,11 +44,11 @@ func manifest2AuxfileFilter(filename string)bool {
 	return !(filename[:7] == "digest-")
 }
 
-func manifest2MiscfileFilter(filename string)bool {
-	return !(filename == "Manifest" || strings.HasSuffix(filename,".ebuild"))
+func manifest2MiscfileFilter(filename string) bool {
+	return !(filename == "Manifest" || strings.HasSuffix(filename, ".ebuild"))
 }
 
-func guessManifestFileType(filename string)string {
+func guessManifestFileType(filename string) string {
 	if strings.HasPrefix(filename, "files"+string(os.PathSeparator)+"digest-") {
 		return ""
 	}
@@ -63,7 +63,7 @@ func guessManifestFileType(filename string)string {
 	}
 }
 
-func guessThinManifestFileType(filename string)string {
+func guessThinManifestFileType(filename string) string {
 	typee := guessManifestFileType(filename)
 	if typee != "DIST" {
 		return ""
@@ -90,14 +90,14 @@ func parseManifest2(line string) *Manifest2Entry {
 }
 
 type ManifestEntry struct {
-	typee,name string
-	hashes map[string]string
+	typee, name string
+	hashes      map[string]string
 }
 
-func NewManifestEntry( typee,name string,hashes map[string]string )*ManifestEntry {
+func NewManifestEntry(typee, name string, hashes map[string]string) *ManifestEntry {
 	m := &ManifestEntry{}
 
-	m.typee,m.name,m.hashes = typee,name,hashes
+	m.typee, m.name, m.hashes = typee, name, hashes
 	return m
 }
 
@@ -105,7 +105,7 @@ type Manifest2Entry struct {
 	*ManifestEntry
 }
 
-func (m*Manifest2Entry)__str__()string {
+func (m *Manifest2Entry) __str__() string {
 	myline := m.typee + " " + m.name + " " + m.hashes["size"]
 	myhashkeys := []string{}
 	for k := range m.hashes {
@@ -120,16 +120,16 @@ func (m*Manifest2Entry)__str__()string {
 	return myline
 }
 
-func (m*Manifest2Entry) __eq__( other *Manifest2Entry) bool {
+func (m *Manifest2Entry) __eq__(other *Manifest2Entry) bool {
 	if m.typee != other.typee ||
 		m.name != other.name {
 		return false
 	}
-	if len(m.hashes) != len(other.hashes){
+	if len(m.hashes) != len(other.hashes) {
 		return false
-	}else {
-		for k,v:= range m.hashes {
-			if other.hashes[k]!= v{
+	} else {
+		for k, v := range m.hashes {
+			if other.hashes[k] != v {
 				return false
 			}
 		}
@@ -137,39 +137,38 @@ func (m*Manifest2Entry) __eq__( other *Manifest2Entry) bool {
 	return true
 }
 
-func (m*Manifest2Entry) __ne__(other *Manifest2Entry)  bool{
+func (m *Manifest2Entry) __ne__(other *Manifest2Entry) bool {
 	return !m.__eq__(other)
 }
 
-
-func NewManifest2Entry( typee,name string,hashes map[string]string)*Manifest2Entry {
+func NewManifest2Entry(typee, name string, hashes map[string]string) *Manifest2Entry {
 	m := &Manifest2Entry{}
 
 	m.typee, m.name, m.hashes = typee, name, hashes
 	return m
 }
 
-type Manifest struct {
-	_find_invalid_path_char                                func(string)int
+type Manifest[T interfaces.ISettings] struct {
+	_find_invalid_path_char                                func(string) int
 	pkgdir, distdir                                        string
 	fhashdict                                              map[string]map[string]map[string]string
 	hashes, required_hashes                                map[string]bool
 	thin, allow_missing, allow_create, strict_misc_digests bool
 	guessType                                              func(string) string
 	parsers                                                []func(string) *Manifest2Entry
-	fetchlist_dict                                         *FetchlistDict.FetchlistDict[*config.Config]
+	fetchlist_dict                                         *FetchlistDict.FetchlistDict[T]
 }
 
 // "", nil, false, false, false, true, nil, nil, nil, true
-func NewManifest( pkgdir, distdir string, fetchlist_dict *FetchlistDict.FetchlistDict[*config.Config], from_scratch,
+func NewManifest[T interfaces.ISettings](pkgdir, distdir string, fetchlist_dict *FetchlistDict.FetchlistDict[T], from_scratch,
 	thin, allow_missing, allow_create bool, hashes map[string]bool, required_hashes map[string]bool,
-find_invalid_path_char func(string)int, strict_misc_digests bool)*Manifest {
-	m := &Manifest{}
-	m.parsers = []func(string)*Manifest2Entry{parseManifest2}
+	find_invalid_path_char func(string) int, strict_misc_digests bool) *Manifest[T] {
+	m := &Manifest[T]{}
+	m.parsers = []func(string) *Manifest2Entry{parseManifest2}
 
 	if find_invalid_path_char == nil {
 		find_invalid_path_char = func(s string) int {
-			return repository.findInvalidPathChar(s,0,0)
+			return FindInvalidPathChar.FindInvalidPathChar(s, 0, 0)
 		}
 	}
 	m._find_invalid_path_char = find_invalid_path_char
@@ -189,7 +188,7 @@ find_invalid_path_char func(string)int, strict_misc_digests bool)*Manifest {
 		m.hashes[k] = true
 	}
 
-	for hashname := range m.hashes{
+	for hashname := range m.hashes {
 		if !checksum.GetValidChecksumKeys()[hashname] {
 			delete(m.hashes, hashname)
 		}
@@ -197,13 +196,12 @@ find_invalid_path_char func(string)int, strict_misc_digests bool)*Manifest {
 
 	m.hashes["size"] = true
 
-	for k := range required_hashes{
-		m.required_hashes[k]=true
+	for k := range required_hashes {
+		m.required_hashes[k] = true
 	}
 
-
-	for k := range m.required_hashes{
-		if !m.hashes[k]{
+	for k := range m.required_hashes {
+		if !m.hashes[k] {
 			delete(m.required_hashes, k)
 		}
 	}
@@ -211,13 +209,14 @@ find_invalid_path_char func(string)int, strict_misc_digests bool)*Manifest {
 	for t := range _const.MANIFEST2_IDENTIFIERS {
 		m.fhashdict[t] = map[string]map[string]string{}
 	}
-	if ! from_scratch {
+	if !from_scratch {
 		m._read()
 	}
 	if fetchlist_dict != nil {
 		m.fetchlist_dict = fetchlist_dict
 	} else {
-		m.fetchlist_dict = FetchlistDict.NewFetchlistDict("", nil, nil)
+		var empty T
+		m.fetchlist_dict = FetchlistDict.NewFetchlistDict[T]("", empty, nil)
 	}
 	m.distdir = distdir
 	m.thin = thin
@@ -233,11 +232,11 @@ find_invalid_path_char func(string)int, strict_misc_digests bool)*Manifest {
 	return m
 }
 
-func (m*Manifest) getFullname() string {
+func (m *Manifest[T]) getFullname() string {
 	return filepath.Join(m.pkgdir, "Manifest")
 }
 
-func (m*Manifest) getDigests() map[string]map[string]string {
+func (m *Manifest[T]) getDigests() map[string]map[string]string {
 	rval := map[string]map[string]string{}
 	for t := range _const.MANIFEST2_IDENTIFIERS {
 		for k, v := range m.fhashdict[t] {
@@ -247,12 +246,12 @@ func (m*Manifest) getDigests() map[string]map[string]string {
 	return rval
 }
 
-func (m*Manifest) getTypeDigests( ftype string) map[string]map[string]string {
+func (m *Manifest[T]) getTypeDigests(ftype string) map[string]map[string]string {
 	return m.fhashdict[ftype]
 }
 
 // nil, ""
-func (m*Manifest) _readManifest( file_path string, myhashdict map[string]map[string]map[string]string, mytype string) map[string]map[string]map[string]string {
+func (m *Manifest[T]) _readManifest(file_path string, myhashdict map[string]map[string]map[string]string, mytype string) map[string]map[string]map[string]string {
 	f, err := ioutil.ReadFile(file_path)
 	if err != nil {
 		if err == syscall.ENOENT {
@@ -268,16 +267,16 @@ func (m*Manifest) _readManifest( file_path string, myhashdict map[string]map[str
 	return myhashdict
 }
 
-func (m*Manifest) _read() {
+func (m *Manifest[T]) _read() {
 	//try{
-		m._readManifest(m.getFullname(), m.fhashdict, "")
+	m._readManifest(m.getFullname(), m.fhashdict, "")
 	//}except
 	//FileNotFound{
 	//	pass
 	//}
 }
 
-func (m*Manifest) _parseManifestLines( mylines []string) []*Manifest2Entry {
+func (m *Manifest[T]) _parseManifestLines(mylines []string) []*Manifest2Entry {
 	ret := []*Manifest2Entry{}
 	for _, myline := range mylines {
 		for _, parser := range m.parsers {
@@ -292,7 +291,7 @@ func (m*Manifest) _parseManifestLines( mylines []string) []*Manifest2Entry {
 }
 
 // nil, ""
-func (m*Manifest) _parseDigests( mylines []string, myhashdict map[string]map[string]map[string]string, mytype string) map[string]map[string]map[string]string {
+func (m *Manifest[T]) _parseDigests(mylines []string, myhashdict map[string]map[string]map[string]string, mytype string) map[string]map[string]map[string]string {
 	if myhashdict == nil {
 		myhashdict = map[string]map[string]map[string]string{}
 	}
@@ -316,7 +315,7 @@ func (m*Manifest) _parseDigests( mylines []string, myhashdict map[string]map[str
 	return myhashdict
 }
 
-func (m*Manifest) _createManifestEntries() []*Manifest2Entry {
+func (m *Manifest[T]) _createManifestEntries() []*Manifest2Entry {
 	valid_hashes := myutil.CopyMapSB(checksum.GetValidChecksumKeys())
 	valid_hashes["size"] = true
 	mytypes := []string{}
@@ -334,7 +333,7 @@ func (m*Manifest) _createManifestEntries() []*Manifest2Entry {
 		for _, f := range myfiles {
 			myentry := NewManifest2Entry(
 				t, f, myutil.CopyMapSS(m.fhashdict[t][f]))
-			for h := range (myentry.hashes) {
+			for h := range myentry.hashes {
 				if !valid_hashes[h] {
 					delete(myentry.hashes, h)
 				}
@@ -345,7 +344,7 @@ func (m*Manifest) _createManifestEntries() []*Manifest2Entry {
 	return ret
 }
 
-func (m*Manifest) checkIntegrity() {
+func (m *Manifest[T]) checkIntegrity() {
 	for t := range m.fhashdict {
 		for f := range m.fhashdict[t] {
 			diff := myutil.CopyMapSB(m.required_hashes)
@@ -361,7 +360,7 @@ func (m*Manifest) checkIntegrity() {
 }
 
 // false, false
-func (m*Manifest) write( sign, force bool) bool {
+func (m *Manifest[T]) write(sign, force bool) bool {
 
 	rval := false
 	if !m.allow_create {
@@ -375,7 +374,7 @@ func (m*Manifest) write( sign, force bool) bool {
 	var ps *syscall.Stat_t
 	err := syscall.Stat(m.pkgdir, ps)
 	if err == nil {
-		preserved_stats[strings.TrimRight(m.pkgdir, string(os.PathSeparator))]=ps
+		preserved_stats[strings.TrimRight(m.pkgdir, string(os.PathSeparator))] = ps
 		if len(myentries) > 0 && !force {
 			//try{
 			f, err := os.Open(m.getFullname())
@@ -436,28 +435,28 @@ func (m*Manifest) write( sign, force bool) bool {
 			m.sign()
 		}
 	}
-	if err !=nil {
-	//}except (IOError, OSError) as e{
-			if err == syscall.EACCES{
-	//		raise PermissionDenied(str(e))
+	if err != nil {
+		//}except (IOError, OSError) as e{
+		if err == syscall.EACCES {
+			//		raise PermissionDenied(str(e))
 		}
-	//		raise
-	//	}
+		//		raise
+		//	}
 	}
 	return rval
 }
 
-func (m*Manifest) _apply_max_mtime( preserved_stats map[string]*syscall.Stat_t, entries []*Manifest2Entry) {
+func (m *Manifest[T]) _apply_max_mtime(preserved_stats map[string]*syscall.Stat_t, entries []*Manifest2Entry) {
 
 	var max_mtime int64
-	_update_max := func(st *syscall.Stat_t) int64  {
+	_update_max := func(st *syscall.Stat_t) int64 {
 		if max_mtime != 0 && max_mtime > st.Mtim.Nano() {
 			return max_mtime
 		} else {
 			return st.Mtim.Nano()
 		}
 	}
-	_stat := func (path string) *syscall.Stat_t{
+	_stat := func(path string) *syscall.Stat_t {
 		if p, ok := preserved_stats[path]; ok {
 			return p
 		} else {
@@ -467,16 +466,16 @@ func (m*Manifest) _apply_max_mtime( preserved_stats map[string]*syscall.Stat_t, 
 		}
 	}
 
-	for _, stat_result:= range preserved_stats{
+	for _, stat_result := range preserved_stats {
 		max_mtime = _update_max(stat_result)
 	}
 
-	for _, entry:= range entries{
+	for _, entry := range entries {
 		if entry.typee == "DIST" {
 			continue
 		}
 		abs_path := ""
-		if entry.typee == "AUX"{
+		if entry.typee == "AUX" {
 			abs_path = filepath.Join(m.pkgdir, "files", entry.name)
 		} else {
 			abs_path = filepath.Join(m.pkgdir, entry.name)
@@ -484,7 +483,7 @@ func (m*Manifest) _apply_max_mtime( preserved_stats map[string]*syscall.Stat_t, 
 		max_mtime = _update_max(_stat(abs_path))
 	}
 
-	if ! m.thin {
+	if !m.thin {
 		filepath.Walk(strings.TrimRight(m.pkgdir, string(os.PathSeparator)), func(path string, info os.FileInfo, err error) error {
 			max_mtime = _update_max(_stat(filepath.Dir(path)))
 			return nil
@@ -497,22 +496,22 @@ func (m*Manifest) _apply_max_mtime( preserved_stats map[string]*syscall.Stat_t, 
 				//except OSError as e:
 				msg.WriteMsgLevel(fmt.Sprintf("!!! utime('%s', (%s, %s)): %s\n",
 					path, max_mtime, max_mtime, err),
-				30, -1)
+					30, -1)
 			}
 		}
 	}
 }
 
-func (m*Manifest) sign() {
+func (m *Manifest[T]) sign() {
 	//raise NotImplementedError()
 }
 
-func (m*Manifest) validateSignature() {
+func (m *Manifest[T]) validateSignature() {
 	//raise NotImplementedError()
 }
 
 // nil, false
-func (m*Manifest) addFile( ftype, fname string, hashdict map[string]string, ignoreMissing bool) {
+func (m *Manifest[T]) addFile(ftype, fname string, hashdict map[string]string, ignoreMissing bool) {
 	if ftype == "AUX" && !strings.HasPrefix(fname, "files/") {
 		fname = filepath.Join("files", fname)
 	}
@@ -527,29 +526,29 @@ func (m*Manifest) addFile( ftype, fname string, hashdict map[string]string, igno
 	}
 	m.fhashdict[ftype][fname] = map[string]string{}
 	if hashdict != nil {
-		for k,v := range hashdict {
-			m.fhashdict[ftype][fname][k]=v
+		for k, v := range hashdict {
+			m.fhashdict[ftype][fname][k] = v
 		}
 	}
 	mrh := myutil.CopyMapSB(m.required_hashes)
-	for k := range m.fhashdict[ftype][fname]{
+	for k := range m.fhashdict[ftype][fname] {
 		delete(mrh, k)
 	}
-	if len(mrh)>0 {
+	if len(mrh) > 0 {
 		m.updateFileHashes(ftype, fname, false, ignoreMissing, false)
 	}
 }
 
-func (m*Manifest) removeFile(ftype , fname string) {
+func (m *Manifest[T]) removeFile(ftype, fname string) {
 	delete(m.fhashdict[ftype], fname)
 }
 
-func (m*Manifest) hasFile( ftype, fname string) bool{
+func (m *Manifest[T]) hasFile(ftype, fname string) bool {
 	_, ok := m.fhashdict[ftype][fname]
 	return ok
 }
 
-func (m*Manifest) findFile( fname string) string {
+func (m *Manifest[T]) findFile(fname string) string {
 	for t := range _const.MANIFEST2_IDENTIFIERS {
 		if _, ok := m.fhashdict[t][fname]; ok {
 			return t
@@ -559,8 +558,8 @@ func (m*Manifest) findFile( fname string) string {
 }
 
 // false, false, false, map[string]bool{}
-func (m*Manifest) create( checkExisting, assumeDistHashesSometimes,
-assumeDistHashesAlways bool, requiredDistfiles map[string]bool) {
+func (m *Manifest[T]) create(checkExisting, assumeDistHashesSometimes,
+	assumeDistHashesAlways bool, requiredDistfiles map[string]bool) {
 
 	if !m.allow_create {
 		return
@@ -589,7 +588,9 @@ assumeDistHashesAlways bool, requiredDistfiles map[string]bool) {
 
 	distlist := map[string]bool{}
 	for _, cpv := range cpvlist {
-		distlist.update(m._getCpvDistfiles(cpv))
+		for _, v := range m._getCpvDistfiles(cpv) {
+			distlist[v] = true
+		}
 	}
 
 	if requiredDistfiles == nil {
@@ -649,14 +650,14 @@ assumeDistHashesAlways bool, requiredDistfiles map[string]bool) {
 	}
 }
 
-func (m*Manifest) _is_cpv( cat, pn, filename string) string{
+func (m *Manifest[T]) _is_cpv(cat, pn, filename string) string {
 	if !strings.HasSuffix(filename, ".ebuild") {
 		return ""
 	}
 	pf := filename[:len(filename)-7]
-	ps := versions.pkgSplit(pf, "")
-	cpv := fmt.Sprintf("%s/%s" , cat, pf)
-	if ps==[3]string{} {
+	ps := versions.PkgSplit(pf, 1, "")
+	cpv := fmt.Sprintf("%s/%s", cat, pf)
+	if ps == [3]string{} {
 		//raise PortagePackageException(
 		//	_("Invalid package name: '%s'") % cpv)
 	}
@@ -668,7 +669,7 @@ func (m*Manifest) _is_cpv( cat, pn, filename string) string{
 	return cpv
 }
 
-func (m*Manifest) _update_thin_pkgdir( cat, pn, pkgdir string) []string {
+func (m *Manifest[T]) _update_thin_pkgdir(cat, pn, pkgdir string) []string {
 	var pkgdir_dirs, pkgdir_files []string
 	filepath.Walk(pkgdir, func(path string, info os.FileInfo, err error) error {
 		if info.IsDir() {
@@ -691,7 +692,7 @@ func (m*Manifest) _update_thin_pkgdir( cat, pn, pkgdir string) []string {
 	return cpvlist
 }
 
-func (m*Manifest) _update_thick_pkgdir( cat, pn, pkgdir string) []string{
+func (m *Manifest[T]) _update_thick_pkgdir(cat, pn, pkgdir string) []string {
 	var pkgdir_dirs, pkgdir_files []string
 	filepath.Walk(pkgdir, func(path string, info os.FileInfo, err error) error {
 		if info.IsDir() {
@@ -722,8 +723,8 @@ func (m*Manifest) _update_thick_pkgdir( cat, pn, pkgdir string) []string{
 		for k := range m.hashes {
 			mh = append(mh, k)
 		}
-		for k,v := range checksum.PerformMultipleChecksums(m.pkgdir+f, mh, false){
-			m.fhashdict[mytype][f][k]=string(v)
+		for k, v := range checksum.PerformMultipleChecksums(m.pkgdir+f, mh, false) {
+			m.fhashdict[mytype][f][k] = string(v)
 		}
 	}
 	recursive_files := []string{}
@@ -733,7 +734,7 @@ func (m*Manifest) _update_thick_pkgdir( cat, pn, pkgdir string) []string{
 	filepath.Walk(filepath.Join(pkgdir, "files"), func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() {
 			full_path := filepath.Join(path, info.Name())
-			recursive_files= append(recursive_files, full_path[cut_len:])
+			recursive_files = append(recursive_files, full_path[cut_len:])
 		}
 		return err
 	})
@@ -746,19 +747,20 @@ func (m*Manifest) _update_thick_pkgdir( cat, pn, pkgdir string) []string{
 		for k := range m.hashes {
 			mh = append(mh, k)
 		}
-		for k,v := range checksum.PerformMultipleChecksums(
-			filepath.Join(m.pkgdir, "files", strings.TrimLeft(f, string(os.PathSeparator))), mh, false){
-			m.fhashdict["AUX"][f][k]=string(v)
+		for k, v := range checksum.PerformMultipleChecksums(
+			filepath.Join(m.pkgdir, "files", strings.TrimLeft(f, string(os.PathSeparator))), mh, false) {
+			m.fhashdict["AUX"][f][k] = string(v)
 		}
 	}
 	return cpvlist
 }
 
-func (m*Manifest) _pkgdir_category() string {
-	return strings.Split(strings.TrimRight(m.pkgdir, string(os.PathSeparator)), string(os.PathSeparator))[-2]
+func (m *Manifest[T]) _pkgdir_category() string {
+	spl := strings.Split(strings.TrimRight(m.pkgdir, string(os.PathSeparator)), string(os.PathSeparator))
+	return spl[len(spl)-2]
 }
 
-func (m*Manifest) _getAbsname( ftype, fname string) string {
+func (m *Manifest[T]) _getAbsname(ftype, fname string) string {
 	absname := ""
 	if ftype == "DIST" {
 		absname = filepath.Join(m.distdir, fname)
@@ -771,65 +773,65 @@ func (m*Manifest) _getAbsname( ftype, fname string) string {
 }
 
 // false
-func (m*Manifest) checkAllHashes( ignoreMissingFiles bool) {
+func (m *Manifest[T]) checkAllHashes(ignoreMissingFiles bool) {
 	for t := range _const.MANIFEST2_IDENTIFIERS {
 		m.checkTypeHashes(t, ignoreMissingFiles, nil)
 	}
 }
 
 // false, nil
-func (m*Manifest) checkTypeHashes( idtype string, ignoreMissingFiles bool, hash_filter *checksum.hashFilter) {
-	for f:= range m.fhashdict[idtype]{
+func (m *Manifest[T]) checkTypeHashes(idtype string, ignoreMissingFiles bool, hash_filter checksum.HashFilter) {
+	for f := range m.fhashdict[idtype] {
 		m.checkFileHashes(idtype, f, ignoreMissingFiles, hash_filter)
 	}
 }
 
 // false, nil
-func (m*Manifest) checkFileHashes( ftype, fname string, ignoreMissing bool, hash_filter *checksum.hashFilter) (bool, string){
+func (m *Manifest[T]) checkFileHashes(ftype, fname string, ignoreMissing bool, hash_filter checksum.HashFilter) (bool, string) {
 	digests := checksum.FilterUnaccelaratedHashes(m.fhashdict[ftype][fname])
 	if hash_filter != nil {
 		digests = checksum.ApplyHashFilter(digests, hash_filter)
 	}
 	//try{
-	ok, reason, _, _ := checksum.VerifyAll(m._getAbsname(ftype, fname), digests, 0, 0)
+	ok, reason, _, _ := checksum.VerifyAll(m._getAbsname(ftype, fname), digests, false, 0)
 	if !ok {
 		//raise DigestException(tuple([m._getAbsname(ftype, fname)]+list(reason)))
 	}
 	return ok, reason
 	//if err != nil {
-		//}except FileNotFound as e{
-		//if !ignoreMissing {
-			//raise
-		//}
-		//return false, fmt.Sprintf("File Not Found: '%s'", err)
+	//}except FileNotFound as e{
+	//if !ignoreMissing {
+	//raise
+	//}
+	//return false, fmt.Sprintf("File Not Found: '%s'", err)
 	//}
 }
 
 // true, false, false
-func (m*Manifest) checkCpvHashes( cpv string, checkDistfiles, onlyDistfiles, checkMiscfiles bool) {
+func (m *Manifest[T]) checkCpvHashes(cpv string, checkDistfiles, onlyDistfiles, checkMiscfiles bool) {
 
 	if !onlyDistfiles {
-		m.checkTypeHashes("AUX",  false, nil)
+		m.checkTypeHashes("AUX", false, nil)
 		if checkMiscfiles {
-			m.checkTypeHashes("MISC",  false, nil)
+			m.checkTypeHashes("MISC", false, nil)
 		}
 		ebuildname := fmt.Sprintf("%s.ebuild", m._catsplit(cpv)[1])
 		m.checkFileHashes("EBUILD", ebuildname, false, nil)
 	}
 	if checkDistfiles || onlyDistfiles {
-		for f in m._getCpvDistfiles(cpv) {
-			m.checkFileHashes("DIST", f,  false, nil)
+		for _, f := range m._getCpvDistfiles(cpv) {
+			m.checkFileHashes("DIST", f, false, nil)
 		}
 	}
 }
 
-func (m*Manifest) _getCpvDistfiles( cpv string) {
-	return m.fetchlist_dict.__getitem__(cpv)
+func (m *Manifest[T]) _getCpvDistfiles(cpv string) []string {
+	return m.fetchlist_dict.GetItem(cpv)
 }
 
-func (m*Manifest) getDistfilesSize( fetchlist []string) int {
+func (m *Manifest[T]) getDistfilesSize(fetchlist []string) int {
 	total_bytes := 0
-	for _, f := range fetchlist{
+	for _, f := range fetchlist {
 		sz, _ := strconv.Atoi(m.fhashdict["DIST"][f]["size"])
 		total_bytes += sz
 	}
@@ -837,7 +839,7 @@ func (m*Manifest) getDistfilesSize( fetchlist []string) int {
 }
 
 // true, false, false
-func (m*Manifest) updateFileHashes( ftype, fname string, checkExisting, ignoreMissing, reuseExisting bool) {
+func (m *Manifest[T]) updateFileHashes(ftype, fname string, checkExisting, ignoreMissing, reuseExisting bool) {
 	if checkExisting {
 		m.checkFileHashes(ftype, fname, ignoreMissing, nil)
 	}
@@ -871,33 +873,33 @@ func (m*Manifest) updateFileHashes( ftype, fname string, checkExisting, ignoreMi
 }
 
 // false, true
-func (m*Manifest) updateTypeHashes( idtype string, checkExisting , ignoreMissingFiles bool) {
-	for fname := range m.fhashdict[idtype]{
+func (m *Manifest[T]) updateTypeHashes(idtype string, checkExisting, ignoreMissingFiles bool) {
+	for fname := range m.fhashdict[idtype] {
 		m.updateFileHashes(idtype, fname, checkExisting, ignoreMissingFiles, false)
 	}
 }
 
 // false, true
-func (m*Manifest) updateAllHashes( checkExisting, ignoreMissingFiles bool) {
-	for idtype:= range _const.MANIFEST2_IDENTIFIERS {
-		m.updateTypeHashes(idtype,  checkExisting, ignoreMissingFiles)
+func (m *Manifest[T]) updateAllHashes(checkExisting, ignoreMissingFiles bool) {
+	for idtype := range _const.MANIFEST2_IDENTIFIERS {
+		m.updateTypeHashes(idtype, checkExisting, ignoreMissingFiles)
 	}
 }
 
 // true
-func (m*Manifest) updateCpvHashes( cpv string, ignoreMissingFiles bool) {
+func (m *Manifest[T]) updateCpvHashes(cpv string, ignoreMissingFiles bool) {
 
-	m.updateTypeHashes("AUX", false,  ignoreMissingFiles)
-	m.updateTypeHashes("MISC",false,  ignoreMissingFiles)
-	ebuildname := fmt.Sprintf("%s.ebuild" , m._catsplit(cpv)[1])
-	m.updateFileHashes("EBUILD", ebuildname, true,ignoreMissingFiles, false)
-	for f in m._getCpvDistfiles(cpv){
+	m.updateTypeHashes("AUX", false, ignoreMissingFiles)
+	m.updateTypeHashes("MISC", false, ignoreMissingFiles)
+	ebuildname := fmt.Sprintf("%s.ebuild", m._catsplit(cpv)[1])
+	m.updateFileHashes("EBUILD", ebuildname, true, ignoreMissingFiles, false)
+	for _, f := range m._getCpvDistfiles(cpv) {
 		m.updateFileHashes("DIST", f, true, ignoreMissingFiles, false)
 	}
 }
 
 // true, false, false
-func (m*Manifest) updateHashesGuessType( fname string,checkExisting, ignoreMissing, reuseExisting bool) {
+func (m *Manifest[T]) updateHashesGuessType(fname string, checkExisting, ignoreMissing, reuseExisting bool) {
 	mytype := m.guessType(fname)
 	if mytype == "AUX" {
 		fname = fname[len("files"+string(os.PathSeparator)):]
@@ -911,11 +913,11 @@ func (m*Manifest) updateHashesGuessType( fname string,checkExisting, ignoreMissi
 	m.updateFileHashes(mytype, fname, checkExisting, ignoreMissing, reuseExisting)
 }
 
-func (m*Manifest) getFileData( ftype, fname, key string) string {
+func (m *Manifest[T]) getFileData(ftype, fname, key string) string {
 	return m.fhashdict[ftype][fname][key]
 }
 
-func (m*Manifest) getVersions() []int {
+func (m *Manifest[T]) getVersions() []int {
 	rVal := []int{}
 	mfname := m.getFullname()
 	if !myutil.PathExists(mfname) {
@@ -925,13 +927,13 @@ func (m*Manifest) getVersions() []int {
 
 	for _, l := range strings.Split(string(f), "\n") {
 		mysplit := strings.Fields(l)
-		if len(mysplit) > 4 && _const.MANIFEST2_IDENTIFIERS[mysplit[0]] && ((len(mysplit)-3)%2) == 0 && !myutil.Ini(rVal,2){
-			rVal=append(rVal, 2)
+		if len(mysplit) > 4 && _const.MANIFEST2_IDENTIFIERS[mysplit[0]] && ((len(mysplit)-3)%2) == 0 && !myutil.Ini(rVal, 2) {
+			rVal = append(rVal, 2)
 		}
 	}
 	return rVal
 }
 
-func (m*Manifest) _catsplit( pkg_key string) []string {
+func (m *Manifest[T]) _catsplit(pkg_key string) []string {
 	return strings.SplitN(pkg_key, "/", 2)
 }

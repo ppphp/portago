@@ -167,38 +167,9 @@ func FilterUnaccelaratedHashes(digests map[string]string) map[string]string {
 	return digests
 }
 
-type hashFilter struct {
-	trasparent bool
-	tokens     []string
-}
+type HashFilter func(string) bool
 
-func (h *hashFilter) Call(hashName string) bool {
-	if h.trasparent {
-		return true
-	}
-	for _, token := range h.tokens {
-		if token == "*" || token == hashName {
-			return true
-		} else if token[:1] == "-" {
-			if token[1:] == "*" || token[1:] == hashName {
-				return false
-			}
-		}
-	}
-	return false
-}
-
-func NewHashFilter(filterStr string) *hashFilter {
-	tokens := strings.Fields(strings.ToUpper(filterStr))
-	if len(tokens) == 0 || tokens[len(tokens)-1] == "*" {
-		tokens = nil
-	}
-	return &hashFilter{tokens == nil, tokens}
-}
-
-type HashFilter1 func(string) bool
-
-func NewHashFilter1(filterStr string) HashFilter1 {
+func NewHashFilter(filterStr string) HashFilter {
 	tokens := strings.Fields(strings.ToUpper(filterStr))
 	if len(tokens) == 0 || tokens[len(tokens)-1] == "*" {
 		tokens = nil
@@ -221,7 +192,7 @@ func NewHashFilter1(filterStr string) HashFilter1 {
 	}
 }
 
-func ApplyHashFilter(digests map[string]string, hashFilter *hashFilter) map[string]string {
+func ApplyHashFilter(digests map[string]string, hashFilter HashFilter) map[string]string {
 	verifiableHashTypes := make(map[string]bool)
 	for v := range digests {
 		verifiableHashTypes[v] = true
@@ -233,7 +204,7 @@ func ApplyHashFilter(digests map[string]string, hashFilter *hashFilter) map[stri
 	modified := false
 	if len(verifiableHashTypes) > 1 {
 		for k := range verifiableHashTypes {
-			if !hashFilter.Call(k) {
+			if !hashFilter(k) {
 				modified = true
 				delete(verifiableHashTypes, k)
 				if len(verifiableHashTypes) == 1 {

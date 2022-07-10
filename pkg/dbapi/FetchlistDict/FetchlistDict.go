@@ -13,7 +13,7 @@ type FetchlistDict[T interfaces.ISettings] struct {
 	portdb             interfaces.IPortDbApi
 }
 
-func (f *FetchlistDict[T]) __getitem__(pkg_key string) []string {
+func (f *FetchlistDict[T]) GetItem(pkg_key string) []string {
 	return f.portdb.GetFetchMap(pkg_key, nil, f.mytree)
 
 }

@@ -5,17 +5,16 @@ import (
 	"github.com/ppphp/portago/pkg/const"
 	eapi2 "github.com/ppphp/portago/pkg/eapi"
 	"github.com/ppphp/portago/pkg/env"
+	"github.com/ppphp/portago/pkg/interfaces"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/repository/validrepo"
 	"github.com/ppphp/portago/pkg/util"
 	"os"
 	"path"
-	"regexp"
 	"strings"
 )
 
 var (
-	invalidPathCharRe   = regexp.MustCompile("[^a-zA-Z0-9._\\-+/]")
 	validProfileFormats = map[string]bool{
 		"pms": true, "portage-1": true, "portage-2": true, "profile-bashrcs": true, "profile-set": true,
 		"profile-default-eapi": true, "build-id": true,
@@ -23,18 +22,7 @@ var (
 	Portage1ProfilesAllowDirectories = map[string]bool{"portage-1-compat": true, "portage-1": true, "portage-2": true}
 )
 
-// 0, 0
-func findInvalidPathChar(path string, pos int, endpos int) int {
-	if endpos == 0 {
-		endpos = len(path)
-	}
-	if m := invalidPathCharRe.FindStringIndex(path[pos:endpos]); len(m) > 0 {
-		return m[0]
-	}
-	return -1
-}
-
-func getRepoName(repoLocation, cached string) string {
+func getRepoName[T interfaces.ISettings](repoLocation, cached string) string {
 	if cached != "" {
 		return cached
 	}
@@ -45,7 +33,7 @@ func getRepoName(repoLocation, cached string) string {
 	return name
 }
 
-func ParseLayoutConf(repoLocation, repoName string) (map[string][]string, map[string][]string) {
+func ParseLayoutConf[T interfaces.ISettings](repoLocation, repoName string) (map[string][]string, map[string][]string) {
 	eapi := util.ReadCorrespondingEapiFile(path.Join(repoLocation, _const.RepoNameLoc), "0")
 
 	layoutFilename := path.Join(repoLocation, "metadata", "layout.conf")
@@ -124,7 +112,7 @@ func ParseLayoutConf(repoLocation, repoName string) (map[string][]string, map[st
 	manifestRequiredHashes := layoutData["manifest-required-hashes"]
 
 	if len(manifestRequiredHashes) != 0 && len(manifestHashes) == 0 {
-		repoName = getRepoName(repoLocation, repoName)
+		repoName = getRepoName[T](repoLocation, repoName)
 		//warnings.warn((_("Repository named '%(repo_name)s' specifies "
 		//"'manifest-required-hashes' setting without corresponding "
 		//"'manifest-hashes'. Portage will default it to match "
@@ -149,7 +137,7 @@ func ParseLayoutConf(repoLocation, repoName string) (map[string][]string, map[st
 			}
 		}
 		if len(missingRequiredHashes) > 0 {
-			repoName = getRepoName(repoLocation, repoName)
+			repoName = getRepoName[T](repoLocation, repoName)
 			//warnings.warn((_("Repository named '%(repo_name)s' has a "
 			//"'manifest-hashes' setting that does not contain "
 			//"the '%(hash)s' hashes which are listed in "
@@ -169,7 +157,7 @@ func ParseLayoutConf(repoLocation, repoName string) (map[string][]string, map[st
 		}
 		if len(unsupported_hashes) > 0 {
 
-			repoName = getRepoName(repoLocation, repoName)
+			repoName = getRepoName[T](repoLocation, repoName)
 			//warnings.warn((_("Repository named '%(repo_name)s' has a "
 			//"'manifest-hashes' setting that contains one "
 			//"or more hash types '%(hashes)s' which are not supported by "
@@ -209,7 +197,7 @@ func ParseLayoutConf(repoLocation, repoName string) (map[string][]string, map[st
 			}
 		}
 		if len(unknown) > 0 {
-			repoName = getRepoName(repoLocation, repoName)
+			repoName = getRepoName[T](repoLocation, repoName)
 			//warnings.warn((_("Repository named '%(repo_name)s' has unsupported "
 			//"profiles in use ('profile-formats = %(unknown_fmts)s' setting in "
 			//"'%(layout_filename)s; please upgrade portage.") %

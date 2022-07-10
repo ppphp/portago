@@ -6,11 +6,11 @@ import (
 	_const "github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/dbapi/FetchlistDict"
 	eapi2 "github.com/ppphp/portago/pkg/eapi"
-	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/interfaces"
 	"github.com/ppphp/portago/pkg/manifest"
 	"github.com/ppphp/portago/pkg/portage/pcache"
 	"github.com/ppphp/portago/pkg/portage/vars"
+	"github.com/ppphp/portago/pkg/repository/FindInvalidPathChar"
 	"github.com/ppphp/portago/pkg/repository/validrepo"
 	"github.com/ppphp/portago/pkg/util"
 	"golang.org/x/sys/unix"
@@ -183,11 +183,11 @@ func NewRepoConfig[T interfaces.ISettings](name string, repoOpts map[string]stri
 	r.cacheFormats = nil
 	r.Portage1Profiles = true
 	r.portage1ProfilesCompat = false
-	r.findInvalidPathChar = findInvalidPathChar
+	r.findInvalidPathChar = FindInvalidPathChar.FindInvalidPathChar
 	r.mastersOrig = []string{}
 
 	if len(r.Location) > 0 {
-		layoutData, _ := ParseLayoutConf(r.Location, r.Name)
+		layoutData, _ := ParseLayoutConf[T](r.Location, r.Name)
 		r.mastersOrig = layoutData["masters"]
 		if r.Masters == nil {
 			r.Masters = layoutData["masters"]
@@ -320,11 +320,11 @@ func (r *RepoConfig) get_pregenerated_cache(auxdbkeys []string, readonly, force 
 */
 
 // nil, false
-func (r *RepoConfig[T]) load_manifest(pkgdir, distdir string, fetchlist_dict *FetchlistDict.FetchlistDict[*config.Config], from_scratch bool) *manifest.Manifest {
+func (r *RepoConfig[T]) load_manifest(pkgdir, distdir string, fetchlist_dict *FetchlistDict.FetchlistDict[T], from_scratch bool) *manifest.Manifest[T] {
 	if r.disableManifest {
 		from_scratch = true
 	}
-	return manifest.NewManifest(pkgdir, distdir, fetchlist_dict, from_scratch,
+	return manifest.NewManifest[T](pkgdir, distdir, fetchlist_dict, from_scratch,
 		r.thinManifest, r.allowMissingManifest, r.createManifest,
 		r.manifestHashes, r.manifestRequiredHashes,
 		func(s string) int { return r.findInvalidPathChar(s, 0, 0) },

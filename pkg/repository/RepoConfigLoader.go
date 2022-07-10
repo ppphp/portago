@@ -4,11 +4,10 @@ import (
 	"fmt"
 	"github.com/ppphp/configparser"
 	_const "github.com/ppphp/portago/pkg/const"
-	"github.com/ppphp/portago/pkg/ebuild/config"
+	"github.com/ppphp/portago/pkg/interfaces"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/portage/pcache"
 	"github.com/ppphp/portago/pkg/portage/vars"
-	"github.com/ppphp/portago/pkg/sync"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/portago/pkg/util/configs"
 	"github.com/ppphp/portago/pkg/util/grab"
@@ -21,9 +20,9 @@ import (
 	"strings"
 )
 
-type RepoConfigLoader struct {
+type RepoConfigLoader[T interfaces.ISettings] struct {
 	locationMap, treeMap map[string]string
-	Prepos               map[string]*RepoConfig
+	Prepos               map[string]*RepoConfig[T]
 	PreposOrder          []string
 	missingRepoNames     map[string]bool
 	preposChanged        bool
@@ -31,20 +30,20 @@ type RepoConfigLoader struct {
 	ignoredRepos         []util.Sss
 }
 
-func NewRepoConfigLoader(paths []string, settings *config.Config) *RepoConfigLoader {
-	r := &RepoConfigLoader{}
-	prepos, locationMap, treeMap, ignoredMap, defaultOpts := map[string]*RepoConfig{}, map[string]string{}, map[string]string{}, map[string][]string{}, map[string]string{"EPREFIX": settings.ValueDict["EPREFIX"], "EROOT": settings.ValueDict["EROOT"], "PORTAGE_CONFIGROOT": settings.ValueDict["PORTAGE_CONFIGROOT"], "ROOT": settings.ValueDict["ROOT"]}
+func NewRepoConfigLoader[T interfaces.ISettings](paths []string, settings T) *RepoConfigLoader[T] {
+	r := &RepoConfigLoader[T]{}
+	prepos, locationMap, treeMap, ignoredMap, defaultOpts := map[string]*RepoConfig[T]{}, map[string]string{}, map[string]string{}, map[string][]string{}, map[string]string{"EPREFIX": settings.GetValueDict()["EPREFIX"], "EROOT": settings.GetValueDict()["EROOT"], "PORTAGE_CONFIGROOT": settings.GetValueDict()["PORTAGE_CONFIGROOT"], "ROOT": settings.GetValueDict()["ROOT"]}
 	var portDir, portDirOverlay string
 
-	if _, ok := settings.ValueDict["PORTAGE_REPOSITORIES"]; !ok {
-		portDir = settings.ValueDict["PORTDIR"]
-		portDirOverlay = settings.ValueDict["PORTDIR_OVERLAY"]
+	if _, ok := settings.GetValueDict()["PORTAGE_REPOSITORIES"]; !ok {
+		portDir = settings.GetValueDict()["PORTDIR"]
+		portDirOverlay = settings.GetValueDict()["PORTDIR_OVERLAY"]
 	}
-	defaultOpts["sync-rsync-extra-opts"] = settings.ValueDict["PORTAGE_RSYNC_EXTRA_OPTS"]
-	if err := r.parse(paths, prepos, settings.LocalConfig, defaultOpts); err != nil {
+	defaultOpts["sync-rsync-extra-opts"] = settings.GetValueDict()["PORTAGE_RSYNC_EXTRA_OPTS"]
+	if err := r.parse(paths, prepos, settings.GetLocalConfig(), defaultOpts); err != nil {
 		msg.WriteMsg(fmt.Sprintf("!!! Error while reading repo config file: %s\n", err), -1, nil)
-		prepos = map[string]*RepoConfig{}
-		prepos["DEFAULT"] = NewRepoConfig("DEFAULT", nil, settings.LocalConfig)
+		prepos = map[string]*RepoConfig[T]{}
+		prepos["DEFAULT"] = NewRepoConfig[T]("DEFAULT", nil, settings.GetLocalConfig())
 		locationMap = map[string]string{}
 		treeMap = map[string]string{}
 	}
@@ -54,18 +53,18 @@ func NewRepoConfigLoader(paths []string, settings *config.Config) *RepoConfigLoa
 	}
 	var defaultPortDir string
 	for _, repoLocation := range []string{"var/db/repos/gentoo", "usr/portage"} {
-		defaultPortDir = path.Join(string(os.PathSeparator), strings.TrimPrefix(settings.ValueDict["EPREFIX"], string(os.PathSeparator)), repoLocation)
+		defaultPortDir = path.Join(string(os.PathSeparator), strings.TrimPrefix(settings.GetValueDict()["EPREFIX"], string(os.PathSeparator)), repoLocation)
 		if repoLocations[defaultPortDir] {
 			break
 		}
 	}
-	portDir = r.addRepositories(portDir, portDirOverlay, prepos, ignoredMap, settings.LocalConfig, defaultPortDir)
+	portDir = r.addRepositories(portDir, portDirOverlay, prepos, ignoredMap, settings.GetLocalConfig(), defaultPortDir)
 	if portDir != "" && strings.TrimSpace(portDir) == "" {
 		portDir, _ = filepath.EvalSymlinks(portDir)
 	}
 	var ignoredRepos []util.Sss
 	for k, v := range ignoredMap {
-		ignoredRepos = append(ignoredRepos, util.Sss{k, v})
+		ignoredRepos = append(ignoredRepos, util.Sss{S: k, SS: v})
 	}
 	r.missingRepoNames = map[string]bool{}
 	for _, repo := range prepos {
@@ -76,7 +75,7 @@ func NewRepoConfigLoader(paths []string, settings *config.Config) *RepoConfigLoa
 	for repoName, repo := range prepos {
 		if repo.Location == "" {
 			if repoName != "DEFAULT" {
-				if settings.LocalConfig && len(paths) > 0 {
+				if settings.GetLocalConfig() && len(paths) > 0 {
 					msg.WriteMsgLevel(fmt.Sprintf("!!! %s\n", fmt.Sprintf("Section '%s' in repos.conf is missing location attribute", repo.Name)), 40, -1)
 				}
 				delete(prepos, repoName)
@@ -114,7 +113,7 @@ func NewRepoConfigLoader(paths []string, settings *config.Config) *RepoConfigLoa
 			for v := range repo.Aliases {
 				a = append(a, [2]string{v})
 			}
-			aliases := util.StackLists([][][2]string{a}, 1, false, false, false, false)
+			aliases := util.StackLists[T]([][][2]string{a}, 1, false, false, false, false)
 			for k := range aliases {
 				names[k.Value] = true
 			}
@@ -151,7 +150,7 @@ func NewRepoConfigLoader(paths []string, settings *config.Config) *RepoConfigLoa
 	if mainRepo != "" && prepos[mainRepo].priority == 0 {
 		prepos[mainRepo].priority = -1000
 	}
-	var p []*RepoConfig
+	var p []*RepoConfig[T]
 	for key, repo := range prepos {
 		if repo.Name == key && key != "DEFAULT" && repo.Location != "" {
 			p = append(p, repo)
@@ -186,15 +185,15 @@ func NewRepoConfigLoader(paths []string, settings *config.Config) *RepoConfigLoa
 		}
 		if repo.Masters == nil {
 			if r.MainRepo() != nil && repoName != r.MainRepo().Name {
-				repo.MastersRepo = []*RepoConfig{r.MainRepo()}
+				repo.MastersRepo = []*RepoConfig[T]{r.MainRepo()}
 			} else {
-				repo.MastersRepo = []*RepoConfig{}
+				repo.MastersRepo = []*RepoConfig[T]{}
 			}
 		} else {
 			if len(repo.Masters) > 0 {
 				continue
 			}
-			masterRepos := []*RepoConfig{}
+			masterRepos := []*RepoConfig[T]{}
 			for _, masterName := range repo.MastersRepo {
 				if _, ok := prepos[masterName.Name]; !ok {
 					layoutFilename := path.Join(repo.Location, "metadata", "layout.conf")
@@ -263,7 +262,7 @@ func NewRepoConfigLoader(paths []string, settings *config.Config) *RepoConfigLoa
 	return r
 }
 
-func (r *RepoConfigLoader) addRepositories(portDir, portdirOverlay string, prepos map[string]*RepoConfig, ignoredMap map[string][]string, localConfig bool, defaultPortdir string) string {
+func (r *RepoConfigLoader[T]) addRepositories(portDir, portdirOverlay string, prepos map[string]*RepoConfig[T], ignoredMap map[string][]string, localConfig bool, defaultPortdir string) string {
 	overlays := []string{}
 	portDirOrig := ""
 	if portDir != "" {
@@ -300,7 +299,7 @@ func (r *RepoConfigLoader) addRepositories(portDir, portdirOverlay string, prepo
 		defaultRepoOpt["aliases"] = strings.Join(prepos["DEFAULT"].Masters, "k")
 	}
 	if len(overlays) != 0 {
-		reposConf := map[string]*RepoConfig{}
+		reposConf := map[string]*RepoConfig[T]{}
 		for k, v := range prepos {
 			reposConf[k] = v
 		}
@@ -316,7 +315,7 @@ func (r *RepoConfigLoader) addRepositories(portDir, portdirOverlay string, prepo
 				if ov == portDir {
 					name = prepos["DEFAULT"].mainRepo
 				}
-				repo := NewRepoConfig(name, repoOpts, localConfig)
+				repo := NewRepoConfig[T](name, repoOpts, localConfig)
 				reposConfOpts := reposConf[repo.Name]
 				if reposConfOpts != nil {
 					if reposConfOpts.Aliases != nil {
@@ -424,7 +423,7 @@ func (r *RepoConfigLoader) addRepositories(portDir, portdirOverlay string, prepo
 	return portDir
 }
 
-func (r *RepoConfigLoader) parse(paths []string, prepos map[string]*RepoConfig, localConfig bool, defaultOpts map[string]string) error {
+func (r *RepoConfigLoader[T]) parse(paths []string, prepos map[string]*RepoConfig[T], localConfig bool, defaultOpts map[string]string) error {
 	args := configparser.DefaultArgument
 	args.Defaults = defaultOpts
 	parser := configparser.NewConfigParser(args)
@@ -437,27 +436,28 @@ func (r *RepoConfigLoader) parse(paths []string, prepos map[string]*RepoConfig, 
 		return err
 	}
 
-	prepos["DEFAULT"] = NewRepoConfig("DEFAULT", parser.Defaults(), localConfig)
+	prepos["DEFAULT"] = NewRepoConfig[T]("DEFAULT", parser.Defaults(), localConfig)
 	for _, sname := range parser.Sections() {
 		optdict := map[string]string{}
 		onames, _ := parser.Options(sname)
 		for _, oname := range onames {
 			optdict[oname], _ = parser.Gett(sname, oname)
 		}
-		repo := NewRepoConfig(sname, optdict, localConfig)
-		for o := range sync.ModuleSpecificOptions(repo) {
-			if parser.HasOption(sname, o) {
-				v, _ := parser.Get(sname, o, false, nil, "")
-				repo.setModuleSpecificOpt(o, v)
-			}
-		}
+		repo := NewRepoConfig[T](sname, optdict, localConfig)
+		/*
+			for o := range sync.ModuleSpecificOptions(repo) {
+				if parser.HasOption(sname, o) {
+					v, _ := parser.Get(sname, o, false, nil, "")
+					repo.setModuleSpecificOpt(o, v)
+				}
+			}*/
 		//validateConfig(repo, logging)
 		prepos[sname] = repo
 	}
 	return nil
 }
 
-func (r *RepoConfigLoader) MainRepoLocation() string {
+func (r *RepoConfigLoader[T]) MainRepoLocation() string {
 	mainRepo := r.Prepos["DEFAULT"].mainRepo
 	if _, ok := r.Prepos[mainRepo]; mainRepo == "" || !ok {
 		return ""
@@ -465,7 +465,7 @@ func (r *RepoConfigLoader) MainRepoLocation() string {
 	return r.Prepos[mainRepo].Location
 }
 
-func (r *RepoConfigLoader) MainRepo() *RepoConfig {
+func (r *RepoConfigLoader[T]) MainRepo() *RepoConfig[T] {
 	mainRepo := r.Prepos["DEFAULT"].mainRepo
 	if mainRepo == "" {
 		return nil
@@ -473,7 +473,7 @@ func (r *RepoConfigLoader) MainRepo() *RepoConfig {
 	return r.Prepos[mainRepo]
 }
 
-func (r *RepoConfigLoader) RepoLocationListF() []string {
+func (r *RepoConfigLoader[T]) RepoLocationListF() []string {
 	if r.preposChanged {
 		repoLocationList := []string{}
 		for _, repo := range r.PreposOrder {
@@ -487,7 +487,7 @@ func (r *RepoConfigLoader) RepoLocationListF() []string {
 	return r.RepoLocationList
 }
 
-func (r *RepoConfigLoader) checkLocations() {
+func (r *RepoConfigLoader[T]) checkLocations() {
 	for name, re := range r.Prepos {
 		if name != "DEFAULT" {
 			if re.Location == "" {
@@ -508,8 +508,8 @@ func (r *RepoConfigLoader) checkLocations() {
 	}
 }
 
-func (r *RepoConfigLoader) ReposWithProfiles() []*RepoConfig {
-	rp := []*RepoConfig{}
+func (r *RepoConfigLoader[T]) ReposWithProfiles() []*RepoConfig[T] {
+	rp := []*RepoConfig[T]{}
 	for _, repoName := range r.PreposOrder {
 		repo := r.Prepos[repoName]
 		if repo.format != "unavailable" {
@@ -519,26 +519,26 @@ func (r *RepoConfigLoader) ReposWithProfiles() []*RepoConfig {
 	return rp
 }
 
-func (r *RepoConfigLoader) getNameForLocation(location string) string {
+func (r *RepoConfigLoader[T]) getNameForLocation(location string) string {
 	return r.locationMap[location]
 }
 
-func (r *RepoConfigLoader) GetLocationForName(repoName string) string {
+func (r *RepoConfigLoader[T]) GetLocationForName(repoName string) string {
 	if repoName == "" {
 		return ""
 	}
 	return r.treeMap[repoName]
 }
 
-func (r *RepoConfigLoader) GetRepoForLocation(location string) *RepoConfig {
+func (r *RepoConfigLoader[T]) GetRepoForLocation(location string) *RepoConfig[T] {
 	return r.Prepos[r.getNameForLocation(location)]
 }
 
-func (r *RepoConfigLoader) Getitem(repoName string) *RepoConfig {
+func (r *RepoConfigLoader[T]) Getitem(repoName string) *RepoConfig[T] {
 	return r.Prepos[repoName]
 }
 
-func (r *RepoConfigLoader) delitem(repoName string) {
+func (r *RepoConfigLoader[T]) delitem(repoName string) {
 	if repoName == r.Prepos["DEFAULT"].mainRepo {
 		r.Prepos["DEFAULT"].mainRepo = ""
 	}
@@ -568,12 +568,12 @@ func (r *RepoConfigLoader) delitem(repoName string) {
 	r.RepoLocationList = rll
 }
 
-func (r *RepoConfigLoader) contains(repoName string) bool {
+func (r *RepoConfigLoader[T]) contains(repoName string) bool {
 	_, ok := r.Prepos[repoName]
 	return ok
 }
 
-func (r *RepoConfigLoader) iter() []string {
+func (r *RepoConfigLoader[T]) iter() []string {
 	rp := []string{}
 	for _, repo := range r.PreposOrder {
 		rp = append(rp, repo)
@@ -581,7 +581,7 @@ func (r *RepoConfigLoader) iter() []string {
 	return rp
 }
 
-func (r *RepoConfigLoader) ConfigString() string {
+func (r *RepoConfigLoader[T]) ConfigString() string {
 	configString := ""
 	repoName := []string{}
 	for r := range r.Prepos {
@@ -657,20 +657,20 @@ func (r *RepoConfigLoader) ConfigString() string {
 	return strings.TrimPrefix(configString, "\n")
 }
 
-func LoadRepositoryConfig(settings *config.Config, extraFiles string) *RepoConfigLoader {
+func LoadRepositoryConfig[T interfaces.ISettings](settings T, extraFiles string) *RepoConfigLoader[T] {
 	repoConfigPaths := []string{}
-	if pr, ok := settings.ValueDict["PORTAGE_REPOSITORIES"]; ok {
+	if pr, ok := settings.GetValueDict()["PORTAGE_REPOSITORIES"]; ok {
 		repoConfigPaths = append(repoConfigPaths, pr)
 	} else {
 		if vars.NotInstalled {
 			repoConfigPaths = append(repoConfigPaths, path.Join(_const.PORTAGE_BASE_PATH, "cnf", "repos.conf"))
 		} else {
-			repoConfigPaths = append(repoConfigPaths, path.Join(settings.GlobalConfigPath, "repos.conf"))
+			repoConfigPaths = append(repoConfigPaths, path.Join(settings.GetGlobalConfigPath(), "repos.conf"))
 		}
 	}
-	repoConfigPaths = append(repoConfigPaths, path.Join(settings.ValueDict["PORTAGE_CONFIGROOT"], _const.UserConfigPath, "repos.conf"))
+	repoConfigPaths = append(repoConfigPaths, path.Join(settings.GetValueDict()["PORTAGE_CONFIGROOT"], _const.UserConfigPath, "repos.conf"))
 	if len(extraFiles) > 0 {
 		repoConfigPaths = append(repoConfigPaths, extraFiles)
 	}
-	return NewRepoConfigLoader(repoConfigPaths, settings)
+	return NewRepoConfigLoader[T](repoConfigPaths, settings)
 }
