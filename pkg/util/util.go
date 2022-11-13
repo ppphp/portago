@@ -141,6 +141,7 @@ func StackLists[T interfaces.ISettings](lists [][][2]string, incremental int, re
 }
 
 var eapiFileCache = map[string]string{}
+var EapiCache = map[string]string{}
 
 func ReadCorrespondingEapiFile(filename, defaults string) string { // "0"
 	eapiFile := path.Join(path.Dir(filename), "eapi")

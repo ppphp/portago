@@ -62,6 +62,7 @@ var environWhitelist = map[string]bool{
 	"BASH_FUNC____in_portage_iuse%%":    true,
 	"BINPKG_FORMAT":                     true,
 	"BROOT":                             true,
+	"BUILD_ID":                          true,
 	"BUILD_PREFIX":                      true,
 	"COLUMNS":                           true,
 	"D":                                 true,

@@ -159,7 +159,7 @@ type Config struct {
 	prevmaskdict                                                                                                                         map[string][]*dep.Atom[*Config]
 	modulePriority, incrementals, validateCommands, unknownFeatures, nonUserVariables, envDBlacklist, pbashrc, categories, IuseEffective map[string]bool
 	Features                                                                                                                             *featuresSet
-	Repositories                                                                                                                         *repository.RepoConfigLoader
+	Repositories                                                                                                                         *repository.RepoConfigLoader[*Config]
 	modules                                                                                                                              map[string]map[string][]string
 	locationsManager                                                                                                                     *LocationsManager
 	_tolerant                                                                                                                            bool
@@ -167,8 +167,8 @@ type Config struct {
 }
 
 // nil, nil, "", nil, "","","","",true, nil, false, nil
-func NewConfig(clone *Config, mycpv *versions.PkgStr[*Config], configProfilePath string, configIncrementals []string, configRoot, targetRoot, sysroot, eprefix string, localConfig bool, env1 map[string]string, unmatchedRemoval bool, repositories *repository.RepoConfigLoader) *Config {
-	eapiCache = make(map[string]bool)
+func NewConfig(clone *Config, mycpv *versions.PkgStr[*Config], configProfilePath string, configIncrementals []string, configRoot, targetRoot, sysroot, eprefix string, localConfig bool, env1 map[string]string, unmatchedRemoval bool, repositories *repository.RepoConfigLoader[*Config]) *Config {
+	util.EapiCache = make(map[string]string)
 	tolerant := vars.InitializingGlobals == nil
 	c := &Config{
 		constantKeys:   map[string]bool{"PORTAGE_BIN_PATH": true, "PORTAGE_GID": true, "PORTAGE_PYM_PATH": true, "PORTAGE_PYTHONPATH": true},
@@ -1573,7 +1573,7 @@ func (c *Config) SetCpv(mycpv *versions.PkgStr[*Config], mydb interfaces.IVarDbA
 			for _, x := range builtUse {
 				useList[x] = true
 			}
-			restrict = dep.UseReduce[*Config](rawRestrict, useList, []string{}, false, []string{}, false, "", false, true, nil, nil, false)
+			restrict = dep.UseReduce[*Config](rawRestrict, useList, []string{}, false, []string{}, false, "", false, true, nil, nil, false, nil)
 		} else {
 			useList := map[string]bool{}
 			for _, x := range strings.Fields(c.ValueDict["USE"]) {
@@ -1861,7 +1861,7 @@ func (c *Config) SetCpv(mycpv *versions.PkgStr[*Config], mydb interfaces.IVarDbA
 
 	c.configDict["env"]["PORTAGE_USE"] = strings.Join(u, " ")
 
-	eapiCache = map[string]bool{}
+	util.EapiCache = map[string]string{}
 }
 
 func (c *Config) grabPkgEnv(penv []string, container map[string]string, protected_keys map[string]bool) { // n
@@ -2032,7 +2032,7 @@ func (c *Config) _getMissingProperties(cpv *versions.PkgStr[*Config], metadata m
 
 	properties_str := metadata["PROPERTIES"]
 	properties := map[string]bool{}
-	for _, v := range dep.UseReduce[*Config](properties_str, map[string]bool{}, []string{}, true, []string{}, false, "", false, true, nil, nil, false) {
+	for _, v := range dep.UseReduce[*Config](properties_str, map[string]bool{}, []string{}, true, []string{}, false, "", false, true, nil, nil, false, nil) {
 		properties[v] = true
 	}
 
@@ -2061,7 +2061,7 @@ func (c *Config) _getMissingProperties(cpv *versions.PkgStr[*Config], metadata m
 	for _, v := range use {
 		usemsb[v] = true
 	}
-	for _, x := range dep.UseReduce[*Config](properties_str, usemsb, []string{}, false, []string{}, false, "", false, true, nil, nil, false) {
+	for _, x := range dep.UseReduce[*Config](properties_str, usemsb, []string{}, false, []string{}, false, "", false, true, nil, nil, false, nil) {
 		if !acceptable_properties[x] {
 			ret = append(ret, x)
 		}
@@ -2613,18 +2613,18 @@ func (c *Config) environ() map[string]string {
 		delete(mydict, "BROOT")
 	}
 
-	if phase == "depend" || (!c.Features.Features["force-prefix"] && eapi1 != "" && !eapi.eapiSupportsPrefix(eapi)) {
+	if phase == "depend" || (!c.Features.Features["force-prefix"] && eapi1 != "" && !eapi.EapiSupportsPrefix(eapi1)) {
 		delete(mydict, "ED")
 		delete(mydict, "EPREFIX")
 		delete(mydict, "EROOT")
 		delete(mydict, "ESYSROOT")
 	}
 
-	if !myutil.Ins([]string{"pretend", "setup", "preinst", "postinst"}, phase) || !eapi.eapiExportsReplaceVars(eapi) {
+	if !myutil.Ins([]string{"pretend", "setup", "preinst", "postinst"}, phase) || !eapi.EapiExportsReplaceVars(eapi1) {
 		delete(mydict, "REPLACING_VERSIONS")
 	}
 
-	if !myutil.Ins([]string{"prerm", "postrm"}, phase) || !eapi.EapiExportsReplaceVars(eapi) {
+	if !myutil.Ins([]string{"prerm", "postrm"}, phase) || !eapi.EapiExportsReplaceVars(eapi1) {
 		delete(mydict, "REPLACED_BY_VERSION")
 	}
 

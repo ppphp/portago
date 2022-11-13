@@ -362,9 +362,17 @@ func (t *tbz2) scan() int {
 		t.infosize = 0
 		t.xpaksize = 0
 		if string(trailer)[len(string(trailer))-4:] != "Stop" {
+			//try:
+			//	 get_binpkg_format(self.file, check_file=True)
+			//	except InvalidBinaryPackageFormat:
+			//	pass
 			return 0
 		}
 		if string(trailer)[0:8] != "XPAKSTOP" {
+			//try:
+			//	get_binpkg_format(self.file, check_file=True)
+			//	except InvalidBinaryPackageFormat:
+			//	pass
 			return 0
 		}
 		t.infosize = decodeint(string(trailer)[8:12])
@@ -379,6 +387,10 @@ func (t *tbz2) scan() int {
 	}
 	if err == nil {
 		if string(header[0:8]) != "XPAKPACK" {
+			//try:
+			//	get_binpkg_format(self.file, check_file=True)
+			//	except InvalidBinaryPackageFormat:
+			//	pass
 			return 0
 		}
 	}

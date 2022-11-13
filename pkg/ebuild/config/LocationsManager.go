@@ -46,7 +46,7 @@ type SMSSS struct {
 	MSSS map[string][]string
 }
 
-func (l *LocationsManager) loadProfiles(repositories *repository.RepoConfigLoader, knownRepositoryPaths []string) {
+func (l *LocationsManager) loadProfiles(repositories *repository.RepoConfigLoader[*Config], knownRepositoryPaths []string) {
 	k := map[string]bool{}
 	for _, v := range knownRepositoryPaths {
 		x, _ := filepath.EvalSymlinks(v)
@@ -107,7 +107,7 @@ func (l *LocationsManager) checkVarDirectory(varname, varr string) error {
 	return nil
 }
 
-func (l *LocationsManager) addProfile(currentPath string, repositories *repository.RepoConfigLoader, known_repos []SMSSS) {
+func (l *LocationsManager) addProfile(currentPath string, repositories *repository.RepoConfigLoader[*Config], known_repos []SMSSS) {
 	currentAbsPath, _ := filepath.Abs(currentPath)
 	allowDirectories := true
 	allowParentColon := true
@@ -228,7 +228,7 @@ func (l *LocationsManager) addProfile(currentPath string, repositories *reposito
 	l.profilesComplex = append(l.profilesComplex, &profileNode{location: currentPath, portage1Directories: allowDirectories, userConfig: false, profileFormats: currentFormats, eapi: eapi1, allowBuildId: myutil.Ins(currentFormats, "build-id")})
 }
 
-func (l *LocationsManager) expandParentColon(parentsFile, parentPath, repoLoc string, repositories *repository.RepoConfigLoader) string {
+func (l *LocationsManager) expandParentColon(parentsFile, parentPath, repoLoc string, repositories *repository.RepoConfigLoader[*Config]) string {
 	colon := strings.Index(parentPath, ":")
 	if colon == -1 {
 		return parentPath

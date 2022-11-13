@@ -14,6 +14,9 @@ import (
 	"syscall"
 )
 
+var mtimedbkeys = map[string]bool{"info": true, "ldpath": true, "resume": true, "resume_backup": true,
+	"starttime": true, "updates": true, "version": true}
+
 type MtimeDB struct {
 	dict        map[string]interface{}
 	filename    string
@@ -31,6 +34,18 @@ func NewMtimeDB(filename string) *MtimeDB {
 	m.filename = filename
 	m._load(filename)
 	return m
+}
+
+func (m *MtimeDB) is_readonly() bool {
+	if m.filename == "" {
+		return true
+	} else {
+		return false
+	}
+}
+
+func (m *MtimeDB) make_readonly() {
+	m.filename = ""
 }
 
 func (m *MtimeDB) _load(filename string) {
@@ -75,8 +90,12 @@ func (m *MtimeDB) _load(filename string) {
 		}
 	}
 
-	mtimedbkeys := map[string]bool{"info": true, "ldpath": true, "resume": true, "resume_backup": true,
-		"starttime": true, "updates": true, "version": true}
+	for k := range d {
+		if !mtimedbkeys[k] {
+			msg.WriteMsg(fmt.Sprintf("Deleting invalid mtimedb key: %s\n", k), 0, nil)
+			delete(d, k)
+		}
+	}
 
 	for k := range d {
 		if !mtimedbkeys[k] {
@@ -91,7 +110,7 @@ func (m *MtimeDB) _load(filename string) {
 }
 
 func (m *MtimeDB) Commit() {
-	if m.filename == "" {
+	if m.is_readonly() {
 		return
 	}
 	d := map[string]interface{}{}
@@ -99,22 +118,26 @@ func (m *MtimeDB) Commit() {
 		d[k] = v
 	}
 	if !reflect.DeepEqual(d, m._clean_data) {
-		d["version"] = fmt.Sprint(version.VERSION)
-		//try:
-		f := NewAtomic_ofstream(m.filename, os.O_CREATE|os.O_RDWR|os.O_TRUNC, true)
-		//except
-		//EnvironmentError:
-		//	pass
-		//	else:
-		if m._json_write {
-			jd, _ := json.MarshalIndent(d, "", "\t")
-			f.Write(jd)
-		}
-		f.Close()
-		var m1 os.FileMode
-		m1--
-		permissions.Apply_secpass_permissions(m.filename,
-			uint32(data.Uid), *data.Portage_gid, 0o644, m1, nil, true)
-		m._clean_data = myutil.CopyMapT(d)
+		m.__write_to_disk(d)
 	}
+}
+
+func (m *MtimeDB) __write_to_disk(d map[string]interface{}) {
+	d["version"] = fmt.Sprint(version.VERSION)
+	//try:
+	f := NewAtomic_ofstream(m.filename, os.O_CREATE|os.O_RDWR|os.O_TRUNC, true)
+	//except
+	//EnvironmentError:
+	//	pass
+	//	else:
+	if m._json_write {
+		jd, _ := json.MarshalIndent(d, "", "\t")
+		f.Write(jd)
+	}
+	f.Close()
+	var m1 os.FileMode
+	m1--
+	permissions.Apply_secpass_permissions(m.filename,
+		uint32(data.Uid), *data.Portage_gid, 0o644, m1, nil, true)
+	m._clean_data = myutil.CopyMapT(d)
 }

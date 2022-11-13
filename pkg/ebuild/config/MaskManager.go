@@ -57,11 +57,11 @@ func (m *maskManager) getRawMaskAtom(cpv *versions.PkgStr[*Config], slot, repo s
 	return m._getMaskAtom(cpv, slot, repo, nil)
 }
 
-func NewMaskManager(repositories *repository.RepoConfigLoader, profiles []*profileNode, abs_user_config string, user_config, strict_umatched_removal bool) *maskManager { // true, false
+func NewMaskManager(repositories *repository.RepoConfigLoader[*Config], profiles []*profileNode, abs_user_config string, user_config, strict_umatched_removal bool) *maskManager { // true, false
 	m := &maskManager{}
 	m._punmaskdict, m._pmaskdict, m._pmaskdict_raw = map[string][]*dep.Atom[*Config]{}, map[string][]*dep.Atom[*Config]{}, map[string][]*dep.Atom[*Config]{}
 	pmaskCache := map[string][][2]string{}
-	grabPMask := func(loc string, repoConfig *repository.RepoConfig) [][2]string {
+	grabPMask := func(loc string, repoConfig *repository.RepoConfig[*Config]) [][2]string {
 		if _, ok := pmaskCache[loc]; !ok {
 			path := path.Join(loc, "profiles", "package.mask")
 			pmaskCache[loc] = util.GrabFilePackage[*Config](path, 0, repoConfig.Portage1Profiles, false, false, myutil.Ins(repoConfig.ProfileFormats, "build-id"), true, true, "", repoConfig.Eapi)

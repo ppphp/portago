@@ -936,7 +936,7 @@ func doebuild(myebuild, mydo string, settings *config.Config, debug, listonly,
 		}
 	}
 
-	if eapi2.eapiExportsMergeType(mysettings.ValueDict["EAPI"]) &&
+	if eapi2.EapiExportsMergeType(mysettings.ValueDict["EAPI"]) &&
 		!myutil.Inmss(mysettings.configDict["pkg"], "MERGE_TYPE") {
 		if tree == "porttree" {
 			mysettings.configDict["pkg"]["MERGE_TYPE"] = "source"
@@ -951,7 +951,7 @@ func doebuild(myebuild, mydo string, settings *config.Config, debug, listonly,
 		mysettings.configDict["pkg"]["EMERGE_FROM"] = "binary"
 	}
 
-	if eapi2.eapiExportsReplaceVars(mysettings.ValueDict["EAPI"]) &&
+	if eapi2.EapiExportsReplaceVars(mysettings.ValueDict["EAPI"]) &&
 		(myutil.Ins([]string{"postinst", "preinst", "pretend", "setup"}, mydo) ||
 			(!features["noauto"] && !returnpid &&
 				(myutil.Inmsss(actionmap_deps, mydo) || myutil.Ins([]string{"merge", "package", "qmerge"}, mydo)))) {

@@ -44,7 +44,7 @@ func eapiHasSrcPrepareAndSrcConfigure(eapi string) bool {
 	return !map[string]bool{"0": true, "1": true}[eapi]
 }
 
-func eapiSupportsPrefix(eapi string) bool {
+func EapiSupportsPrefix(eapi string) bool {
 	return !map[string]bool{"0": true, "1": true, "2": true}[eapi]
 }
 

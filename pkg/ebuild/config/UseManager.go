@@ -23,11 +23,11 @@ type UseManager struct {
 	usemaskList, usestablemaskList, useforceList, usestableforceList                                   [][]string
 	pusemaskList, pusestablemaskList, pkgprofileuse, puseforceList, pusestableforceList                []map[string]map[*dep.Atom[*Config]][]string
 	pUseDict                                                                                           map[string]map[*dep.Atom[*Config]][]string // extatom
-	repositories                                                                                       *repository.RepoConfigLoader
+	repositories                                                                                       *repository.RepoConfigLoader[*Config]
 }
 
 // true
-func NewUseManager(repositories *repository.RepoConfigLoader, profiles []*profileNode, absUserConfig string, isStable func(str interfaces.IPkgStr) bool, userConfig bool) *UseManager {
+func NewUseManager(repositories *repository.RepoConfigLoader[*Config], profiles []*profileNode, absUserConfig string, isStable func(str interfaces.IPkgStr) bool, userConfig bool) *UseManager {
 	u := &UseManager{}
 	u.userConfig = userConfig
 	u.isStable = isStable
@@ -191,7 +191,7 @@ func (u *UseManager) parseUserFilesToExtatomdict(fileName, location string, user
 	return ret
 }
 
-func (u *UseManager) parseRepositoryFilesToDictOfTuples(fileName string, repositories *repository.RepoConfigLoader, eapiFilter func(string) bool) map[string][]string { // n
+func (u *UseManager) parseRepositoryFilesToDictOfTuples(fileName string, repositories *repository.RepoConfigLoader[*Config], eapiFilter func(string) bool) map[string][]string { // n
 	ret := map[string][]string{}
 	for _, repo := range repositories.ReposWithProfiles() {
 		ret[repo.Name] = u.parseFileToTuple(filepath.Join(repo.Location, "profiles", fileName), true, eapiFilter, "", repo.Eapi)
@@ -199,7 +199,7 @@ func (u *UseManager) parseRepositoryFilesToDictOfTuples(fileName string, reposit
 	return ret
 }
 
-func (u *UseManager) parseRepositoryFilesToDictOfDicts(fileName string, repositories *repository.RepoConfigLoader, eapiFilter func(string) bool) map[string]map[string]map[*dep.Atom[*Config]][]string {
+func (u *UseManager) parseRepositoryFilesToDictOfDicts(fileName string, repositories *repository.RepoConfigLoader[*Config], eapiFilter func(string) bool) map[string]map[string]map[*dep.Atom[*Config]][]string {
 	ret := map[string]map[string]map[*dep.Atom[*Config]][]string{}
 	for _, repo := range repositories.ReposWithProfiles() {
 		ret[repo.Name] = u.parseFileToDict(filepath.Join(repo.Location, "profiles", fileName), false, true, eapiFilter, false, "0", repo.Eapi, false, myutil.Ins(repo.ProfileFormats, "build-id"))
