@@ -18,7 +18,7 @@ var mtimedbkeys = map[string]bool{"info": true, "ldpath": true, "resume": true, 
 	"starttime": true, "updates": true, "version": true}
 
 type MtimeDB struct {
-	dict        map[string]interface{}
+	Dict        map[string]interface{} // inherit
 	filename    string
 	_json_write bool
 
@@ -30,7 +30,7 @@ func NewMtimeDB(filename string) *MtimeDB {
 
 	m._json_write = true
 
-	m.dict = map[string]interface{}{}
+	m.Dict = map[string]interface{}{}
 	m.filename = filename
 	m._load(filename)
 	return m
@@ -104,7 +104,7 @@ func (m *MtimeDB) _load(filename string) {
 		}
 	}
 	for k, v := range d {
-		m.dict[k] = v
+		m.Dict[k] = v
 	}
 	d = myutil.CopyMapT(m._clean_data)
 }
@@ -114,7 +114,7 @@ func (m *MtimeDB) Commit() {
 		return
 	}
 	d := map[string]interface{}{}
-	for k, v := range m.dict {
+	for k, v := range m.Dict {
 		d[k] = v
 	}
 	if !reflect.DeepEqual(d, m._clean_data) {

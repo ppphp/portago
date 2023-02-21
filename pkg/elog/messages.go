@@ -207,6 +207,6 @@ func eqawarn(msg, phase, key string, out io.Writer) {
 }
 
 // "other", "",nil
-func eerror(msg, phase, key string, out io.Writer) {
+func Eerror(msg, phase, key string, out io.Writer) {
 	_elog_base("ERROR", msg, phase, key, "BAD", out)
 }

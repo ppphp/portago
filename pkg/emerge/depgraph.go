@@ -3,6 +3,7 @@ package emerge
 import (
 	"github.com/ppphp/portago/pkg/dbapi"
 	"github.com/ppphp/portago/pkg/dep"
+	"github.com/ppphp/portago/pkg/emerge/resolver"
 	"github.com/ppphp/portago/pkg/emerge/structs"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/sets"
@@ -435,7 +436,7 @@ type _dynamic_depgraph_config struct{
 	_conflict_missed_update
 }
 
-func New_dynamic_depgraph_config(depgraph, myparams, allow_backtracking, backtrack_parameters) *_dynamic_depgraph_config {
+func New_dynamic_depgraph_config(Depgraph, myparams, allow_backtracking, backtrack_parameters) *_dynamic_depgraph_config {
 	d := &_dynamic_depgraph_config{}
 	d.myparams = myparams.copy()
 	d._vdb_loaded = false
@@ -535,20 +536,20 @@ func New_dynamic_depgraph_config(depgraph, myparams, allow_backtracking, backtra
 	}
 	d._installed_sonames = collections.defaultdict(list)
 	d._package_tracker = PackageTracker(
-		soname_deps = depgraph._frozen_config.soname_deps_enabled
+		soname_deps = Depgraph._frozen_config.soname_deps_enabled
 	)
 	d._conflict_missed_update = collections.defaultdict(dict)
 	dep_check_iface := _dep_check_graph_interface{
-		will_replace_child: depgraph._will_replace_child,
+		will_replace_child: Depgraph._will_replace_child,
 		removal_action:     "remove" in myparams,
 		want_update_pkg: depgraph._want_update_pkg,
 	}
 
 	for myroot
 	in
-	depgraph._frozen_config.trees:
+	Depgraph._frozen_config.trees:
 	d.sets[myroot] = _depgraph_sets()
-	vardb = depgraph._frozen_config.trees[myroot]["vartree"].dbapi
+	vardb = Depgraph._frozen_config.trees[myroot]["vartree"].dbapi
 	fakedb = PackageTrackerDbapiWrapper(myroot, d._package_tracker)
 
 	graph_tree := func() {
@@ -567,23 +568,23 @@ func New_dynamic_depgraph_config(depgraph, myparams, allow_backtracking, backtra
 	d._graph_trees[myroot]["graph_db"] = graph_tree.dbapi
 	d._graph_trees[myroot]["graph"] = d.digraph
 	d._graph_trees[myroot]["graph_interface"] = dep_check_iface
-	d._graph_trees[myroot]["downgrade_probe"] = depgraph._downgrade_probe
+	d._graph_trees[myroot]["downgrade_probe"] = Depgraph._downgrade_probe
 
 	filtered_tree := func() {
 		//pass
 	}
 
-	filtered_tree.dbapi = _dep_check_composite_db(depgraph, myroot)
+	filtered_tree.dbapi = _dep_check_composite_db(Depgraph, myroot)
 	d._filtered_trees[myroot]["porttree"] = filtered_tree
 	d._visible_pkgs[myroot] = NewPackageVirtualDbapi(vardb.settings)
 
 	d._filtered_trees[myroot]["graph_db"] = graph_tree.dbapi
 	d._filtered_trees[myroot]["graph"] = d.digraph
-	d._filtered_trees[myroot]["vartree"] = depgraph._frozen_config.trees[
+	d._filtered_trees[myroot]["vartree"] = Depgraph._frozen_config.trees[
 		myroot
 	]["vartree"]
 	d._filtered_trees[myroot]["graph_interface"] = dep_check_iface
-	d._filtered_trees[myroot]["downgrade_probe"] = depgraph._downgrade_probe
+	d._filtered_trees[myroot]["downgrade_probe"] = Depgraph._downgrade_probe
 
 	dbs = []T{}
 	if "remove" in
@@ -591,20 +592,20 @@ func New_dynamic_depgraph_config(depgraph, myparams, allow_backtracking, backtra
 	d._graph_trees[myroot]["porttree"] = filtered_tree else:
 	if "--usepkgonly" not
 	in
-	depgraph._frozen_config.myopts:
-	portdb = depgraph._frozen_config.trees[myroot]["porttree"].dbapi
+	Depgraph._frozen_config.myopts:
+	portdb = Depgraph._frozen_config.trees[myroot]["porttree"].dbapi
 	db_keys = list(portdb._aux_cache_keys)
 	dbs.append((portdb, "ebuild", false, false, db_keys))
 
 	if "--usepkg" in
-	depgraph._frozen_config.myopts:
-	bindb = depgraph._frozen_config.trees[myroot]["bintree"].dbapi
+	Depgraph._frozen_config.myopts:
+	bindb = Depgraph._frozen_config.trees[myroot]["bintree"].dbapi
 	db_keys = list(bindb._aux_cache_keys)
 	dbs.append((bindb, "binary", true, false, db_keys))
 
-	vardb = depgraph._frozen_config.trees[myroot]["vartree"].dbapi
+	vardb = Depgraph._frozen_config.trees[myroot]["vartree"].dbapi
 	db_keys = list(
-		depgraph._frozen_config._trees_orig[myroot][
+		Depgraph._frozen_config._trees_orig[myroot][
 			"vartree"
 		].dbapi._aux_cache_keys
 	)
@@ -614,7 +615,7 @@ func New_dynamic_depgraph_config(depgraph, myparams, allow_backtracking, backtra
 }
 
 
-type depgraph struct{}
+type Depgraph struct{}
 
 _UNREACHABLE_DEPTH = object()
 
@@ -646,7 +647,7 @@ d.query = UserQuery(myopts).query
 }
 
 
-func (d*depgraph) _index_binpkgs() {
+func (d*Depgraph) _index_binpkgs() {
 	for root
 	in
 	d._frozen_config.trees:
@@ -660,7 +661,7 @@ func (d*depgraph) _index_binpkgs() {
 	bindb._provides_inject(d._pkg(cpv, "binary", root_config))
 }
 
-func (d*depgraph) _load_vdb() {
+func (d*Depgraph) _load_vdb() {
 
 	if d._dynamic_config._vdb_loaded:
 	return
@@ -709,7 +710,7 @@ vardb:
 	d._dynamic_config._vdb_loaded = true
 }
 
-func (d*depgraph) _dynamic_deps_preload( fake_vartree) {
+func (d*Depgraph) _dynamic_deps_preload( fake_vartree) {
 	portdb = fake_vartree._portdb
 	for pkg
 	in
@@ -763,13 +764,13 @@ func (d*_dynamic_deps_proc_exit) __call__(proc) {
 	d._fake_vartree.dynamic_deps_preload(d._pkg, metadata)
 }
 
-func (d*depgraph) _spinner_update() {
+func (d*Depgraph) _spinner_update() {
 	if d._frozen_config.spinner {
 		d._frozen_config.spinner.update()
 	}
 }
 
-func (d*depgraph) _compute_abi_rebuild_info() {
+func (d*Depgraph) _compute_abi_rebuild_info() {
 
 	debug = "--debug"
 	in
@@ -1004,7 +1005,7 @@ writemsg_level("\n\n", level = logging.DEBUG, noiselevel = -1)
 d._forced_rebuilds = forced_rebuilds
 }
 
-func (d*depgraph) _show_abi_rebuild_info() {
+func (d*Depgraph) _show_abi_rebuild_info() {
 
 	if not d._forced_rebuilds:
 	return
@@ -1026,7 +1027,7 @@ func (d*depgraph) _show_abi_rebuild_info() {
 	writemsg_stdout("    %s\n" % (parent, ), noiselevel = -1)
 }
 
-func (d*depgraph) _eliminate_ignored_binaries() {
+func (d*Depgraph) _eliminate_ignored_binaries() {
 	for pkg
 	in
 	list(d._dynamic_config.ignored_binaries):
@@ -1057,7 +1058,7 @@ func (d*depgraph) _eliminate_ignored_binaries() {
 	break
 }
 
-func (d*depgraph) _ignored_binaries_autounmask_backtrack() {
+func (d*Depgraph) _ignored_binaries_autounmask_backtrack() {
 	if not all(
 	[
 		d._dynamic_config._allow_backtracking,
@@ -1100,7 +1101,7 @@ return true
 return false
 }
 
-func (d*depgraph) _changed_deps_report() {
+func (d*Depgraph) _changed_deps_report() {
 	if (
 		d._dynamic_config.myparams.get("changed_deps", "n") == "y"
 		or
@@ -1176,7 +1177,7 @@ line = colorize("INFORM", line)
 writemsg(line + "\n", noiselevel = -1)
 }
 
-func (d*depgraph) _show_ignored_binaries() {
+func (d*Depgraph) _show_ignored_binaries() {
 	if (
 		not d._dynamic_config.ignored_binaries
 	or
@@ -1220,7 +1221,7 @@ if "changed_deps" in ignored_binaries:
 d._show_ignored_binaries_changed_deps(ignored_binaries["changed_deps"])
 }
 
-func (d*depgraph) _show_ignored_binaries_respect_use(respect_use){
+func (d*Depgraph) _show_ignored_binaries_respect_use(respect_use){
 
 writemsg(
 "\n!!! The following binary packages have been ignored "
@@ -1253,7 +1254,7 @@ line = colorize("INFORM", line)
 writemsg(line + "\n", noiselevel = -1)
 }
 
-func (d*depgraph) _show_ignored_binaries_changed_deps( changed_deps) {
+func (d*Depgraph) _show_ignored_binaries_changed_deps( changed_deps) {
 
 	writemsg(
 		"\n!!! The following binary packages have been "
@@ -1282,7 +1283,7 @@ line = colorize("INFORM", line)
 writemsg(line + "\n", noiselevel = -1)
 }
 
-func (d*depgraph) _get_missed_updates(){
+func (d*Depgraph) _get_missed_updates(){
 
 missed_updates = {}
 for pkg, mask_reasons in chain(
@@ -1318,7 +1319,7 @@ return missed_updates
 
 }
 
-func (d*depgraph) _show_missed_update() {
+func (d*Depgraph) _show_missed_update() {
 
 	missed_updates = d._get_missed_updates()
 
@@ -1354,7 +1355,7 @@ func (d*depgraph) _show_missed_update() {
 	)
 }
 
-func (d*depgraph) _show_missed_update_unsatisfied_dep( missed_updates) {
+func (d*Depgraph) _show_missed_update_unsatisfied_dep( missed_updates) {
 
 	if not missed_updates:
 	return
@@ -1413,18 +1414,18 @@ writemsg(" for %s" % (pkg.root, ), noiselevel = -1)
 writemsg("\n", noiselevel = -1)
 }
 
-func (d*depgraph) _show_missed_update_slot_conflicts( missed_updates) {
+func (d*Depgraph) _show_missed_update_slot_conflicts( missed_updates) {
 
-	if not missed_updates:
-	return
+	if not missed_updates {
+		return
+	}
 
 	d._show_merge_list()
-	msg = [
-"\nWARNING: One or more updates/rebuilds have been "
-"skipped due to a dependency conflict:\n\n"
-]
+	msg := []string{
+		"\nWARNING: One or more updates/rebuilds have been skipped due to a dependency conflict:\n\n"
+	}
 
-indent = "  "
+indent := "  "
 for pkg, parent_atoms in missed_updates:
 msg.append(str(pkg.slot_atom))
 if pkg.root_config.settings["ROOT"] != "/":
@@ -1472,7 +1473,7 @@ msg.append("\n")
 writemsg("".join(msg), noiselevel = -1)
 }
 
-func (d*depgraph) _show_slot_collision_notice() {
+func (d*Depgraph) _show_slot_collision_notice() {
 
 	if not any(d._dynamic_config._package_tracker.slot_conflicts()):
 	return
@@ -1531,7 +1532,7 @@ writemsg(line + "\n", noiselevel =-1)
 writemsg("\n", noiselevel =-1)
 }
 
-func (d*depgraph) _solve_non_slot_operator_slot_conflicts() {
+func (d*Depgraph) _solve_non_slot_operator_slot_conflicts() {
 	debug = "--debug"
 	in
 	d._frozen_config.myopts
@@ -1799,7 +1800,7 @@ d._dynamic_config._conflict_missed_update[pkg][
 ].add((parent, atom))
 }
 
-func (d*depgraph) _process_slot_conflicts() {
+func (d*Depgraph) _process_slot_conflicts() {
 
 	d._solve_non_slot_operator_slot_conflicts()
 
@@ -1816,7 +1817,7 @@ func (d*depgraph) _process_slot_conflicts() {
 	d._slot_operator_trigger_reinstalls()
 }
 
-func (d*depgraph) _process_slot_conflict( conflict) {
+func (d*Depgraph) _process_slot_conflict( conflict) {
 	root = conflict.root
 	slot_atom = conflict.atom
 	slot_nodes = conflict.pkgs
@@ -1887,7 +1888,7 @@ root, slot_atom, slot_parent_atoms, remaining
 )
 }
 
-func (d*depgraph) _slot_confict_backtrack(root, slot_atom, all_parents, conflict_pkgs) {
+func (d*Depgraph) _slot_confict_backtrack(root, slot_atom, all_parents, conflict_pkgs) {
 
 	debug = "--debug"
 	in
@@ -1952,7 +1953,7 @@ writemsg_level(
 )
 }
 
-func (d*depgraph) _slot_conflict_backtrack_abi( pkg, slot_nodes, conflict_atoms) {
+func (d*Depgraph) _slot_conflict_backtrack_abi( pkg, slot_nodes, conflict_atoms) {
 
 	found_update = false
 	for parent_atom, conflict_pkgs
@@ -1994,7 +1995,7 @@ nil:
 	return found_update
 }
 
-func (d*depgraph) _slot_change_probe( dep) {
+func (d*Depgraph) _slot_change_probe( dep) {
 	if not(
 		isinstance(dep.parent, structs.Package) and
 	not
@@ -2039,7 +2040,7 @@ return nil
 return unbuilt_child
 }
 
-func (d*depgraph) _slot_change_backtrack( dep, new_child_slot){
+func (d*Depgraph) _slot_change_backtrack( dep, new_child_slot){
 child = dep.child
 if "--debug" in d._frozen_config.myopts:
 msg = [
@@ -2078,7 +2079,7 @@ reinstalls
 d._dynamic_config._need_restart = true
 }
 
-func (d*depgraph) _slot_operator_update_backtrack(dep, new_child_slot=nil, new_dep=nil) {
+func (d*Depgraph) _slot_operator_update_backtrack(dep, new_child_slot=nil, new_dep=nil) {
 	if new_child_slot is
 nil:
 	child = dep.child
@@ -2131,7 +2132,7 @@ abi_reinstalls
 d._dynamic_config._need_restart = true
 }
 
-func (d*depgraph) _slot_operator_update_probe_slot_conflict(dep) {
+func (d*Depgraph) _slot_operator_update_probe_slot_conflict(dep) {
 	new_dep = d._slot_operator_update_probe(dep, slot_conflict = true)
 
 	if new_dep is
@@ -2158,7 +2159,7 @@ nil:
 	return nil
 }
 
-func (d*depgraph) _slot_operator_update_probe(
+func (d*Depgraph) _slot_operator_update_probe(
 dep, new_child_slot=false, slot_conflict=false, autounmask_level=nil
 ) {
 
@@ -2454,7 +2455,7 @@ writemsg_level("\n".join(msg), noiselevel= -1, level = logging.DEBUG)
 return nil
 }
 
-func (d*depgraph) _slot_operator_unsatisfied_probe(dep) {
+func (d*Depgraph) _slot_operator_unsatisfied_probe(dep) {
 
 	if (
 		dep.parent.installed
@@ -2530,7 +2531,7 @@ nil:
 	return false
 }
 
-func (d*depgraph) _slot_operator_unsatisfied_backtrack(dep) {
+func (d*Depgraph) _slot_operator_unsatisfied_backtrack(dep) {
 
 	parent = dep.parent
 
@@ -2574,7 +2575,7 @@ reinstalls
 d._dynamic_config._need_restart = true
 }
 
-func (d*depgraph) _in_blocker_conflict( pkg)bool {
+func (d*Depgraph) _in_blocker_conflict( pkg)bool {
 
 	if d._dynamic_config._blocked_pkgs is
 	nil
@@ -2595,7 +2596,7 @@ func (d*depgraph) _in_blocker_conflict( pkg)bool {
 	return false
 }
 
-func (d*depgraph) _upgrade_available( pkg) bool{
+func (d*Depgraph) _upgrade_available( pkg) bool{
 	for available_pkg
 	in
 	d._iter_similar_available(pkg, pkg.slot_atom):
@@ -2606,7 +2607,7 @@ func (d*depgraph) _upgrade_available( pkg) bool{
 	return false
 }
 
-func (d*depgraph) _downgrade_probe( pkg) bool {
+func (d*Depgraph) _downgrade_probe( pkg) bool {
 	available_pkg = nil
 	for available_pkg
 	in
@@ -2617,7 +2618,7 @@ func (d*depgraph) _downgrade_probe( pkg) bool {
 	return available_pkg!= nil
 }
 
-func (d*depgraph) _select_atoms_probe( root, pkg) {
+func (d*Depgraph) _select_atoms_probe( root, pkg) {
 	selected_atoms = []
 use = d._pkg_use_enabled(pkg)
 for k in pkg._dep_keys:
@@ -2630,7 +2631,7 @@ d._select_atoms(root, v, myuse = use, parent = pkg)[pkg]
 return frozenset(x.unevaluated_atom for x in selected_atoms)
 }
 
-func (d*depgraph) _flatten_atoms( pkg, use) {
+func (d*Depgraph) _flatten_atoms( pkg, use) {
 
 	cache_key = (pkg, use)
 
@@ -2664,7 +2665,7 @@ d._dynamic_config._flatten_atoms_cache[cache_key] = atoms
 return atoms
 }
 
-func (d*depgraph) _iter_similar_available(graph_pkg, atom, autounmask_level=nil) {
+func (d*Depgraph) _iter_similar_available(graph_pkg, atom, autounmask_level=nil) {
 
 	usepkgonly = "--usepkgonly"
 	in
@@ -2716,7 +2717,7 @@ func (d*depgraph) _iter_similar_available(graph_pkg, atom, autounmask_level=nil)
 	pkg
 }
 
-func (d*depgraph) _replace_installed_atom(inst_pkg) {
+func (d*Depgraph) _replace_installed_atom(inst_pkg) {
 	built_pkgs = []
 for pkg in d._iter_similar_available(inst_pkg, Atom("=%s" % inst_pkg.cpv)):
 if not pkg.built:
@@ -2740,7 +2741,7 @@ return best_version.slot_atom
 return nil
 }
 
-func (d*depgraph) _slot_operator_trigger_reinstalls() {
+func (d*Depgraph) _slot_operator_trigger_reinstalls() {
 
 	rebuild_if_new_slot = (
 		d._dynamic_config.myparams.get("rebuild_if_new_slot", "y") == "y"
@@ -2793,7 +2794,7 @@ nil:
 	d._slot_operator_update_backtrack(dep)
 }
 
-func (d*depgraph) _reinstall_for_flags(pkg, forced_flags, orig_use, orig_iuse, cur_use, cur_iuse) {
+func (d*Depgraph) _reinstall_for_flags(pkg, forced_flags, orig_use, orig_iuse, cur_use, cur_iuse) {
 	binpkg_respect_use = pkg.built
 	and
 	d._dynamic_config.myparams.get(
@@ -2830,7 +2831,7 @@ binpkg_respect_use:
 	return nil
 }
 
-func (d*depgraph) _changed_deps( pkg) {
+func (d*Depgraph) _changed_deps( pkg) {
 
 	ebuild = nil
 try:
@@ -2890,14 +2891,14 @@ d._dynamic_config._changed_deps_pkgs[pkg] = ebuild
 return changed
 }
 
-func (d*depgraph) _changed_slot( pkg) {
+func (d*Depgraph) _changed_slot( pkg) {
 	ebuild := d._equiv_ebuild(pkg)
 	return ebuild!= nil&& (ebuild.slot, ebuild.sub_slot) != (
 		pkg.slot, pkg.sub_slot,)
 }
 
 // false
-func (d*depgraph) _create_graph(allow_unsatisfied bool) {
+func (d*Depgraph) _create_graph(allow_unsatisfied bool) {
 	dep_stack = d._dynamic_config._dep_stack
 	dep_disjunctive_stack = d._dynamic_config._dep_disjunctive_stack
 	while
@@ -2921,7 +2922,7 @@ dep_stack:
 }
 
 // false
-func (d*depgraph) _expand_set_args(input_args, add_to_digraph=false) {
+func (d*Depgraph) _expand_set_args(input_args, add_to_digraph=false) {
 
 	traversed_set_args = set()
 
@@ -2978,7 +2979,7 @@ depgraph_sets.sets[nested_arg.name] = nested_arg.pset
 }
 
 // false
-func (d*depgraph) _add_dep(dep, allow_unsatisfied=false) {
+func (d*Depgraph) _add_dep(dep, allow_unsatisfied=false) {
 	debug = "--debug"
 	in
 	d._frozen_config.myopts
@@ -3161,7 +3162,7 @@ return 0
 return 1
 }
 
-func (d*depgraph) _check_slot_conflict( pkg, atom) {
+func (d*Depgraph) _check_slot_conflict( pkg, atom) {
 	existing_node = next(
 		d._dynamic_config._package_tracker.match(
 			pkg.root, pkg.slot_atom, installed = false
@@ -3184,7 +3185,7 @@ nil:
 	return (existing_node, matches)
 }
 
-func (d*depgraph) _add_pkg( pkg, dep) {
+func (d*Depgraph) _add_pkg( pkg, dep) {
 	debug = "--debug"
 	in
 	d._frozen_config.myopts
@@ -3499,7 +3500,7 @@ recurse:
 	return 1
 }
 
-func (d*depgraph) _add_installed_sonames(pkg) {
+func (d*Depgraph) _add_installed_sonames(pkg) {
 	if d._frozen_config.soname_deps_enabled and
 	pkg.provides
 	is
@@ -3513,7 +3514,7 @@ nil:
 }
 
 // false
-func (d*depgraph) _add_pkg_soname_deps(pkg, allow_unsatisfied=false) {
+func (d*Depgraph) _add_pkg_soname_deps(pkg, allow_unsatisfied=false) {
 	if d._frozen_config.soname_deps_enabled and
 	pkg.requires
 	is
@@ -3545,7 +3546,7 @@ soname_provided:
 	return true
 }
 
-func (d*depgraph) _remove_pkg(pkg) {
+func (d*Depgraph) _remove_pkg(pkg) {
 	debug = "--debug"
 	in
 	d._frozen_config.myopts
@@ -3608,7 +3609,7 @@ d._dynamic_config._highest_pkg_cache.clear()
 d._dynamic_config._highest_pkg_cache_cp_map.clear()
 }
 
-func (d*depgraph) _check_masks(pkg) {
+func (d*Depgraph) _check_masks(pkg) {
 
 	slot_key = (pkg.root, pkg.slot_atom)
 
@@ -3621,7 +3622,7 @@ func (d*depgraph) _check_masks(pkg) {
 	d._dynamic_config._masked_license_updates.add(other_pkg)
 }
 
-func (d*depgraph) _add_parent_atom( pkg, parent_atom){
+func (d*Depgraph) _add_parent_atom( pkg, parent_atom){
 	parent_atoms = d._dynamic_config._parent_atoms.get(pkg)
 	if parent_atoms is
 nil:
@@ -3630,7 +3631,7 @@ nil:
 	parent_atoms.add(parent_atom)
 }
 
-func (d*depgraph) _add_slot_operator_dep(dep) {
+func (d*Depgraph) _add_slot_operator_dep(dep) {
 	slot_key = (dep.root, dep.child.slot_atom)
 	slot_info = d._dynamic_config._slot_operator_deps.get(slot_key)
 	if slot_info is
@@ -3641,7 +3642,7 @@ slot_info.append(dep)
 }
 
 // false
-func (d*depgraph) _add_pkg_deps( pkg, allow_unsatisfied=false) {
+func (d*Depgraph) _add_pkg_deps( pkg, allow_unsatisfied=false) {
 
 	if not d._add_pkg_soname_deps(pkg, allow_unsatisfied = allow_unsatisfied):
 	return false
@@ -3918,7 +3919,7 @@ e:
 	return 1
 }
 
-func (d*depgraph) _add_pkg_dep_string(pkg, dep_root, dep_priority, dep_string, allow_unsatisfied) {
+func (d*Depgraph) _add_pkg_dep_string(pkg, dep_root, dep_priority, dep_string, allow_unsatisfied) {
 	_autounmask_backup = d._dynamic_config._autounmask
 	if dep_priority.optional or
 	dep_priority.ignored:
@@ -3931,7 +3932,7 @@ finally:
 	d._dynamic_config._autounmask = _autounmask_backup
 }
 
-func (d*depgraph) _ignore_dependency( atom, pkg, child, dep, mypriority, recurse_satisfied) {
+func (d*Depgraph) _ignore_dependency( atom, pkg, child, dep, mypriority, recurse_satisfied) {
 	if not mypriority.satisfied:
 	return false
 	slot_operator_rebuild = false
@@ -3989,7 +3990,7 @@ func (d*depgraph) _ignore_dependency( atom, pkg, child, dep, mypriority, recurse
 	)
 }
 
-func (d*depgraph) _wrapped_add_pkg_dep_string(pkg, dep_root, dep_priority, dep_string, allow_unsatisfied) {
+func (d*Depgraph) _wrapped_add_pkg_dep_string(pkg, dep_root, dep_priority, dep_string, allow_unsatisfied) {
 	if isinstance(pkg.depth, int):
 	depth = pkg.depth + 1
 	else:
@@ -4235,7 +4236,7 @@ writemsg_level(
 return 1
 }
 
-func (d*depgraph) _minimize_children( parent, priority, root_config, atoms) {
+func (d*Depgraph) _minimize_children( parent, priority, root_config, atoms) {
 
 	atom_pkg_map =
 	{
@@ -4363,7 +4364,7 @@ child_pkgs.sort()
 yield (atom, child_pkgs[-1])
 }
 
-func (d*depgraph) _queue_disjunctive_deps(pkg, dep_root, dep_priority, dep_struct, _disjunctions_recursive=nil) {
+func (d*Depgraph) _queue_disjunctive_deps(pkg, dep_root, dep_priority, dep_struct, _disjunctions_recursive=nil) {
 	disjunctions = (
 	[]
 	if _disjunctions_recursive is
@@ -4402,13 +4403,13 @@ disjunctions:
 	d._queue_disjunction(pkg, dep_root, dep_priority, disjunctions)
 }
 
-func (d*depgraph)_queue_disjunction(pkg, dep_root, dep_priority, dep_struct){
+func (d*Depgraph)_queue_disjunction(pkg, dep_root, dep_priority, dep_struct){
 	d._dynamic_config._dep_disjunctive_stack.append(
 		(pkg, dep_root, dep_priority, dep_struct)
 	)
 }
 
-func (d*depgraph) _pop_disjunction(allow_unsatisfied) {
+func (d*Depgraph) _pop_disjunction(allow_unsatisfied) {
 	(
 		pkg,
 		dep_root,
@@ -4422,7 +4423,7 @@ func (d*depgraph) _pop_disjunction(allow_unsatisfied) {
 	return 1
 }
 
-func (d*depgraph) _priority( **kwargs) {
+func (d*Depgraph) _priority( **kwargs) {
 	if "remove" in
 	d._dynamic_config.myparams:
 	priority_constructor = UnmergeDepPriority
@@ -4431,7 +4432,7 @@ func (d*depgraph) _priority( **kwargs) {
 	return priority_constructor(**kwargs)
 }
 
-func (d*depgraph) _dep_expand( root_config, atom_without_category) {
+func (d*Depgraph) _dep_expand( root_config, atom_without_category) {
 	null_cp = portage.dep_getkey(
 		insert_category_into_atom(atom_without_category, "null")
 	)
@@ -4459,7 +4460,7 @@ allow_repo = true,
 return deps
 }
 
-func (d*depgraph) _have_new_virt(root, atom_cp) {
+func (d*Depgraph) _have_new_virt(root, atom_cp) {
 	ret = false
 	for (
 		db,
@@ -4475,7 +4476,7 @@ func (d*depgraph) _have_new_virt(root, atom_cp) {
 	return ret
 }
 
-func (d*depgraph) _iter_atoms_for_pkg(pkg) {
+func (d*Depgraph) _iter_atoms_for_pkg(pkg) {
 	depgraph_sets = d._dynamic_config.sets[pkg.root]
 	atom_arg_map = depgraph_sets.atom_arg_map
 	for atom
@@ -4511,7 +4512,7 @@ continue
 yield arg, atom
 }
 
-func (d*depgraph) select_files( args) {
+func (d*Depgraph) select_files( args) {
 	def
 	spinner_cb():
 	d._frozen_config.spinner.update()
@@ -4537,7 +4538,7 @@ nil:
 	spinner_cb.handle.cancel()
 }
 
-func (d*depgraph) _select_files(myfiles) {
+func (d*Depgraph) _select_files(myfiles) {
 	d._load_vdb()
 	if (
 		d._frozen_config.soname_deps_enabled
@@ -4939,7 +4940,7 @@ d._dynamic_config._initial_arg_list = args[:]
 return d._resolve(myfavorites)
 }
 
-func (d*depgraph) _gen_reinstall_sets() {
+func (d*Depgraph) _gen_reinstall_sets() {
 
 	atom_list = []
 for root, atom in d._rebuild.rebuild_list:
@@ -4964,7 +4965,7 @@ root_config = d._frozen_config.roots[root],
 )
 }
 
-func (d*depgraph) _resolve( myfavorites) {
+func (d*Depgraph) _resolve( myfavorites) {
 	debug = "--debug"
 	in
 	d._frozen_config.myopts
@@ -5300,7 +5301,7 @@ graph_copy:
 	return (true, myfavorites)
 }
 
-func (d*depgraph) _apply_autounmask_continue_state() {
+func (d*Depgraph) _apply_autounmask_continue_state() {
 	for node
 	in
 	d._dynamic_config._serialized_tasks_cache:
@@ -5310,7 +5311,7 @@ func (d*depgraph) _apply_autounmask_continue_state() {
 	node._metadata["USE"] = " ".join(effective_use)
 }
 
-func (d*depgraph) _apply_parent_use_changes() {
+func (d*Depgraph) _apply_parent_use_changes() {
 	if (
 		d._dynamic_config._unsatisfied_deps_for_display
 		and
@@ -5329,7 +5330,7 @@ d._dynamic_config._unsatisfied_deps_for_display
 d._dynamic_config._unsatisfied_deps_for_display = remaining_items
 }
 
-func (d*depgraph) _set_args( args) {
+func (d*Depgraph) _set_args( args) {
 
 	set_atoms =
 	{
@@ -5380,7 +5381,7 @@ trees["porttree"].dbapi._clear_cache()
 }
 
 // false
-func (d*depgraph) _greedy_slots( root_config, atom, blocker_lookahead=false) {
+func (d*Depgraph) _greedy_slots( root_config, atom, blocker_lookahead=false) {
 	highest_pkg, in_graph = d._select_package(root_config.root, atom)
 	if highest_pkg is
 nil:
@@ -5468,12 +5469,12 @@ discard_pkgs.add(pkg2)
 return [pkg.slot_atom for pkg in greedy_pkgs if pkg not in discard_pkgs]
 }
 
-func (d*depgraph) _select_atoms_from_graph( *pargs, **kwargs) {
+func (d*Depgraph) _select_atoms_from_graph( *pargs, **kwargs) {
 	kwargs["trees"] = d._dynamic_config._graph_trees
 	return d._select_atoms_highest_available(*pargs, **kwargs)
 }
 
-func (d*depgraph) _select_atoms_highest_available(
+func (d*Depgraph) _select_atoms_highest_available(
 root,
 depstring,
 myuse=nil,
@@ -5635,7 +5636,7 @@ node_stack.append((child_node, node, child_atom))
 return selected_atoms
 }
 
-func (d*depgraph) _expand_virt_from_graph( root, atom) {
+func (d*Depgraph) _expand_virt_from_graph( root, atom) {
 	if not isinstance(atom, Atom):
 	atom = Atom(atom)
 
@@ -5687,7 +5688,7 @@ atoms:
 }
 
 // false
-func (d*depgraph) _virt_deps_visible( pkg, ignore_use=false) bool {
+func (d*Depgraph) _virt_deps_visible( pkg, ignore_use=false) bool {
 try:
 	rdepend = d._select_atoms(
 		pkg.root,
@@ -5730,7 +5731,7 @@ atoms:
 }
 
 // false
-func (d*depgraph) _get_dep_chain(start_node, target_atom=nil, unsatisfied_dependency=false) {
+func (d*Depgraph) _get_dep_chain(start_node, target_atom=nil, unsatisfied_dependency=false) {
 	traversed_nodes = set()
 	dep_chain = []
 node = start_node
@@ -5891,7 +5892,7 @@ return dep_chain
 }
 
 // false
-func (d*depgraph) _get_dep_chain_as_comment( pkg, unsatisfied_dependency=false) {
+func (d*Depgraph) _get_dep_chain_as_comment( pkg, unsatisfied_dependency=false) {
 	dep_chain := d._get_dep_chain(
 		pkg, unsatisfied_dependency = unsatisfied_dependency
 	)
@@ -5906,7 +5907,7 @@ return msg
 }
 
 // nil, nil, false, false, nil, false
-func (d*depgraph) _show_unsatisfied_dep(
+func (d*Depgraph) _show_unsatisfied_dep(
 root,
 atom,
 myparent=nil,
@@ -6469,7 +6470,7 @@ writemsg("\n", noiselevel = -1)
 }
 
 // false
-func (d*depgraph) _iter_match_pkgs_any(root_config, atom, onlydeps=false) {
+func (d*Depgraph) _iter_match_pkgs_any(root_config, atom, onlydeps=false) {
 	for (
 		db,
 	pkg_type,
@@ -6488,7 +6489,7 @@ func (d*depgraph) _iter_match_pkgs_any(root_config, atom, onlydeps=false) {
 }
 
 // false
-func (d*depgraph) _iter_match_pkgs(root_config, pkg_type, atom, onlydeps=false) {
+func (d*Depgraph) _iter_match_pkgs(root_config, pkg_type, atom, onlydeps=false) {
 	if atom.package:
 	return d._iter_match_pkgs_atom(
 		root_config, pkg_type, atom, onlydeps = onlydeps
@@ -6499,7 +6500,7 @@ func (d*depgraph) _iter_match_pkgs(root_config, pkg_type, atom, onlydeps=false) 
 }
 
 // false
-func (d*depgraph) _iter_match_pkgs_soname(root_config, pkg_type, atom, onlydeps=false) {
+func (d*Depgraph) _iter_match_pkgs_soname(root_config, pkg_type, atom, onlydeps=false) {
 	db = root_config.trees[d.pkg_tree_map[pkg_type]].dbapi
 	installed = pkg_type == "installed"
 
@@ -6514,7 +6515,7 @@ func (d*depgraph) _iter_match_pkgs_soname(root_config, pkg_type, atom, onlydeps=
 }
 
 // false
-func (d*depgraph) _iter_match_pkgs_atom(root_config, pkg_type, atom, onlydeps=false) {
+func (d*Depgraph) _iter_match_pkgs_atom(root_config, pkg_type, atom, onlydeps=false) {
 
 	db = root_config.trees[d.pkg_tree_map[pkg_type]].dbapi
 	atom_exp = dep_expand(atom, mydb = db, settings = root_config.settings)
@@ -6614,7 +6615,7 @@ return
 }
 
 // false. nil
-func (d*depgraph) _select_pkg_highest_available(root, atom, onlydeps=false, parent=nil) {
+func (d*Depgraph) _select_pkg_highest_available(root, atom, onlydeps=false, parent=nil) {
 	if atom.package:
 	cache_key = (
 		root,
@@ -6644,7 +6645,7 @@ d._dynamic_config._visible_pkgs[pkg.root].cpv_inject(pkg)
 return ret
 }
 
-func (d*depgraph) _is_argument(pkg) bool{
+func (d*Depgraph) _is_argument(pkg) bool{
 	for arg, atom
 	in
 	d._iter_atoms_for_pkg(pkg):
@@ -6653,7 +6654,7 @@ func (d*depgraph) _is_argument(pkg) bool{
 	return false
 }
 
-func (d*depgraph) _prune_highest_pkg_cache( pkg) {
+func (d*Depgraph) _prune_highest_pkg_cache( pkg) {
 	cache = d._dynamic_config._highest_pkg_cache
 	key_map = d._dynamic_config._highest_pkg_cache_cp_map
 	for cp
@@ -6669,7 +6670,7 @@ for cache_key in key_map.pop((pkg.root, atom), []):
 cache.pop(cache_key, nil)
 }
 
-func (d*depgraph) _want_installed_pkg(pkg) bool {
+func (d*Depgraph) _want_installed_pkg(pkg) bool {
 	if d._frozen_config.excluded_pkgs.findAtomForPackage(
 		pkg, modified_use = d._pkg_use_enabled(pkg)
 ){
@@ -6695,7 +6696,7 @@ InvalidDependString:
 	arg
 }
 
-func (d*depgraph) _want_update_pkg(parent, pkg) {
+func (d*Depgraph) _want_update_pkg(parent, pkg) {
 
 	if d._frozen_config.excluded_pkgs.findAtomForPackage(
 		pkg, modified_use = d._pkg_use_enabled(pkg)
@@ -6740,7 +6741,7 @@ arg_atoms:
 	)
 }
 
-func (d*depgraph) _will_replace_child(parent, root, atom) {
+func (d*Depgraph) _will_replace_child(parent, root, atom) {
 	if parent.root != root or
 	parent.cp != atom.cp:
 	return nil
@@ -6754,7 +6755,7 @@ func (d*depgraph) _will_replace_child(parent, root, atom) {
 	return nil
 }
 
-func (d*depgraph) _too_deep(depth) bool {
+func (d*Depgraph) _too_deep(depth) bool {
 	deep := d._dynamic_config.myparams.get("deep", 0)
 	if depth is
 	d._UNREACHABLE_DEPTH:
@@ -6766,14 +6767,14 @@ true:
 }
 
 // 1
-func (d*depgraph) _depth_increment(depth, n int) int {
+func (d*Depgraph) _depth_increment(depth, n int) int {
 	return depth + n
 	if isinstance(depth, int)
 	else
 	depth
 }
 
-func (d*depgraph) _equiv_ebuild(pkg) {
+func (d*Depgraph) _equiv_ebuild(pkg) {
 try:
 	return d._pkg(pkg.cpv, "ebuild", pkg.root_config, myrepo = pkg.repo)
 	except
@@ -6787,7 +6788,7 @@ try:
 }
 
 // nil
-func (d*depgraph) _equiv_ebuild_visible(pkg, autounmask_level=nil) bool {
+func (d*Depgraph) _equiv_ebuild_visible(pkg, autounmask_level=nil) bool {
 try:
 	pkg_eb = d._pkg(pkg.cpv, "ebuild", pkg.root_config, myrepo = pkg.repo)
 	except
@@ -6810,7 +6811,7 @@ try:
 	return true
 }
 
-func (d*depgraph) _equiv_binary_installed(pkg) bool {
+func (d*Depgraph) _equiv_binary_installed(pkg) bool {
 	build_time = pkg.build_time
 	if not build_time:
 	return false
@@ -6843,7 +6844,7 @@ func New_AutounmaskLevel() *_AutounmaskLevel{
 	return a
 }
 
-func (d*depgraph) _autounmask_levels() {
+func (d*Depgraph) _autounmask_levels() {
 
 	if d._dynamic_config._autounmask is
 	not
@@ -6903,7 +6904,7 @@ true:
 	autounmask_level
 }
 
-func (d*depgraph)_select_pkg_highest_available_imp(root, atom, onlydeps = false, parent = nil){
+func (d*Depgraph)_select_pkg_highest_available_imp(root, atom, onlydeps = false, parent = nil){
 	pkg, existing = d._wrapped_select_pkg_highest_available_imp(
 		root, atom, onlydeps = onlydeps, parent = parent
 	)
@@ -6967,7 +6968,7 @@ nil:
 }
 
 // nil
-func (d*depgraph) _pkg_visibility_check( pkg, autounmask_level=nil, trust_graph=true) bool {
+func (d*Depgraph) _pkg_visibility_check( pkg, autounmask_level=nil, trust_graph=true) bool {
 
 	if pkg.visible {
 		return true
@@ -7100,7 +7101,7 @@ nil:
 	return true
 }
 
-func (d*depgraph) _pkg_use_enabled( pkg, target_use=nil) {
+func (d*Depgraph) _pkg_use_enabled( pkg, target_use=nil) {
 	if pkg.built:
 	return pkg.use.enabled
 	needed_use_config_change = d._dynamic_config._needed_use_config_changes.get(
@@ -7262,7 +7263,7 @@ parent_atoms:
 }
 
 // false, nil, nil
-func (d*depgraph) _wrapped_select_pkg_highest_available_imp(
+func (d*Depgraph) _wrapped_select_pkg_highest_available_imp(
 root, atom, onlydeps=false, autounmask_level=nil, parent=nil
 ) {
 	root_config = d._frozen_config.roots[root]
@@ -7789,7 +7790,7 @@ return matched_packages[-1], existing_node
 }
 
 // false, nil
-func (d*depgraph) _select_pkg_from_graph(root, atom, onlydeps=false, parent=nil) {
+func (d*Depgraph) _select_pkg_from_graph(root, atom, onlydeps=false, parent=nil) {
 	graph_db = d._dynamic_config._graph_trees[root]["porttree"].dbapi
 	matches = graph_db.match_pkgs(atom)
 	if not matches:
@@ -7808,7 +7809,7 @@ func (d*depgraph) _select_pkg_from_graph(root, atom, onlydeps=false, parent=nil)
 }
 
 // false, nil
-func (d*depgraph) _select_pkg_from_installed(root, atom, onlydeps=false, parent=nil) {
+func (d*Depgraph) _select_pkg_from_installed(root, atom, onlydeps=false, parent=nil) {
 	matches = list(
 		d._iter_match_pkgs(d._frozen_config.roots[root], "installed", atom)
 	)
@@ -7845,7 +7846,7 @@ return pkg, in_graph
 }
 
 // nil
-func (d*depgraph) _complete_graph(required_sets) {
+func (d*Depgraph) _complete_graph(required_sets) {
 	if "recurse" not
 	in
 	d._dynamic_config.myparams
@@ -8105,7 +8106,7 @@ return 1
 }
 
 // false, false, nil
-func (d*depgraph) _pkg(cpv, type_name, root_config, installed=false, onlydeps=false, myrepo=nil) {
+func (d*Depgraph) _pkg(cpv, type_name, root_config, installed=false, onlydeps=false, myrepo=nil) {
 
 	root_config = d._frozen_config.roots[root_config.root]
 	pkg = d._frozen_config._pkg_cache.get(
@@ -8201,7 +8202,7 @@ db:
 	return pkg
 }
 
-func (d*depgraph) _validate_blockers() {
+func (d*Depgraph) _validate_blockers() {
 	d._dynamic_config._blocked_pkgs = digraph()
 
 	if "--nodeps" in
@@ -8499,7 +8500,7 @@ d._dynamic_config._unsolvable_blockers.add(blocker, parent)
 return true
 }
 
-func (d*depgraph) _accept_blocker_conflicts() {
+func (d*Depgraph) _accept_blocker_conflicts() {
 	acceptable = false
 	for x
 	in("--buildpkgonly", "--fetchonly", "--fetch-all-uri", "--nodeps"):
@@ -8510,7 +8511,7 @@ func (d*depgraph) _accept_blocker_conflicts() {
 	return acceptable
 }
 
-func (d*depgraph) _merge_order_bias( mygraph) {
+func (d*Depgraph) _merge_order_bias( mygraph) {
 	if not d._dynamic_config.myparams["implicit_system_deps"] {
 		return
 	}
@@ -8553,7 +8554,7 @@ func (d*depgraph) _merge_order_bias( mygraph) {
 	mygraph.order.sort(key = cmp_sort_key(cmp_merge_preference))
 }
 
-func (d*depgraph) altlist() {
+func (d*Depgraph) altlist() {
 
 	while
 	d._dynamic_config._serialized_tasks_cache
@@ -8582,7 +8583,7 @@ reversed:
 	return retlist
 }
 
-func (d*depgraph) _implicit_libc_deps(mergelist, graph) {
+func (d*Depgraph) _implicit_libc_deps(mergelist, graph) {
 	libc_pkgs =
 	{
 	}
@@ -8637,7 +8638,7 @@ earlier_libc_pkgs:
 )
 }
 
-func (d*depgraph) schedulerGraph() {
+func (d*Depgraph) schedulerGraph() {
 	mergelist = d.altlist()
 	d._implicit_libc_deps(mergelist, d._dynamic_config._scheduler_graph)
 
@@ -8689,7 +8690,7 @@ trees:
 	return sched_config
 }
 
-func (d*depgraph) break_refs() {
+func (d*Depgraph) break_refs() {
 	for root_config
 	in
 	d._frozen_config.roots.values():
@@ -8701,7 +8702,7 @@ func (d*depgraph) break_refs() {
 	] = root_config
 }
 
-func (d*depgraph) _resolve_conflicts() {
+func (d*Depgraph) _resolve_conflicts() {
 
 	if (
 		"complete" not
@@ -8724,7 +8725,7 @@ func (d*depgraph) _resolve_conflicts() {
 	d._process_slot_conflicts()
 }
 
-func (d*depgraph) _serialize_tasks() {
+func (d*Depgraph) _serialize_tasks() {
 
 	debug = "--debug"
 	in
@@ -9440,7 +9441,7 @@ raise d._unknown_internal_error()
 return retlist, scheduler_graph
 }
 
-func (d*depgraph) _show_circular_deps(mygraph) {
+func (d*Depgraph) _show_circular_deps(mygraph) {
 	d._dynamic_config._circular_dependency_handler = circular_dependency_handler(
 		self, mygraph
 	)
@@ -9505,7 +9506,7 @@ nil:
 )
 }
 
-func (d*depgraph) _show_merge_list() {
+func (d*Depgraph) _show_merge_list() {
 	if d._dynamic_config._serialized_tasks_cache is
 	not
 	nil
@@ -9523,7 +9524,7 @@ func (d*depgraph) _show_merge_list() {
 	d.display(d._dynamic_config._serialized_tasks_cache)
 }
 
-func (d*depgraph) _show_unsatisfied_blockers(blockers) {
+func (d*Depgraph) _show_unsatisfied_blockers(blockers) {
 	d._show_merge_list()
 	msg = (
 		"Error: The above package list contains "
@@ -9646,20 +9647,20 @@ if "--quiet" not in d._frozen_config.myopts:
 show_blocker_docs_link()
 }
 
-func (d*depgraph) display(mylist, favorites=[], verbosity=nil) {
+func (d*Depgraph) display(mylist, favorites=[], verbosity=nil) {
 	d._dynamic_config._displayed_list = mylist
 
 	if "--tree" in
 	d._frozen_config.myopts:
 	mylist = tuple(reversed(mylist))
 
-	display = Display()
+	display := resolver.NewDisplay()
 
-	return display(self, mylist, favorites, verbosity)
+	return display.__call__(d, mylist, favorites, verbosity)
 }
 
 // false
-func (d*depgraph) _display_autounmask( autounmask_continue bool) {
+func (d*Depgraph) _display_autounmask( autounmask_continue bool) {
 
 	if d._dynamic_config._displayed_autounmask:
 	return
@@ -10142,7 +10143,7 @@ for line in msg:
 writemsg(" %s %s\n" % (colorize("WARN", "*"), line), noiselevel = -1)
 }
 
-func (d*depgraph) display_problems() {
+func (d*Depgraph) display_problems() {
 
 	if d._dynamic_config._circular_deps_for_display is
 	not
@@ -10359,7 +10360,7 @@ noiselevel = -1,
 )
 }
 
-func (d*depgraph) saveNomergeFavorites() {
+func (d*Depgraph) saveNomergeFavorites() {
 	for x
 	in(
 		"--buildpkgonly",
@@ -10470,7 +10471,7 @@ world_set.unlock()
 }
 
 // true, true
-func (d*depgraph) _loadResumeCommand(resume_data, skip_masked=true, skip_missing=true) {
+func (d*Depgraph) _loadResumeCommand(resume_data, skip_masked=true, skip_missing=true) {
 
 	d._load_vdb()
 
@@ -10616,7 +10617,7 @@ return false
 return true
 }
 
-func (d*depgraph) _load_favorites( favorites) {
+func (d*Depgraph) _load_favorites( favorites) {
 	root_config = d._frozen_config.roots[d._frozen_config.target_root]
 	sets = root_config.sets
 	depgraph_sets = d._dynamic_config.sets[root_config.root]
@@ -10646,13 +10647,13 @@ return args
 }
 
 type UnsatisfiedResumeDep struct { //(portage.exception.PortageException):
-	depgraph
+	Depgraph
 }
 
-func NewUnsatisfiedResumeDep(depgraph, value) *UnsatisfiedResumeDep{
+func NewUnsatisfiedResumeDep(Depgraph, value) *UnsatisfiedResumeDep{
 	u := &UnsatisfiedResumeDep{}
 	portage.exception.PortageException.__init__(self, value)
-	u.depgraph = depgraph
+	u.Depgraph = Depgraph
 	return u
 }
 
@@ -10674,7 +10675,7 @@ type _backtrack_mask _internal_exception
 
 type _autounmask_breakage _internal_exception
 
-func(d*depgraph) need_restart() {
+func(d*Depgraph) need_restart() {
 	return (
 		d._dynamic_config._need_restart
 	and
@@ -10683,7 +10684,7 @@ func(d*depgraph) need_restart() {
 	)
 }
 
-func(d*depgraph) need_display_problems() bool {
+func(d*Depgraph) need_display_problems() bool {
 	if d.need_config_change():
 	return true
 	if d._dynamic_config._circular_deps_for_display:
@@ -10691,7 +10692,7 @@ func(d*depgraph) need_display_problems() bool {
 	return false
 }
 
-func(d*depgraph) need_config_change()bool {
+func(d*Depgraph) need_config_change()bool {
 	if (
 		d._dynamic_config._success_without_autounmask
 		or
@@ -10734,7 +10735,7 @@ func(d*depgraph) need_config_change()bool {
 	return false
 }
 
-func(d*depgraph) _have_autounmask_changes() {
+func(d*Depgraph) _have_autounmask_changes() {
 	digraph_nodes = d._dynamic_config.digraph.nodes
 	return (
 		any(
@@ -10775,11 +10776,11 @@ func(d*depgraph) _have_autounmask_changes() {
 )
 }
 
-func(d*depgraph) need_config_reload() {
+func(d*Depgraph) need_config_reload() {
 	return d._dynamic_config._need_config_reload
 }
 
-func(d*depgraph) autounmask_breakage_detected() {
+func(d*Depgraph) autounmask_breakage_detected() {
 try:
 	for pargs, kwargs
 	in
@@ -10793,17 +10794,17 @@ try:
 	return false
 }
 
-func(d*depgraph) get_backtrack_infos() {
+func(d*Depgraph) get_backtrack_infos() {
 	return d._dynamic_config._backtrack_infos
 }
 
 type _dep_check_composite_db struct { //(dbapi):
 }
 
-func New_dep_check_composite_db( depgraph, root) *_dep_check_composite_db{
+func New_dep_check_composite_db(Depgraph, root) *_dep_check_composite_db{
 	d := &_dep_check_composite_db{}
 	dbapi.__init__(self)
-	d._depgraph = depgraph
+	d._depgraph = Depgraph
 	d._root = root
 	d._match_cache =
 	{
@@ -11259,7 +11260,7 @@ noiselevel=-1,
 level=logging.DEBUG,
 )
 
-mydepgraph = depgraph(
+mydepgraph = Depgraph(
 settings,
 trees,
 myopts,
@@ -11293,7 +11294,7 @@ level=logging.DEBUG,
 )
 mydepgraph.display_problems()
 
-mydepgraph = depgraph(
+mydepgraph = Depgraph(
 settings,
 trees,
 myopts,
@@ -11314,7 +11315,7 @@ level=logging.DEBUG,
 )
 mydepgraph.display_problems()
 myparams["autounmask"] = false
-mydepgraph = depgraph(
+mydepgraph = Depgraph(
 settings,
 trees,
 myopts,
@@ -11347,7 +11348,7 @@ func _resume_depgraph(settings, trees, mtimedb, myopts, myparams, spinner) {
 	frozen_config = _frozen_depgraph_config(settings, trees, myopts, myparams, spinner)
 	while
 true:
-	mydepgraph = depgraph(
+	mydepgraph = Depgraph(
 		settings, trees, myopts, myparams, spinner, frozen_config = frozen_config
 	)
 try:
@@ -11355,7 +11356,7 @@ try:
 		mtimedb["resume"], skip_masked = skip_masked
 	)
 	except
-	depgraph.UnsatisfiedResumeDep
+	Depgraph.UnsatisfiedResumeDep
 	as
 e:
 	if not skip_unsatisfied:

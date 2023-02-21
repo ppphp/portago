@@ -2521,7 +2521,7 @@ func (c *Config) get_virts_p() map[string][]string {
 func (c *Config) getVirtuals() map[string][]string {
 	if c.virtualsManager()._treeVirtuals == nil {
 		if c.LocalConfig {
-			tempVartree := dbapi.NewVarTree(nil, c)
+			tempVartree := dbapi.NewVarTree( c)
 			c.virtualsManager()._populate_treeVirtuals(tempVartree)
 		} else {
 			c.virtualsManager()._treeVirtuals = map[string][]string{}

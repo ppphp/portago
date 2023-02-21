@@ -1577,7 +1577,7 @@ func (v *VarTree) populate() {
 	v.populated = 1
 }
 
-func NewVarTree(categories map[string]bool, settings *config.Config) *VarTree {
+func NewVarTree(settings *config.Config) *VarTree {
 	v := &VarTree{}
 	if settings == nil {
 		settings = portage.Settings()

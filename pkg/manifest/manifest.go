@@ -48,7 +48,7 @@ func manifest2MiscfileFilter(filename string) bool {
 	return !(filename == "Manifest" || strings.HasSuffix(filename, ".ebuild"))
 }
 
-func guessManifestFileType(filename string) string {
+func GuessManifestFileType(filename string) string {
 	if strings.HasPrefix(filename, "files"+string(os.PathSeparator)+"digest-") {
 		return ""
 	}
@@ -64,7 +64,7 @@ func guessManifestFileType(filename string) string {
 }
 
 func guessThinManifestFileType(filename string) string {
-	typee := guessManifestFileType(filename)
+	typee := GuessManifestFileType(filename)
 	if typee != "DIST" {
 		return ""
 	}
@@ -143,6 +143,7 @@ func (m *Manifest2Entry) __ne__(other *Manifest2Entry) bool {
 
 func NewManifest2Entry(typee, name string, hashes map[string]string) *Manifest2Entry {
 	m := &Manifest2Entry{}
+	m.ManifestEntry = NewManifestEntry(typee, name, hashes)
 
 	m.typee, m.name, m.hashes = typee, name, hashes
 	return m
@@ -223,7 +224,7 @@ func NewManifest[T interfaces.ISettings](pkgdir, distdir string, fetchlist_dict 
 	if thin {
 		m.guessType = guessThinManifestFileType
 	} else {
-		m.guessType = guessManifestFileType
+		m.guessType = GuessManifestFileType
 	}
 	m.allow_missing = allow_missing
 	m.allow_create = allow_create

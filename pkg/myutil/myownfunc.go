@@ -70,6 +70,15 @@ func InmsT[T any](a map[string]T, b string) bool {
 	return false
 }
 
+func InmsT2[T any]( b string,a map[string]T) bool {
+	for v := range a {
+		if b == v {
+			return true
+		}
+	}
+	return false
+}
+
 func Inmss(a map[string]string, b string) bool {
 	for v := range a {
 		if b == v {

@@ -19,6 +19,7 @@ import (
 )
 
 type QueryCommand struct {
+	IpcCommand
 	phase    string
 	settings *config.Config
 }
@@ -39,7 +40,7 @@ func NewQueryCommand(settings *config.Config, phase string) *QueryCommand {
 	return q
 }
 
-func (q *QueryCommand) __call__(argv []string) (string, string, int) {
+func (q *QueryCommand) Call(argv []string) (string, string, int) {
 	cmd := argv[0]
 	root := argv[1]
 	args := argv[2:]

@@ -76,572 +76,6 @@ type DepPriorityInterface interface{
 	__int__() int
 }
 
-type AbstractEbuildProcess struct {
-	*SpawnProcess
-	// slot
-	settings *config.Config
-	phase, _build_dir_unlock, _exit_command, _exit_timeout_id, _start_future string
-	_build_dir *EbuildBuildDir
-	_ipc_daemon *EbuildIpcDaemon
-
-	_phases_without_builddir []string
-	_phases_interactive_whitelist []string
-	_exit_timeout int
-	_enable_ipc_daemon bool
-}
-
-func (a *AbstractEbuildProcess)_start() {
-
-	need_builddir := true
-	for _, v := range a._phases_without_builddir {
-		if a.phase == v {
-			need_builddir = false
-			break
-		}
-	}
-
-	if st, err := os.Stat(a.settings.ValueDict["PORTAGE_BUILDDIR"]); need_builddir && err != nil && !st.IsDir() {
-		msg := fmt.Sprintf("The ebuild phase '%s' has been aborted "+
-			"since PORTAGE_BUILDDIR does not exist: '%s'", a.phase, a.settings.ValueDict["PORTAGE_BUILDDIR"])
-		a._eerror(myutil.SplitSubN(msg, 72))
-		i := 1
-		a.returncode = &i
-		a._async_wait()
-		return
-	}
-
-	if os.Geteuid() == 0 && runtime.GOOS == "linux" && a.settings.Features.Features["cgroup"] && !atom._global_pid_phases[a.phase] {
-		cgroup_root := "/sys/fs/cgroup"
-		cgroup_portage := filepath.Join(cgroup_root, "portage")
-
-		mp, err := myutil.Mountpoint(cgroup_root)
-		if err == nil {
-			if mp != cgroup_root {
-				st, err1 := os.Stat(cgroup_root)
-				if err1 != nil {
-					err = err1
-				} else {
-					if !st.IsDir() {
-						os.MkdirAll(cgroup_root, 0755)
-					}
-					err = exec.Command("mount", "-t", "tmpfs",
-						"-o", "rw,nosuid,nodev,noexec,mode=0755",
-						"tmpfs", cgroup_root).Run()
-				}
-			}
-		}
-		if err == nil {
-			mp, err1 := myutil.Mountpoint(cgroup_portage)
-			if err1 != nil {
-				err = err1
-			} else {
-				if mp != cgroup_portage {
-					st, err1 := os.Stat(cgroup_portage)
-					if err1 != nil {
-						err = err1
-					} else {
-						if !st.IsDir() {
-							os.MkdirAll(cgroup_portage, 0755)
-						}
-						err = exec.Command("mount", "-t", "cgroup",
-							"-o", "rw,nosuid,nodev,noexec,none,name=portage",
-							"tmpfs", cgroup_portage).Run()
-					}
-					if err == nil {
-						f, err1 := os.OpenFile(filepath.Join(
-							cgroup_portage, "release_agent"), os.O_RDWR|os.O_APPEND, 0644)
-						if err1 != nil {
-							err = err1
-						} else {
-							_, err = f.Write([]byte(filepath.Join(a.settings.ValueDict["PORTAGE_BIN_PATH"],
-								"cgroup-release-agent")))
-						}
-					}
-					if err == nil {
-						f, err1 := os.OpenFile(filepath.Join(
-							cgroup_portage, "notify_on_release"), os.O_RDWR|os.O_APPEND, 0644)
-						if err1 != nil {
-							err = err1
-						} else {
-							_, err = f.Write([]byte("1"))
-						}
-					}
-				} else {
-					release_agent := filepath.Join(
-						cgroup_portage, "release_agent")
-					f, err1 := os.Open(release_agent)
-					release_agent_path := ""
-					if err1 != nil {
-					}
-					defer f.Close()
-					l, err1 := ioutil.ReadAll(f)
-					if err1 != nil {
-					}
-					release_agent_path = strings.Split(string(l), "\n")[0]
-
-					if st, _ := os.Stat(release_agent_path); release_agent_path == "" || st != nil {
-						f, err1 := os.OpenFile(release_agent, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
-						if err1 != nil {
-
-						}
-						f.Write([]byte(filepath.Join(
-							a.settings.ValueDict["PORTAGE_BIN_PATH"],
-							"cgroup-release-agent")))
-					}
-				}
-			}
-		}
-
-		var cgroup_path string
-		if err == nil {
-			cp, err1 :=
-				ioutil.TempFile(cgroup_portage,
-					fmt.Sprintf("%s:%s.*", a.settings.ValueDict["CATEGORY"],
-						a.settings.ValueDict["PF"]))
-			if err1 != nil {
-				err = err1
-			} else {
-				cgroup_path = filepath.Join(cgroup_portage, cp.Name())
-			}
-		}
-		if err != nil {
-			//except (subprocess.CalledProcessError, OSError){
-			//pass
-			//}else{
-		} else {
-			a.cgroup = cgroup_path
-		}
-	}
-
-	if a.background {
-		a.settings.ValueDict["NOCOLOR"] = "true"
-	}
-
-	start_ipc_daemon := false
-	if a._enable_ipc_daemon {
-		delete(a.settings.ValueDict, "PORTAGE_EBUILD_EXIT_FILE")
-		if !myutil.Ins(a._phases_without_builddir, a.phase) {
-			start_ipc_daemon = true
-			if _, ok := a.settings.ValueDict["PORTAGE_BUILDDIR_LOCKED"]; !ok {
-				a._build_dir = NewEbuildBuildDir(a.scheduler, a.settings)
-				a._start_future = a._build_dir.async_lock()
-				a._start_future.add_done_callback(
-					func (lock_future) {
-						return a._start_post_builddir_lock(lock_future, start_ipc_daemon)
-					})
-				return
-			}
-		} else {
-			delete(a.settings.ValueDict, "PORTAGE_IPC_DAEMON")
-		}
-	} else {
-		delete(a.settings.ValueDict, "PORTAGE_IPC_DAEMON")
-		if myutil.Ins(a._phases_without_builddir, a.phase) {
-			exit_file := filepath.Join(
-				a.settings.ValueDict["PORTAGE_BUILDDIR"],
-				".exit_status")
-			a.settings.ValueDict["PORTAGE_EBUILD_EXIT_FILE"] = exit_file
-			if err := syscall.Unlink(exit_file); err != nil {
-				//except OSError{
-				if st, err := os.Stat(exit_file); err == nil && st != nil {
-					//raise
-				}
-			}
-		} else {
-			delete(a.settings.ValueDict, "PORTAGE_EBUILD_EXIT_FILE")
-		}
-	}
-
-	a._start_post_builddir_lock(nil, start_ipc_daemon)
-}
-
-// nil, false
-func (a *AbstractEbuildProcess)_start_post_builddir_lock( lock_future IFuture, start_ipc_daemon bool) {
-	if lock_future != nil {
-		//if lock_future is not a._start_future{
-		//raise AssertionError("lock_future is not a._start_future")
-		a._start_future = nil
-		if lock_future.cancelled() {
-			a._build_dir = nil
-			a.cancelled = true
-			a._was_cancelled()
-			a._async_wait()
-			return
-		}
-		lock_future.result()
-	}
-	if start_ipc_daemon {
-		a.settings.ValueDict["PORTAGE_IPC_DAEMON"] = "1"
-		a._start_ipc_daemon()
-	}
-
-	if a.fd_pipes == nil {
-		a.fd_pipes = map[int]int{}
-	}
-	null_fd := 0
-	if _, ok := a.fd_pipes[0]; !ok &&
-		!myutil.Ins(a._phases_interactive_whitelist, a.phase) &&
-		!myutil.Ins(strings.Fields(a.settings.ValueDict["PROPERTIES"]), "interactive") {
-		null_fd, _ := syscall.Open("/dev/null", os.O_RDWR, 0644)
-		a.fd_pipes[0] = null_fd
-	}
-
-	//try{
-	a.SpawnProcess._start()
-	//finally{
-	if null_fd != 0 {
-		syscall.Close(null_fd)
-	}
-}
-
-func (a *AbstractEbuildProcess)_init_ipc_fifos()(string,string) {
-
-	input_fifo := filepath.Join(
-		a.settings.ValueDict["PORTAGE_BUILDDIR"], ".ipc_in")
-	output_fifo := filepath.Join(
-		a.settings.ValueDict["PORTAGE_BUILDDIR"], ".ipc_out")
-
-	for _, p := range []string{input_fifo, output_fifo} {
-
-		st, err := os.Lstat(p)
-		if err != nil {
-
-			//except OSError{
-			syscall.Mkfifo(p, 0755)
-		} else {
-			if st.Mode()&syscall.S_IFIFO == 0 {
-				st = nil
-				if err := syscall.Unlink(p); err != nil {
-					//except OSError{
-					//	pass
-				}
-				syscall.Mkfifo(p, 0755)
-			}
-		}
-		util.apply_secpass_permissions(p, uint32(os.Getuid()), *data.portage_gid, 0770, -1, st, true)
-	}
-
-	return input_fifo, output_fifo
-}
-
-func (a *AbstractEbuildProcess)_start_ipc_daemon() {
-	a._exit_command = ExitCommand()
-	a._exit_command.reply_hook = a._exit_command_callback
-	query_command := ebuild2.NewQueryCommand(a.settings, a.phase)
-	commands := map[string]*ebuild2.QueryCommand{
-		"available_eclasses":  query_command,
-		"best_version":        query_command,
-		"eclass_path":         query_command,
-		"exit":                a._exit_command,
-		"has_version":         query_command,
-		"license_path":        query_command,
-		"master_repositories": query_command,
-		"repository_path":     query_command,
-	}
-	input_fifo, output_fifo := a._init_ipc_fifos()
-	a._ipc_daemon = NewEbuildIpcDaemon(commands,
-		input_fifo,
-		output_fifo,
-		a.scheduler)
-	a._ipc_daemon.start()
-}
-
-func (a *AbstractEbuildProcess)_exit_command_callback() {
-	if a._registered {
-		a._exit_timeout_id =
-			a.scheduler.call_later(a._exit_timeout,
-				a._exit_command_timeout_cb)
-	}
-}
-
-func (a *AbstractEbuildProcess)_exit_command_timeout_cb() {
-	if a._registered {
-		a.cancel()
-		a._exit_timeout_id =
-			a.scheduler.call_later(a._cancel_timeout,
-				a._cancel_timeout_cb)
-	} else {
-		a._exit_timeout_id = nil
-	}
-}
-
-func (a *AbstractEbuildProcess)_cancel_timeout_cb() {
-	a._exit_timeout_id = nil
-	a._async_waitpid()
-}
-
-func (a *AbstractEbuildProcess)_orphan_process_warn() {
-	phase := a.phase
-
-	msg := fmt.Sprintf("The ebuild phase '%s' with pid %s appears "+
-		"to have left an orphan process running in the background.", phase, a.pid)
-
-	a._eerror(myutil.SplitSubN(msg, 72))
-}
-
-func (a *AbstractEbuildProcess)_pipe( fd_pipes map[int]int) (int, int) {
-	stdout_pipe := 0
-	if !a.background {
-		stdout_pipe = fd_pipes[1]
-	}
-	got_pty, master_fd, slave_fd :=
-		_create_pty_or_pipe(copy_term_size = stdout_pipe)
-	return master_fd, slave_fd
-}
-
-func (a *AbstractEbuildProcess)_can_log( slave_fd int)bool {
-	return !(a.settings.Features.Features["sesandbox"] && a.settings.selinux_enabled()) || os.isatty(slave_fd)
-}
-
-func (a *AbstractEbuildProcess)_killed_by_signal( signum int) {
-	msg := fmt.Sprintf("The ebuild phase '%s' has been killed by signal %s.", a.phase, signum)
-	a._eerror(myutil.SplitSubN(msg, 72))
-}
-
-func (a *AbstractEbuildProcess)_unexpected_exit() {
-
-	phase := a.phase
-
-	msg := fmt.Sprintf("The ebuild phase '%s' has exited "+
-		"unexpectedly. This type of behavior "+
-		"is known to be triggered "+
-		"by things such as failed variable "+
-		"assignments (bug #190128) or bad substitution "+
-		"errors (bug #200313). Normally, before exiting, bash should "+
-		"have displayed an error message above. If bash did not "+
-		"produce an error message above, it's possible "+
-		"that the ebuild has called `exit` when it "+
-		"should have called `die` instead. This behavior may also "+
-		"be triggered by a corrupt bash binary or a hardware "+
-		"problem such as memory or cpu malfunction. If the problem is not "+
-		"reproducible or it appears to occur randomly, then it is likely "+
-		"to be triggered by a hardware problem. "+
-		"If you suspect a hardware problem then you should "+
-		"try some basic hardware diagnostics such as memtest. "+
-		"Please do not report this as a bug unless it is consistently "+
-		"reproducible and you are sure that your bash binary and hardware "+
-		"are functioning properly.", phase)
-
-	a._eerror(myutil.SplitSubN(msg, 72))
-}
-
-func (a *AbstractEbuildProcess)_eerror( lines []string) {
-	a._elog("eerror", lines)
-}
-
-func (a *AbstractEbuildProcess)_elog( elog_funcname string, lines []string) {
-	out := &bytes.Buffer{}
-	phase := a.phase
-
-	var elog_func func(string, string, string, io.Writer)
-	switch elog_funcname {
-	case "error":
-		elog_func = elog.eerror
-	}
-
-	global_havecolor := output.HaveColor
-	//try{
-	nc, ok := a.settings.ValueDict["NOCOLOR"]
-	if !ok {
-		output.HaveColor = 1
-	} else if strings.ToLower(nc) == "no" || strings.ToLower(nc) == "false" {
-		output.HaveColor = 0
-	}
-	for _, line := range lines {
-		elog_func(line, phase, a.settings.mycpv.string, out)
-	}
-	//finally{
-	output.HaveColor = global_havecolor
-	msg := out.String()
-	if msg != "" {
-		log_path := ""
-		if a.settings.ValueDict["PORTAGE_BACKGROUND"] != "subprocess" {
-			log_path = a.settings.ValueDict["PORTAGE_LOG_FILE"]
-		}
-		a.scheduler.output(msg, log_path, false, 0, -1)
-	}
-}
-
-func (a *AbstractEbuildProcess)_async_waitpid_cb( *args, **kwargs) {
-	a.SpawnProcess._async_waitpid_cb(*args, **kwargs)
-
-	if a._exit_timeout_id != nil {
-		a._exit_timeout_id.cancel()
-		a._exit_timeout_id = nil
-	}
-
-	if a._ipc_daemon != nil {
-		a._ipc_daemon.cancel()
-		if a._exit_command.exitcode != nil {
-			a.returncode = a._exit_command.exitcode
-		} else {
-			if *a.returncode < 0 {
-				if !a.cancelled {
-					a._killed_by_signal(-*a.returncode)
-				}
-			} else {
-				i := 1
-				a.returncode = &i
-				if !a.cancelled {
-					a._unexpected_exit()
-				}
-			}
-		}
-
-	} else if !a.cancelled {
-		exit_file := a.settings.ValueDict["PORTAGE_EBUILD_EXIT_FILE"]
-		if st, _ := os.Stat(exit_file); exit_file != "" && st == nil {
-			if *a.returncode < 0 {
-				if !a.cancelled {
-					a._killed_by_signal(-*a.returncode)
-				}
-			} else {
-				i := 1
-				a.returncode = &i
-				if !a.cancelled {
-					a._unexpected_exit()
-				}
-			}
-		}
-	}
-}
-
-func (a *AbstractEbuildProcess)_async_wait() {
-	if a._build_dir == nil {
-		a.SpawnProcess._async_wait()
-	} else if a._build_dir_unlock == nil{
-		if a.returncode == nil{
-			//raise asyncio.InvalidStateError("Result is not ready for %s" % (a,))
-		}
-		a._async_unlock_builddir(a.returncode)
-	}
-}
-
-// nil
-func (a *AbstractEbuildProcess)_async_unlock_builddir( returncode *int) {
-	if a._build_dir_unlock != nil {
-		//raise AssertionError("unlock already in progress")
-	}
-	if returncode != nil {
-		a.returncode = nil
-	}
-	a._build_dir_unlock = a._build_dir.async_unlock()
-	a._build_dir = nil
-	a._build_dir_unlock.add_done_callback( func(t) {
-		return a._unlock_builddir_exit(t, returncode)
-	})
-}
-
-// nil
-func (a *AbstractEbuildProcess)_unlock_builddir_exit( unlock_future IFuture, returncode *int) {
-	//unlock_future.cancelled() || unlock_future.result()
-	if returncode != nil {
-		if unlock_future.cancelled() {
-			a.cancelled = true
-			a._was_cancelled()
-		} else {
-			a.returncode = returncode
-		}
-		a.SpawnProcess._async_wait()
-	}
-}
-
-func NewAbstractEbuildProcess(actionmap ebuild2.Actionmap, background bool, fd_pipes map[int]int, logfile, phase string, scheduler *SchedulerInterface, settings *config.Config, **kwargs)*AbstractEbuildProcess {
-	a := &AbstractEbuildProcess{}
-	a._phases_without_builddir = []string{"clean", "cleanrm", "depend", "help",}
-	a._phases_interactive_whitelist = []string{"config",}
-	a._exit_timeout = 10
-	a._enable_ipc_daemon = true
-
-	a.SpawnProcess = NewSpawnProcess(actionmap, background, env, fd_pipes, logfile, phase, scheduler, settings,**kwargs)
-	if a.phase == "" {
-		phase := a.settings.ValueDict["EBUILD_PHASE"]
-		if phase == "" {
-			phase = "other"
-			a.phase = phase
-		}
-	}
-	return a
-}
-
-type AbstractPollTask struct {
-	*AsynchronousTask
-	_registered bool
-	_bufsize int
-}
-
-func (a *AbstractPollTask) _read_array( f int)string{
-	f2 := os.NewFile(uintptr(f), "")
-	buf := make([]byte, a._bufsize)
-	_, err := f2.Read(buf)
-	if err != nil {
-		return ""
-	}
-	//except EOFError:
-	//pass
-	//except TypeError:
-	//pass
-	//except IOError as e:
-	//if err == errno.EIO:
-	//pass
-	//else if err == errno.EAGAIN:
-	//buf = nil
-	//else:
-	//raise
-
-	return string(buf)
-}
-
-func (a *AbstractPollTask) _read_buf( fd int)[]byte{
-	f := os.NewFile(uintptr(fd), "")
-	buf := make([]byte, a._bufsize)
-	_, err := f.Read(buf)
-	if err != nil {
-		if err == syscall.EIO {
-			buf = []byte{}
-		} else if err == syscall.EAGAIN {
-			buf = nil
-		} else {
-			//raise
-		}
-	}
-	return buf
-}
-
-func (a *AbstractPollTask) _async_wait() {
-	a._unregister()
-	a.AsynchronousTask._async_wait()
-}
-
-func (a *AbstractPollTask)  _unregister() {
-	a._registered = false
-}
-
-// nil
-func (a *AbstractPollTask) _wait_loop(timeout) {
-	loop := a.scheduler
-	tasks := []{a.async_wait()}
-	if timeout != nil {
-		tasks = append(asyncio.ensure_future(
-			asyncio.sleep(timeout, loop = loop), loop = loop))
-	}
-try:
-	loop.run_until_complete(asyncio.ensure_future(
-		asyncio.wait(tasks, return_when = asyncio.FIRST_COMPLETED,
-		loop = loop), loop = loop))
-finally:
-	for _, task := range tasks {
-		task.cancel()
-	}
-}
-
-func NewAbstractPollTask() *AbstractPollTask {
-	a := &AbstractPollTask{}
-	a._bufsize = 4096
-	a.AsynchronousTask = NewAsynchronousTask()
-	return a
-}
-
 type AsynchronousLock struct {
 	*AsynchronousTask
 	_use_process_by_default bool
@@ -1630,11 +1064,11 @@ type BinpkgEnvExtractor struct {
 }
 
 func(b *BinpkgEnvExtractor) saved_env_exists() bool {
-	return myutil.pathExists(b._get_saved_env_path())
+	return myutil.PathExists(b._get_saved_env_path())
 }
 
 func(b *BinpkgEnvExtractor) dest_env_exists() bool {
-	return myutil.pathExists(b._get_dest_env_path())
+	return myutil.PathExists(b._get_dest_env_path())
 }
 
 func(b *BinpkgEnvExtractor) _get_saved_env_path() string {
@@ -1921,7 +1355,7 @@ func (b *_BinpkgFetcherProcess) _start() {
 	settings := bintree.settings
 	pkg_path := b.pkg_path
 
-	exists := myutil.pathExists(pkg_path)
+	exists := myutil.PathExists(pkg_path)
 	resume := exists && filepath.Base(pkg_path)
 	in
 	bintree.invalids
@@ -2145,159 +1579,6 @@ func NewBinpkgPrefetcher(background bool, pkg *versions.PkgStr, scheduler *Sched
 	b.background = background
 	b.pkg= pkg
 	b.scheduler= scheduler
-
-	return b
-}
-
-type BinpkgVerifier struct {
-	*CompositeTask
-
-	// slot
-	logfile,  _digests, _pkg_path string
-	pkg *versions.PkgStr
-}
-
-func (b *BinpkgVerifier) _start() {
-
-	bintree := b.pkg.root_config.trees["bintree"]
-	digests := bintree._get_digests(b.pkg)
-	if "size" not
-	in
-digests{
-	i :=0
-	b.returncode = &i
-	b._async_wait()
-	return
-}
-
-	digests = checksum.filterUnaccelaratedHashes(digests)
-	hash_filter := checksum.NewHashFilter(
-		bintree.settings.ValueDict["PORTAGE_CHECKSUM_FILTER"])
-	if ! hash_filter.trasparent {
-		digests = checksum.applyHashFilter(digests, hash_filter)
-	}
-
-	b._digests = digests
-
-	st, err:= os.Stat(b._pkg_path)
-	if err != nil {
-		//except OSError as e:
-		if err!= syscall.ENOENT||err!= syscall.ESTALE {
-			//raise
-		}
-		b.scheduler.output(fmt.Sprintf("!!! Fetching Binary failed "+
-		"for '%s'\n", b.pkg.cpv), b.logfile, b.background, 0, -1)
-		i := 1
-		b.returncode = &i
-		b._async_wait()
-		return
-	}else {
-		size := st.Size()
-		if size != digests["size"] {
-			b._digest_exception("size", size, digests["size"])
-			i := 1
-			b.returncode = &i
-			b._async_wait()
-			return
-		}
-	}
-
-	ds := []string{}
-	for k
-		in
-	digests {
-		if k != "size" {
-			ds = append(ds, k)
-		}
-	}
-	b._start_task(NewFileDigester(b._pkg_path,ds, b.background, b.logfile, b.scheduler), b._digester_exit)
-}
-
-func (b *BinpkgVerifier) _digester_exit(digester) {
-
-	if b._default_exit(digester) != 0 {
-		b.wait()
-		return
-	}
-
-	for hash_name
-	in
-	digester.hash_names {
-		if digester.digests[hash_name] != b._digests[hash_name] {
-			b._digest_exception(hash_name,
-				digester.digests[hash_name], b._digests[hash_name])
-			i := 1
-			b.returncode = &i
-			b.wait()
-			return
-		}
-	}
-
-	if b.pkg.root_config.settings.ValueDict["PORTAGE_QUIET"] != "1" {
-		b._display_success()
-	}
-
-	i := 0
-	b.returncode = &i
-	b.wait()
-}
-
-func (b *BinpkgVerifier) _display_success() {
-	stdout_orig := os.Stdout
-	stderr_orig := os.Stderr
-	global_havecolor := output.HaveColor
-	out := &bytes.Buffer{}
-	os.Stdout = out
-	os.Stderr = out
-	if output.HaveColor != 0 {
-		if b.background{
-			output.HaveColor = 1
-		} else {
-			output.HaveColor = 0
-		}
-	}
-
-	path := b._pkg_path
-	if strings.HasSuffix(path,".partial") {
-		path = path[:-len(".partial")]
-	}
-	eout := output.NewEOutput(false)
-	eout.Ebegin(fmt.Sprintf("%s %s ;-)",filepath.Base(path),
-		strings.Join(myutil.Sorted(b._digests)," ")))
-	eout.Eend(0, "")
-
-	os.Stdout = stdout_orig
-	os.Stderr = stderr_orig
-	output.HaveColor = global_havecolor
-
-	b.scheduler.output(out.String(),  b.logfile, b.background, 0, -1)
-}
-
-func (b *BinpkgVerifier) _digest_exception( name, value, expected string) {
-
-	head, tail := filepath.Split(b._pkg_path)
-	temp_filename := atom._checksum_failure_temp_file(b.pkg.root_config.settings, head, tail)
-
-	b.scheduler.output(fmt.Sprintf(
-		"\n!!! Digest verification failed:\n"+
-	"!!! %s\n"+
-	"!!! Reason: Failed on %s verification\n"+
-	"!!! Got: %s\n"+
-	"!!! Expected: %s\n"+
-	"File renamed to '%s'\n",
-	b._pkg_path, name, value, expected, temp_filename),
-	b.logfile, b.background, 0, -1)
-}
-
-func NewBinpkgVerifier(background bool, logfile string, pkg *versions.PkgStr, scheduler *SchedulerInterface, pkg_path string) *BinpkgVerifier {
-	b := &BinpkgVerifier{}
-	b.CompositeTask = NewCompositeTask()
-
-	b.background = background
-	b.logfile=logfile
-	b.pkg=pkg
-	b.scheduler=scheduler
-	b._pkg_path=pkg_path
 
 	return b
 }
@@ -3993,7 +3274,7 @@ func NewEbuildFetchonly(fetch_all , pkg *versions.PkgStr, pretend int, settings 
 
 type EbuildIpcDaemon struct {
 	*FifoIpcDaemon
-	commands
+	commands map[string]ebuild2.IpcCommand
 }
 
 func (e *EbuildIpcDaemon) _input_handler() {
@@ -4014,8 +3295,8 @@ func (e *EbuildIpcDaemon) _input_handler() {
 		e._reopen_input()
 
 		cmd_key = obj[0]
-		cmd_handler = e.commands[cmd_key]
-		reply = cmd_handler(obj)
+		cmd_handler := e.commands[cmd_key]
+		reply := cmd_handler.Call(obj)
 	try:
 		e._send_reply(reply)
 		except
@@ -4063,7 +3344,7 @@ func (e *EbuildIpcDaemon) _send_reply( reply) {
 	}
 }
 
-func NewEbuildIpcDaemon(commands map[string]*ebuild2.QueryCommand, input_fifo, output_fifo string, scheduler *SchedulerInterface) *EbuildIpcDaemon {
+func NewEbuildIpcDaemon(commands map[string]ebuild2.IpcCommand, input_fifo, output_fifo string, scheduler *SchedulerInterface) *EbuildIpcDaemon {
 	e := &EbuildIpcDaemon{}
 	e.FifoIpcDaemon = NewFifoIpcDaemon()
 	e.commands = commands
@@ -4442,7 +3723,7 @@ func (e *EbuildPhase) _start() {
 			filepath.Join(
 				e.settings.ValueDict["PORTAGE_BUILDDIR"],
 				fmt.Sprintf(".%sed", strings.TrimRight(e.phase,"e")))
-		if ! myutil.pathExists(phase_completed_file) {
+		if ! myutil.PathExists(phase_completed_file) {
 
 			err := syscall.Unlink(filepath.Join(e.settings.ValueDict["T"],
 				"logging", e.phase))
@@ -5869,9 +5150,9 @@ type MetadataRegen struct{
 
 // "", nil, true
 func NewMetadataRegen( portdb *dbapi.portdbapi, cp_iter string, consumer=None,
-write_auxdb bool, **kwargs)*MetadataRegen {
+write_auxdb bool, /* **kwargs*/ max_jobs, max_load, main)*MetadataRegen {
 	m := &MetadataRegen{}
-	m.AsyncScheduler = NewAsyncScheduler(**kwargs)
+	m.AsyncScheduler = NewAsyncScheduler(max_jobs, max_load, main)
 	m._portdb = portdb
 	m._write_auxdb = write_auxdb
 	m._global_cleanse = false
@@ -6400,7 +5681,7 @@ func(p*PackageUninstall) _start() {
 
 	vardb := p.pkg.root_config.trees["vartree"].dbapi
 	dbdir := vardb.getpath(p.pkg.cpv)
-	if !myutil.pathExists(dbdir) {
+	if !myutil.PathExists(dbdir) {
 		i := 0
 		p.returncode = &i
 		p._async_wait()
@@ -8833,7 +8114,7 @@ try:
 		s.settings, s.trees, s._mtimedb, s.myopts,
 		myparams, s._spinner)
 	except
-	depgraph.UnsatisfiedResumeDep
+	Depgraph.UnsatisfiedResumeDep
 	as
 exc:
 	e = exc
@@ -9005,7 +8286,7 @@ func (s *Scheduler) _pkg( cpv *versions.PkgStr, type_name string, root_config *R
 		return versions.pkg
 	}
 
-	tree_type = depgraph.pkg_tree_map[type_name]
+	tree_type = Depgraph.pkg_tree_map[type_name]
 	db = root_config.trees[tree_type].dbapi
 	db_keys = list(s.trees[root_config.root][
 		tree_type].dbapi._aux_cache_keys)
@@ -10182,11 +9463,11 @@ type AsyncScheduler struct {
 	_error_count     int
 }
 
-// 0, 0
-func NewAsyncScheduler(max_jobs int, max_load float64, event_loop) *AsyncScheduler {
+// 0, 0, false, nil
+func NewAsyncScheduler(max_jobs int, max_load float64, main bool, event_loop) *AsyncScheduler {
 	a := &AsyncScheduler{}
 	a.AsynchronousTask = NewAsynchronousTask()
-	a.PollScheduler = NewPollScheduler(false, event_loop)
+	a.PollScheduler = NewPollScheduler(main, event_loop)
 	if max_jobs == 0 {
 		max_jobs = 1
 	}
@@ -10296,101 +9577,6 @@ func(a*AsyncScheduler) _async_wait() {
 	a._cleanup()
 	a.AsynchronousTask._async_wait()
 }
-
-type FileDigester struct {
-	*ForkProcess
-
-	// slot
-	hash_names []string
-	file_path string
-	digests map[string]string
-	_digest_pw int
-	_digest_pipe_reader *PipeReader
-}
-
-func (f*FileDigester) _start() {
-	p2 := make([]int, 2)
-	syscall.Pipe(p2)
-	pr, pw := p2[0], p2[1]
-	f.fd_pipes = map[int]int{}
-	f.fd_pipes[pw] = pw
-	f._digest_pw = pw
-	f._digest_pipe_reader = NewPipeReader(map[string]int {"input": pr}, f.scheduler)
-	f._digest_pipe_reader.addExitListener(f._digest_pipe_reader_exit)
-	f._digest_pipe_reader.start()
-	f.ForkProcess._start()
-	syscall.Close(pw)
-}
-
-func (f*FileDigester) _run() int {
-	digests := checksum.performMultipleChecksums(f.file_path, f.hash_names, false)
-
-	bs := []string{}
-	for k,v := range digests {
-		bs =append(bs, fmt.Sprintf("%s=%s\n", k,string(v)))
-	}
-	buf := strings.Join(bs, "")
-
-	for len(buf) > 0 {
-		n, _ :=syscall.Write(f._digest_pw, []byte(buf))
-		buf = buf[n:]
-	}
-
-	return 0
-}
-
-func (f*FileDigester) _parse_digests( data) {
-	digests :=map[string]string{}
-	for line
-		in
-	data.decode("utf_8").splitlines() {
-		parts := line.split("=", 1)
-		if len(parts) == 2 {
-			digests[parts[0]] = parts[1]
-		}
-	}
-
-	f.digests = digests
-}
-
-func (f*FileDigester)_async_waitpid(){
-	if f._digest_pipe_reader == nil {
-		f.ForkProcess._async_waitpid()
-	}
-}
-
-func (f*FileDigester) _digest_pipe_reader_exit( pipe_reader) {
-	f._parse_digests(pipe_reader.getvalue())
-	f._digest_pipe_reader = nil
-	if f.pid ==nil {
-		f._unregister()
-		f._async_wait()
-	}else {
-		f._async_waitpid()
-	}
-}
-
-func (f*FileDigester) _unregister() {
-	f.ForkProcess._unregister()
-
-	pipe_reader := f._digest_pipe_reader
-	if pipe_reader != nil {
-		f._digest_pipe_reader = nil
-		pipe_reader.removeExitListener(f._digest_pipe_reader_exit)
-		pipe_reader.cancel()
-	}
-}
-
-func NewFileDigester(file_path string, hash_names []string, background bool, logfile string, scheduler *SchedulerInterface) *FileDigester {
-	f := &FileDigester{}
-	f.file_path = file_path
-	f.hash_names = hash_names
-	f.background = background
-	f.logfile = logfile
-	f.scheduler = scheduler
-	return f
-}
-
 
 type AsyncFunction struct{
 	*ForkProcess

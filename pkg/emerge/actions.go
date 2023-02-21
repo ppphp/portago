@@ -2,12 +2,11 @@ package emerge
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/pkg/const"
+	"github.com/ppphp/portago/pkg/dbapi"
 	ebuild2 "github.com/ppphp/portago/pkg/ebuild"
 	"github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/emaint"
-	"github.com/ppphp/portago/pkg/emerge"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/portage"
@@ -16,30 +15,2302 @@ import (
 	"github.com/ppphp/portago/pkg/sync"
 	"github.com/ppphp/portago/pkg/util"
 	"github.com/ppphp/portago/pkg/util/msg"
+	"github.com/ppphp/portago/pkg/versions"
 	"golang.org/x/crypto/ssh/terminal"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 )
 
-func action_build() {}
+// nil
+func action_build(emerge_config *EmergeConfig, spinner T) int {
+	settings, trees, mtimedb := emerge_config.targetConfig.Settings, emerge_config.Trees, emerge_config.targetConfig.Mtimedb
+	myopts := emerge_config.opts
+	myaction := emerge_config.action
+	myfiles := emerge_config.args
 
-func action_config() {}
+	if !myutil.InmsT( myopts,"--usepkgonly") {
+		sync.Old_tree_timestamp_warn(settings.ValueDict["PORTDIR"], settings)
+	}
 
-func action_depclean() {}
+	chk_updated_cfg_files(settings.ValueDict["EROOT"], ["/etc/portage"])
 
-func calc_depclean() {}
+	eco, ok := emerge_config.opts["--quickpkg-direct-root"]
+	if !ok {
+		eco = emerge_config.runningConfig.Settings.ValueDict["ROOT"]
+	}
+	ecoabs, _ := filepath.Abs(eco)
+	quickpkg_root := strings.TrimRight(msg.NormalizePath(ecoabs), string(filepath.Separator))+ string(filepath.Separator)
 
-func _calc_depclean() {}
+	quickpkg_direct := myutil.InmsT(emerge_config.opts,"--usepkg") &&
+		emerge_config.opts["--quickpkg-direct"] == "y" &&
+		emerge_config.targetConfig.Settings.ValueDict["ROOT"] != quickpkg_root
 
-func action_deselect() {}
+	if myutil.InmsT( emerge_config.opts,"--getbinpkg") || quickpkg_direct {
+		var add_repos []*dbapi.Vardbapi = nil
+		if quickpkg_direct {
+			var quickpkg_vardb *dbapi.Vardbapi
+			if quickpkg_root == emerge_config.runningConfig.Settings.ValueDict["ROOT"] {
+				quickpkg_vardb = emerge_config.runningConfig.trees.VarTree().dbapi
+			}else {
+				quickpkg_settings := config.NewConfig(nil, nil, "", nil, emerge_config.targetConfig.Settings.ValueDict["PORTAGE_CONFIGROOT"],quickpkg_root,emerge_config.targetConfig.Settings.ValueDict["SYSROOT"],emerge_config.targetConfig.Settings.ValueDict["EPREFIX"],true, myutil.CopyMapT(emerge_config.targetConfig.Settings.backupenv), false, nil)
+				quickpkg_vardb = dbapi.NewVarTree(quickpkg_settings).dbapi
+			}
+			add_repos = []*dbapi.Vardbapi{quickpkg_vardb,}
+		}
 
-func action_info() {}
+	//try:
+		emerge_config.targetConfig.trees.BinTree().Populate( myutil.InmsT(emerge_config.opts, "--getbinpkg")	, true, add_repos)
+		//except ParseError as e:
+		//msg.WriteMsg(f"\n\n!!!{e}.\nSee make.conf(5) for more info.\n", noiselevel = -1)
+		//return 1
+	}
 
-func action_regen() {}
+	for _, k := range []string{"resume", "resume_backup"} {
+		if !myutil.InmsT(mtimedb.Dict,k){
+		continue
+	}
+		resume_data := mtimedb.Dict[k]
+		if reflect.TypeOf(resume_data).Kind() != reflect.Map {
+			delete(mtimedb.Dict,k)
+			continue
+		}
+		mergelist := resume_data["mergelist"]
+		if not isinstance(mergelist, list) {
+			del
+			mtimedb[k]
+			continue
+		}
+		for _, x := range mergelist {
+			if not(isinstance(x, list) and
+			len(x) == 4){
+				continue
+			}
+			pkg_type, pkg_root, pkg_key, pkg_action = x
+			if  !myutil.InmsT(trees.Values(), pkg_root){
+				mergelist = None
+				break
+			}
+		}
+		if not mergelist {
+			del
+			mtimedb[k]
+			continue
+		}
+		resume_opts := resume_data.get("myopts")
+		if not isinstance(resume_opts, (dict, list)){
+			del
+			mtimedb[k]
+			continue
+		}
+		favorites := resume_data.get("favorites")
+		if not isinstance(favorites, list) {
+			del
+			mtimedb[k]
+			continue
+		}
+	}
 
-func action_search() {}
+	resume := false
+	if myutil.InmsT( myopts,"--resume") && (myutil.InmsT(mtimedb.Dict, "resume")|| myutil.InmsT(mtimedb.Dict, "resume_backup")) {
+		resume = true
+		if !myutil.InmsT(mtimedb.Dict,"resume") {
+			mtimedb.Dict["resume"] = mtimedb.Dict["resume_backup"]
+			delete(mtimedb.Dict,"resume_backup")
+			mtimedb.Commit()
+		}
+		resume_opts := mtimedb.Dict["resume"].get("myopts",[])
+		if isinstance(resume_opts, list) {
+			resume_opts =
+			{
+			k:
+				True
+				for k
+					in
+				resume_opts
+			}
+		}
+		for _, opt := range []string{"--ask", "--color", "--skipfirst", "--tree"} {
+			resume_opts.pop(opt, None)
+		}
+
+		resume_opts.update(myopts)
+		myopts.clear()
+		myopts.update(resume_opts)
+
+		if "--debug" in
+	myopts{
+		msg.msg.WriteMsgLevel(fmt.Sprintf("myopts {%v}\n", myopts,),0,0)
+	}
+
+		for myroot:= range trees.Values() {
+			mysettings := trees.Values()[myroot].VarTree().settings
+			mysettings.Unlock()
+			adjust_config(myopts, mysettings)
+			mysettings.Lock()
+		}
+	}
+
+	ldpath_mtimes := mtimedb.Dict["ldpath"]
+	buildpkgonly := myutil.InmsT2("--buildpkgonly",myopts)
+	pretend := myutil.InmsT2("--pretend", myopts)
+	fetchonly := myutil.InmsT2("--fetchonly", myopts) || myutil.InmsT2("--fetch-all-uri" ,myopts)
+	ask := myutil.InmsT2("--ask", myopts)
+	enter_invalid := myutil.InmsT2("--ask-enter-invalid" , myopts)
+	nodeps := myutil.InmsT2("--nodeps" , myopts)
+	oneshot := myutil.InmsT2("--oneshot" , myopts) ||myutil.InmsT2("--onlydeps" , myopts)
+	tree := myutil.InmsT2("--tree" , myopts)
+	if nodeps && tree {
+		tree = false
+		delete(		myopts,"--tree")
+		msg.msg.WriteMsg(output.Colorize("WARN", " * ") + "--tree is broken with --nodeps. Disabling...\n", 0, nil)
+	}
+	debug := myutil.InmsT2("--debug" , myopts)
+	verbose := myutil.InmsT2("--verbose" , myopts)
+	quiet := myutil.InmsT2("--quiet" , myopts)
+	myparams := create_depgraph_params(myopts, myaction)
+	mergelist_shown := false
+
+	if pretend || fetchonly {
+		mtimedb.make_readonly()
+	}
+	if myutil.InmsT2("--digest" , myopts) || myutil.InmsT2("digest" , settings.Features.Features) {
+		msg1 := ""
+		if myutil.InmsT2("--digest", myopts) {
+			msg1 = "The --digest option"
+		}else {
+			msg1 = "The FEATURES=digest setting"
+		}
+
+		msg1 += " can prevent corruption from being"+
+				" noticed. The `repoman manifest` command is the preferred"+
+				" way to generate manifests and it is capable of doing an"+
+				" entire repository or category at once."
+
+		prefix := bad(" * ")
+		msg.msg.WriteMsg(prefix + "\n", 0, nil)
+		for _, line := range util.TextWrap(msg1, 72) {
+			msg.msg.WriteMsg(fmt.Sprintf(
+			"%s%s\n", prefix,line),0,nil)
+		}
+		msg.msg.WriteMsg(prefix + "\n", 0, nil)
+	}
+
+	if resume {
+		favorites = mtimedb["resume"].get("favorites")
+		if not isinstance(favorites, list) {
+			favorites = []T
+		}
+
+		resume_data := mtimedb.Dict["resume"]
+		mergelist := resume_data["mergelist"]
+		if mergelist && myutil.InmsT2("--skipfirst", myopts) {
+			for i, task
+				in
+			enumerate(mergelist):
+			if isinstance(task, list) and
+			task
+			and
+			task[-1] == "merge":
+			del
+			mergelist[i]
+			break
+		}
+
+		success := false
+		mydepgraph := None
+		//try:
+		success, mydepgraph, dropped_tasks := resume_depgraph(
+			settings, trees, mtimedb, myopts, myparams, spinner
+		)
+		/*
+		   except (portage.exception.PackageNotFound, depgraph.UnsatisfiedResumeDep) as e:
+		   if isinstance(e, depgraph.UnsatisfiedResumeDep):
+		   mydepgraph = e.depgraph
+
+		   from portage.output import EOutput
+
+		   out = EOutput()
+
+		   resume_data = mtimedb["resume"]
+		   mergelist = resume_data.get("mergelist")
+		   if not isinstance(mergelist, list):
+		   mergelist = []
+		   if mergelist and debug or (verbose and not quiet):
+		   out.eerror("Invalid resume list:")
+		   out.eerror("")
+		   indent = "  "
+		   for task in mergelist:
+		   if isinstance(task, list):
+		   out.eerror(indent + str(tuple(task)))
+		   out.eerror("")
+
+		   if isinstance(e, depgraph.UnsatisfiedResumeDep):
+		   out.eerror(
+		   "One or more packages are either masked or "
+		   + "have missing dependencies:"
+		   )
+		   out.eerror("")
+		   indent = "  "
+		   for dep in e.value:
+		   if dep.atom is None:
+		   out.eerror(indent + "Masked package:")
+		   out.eerror(2 * indent + str(dep.parent))
+		   out.eerror("") else:
+		   out.eerror(indent + str(dep.atom) + " pulled in by:")
+		   out.eerror(2 * indent + str(dep.parent))
+		   out.eerror("")
+		   msg = (
+		   "The resume list contains packages "
+		   + "that are either masked or have "
+		   + "unsatisfied dependencies. "
+		   + "Please restart/continue "
+		   + "the operation manually, or use --skipfirst "
+		   + "to skip the first package in the list and "
+		   + "any other packages that may be "
+		   + "masked or have missing dependencies."
+		   )
+		   for line in textwrap.wrap(msg, 72):
+		   out.eerror(line)
+		   elif isinstance(e, portage.exception.PackageNotFound):
+		   out.eerror("An expected package is " + f"not available: {str(e)}")
+		   out.eerror("")
+		   msg = (
+		   "The resume list contains one or more "
+		   + "packages that are no longer "
+		   + "available. Please restart/continue "
+		   + "the operation manually."
+		   )
+		   for line in textwrap.wrap(msg, 72):
+		   out.eerror(line)*/
+
+		if success {
+			if dropped_tasks:
+			msg.WriteMsg(
+				"!!! One or more packages have been "
+			+"dropped due to\n"
+			+"!!! masking or unsatisfied dependencies:\n\n",
+				noiselevel = -1,
+		)
+			for task, atoms
+				in
+			dropped_tasks.items():
+			if not atoms:
+			msg.WriteMsg(
+				f
+			"  {task} is masked or unavailable\n",
+				noiselevel = -1,
+		) else:
+			msg.WriteMsg(
+				f
+			"  {task} requires {', '.join(atoms)}\n",
+				noiselevel = -1,
+		)
+
+			portage.msg.WriteMsg("\n", noiselevel = -1)
+			del
+			dropped_tasks
+		} else {
+			if mydepgraph != nil {
+				mydepgraph.display_problems()
+			}
+			if !(ask || pretend) {
+				for _, k := range []string{"resume", "resume_backup"} {
+					delete(mtimedb.Dict, k)
+				}
+				mtimedb.Commit()
+			}
+
+			return 1
+		}
+	}else{
+	if myutil.InmsT2("--resume", myopts){
+		print(darkgreen("emerge: It seems we have nothing to resume..."))
+		return os.EX_OK
+	}
+
+	try:
+	success, mydepgraph, favorites := backtrack_depgraph(
+	settings, trees, myopts, myparams, myaction, myfiles, spinner
+	)
+	except portage.exception.PackageSetNotFound as e:
+	root_config = trees[settings["EROOT"]]["root_config"]
+	display_missing_pkg_set(root_config, e.value)
+	return 1
+
+	if success and mydepgraph.need_config_reload():
+	load_emerge_config(emerge_config=emerge_config)
+	adjust_configs(emerge_config.opts, emerge_config.trees)
+	settings, trees, mtimedb = emerge_config
+
+	if "--getbinpkg" in emerge_config.opts or quickpkg_direct:
+	for root_trees in emerge_config.trees.values():
+	kwargs = {}
+	if quickpkg_direct:
+	kwargs["add_repos"] = (
+	emerge_config.running_config.trees["vartree"].dbapi,
+	)
+
+	try:
+	root_trees["bintree"].populate(
+	getbinpkgs=True, getbinpkg_refresh=False, **kwargs
+	)
+	except ParseError as e:
+	msg.WriteMsg(
+	f"\n\n!!!{e}.\nSee make.conf(5) for more info.\n",
+	noiselevel=-1,
+	)
+	return 1
+
+	if "--autounmask-only" in myopts:
+	mydepgraph.display_problems()
+	return 0
+
+	if not success:
+	mydepgraph.display_problems()
+	return 1
+	}
+
+	mergecount = None
+	if (!myutil.InmsT2("--pretend" , myopts) &&
+	 (myutil.InmsT2("--ask", myopts)|| myutil.InmsT2("--tree", myopts)|| myutil.InmsT2( "--verbose" , myopts)) &&
+		! (myutil.InmsT2("--quiet" myopts) && !myutil.InmsT2( "--ask" , myopts))){
+	if "--resume" in myopts:
+	mymergelist = mydepgraph.altlist()
+	if len(mymergelist) == 0:
+	print(
+	colorize("INFORM", "emerge: It seems we have nothing to resume...")
+	)
+	return os.EX_OK
+	favorites = mtimedb["resume"]["favorites"]
+	retval = mydepgraph.display(mydepgraph.altlist(), favorites= favorites)
+	mydepgraph.display_problems()
+	mergelist_shown = True
+	if retval != os.EX_OK:
+	return retval
+	prompt = "Would you like to resume merging these packages?" else:
+	retval = mydepgraph.display(mydepgraph.altlist(), favorites = favorites)
+	mydepgraph.display_problems()
+	mergelist_shown = True
+	if retval != os.EX_OK:
+	return retval
+	mergecount = 0
+	for x in mydepgraph.altlist():
+	if isinstance(x, Package) and x.operation == "merge":
+	mergecount += 1
+
+	prompt = None
+	if mergecount == 0:
+	sets = trees[settings["EROOT"]]["root_config"].sets
+	world_candidates = None
+	if "selective" in myparams and not oneshot and favorites:
+	world_candidates = []T
+	x
+	for x in favorites
+	if not (
+	x.startswith(SETPREFIX) and not sets[x[1:]].world_candidate
+	)
+	[]T
+
+	if "selective" in myparams and not oneshot and world_candidates:
+	prompt = None
+	else:
+	print()
+	print("Nothing to merge; quitting.")
+	print()
+	return os.EX_OK
+	elif "--fetchonly" in myopts or "--fetch-all-uri" in myopts:
+	prompt = "Would you like to fetch the source files for these packages?" else:
+	prompt = "Would you like to merge these packages?"
+	print()
+	uq = UserQuery(myopts)
+	if (
+	prompt is not None
+	and "--ask" in myopts
+	and uq.query(prompt, enter_invalid) == "No"
+	):
+	print()
+	print("Quitting.")
+	print()
+	return 128 + signal.SIGINT
+	if mergecount != 0:
+	myopts.pop("--ask", None)
+	}
+
+	if (myutil.InmsT2("--pretend" , myopts)) && ! (
+	myutil.InmsT2("--fetchonly" , myopts) || myutil.InmsT2("--fetch-all-uri" , myopts)) {
+		if "--resume" in
+	myopts:
+		mymergelist = mydepgraph.altlist()
+		if len(mymergelist) == 0:
+		print(
+			colorize("INFORM", "emerge: It seems we have nothing to resume...")
+		)
+		return os.EX_OK
+		favorites = mtimedb["resume"]["favorites"]
+		retval = mydepgraph.display(mydepgraph.altlist(), favorites = favorites)
+		mydepgraph.display_problems()
+		mergelist_shown = True
+		if retval != os.EX_OK:
+		return retval
+		else:
+		retval = mydepgraph.display(mydepgraph.altlist(), favorites = favorites)
+		mydepgraph.display_problems()
+		mergelist_shown = True
+		if retval != os.EX_OK:
+		return retval
+	}else {
+		if not mergelist_shown:
+		mydepgraph.display_problems()
+
+		need_write_vardb = not
+		Scheduler._opts_no_self_update.intersection(myopts)
+
+		need_write_bindb = not
+		any(
+			x
+		in
+		myopts
+		for x
+		in("--fetchonly", "--fetch-all-uri", "--pretend", "--usepkgonly")
+		) and(
+			any(
+				"buildpkg"
+		in
+		trees[eroot]["root_config"].settings.features
+		for eroot
+		in
+		trees
+		)
+		or
+		any(
+			"buildsyspkg"
+		in
+		trees[eroot]["root_config"].settings.features
+		for eroot
+		in
+		trees
+		)
+	)
+
+		if need_write_bindb or
+	need_write_vardb:
+		eroots = set()
+		ebuild_eroots = set()
+		for x
+		in
+		mydepgraph.altlist():
+		if isinstance(x, Package) and
+		x.operation == "merge":
+		eroots.add(x.root)
+		if x.type_name == "ebuild":
+		ebuild_eroots.add(x.root)
+
+		for eroot
+		in
+	eroots:
+		if need_write_vardb and
+		not
+		trees[eroot]["vartree"].dbapi.writable:
+		msg.WriteMsg_level(
+			"!!! %s\n"
+		% _("Read-only file system: %s")
+		% trees[eroot]["vartree"].dbapi._dbroot,
+			level = logging.ERROR,
+			noiselevel=-1,
+	)
+		return 1
+
+		if (
+			need_write_bindb
+			and
+		eroot
+		in
+		ebuild_eroots
+		and(
+			"buildpkg"
+		in
+		trees[eroot]["root_config"].settings.features
+		or
+		"buildsyspkg"
+		in
+		trees[eroot]["root_config"].settings.features
+		)
+		and
+		not
+		trees[eroot]["bintree"].dbapi.writable
+		):
+		msg.WriteMsg_level(
+			"!!! %s\n"
+		% _("Read-only file system: %s")
+		% trees[eroot]["bintree"].pkgdir,
+			level = logging.ERROR,
+			noiselevel=-1,
+	)
+		return 1
+
+		if (
+			need_write_bindb
+			and(eroot
+		in
+		ebuild_eroots)
+		and(
+			"binpkg-signing"
+		in
+		trees[eroot]["root_config"].settings.features
+		)
+	):
+		for binpkg_gpg_config
+		in(
+			"BINPKG_GPG_SIGNING_GPG_HOME",
+			"BINPKG_GPG_SIGNING_KEY",
+		):
+		if not trees[eroot]["root_config"].settings.get(
+			binpkg_gpg_config
+		):
+		msg.WriteMsg_level(
+			colorize(
+				"BAD", f
+		"!!! {binpkg_gpg_config} is not set\n"
+		),
+		level = logging.ERROR,
+			noiselevel=-1,
+	)
+		return 1
+
+		portage.msg.WriteMsg_stdout(">>> Unlocking GPG... ")
+		sys.stdout.flush()
+		gpg = GPG(trees[eroot]["root_config"].settings)
+	try:
+		gpg.unlock()
+		except
+		GPGException
+		as
+	e:
+		msg.WriteMsg_level(
+			colorize("BAD", f
+		"!!! {e}\n"),
+		level = logging.ERROR,
+			noiselevel=-1,
+	)
+		return 1
+
+		if "--resume" in
+	myopts:
+		favorites = mtimedb["resume"]["favorites"]
+
+		else:
+		if (
+			"resume" in
+		mtimedb
+		and
+		"mergelist"
+		in
+		mtimedb["resume"]
+		and
+		len(mtimedb["resume"]["mergelist"]) > 1
+		):
+		mtimedb["resume_backup"] = mtimedb["resume"]
+		del
+		mtimedb["resume"]
+		mtimedb.commit()
+
+		mydepgraph.saveNomergeFavorites()
+
+		if mergecount == 0:
+		retval = os.EX_OK
+		else:
+		mergetask = Scheduler(
+			settings,
+			trees,
+			mtimedb,
+			myopts,
+			spinner,
+			favorites = favorites,
+			graph_config = mydepgraph.schedulerGraph(),
+	)
+
+		del
+		mydepgraph
+		clear_caches(trees)
+
+		retval = mergetask.merge()
+
+		if retval == os.EX_OK and
+		not(buildpkgonly
+		or
+		fetchonly
+		or
+		pretend):
+		if "yes" == settings.get("AUTOCLEAN"):
+		portage.msg.WriteMsg_stdout(">>> Auto-cleaning packages...\n")
+		dbapi.unmerge(
+			trees.Values()[settings.ValueDict["EROOT"]].RootConfig,
+			myopts,
+			"clean",
+		[],
+			ldpath_mtimes,
+			autoclean = 1,
+	)
+
+		return retval
+	}
+}
+
+func action_config(settings *config.Config, trees *portage.TreesDict,myopts map[string]string, myfiles []string) int {
+
+	enter_invalid := myutil.InmsT(myopts, "--ask-enter-invalid" )
+	uq := NewUserQuery(myopts)
+	if len(myfiles) != 1 {
+		print(output.Red("!!! config can only take a single package atom at this time\n"))
+		os.Exit(1)
+	}
+	if ! is_valid_package_atom(myfiles[0], true, true) {
+		msg.WriteMsg(fmt.Sprintf("!!! '%s' is not a valid package atom.\n", myfiles[0]), -1, nil)
+		msg.WriteMsg("!!! Please check ebuild(5) for full details.\n", 0, nil)
+		msg.WriteMsg("!!! (Did you specify a version but forget to prefix with '='?)\n", 0, nil)
+		os.Exit(1)
+	}
+	print()
+//try:
+	pkgs := trees.Values()[settings.ValueDict["EROOT"]].VarTree().dbapi.match(myfiles[0])
+	//except portage.exception.AmbiguousPackageName as e:
+	//pkgs = e.args[0]
+	if len(pkgs) == 0 {
+		print("No packages found.\n")
+		os.Exit(0)
+	}else if len(pkgs) > 1 {
+		if myutil.InmsT(myopts, "--ask" ) {
+			options := []string{}
+			print("Please select a package to configure:")
+			idx := 0
+			for pkg
+				in
+			pkgs {
+				idx += 1
+				options= append(options, fmt.Sprint(idx))
+				print(options[len(options)-1] + ") " + pkg)
+			}
+			print("X) Cancel")
+			options=append(options,"X")
+			idx = uq.query("Selection?", enter_invalid, options, nil)
+			if idx == "X" {
+				os.Exit(128 + signal.SIGINT)
+			}
+			pkg = pkgs[int(idx)-1]
+		}else {
+			print("The following packages available:")
+			for pkg
+				in
+			pkgs {
+				print("* " + pkg)
+			}
+			print("\nPlease use a specific atom or the --ask option.")
+			os.Exit(1)
+		}
+	}else {
+		pkg = pkgs[0]
+	}
+
+	print()
+	if myutil.InmsT(myopts, "--ask") {
+		if uq.query(fmt.Sprintf("Ready to configure %s?", pkg), enter_invalid, nil, nil) == "No"{
+			os.Exit(128 + signal.SIGINT)
+		}
+	}else {
+		print("Configuring pkg...")
+	}
+	print()
+	ebuildpath := trees.Values()[settings.ValueDict["EROOT"]].VarTree().dbapi.findname(pkg)
+	mysettings :=  config.NewConfig(settings, nil, "", nil, "","","","",true, nil, false, nil)
+	vardb := trees.Values()[mysettings.ValueDict["EROOT"]].VarTree().dbapi
+	debug := mysettings.ValueDict["PORTAGE_DEBUG"] == "1"
+	retval := ebuild2.doebuild(
+	ebuildpath,
+	"config",
+	mysettings,
+	settings.ValueDict["PORTAGE_DEBUG"] == "1",0, 0,
+	1,1, 0,
+		"vartree",
+	trees.Values()[settings.ValueDict["EROOT"]].VarTree().dbapi,
+	nil,nil,nil,false, )
+	if retval == 0 {
+		ebuild2.doebuild(
+			ebuildpath,
+			"clean",
+			 mysettings,
+			 debug,0, 0, 0, 1, 0, "vartree", vardb, nil, nil, nil, false, )
+	}
+	print()
+	return 0
+}
+
+func action_depclean(settings *config.Config, trees *portage.TreesDict, ldpath_mtimes, myopts map[string]string, action string, myfiles, spinner, scheduler=None) int {
+
+	if action == "depclean" {
+		settings.Unlock()
+		settings.ValueDict["AUTOCLEAN"] = "yes"
+		settings.BackupChanges("AUTOCLEAN")
+		settings.Lock()
+	}
+
+	msg1 := []string{}
+	if !myutil.InmsT(settings.Features.Features,"preserve-libs")&&
+	myopts["--depclean-lib-check"] == "n" {
+		msg1=append(msg1,"Depclean may break link level dependencies. Thus, it is\n")
+		msg1=append(msg1,
+			"recommended to use a tool such as " + good("`revdep-rebuild`") + " (from\n"
+		)
+		msg1=append(msg1,"app-portage/gentoolkit) in order to detect such breakage.\n")
+		msg1=append(msg1,"\n")
+	}
+	msg1=append(msg1,"Always study the list of packages to be cleaned for any obvious\n")
+	msg1=append(msg1,"mistakes. Packages that are part of the world set will always\n")
+	msg1=append(msg1,"be kept.  They can be manually added to this set with\n")
+	msg1=append(msg1,good("`emerge --noreplace <atom>`") + ".  Packages that are listed in\n")
+	msg1=append(msg1,"package.provided (see portage(5)) will be removed by\n")
+	msg1=append(msg1,"depclean, even if they are part of the world set.\n")
+	msg1=append(msg1,"\n")
+	msg1=append(msg1,"As a safety measure, depclean will not remove any packages\n")
+	msg1=append(msg1,"unless *all* required dependencies have been resolved.  As a\n")
+	msg1=append(msg1,"consequence of this, it often becomes necessary to run \n")
+	msg1=append(msg1, good("`emerge --update --newuse --deep @world`") + " prior to depclean.\n", )
+
+	if action == "depclean" && !myutil.InmsT( myopts,"--quiet") && ! myfiles {
+		msg.WriteMsgStdout("\n", 0)
+		for _, x := range msg1 {
+			msg.WriteMsgStdout(output.Colorize("WARN", " * ") + x, 0)
+		}
+	}
+
+	root_config := trees.Values()[settings.ValueDict["EROOT"]].RootConfig
+	vardb := root_config.trees.VarTree().dbapi
+
+	args_set := sets.NewInternalPackageSet(nil,false, true)
+	if myfiles {
+		args_set.update(myfiles)
+		matched_packages = false
+		for x
+		in
+	args_set:
+		if vardb.match(x) {
+			matched_packages = true
+		}else:
+		writemsg_level(
+			f
+		"--- Couldn't find '{x.replace('null/', '')}' to {action}.\n",
+			level = logging.WARN,
+			noiselevel=-1,
+	)
+		if not matched_packages {
+			msg.WriteMsgLevel(fmt.Sprintf(
+			">>> No packages selected for removal by %s\n", action),0,0)
+			return 0
+		}
+	}
+
+	rval, cleanlist, ordered, req_pkg_count := calc_depclean(
+	settings, trees, ldpath_mtimes, myopts, action, args_set, spinner
+	)
+
+	clear_caches(trees)
+
+	if rval != 0 {
+		return rval
+	}
+
+	if cleanlist {
+		rval = dbapi.unmerge(
+			root_config,
+			myopts,
+			"unmerge",
+			cleanlist,
+			ldpath_mtimes,
+			ordered = ordered,
+			scheduler = scheduler,
+	)
+	}
+
+	if action == "prune" {
+		return rval
+	}
+
+	if not cleanlist && myutil.InmsT(myopts, "--quiet"){
+		return rval
+	}
+
+	set_atoms := {}
+	for _, k := range []string{"profile", "system", "selected"}{
+		//try:
+		set_atoms[k] = root_config.setconfig.getSetAtoms(k, nil)
+		//except portage.exception.PackageSetNotFound:
+		//set_atoms[k] = root_config.sets[k].getAtoms()
+	}
+
+	print("Packages installed:   " + str(len(vardb.cpv_all())))
+	print(fmt.Sprintf("Packages in world:    %v", len(set_atoms["selected"])))
+	print(fmt.Sprintf("Packages in system:   %v", len(set_atoms["system"])))
+	if set_atoms["profile"] {
+		print(fmt.Sprintf("Packages in profile:  %v", len(set_atoms["profile"])))
+	}
+	print("Required packages:    " + str(req_pkg_count))
+	if myutil.InmsT(myopts,"--pretend"){
+		print("Number to remove:     " + str(len(cleanlist)))
+	}else{
+		print("Number removed:       " + str(len(cleanlist)))
+	}
+
+	return rval
+}
+
+func calc_depclean(settings *config.Config, trees *portage.TreesDict, ldpath_mtimes, myopts, action, args_set, spinner) {
+	result := _calc_depclean(
+		settings, trees, ldpath_mtimes, myopts, action, args_set, spinner
+	)
+	return result.returncode, result.cleanlist, result.ordered, result.req_pkg_count
+}
+
+type _depclean_result struct {
+returncode
+cleanlist
+ordered
+req_pkg_count
+depgraph
+}
+
+func _calc_depclean(settings *config.Config, trees *portage.TreesDict, ldpath_mtimes, myopts map[string]string, action, args_set, spinner) {
+	allow_missing_deps := bool(args_set)
+
+	debug := myutil.InmsT(myopts, "--debug")
+	xterm_titles :=  ! settings.Features.Features["notitles"]
+	root_len := len(settings.ValueDict["ROOT"])
+	eroot := settings.ValueDict["EROOT"]
+	root_config := trees.Values()[eroot].RootConfig
+	psets := root_config.setconfig.psets
+	deselect := myopts["--deselect"] != "n"
+	required_sets := map[string]string{}
+	required_sets["world"] = psets["world"]
+
+		selected_set := psets["selected"]
+	required_sets["selected"] = selected_set
+	protected_set := sets.NewInternalPackageSet(nil, false, true)
+	protected_set_name := "____depclean_protected_set____"
+	required_sets[protected_set_name] = protected_set
+
+	set_error := false
+	set_atoms := {}
+	for k in ("profile", "system", "selected"):
+try:
+	set_atoms[k] = root_config.setconfig.getSetAtoms(k)
+	except portage.exception.PackageSetNotFound as e:
+		set_atoms[k] = root_config.sets[k].getAtoms()
+	writemsg_level(
+		_("!!! The set '%s' " "contains a non-existent set named '%s'.\n")
+	% (k, e),
+	level=logging.ERROR,
+		noiselevel=-1,
+)
+	set_error = True
+
+	# Support @profile as an alternative to @system.
+	if not (set_atoms["system"] or set_atoms["profile"]):
+	writemsg_level(
+		_("!!! You have no system list.\n"), level=logging.WARNING, noiselevel=-1
+	)
+
+	if not set_atoms["selected"]:
+	writemsg_level(
+		_("!!! You have no world file.\n"), level=logging.WARNING, noiselevel=-1
+	)
+
+		try:
+	world_atoms = bool(root_config.setconfig.getSetAtoms("world"))
+	except portage.exception.PackageSetNotFound as e:
+	writemsg_level(
+		_("!!! The set '%s' " "contains a non-existent set named '%s'.\n")
+	% ("world", e),
+	level=logging.ERROR,
+		noiselevel=-1,
+)
+	set_error = True
+	else:
+	if not world_atoms:
+	writemsg_level(
+		_("!!! Your @world set is empty.\n"), level=logging.ERROR, noiselevel=-1
+	)
+	set_error = True
+
+	if set_error:
+	writemsg_level(
+		_("!!! Aborting due to set configuration " "errors displayed above.\n"),
+	level=logging.ERROR,
+		noiselevel=-1,
+)
+	return _depclean_result(1, [], False, 0, None)
+
+	if action == "depclean":
+	emergelog(xterm_titles, " >>> depclean")
+
+	writemsg_level("\nCalculating dependencies  ")
+	resolver_params = create_depgraph_params(myopts, "remove")
+	resolver = depgraph(settings, trees, myopts, resolver_params, spinner)
+	resolver._load_vdb()
+	vardb = resolver._frozen_config.trees[eroot]["vartree"].dbapi
+	real_vardb = trees[eroot]["vartree"].dbapi
+
+	if action == "depclean":
+	if args_set:
+	if deselect:
+		selected_set = InternalPackageSet()
+	required_sets["selected"] = selected_set
+		selected_set.update(psets["selected"].getNonAtoms())
+
+	for pkg in vardb:
+	if spinner:
+	spinner.update()
+
+try:
+	if args_set.findAtomForPackage(pkg) is None:
+	protected_set.add("=" + pkg.cpv)
+	continue
+	except portage.exception.InvalidDependString as e:
+	show_invalid_depstring_notice(pkg, str(e))
+	del e
+	protected_set.add("=" + pkg.cpv)
+	continue
+
+	elif action == "prune":
+	if deselect:
+		selected_set = InternalPackageSet()
+	required_sets["selected"] = selected_set
+		selected_set.update(psets["selected"].getNonAtoms())
+
+		protected_set.update(vardb.cp_all())
+
+	if not args_set:
+	for cp in vardb.cp_all():
+	if len(vardb.cp_list(cp)) > 1:
+	args_set.add(cp)
+
+	for pkg in vardb:
+	if spinner is not None:
+	spinner.update()
+	pkgs_for_cp = vardb.match_pkgs(Atom(pkg.cp))
+	if not pkgs_for_cp or pkg not in pkgs_for_cp:
+	raise AssertionError(
+		"package expected in matches: "
+	+ "cp = %s, cpv = %s matches = %s"
+	% (pkg.cp, pkg.cpv, [str(x) for x in pkgs_for_cp])
+	)
+
+	highest_version = pkgs_for_cp[-1]
+	if pkg == highest_version:
+	protected_set.add("=" + pkg.cpv)
+	continue
+
+	if len(pkgs_for_cp) <= 1:
+	raise AssertionError(
+	"more packages expected: "
+	+ "cp = %s, cpv = %s matches = %s"
+	% (pkg.cp, pkg.cpv, [str(x) for x in pkgs_for_cp])
+	)
+
+	try:
+	if args_set.findAtomForPackage(pkg) is None:
+	protected_set.add("=" + pkg.cpv)
+	continue
+	except portage.exception.InvalidDependString as e:
+	show_invalid_depstring_notice(pkg, str(e))
+	del e
+	protected_set.add("=" + pkg.cpv)
+	continue
+
+	if resolver._frozen_config.excluded_pkgs:
+	excluded_set = resolver._frozen_config.excluded_pkgs
+	required_sets["__excluded__"] = InternalPackageSet()
+
+	for pkg in vardb:
+	if spinner:
+	spinner.update()
+
+	try:
+	if excluded_set.findAtomForPackage(pkg):
+	required_sets["__excluded__"].add("=" + pkg.cpv)
+	except portage.exception.InvalidDependString as e:
+	show_invalid_depstring_notice(pkg, str(e))
+	del e
+	required_sets["__excluded__"].add("=" + pkg.cpv)
+
+	success = resolver._complete_graph(required_sets={eroot: required_sets})
+	writemsg_level("\b\b... done!\n")
+
+	resolver.display_problems()
+
+	if not success:
+	return _depclean_result(1, [], False, 0, resolver)
+
+	def unresolved_deps():
+	soname_deps = set()
+	unresolvable = set()
+	for dep in resolver._dynamic_config._initially_unsatisfied_deps:
+	if isinstance(dep.parent, Package) and (
+	dep.priority > UnmergeDepPriority.SOFT
+	):
+	if dep.atom.soname:
+	soname_deps.add((dep.atom, dep.parent.cpv))
+	else:
+	unresolvable.add((dep.atom, dep.parent.cpv))
+
+	if soname_deps:
+	prefix = warn(" * ")
+	msg = []
+	msg.append("Broken soname dependencies found:")
+	msg.append("")
+	for atom, parent in soname_deps:
+	msg.append(f"  {atom} required by:")
+	msg.append(f"    {parent}")
+	msg.append("")
+
+	writemsg_level(
+	"".join(f"{prefix}{line}\n" for line in msg),
+	level=logging.WARNING,
+	noiselevel=-1,
+	)
+
+	if not unresolvable:
+	return False
+
+	if unresolvable and not allow_missing_deps:
+	if "--debug" in myopts:
+	writemsg("\ndigraph:\n\n", noiselevel=-1)
+	resolver._dynamic_config.digraph.debug_print()
+	writemsg("\n", noiselevel=-1)
+
+	prefix = bad(" * ")
+	msg = []
+	msg.append("Dependencies could not be completely resolved due to")
+	msg.append("the following required packages not being installed:")
+	msg.append("")
+	for atom, parent in unresolvable:
+	if (
+	atom.package
+	and atom != atom.unevaluated_atom
+	and vardb.match(Atom(str(atom)))
+	):
+	msg.append(f"  {atom.unevaluated_atom} ({atom}) pulled in by:")
+	else:
+	msg.append(f"  {atom} pulled in by:")
+	msg.append(f"    {parent}")
+	msg.append("")
+	msg.extend(
+	textwrap.wrap(
+	"Have you forgotten to do a complete update prior "
+	+ "to depclean? The most comprehensive command for this "
+	+ "purpose is as follows:",
+	65,
+	)
+	)
+	msg.append("")
+	msg.append(
+	"  " + good("emerge --update --newuse --deep --with-bdeps=y @world")
+	)
+	msg.append("")
+	msg.extend(
+	textwrap.wrap(
+	"Note that the --with-bdeps=y option is not required in "
+	+ "many situations. Refer to the emerge manual page "
+	+ "(run `man emerge`) for more information about "
+	+ "--with-bdeps.",
+	65,
+	)
+	)
+	msg.append("")
+	msg.extend(
+	textwrap.wrap(
+	"Also, note that it may be necessary to manually uninstall "
+	+ "packages that no longer exist in the repository, since "
+	+ "it may not be possible to satisfy their dependencies.",
+	65,
+	)
+	)
+	if action == "prune":
+	msg.append("")
+	msg.append(
+	"If you would like to ignore "
+	+ f"dependencies then use {good('--nodeps')}."
+	)
+	writemsg_level(
+	"".join(f"{prefix}{line}\n" for line in msg),
+	level=logging.ERROR,
+	noiselevel=-1,
+	)
+	return True
+	return False
+
+	if unresolved_deps():
+	return _depclean_result(1, [], False, 0, resolver)
+
+	graph = resolver._dynamic_config.digraph.copy()
+	required_pkgs_total = 0
+	for node in graph:
+	if isinstance(node, Package):
+	required_pkgs_total += 1
+
+	def show_parents(child_node):
+	parent_atoms = resolver._dynamic_config._parent_atoms.get(child_node, [])
+
+	# Never display the special internal protected_set.
+	parent_atoms = [
+	parent_atom
+	for parent_atom in parent_atoms
+	if not (
+	isinstance(parent_atom[0], SetArg)
+	and parent_atom[0].name == protected_set_name
+	)
+	]
+
+	if not parent_atoms:
+	return
+	parent_atom_dict = {}
+	for parent, atom in parent_atoms:
+	parent_atom_dict.setdefault(parent, []).append(atom)
+
+	parent_strs = []
+	for parent, atoms in parent_atom_dict.items():
+	atoms = sorted(atoms, reverse=True, key=operator.attrgetter("package"))
+	parent_strs.append(
+	"%s requires %s"
+	% (
+	getattr(parent, "cpv", parent),
+	", ".join(str(atom) for atom in atoms),
+	)
+	)
+	parent_strs.sort()
+	msg = []
+	msg.append(f"  {child_node.cpv} pulled in by:\n")
+	for parent_str in parent_strs:
+	msg.append(f"    {parent_str}\n")
+	msg.append("\n")
+	portage.writemsg_stdout("".join(msg), noiselevel=-1)
+
+	def cmp_pkg_cpv(pkg1, pkg2):
+	"""Sort Package instances by cpv."""
+	if pkg1.cpv > pkg2.cpv:
+	return 1
+	if pkg1.cpv == pkg2.cpv:
+	return 0
+	return -1
+
+	def create_cleanlist():
+	if "--debug" in myopts:
+	writemsg("\ndigraph:\n\n", noiselevel=-1)
+	graph.debug_print()
+	writemsg("\n", noiselevel=-1)
+
+	pkgs_to_remove = []
+
+	if action == "depclean":
+	if args_set:
+	for pkg in sorted(vardb, key=cmp_sort_key(cmp_pkg_cpv)):
+	arg_atom = None
+	try:
+	arg_atom = args_set.findAtomForPackage(pkg)
+	except portage.exception.InvalidDependString:
+	continue
+
+	if arg_atom:
+	if pkg not in graph:
+	pkgs_to_remove.append(pkg)
+	elif "--verbose" in myopts:
+	show_parents(pkg)
+
+	else:
+	for pkg in sorted(vardb, key=cmp_sort_key(cmp_pkg_cpv)):
+	if pkg not in graph:
+	pkgs_to_remove.append(pkg)
+	elif "--verbose" in myopts:
+	show_parents(pkg)
+
+	elif action == "prune":
+	for atom in args_set:
+	for pkg in vardb.match_pkgs(atom):
+	if pkg not in graph:
+	pkgs_to_remove.append(pkg)
+	elif "--verbose" in myopts:
+	show_parents(pkg)
+
+	if not pkgs_to_remove:
+	writemsg_level(f">>> No packages selected for removal by {action}\n")
+	if "--verbose" not in myopts:
+	writemsg_level(
+	f">>> To see reverse dependencies, use {good('--verbose')}\n"
+	)
+	if action == "prune":
+	writemsg_level(f">>> To ignore dependencies, use {good('--nodeps')}\n")
+
+	return pkgs_to_remove
+
+	cleanlist = create_cleanlist()
+	clean_set = set(cleanlist)
+
+	depclean_lib_check = (
+	cleanlist
+	and real_vardb._linkmap is not None
+	and myopts.get("--depclean-lib-check", _DEPCLEAN_LIB_CHECK_DEFAULT) != "n"
+	)
+	preserve_libs = "preserve-libs" in settings.features
+	preserve_libs_restrict = False
+
+	if depclean_lib_check and preserve_libs:
+	for pkg in cleanlist:
+	if "preserve-libs" in pkg.restrict:
+	preserve_libs_restrict = True
+	break
+
+	if depclean_lib_check and (preserve_libs_restrict or not preserve_libs):
+	linkmap = real_vardb._linkmap
+	consumer_cache = {}
+	provider_cache = {}
+	consumer_map = {}
+
+	writemsg_level(">>> Checking for lib consumers...\n")
+
+	for pkg in cleanlist:
+	if preserve_libs and "preserve-libs" not in pkg.restrict:
+	continue
+
+	pkg_dblink = real_vardb._dblink(pkg.cpv)
+	consumers = {}
+
+	for lib in pkg_dblink.getcontents():
+	lib = lib[root_len:]
+	lib_key = linkmap._obj_key(lib)
+	lib_consumers = consumer_cache.get(lib_key)
+	if lib_consumers is None:
+	try:
+	lib_consumers = linkmap.findConsumers(lib_key)
+	except KeyError:
+	continue
+	consumer_cache[lib_key] = lib_consumers
+	if lib_consumers:
+	consumers[lib_key] = lib_consumers
+
+	if not consumers:
+	continue
+
+	for lib, lib_consumers in list(consumers.items()):
+	for consumer_file in list(lib_consumers):
+	if pkg_dblink.isowner(consumer_file):
+	lib_consumers.remove(consumer_file)
+	if not lib_consumers:
+	del consumers[lib]
+
+	if not consumers:
+	continue
+
+	for lib, lib_consumers in consumers.items():
+	soname = linkmap.getSoname(lib)
+
+	consumer_providers = []
+	for lib_consumer in lib_consumers:
+	providers = provider_cache.get(lib)
+	if providers is None:
+	providers = linkmap.findProviders(lib_consumer)
+	provider_cache[lib_consumer] = providers
+	if soname not in providers:
+	continue
+	consumer_providers.append((lib_consumer, providers[soname]))
+
+	consumers[lib] = consumer_providers
+
+	consumer_map[pkg] = consumers
+
+	if consumer_map:
+	search_files = set()
+	for consumers in consumer_map.values():
+	for lib, consumer_providers in consumers.items():
+	for lib_consumer, providers in consumer_providers:
+	search_files.add(lib_consumer)
+	search_files.update(providers)
+
+	writemsg_level(">>> Assigning files to packages...\n")
+	file_owners = {}
+	for f in search_files:
+	owner_set = set()
+	for owner in linkmap.getOwners(f):
+	owner_dblink = real_vardb._dblink(owner)
+	if owner_dblink.exists():
+	owner_set.add(owner_dblink)
+	if owner_set:
+	file_owners[f] = owner_set
+
+	for pkg, consumers in list(consumer_map.items()):
+	for lib, consumer_providers in list(consumers.items()):
+	lib_consumers = set()
+
+	for lib_consumer, providers in consumer_providers:
+	owner_set = file_owners.get(lib_consumer)
+	provider_dblinks = set()
+	provider_pkgs = set()
+
+	if len(providers) > 1:
+	for provider in providers:
+	provider_set = file_owners.get(provider)
+	if provider_set is not None:
+	provider_dblinks.update(provider_set)
+
+	if len(provider_dblinks) > 1:
+	for provider_dblink in provider_dblinks:
+	provider_pkg = resolver._pkg(
+	provider_dblink.mycpv,
+	"installed",
+	root_config,
+	installed=True,
+	)
+	if provider_pkg not in clean_set:
+	provider_pkgs.add(provider_pkg)
+
+	if provider_pkgs:
+	continue
+
+	if owner_set is not None:
+	lib_consumers.update(owner_set)
+
+	for consumer_dblink in list(lib_consumers):
+	if (
+	resolver._pkg(
+	consumer_dblink.mycpv,
+	"installed",
+	root_config,
+	installed=True,
+	)
+	in clean_set
+	):
+	lib_consumers.remove(consumer_dblink)
+	continue
+
+	if lib_consumers:
+	consumers[lib] = lib_consumers
+	else:
+	del consumers[lib]
+	if not consumers:
+	del consumer_map[pkg]
+
+	if consumer_map:
+
+	msg = (
+	"In order to avoid breakage of link level "
+	+ "dependencies, one or more packages will not be removed. "
+	+ "This can be solved by rebuilding "
+	+ "the packages that pulled them in."
+	)
+
+	prefix = bad(" * ")
+	writemsg_level(
+	"".join(prefix + f"{line}\n" for line in textwrap.wrap(msg, 70)),
+	level=logging.WARNING,
+	noiselevel=-1,
+	)
+
+	msg = []
+	for pkg in sorted(consumer_map, key=cmp_sort_key(cmp_pkg_cpv)):
+	consumers = consumer_map[pkg]
+	consumer_libs = {}
+	for lib, lib_consumers in consumers.items():
+	for consumer in lib_consumers:
+	consumer_libs.setdefault(consumer.mycpv, set()).add(
+	linkmap.getSoname(lib)
+	)
+	unique_consumers = set(chain(*consumers.values()))
+	unique_consumers = sorted(
+	consumer.mycpv for consumer in unique_consumers
+	)
+	msg.append("")
+	msg.append(f"  {pkg.cpv} pulled in by:")
+	for consumer in unique_consumers:
+	libs = consumer_libs[consumer]
+	msg.append(f"    {consumer} needs {', '.join(sorted(libs))}")
+	msg.append("")
+	writemsg_level(
+	"".join(prefix + f"{line}\n" for line in msg),
+	level=logging.WARNING,
+	noiselevel=-1,
+	)
+
+	writemsg_level(">>> Adding lib providers to graph...\n")
+
+	for pkg, consumers in consumer_map.items():
+	for consumer_dblink in set(chain(*consumers.values())):
+	consumer_pkg = resolver._pkg(
+	consumer_dblink.mycpv, "installed", root_config, installed=True
+	)
+	if not resolver._add_pkg(
+	pkg,
+	Dependency(
+	parent=consumer_pkg,
+	priority=UnmergeDepPriority(
+	runtime=True, runtime_slot_op=True
+	),
+	root=pkg.root,
+	),
+	):
+	resolver.display_problems()
+	return _depclean_result(1, [], False, 0, resolver)
+
+	writemsg_level("\nCalculating dependencies  ")
+	success = resolver._complete_graph(required_sets={eroot: required_sets})
+	writemsg_level("\b\b... done!\n")
+	resolver.display_problems()
+	if not success:
+	return _depclean_result(1, [], False, 0, resolver)
+	if unresolved_deps():
+	return _depclean_result(1, [], False, 0, resolver)
+
+	graph = resolver._dynamic_config.digraph.copy()
+	required_pkgs_total = 0
+	for node in graph:
+	if isinstance(node, Package):
+	required_pkgs_total += 1
+	cleanlist = create_cleanlist()
+	if not cleanlist:
+	return _depclean_result(0, [], False, required_pkgs_total, resolver)
+	clean_set = set(cleanlist)
+
+	if clean_set:
+	writemsg_level(">>> Calculating removal order...\n")
+	graph = digraph()
+	del cleanlist[:]
+
+	runtime = UnmergeDepPriority(runtime=True)
+	runtime_post = UnmergeDepPriority(runtime_post=True)
+	buildtime = UnmergeDepPriority(buildtime=True)
+	priority_map = {
+	"IDEPEND": runtime,
+	"RDEPEND": runtime,
+	"PDEPEND": runtime_post,
+	"BDEPEND": buildtime,
+	"DEPEND": buildtime,
+	}
+
+	for node in clean_set:
+	graph.add(node, None)
+	for dep_type in Package._dep_keys:
+	depstr = node._metadata[dep_type]
+	if not depstr:
+	continue
+	priority = priority_map[dep_type]
+
+	if debug:
+	writemsg_level(
+	f"\nParent:    {node}\n",
+	noiselevel=-1,
+	level=logging.DEBUG,
+	)
+	writemsg_level(
+	f"Depstring: {depstr}\n",
+	noiselevel=-1,
+	level=logging.DEBUG,
+	)
+	writemsg_level(
+	f"Priority:  {priority}\n",
+	noiselevel=-1,
+	level=logging.DEBUG,
+	)
+
+	try:
+	atoms = resolver._select_atoms(
+	eroot,
+	depstr,
+	myuse=node.use.enabled,
+	parent=node,
+	priority=priority,
+	)[node]
+	except portage.exception.InvalidDependString:
+	continue
+
+	if debug:
+	writemsg_level(
+	"Candidates: [{}]\n".format(", ".join(f"'{x}'" for x in atoms)),
+	noiselevel=-1,
+	level=logging.DEBUG,
+	)
+
+	for atom in atoms:
+	if not isinstance(atom, portage.dep.Atom):
+	continue
+	if atom.blocker:
+	continue
+	matches = vardb.match_pkgs(atom)
+	if not matches:
+	continue
+	for child_node in matches:
+	if child_node in clean_set:
+	mypriority = priority.copy()
+	if atom.slot_operator_built:
+	if mypriority.buildtime:
+	mypriority.buildtime_slot_op = True
+	if mypriority.runtime:
+	mypriority.runtime_slot_op = True
+
+	graph.add(child_node, node, priority=mypriority)
+
+	if debug:
+	writemsg_level("\nunmerge digraph:\n\n", noiselevel=-1, level=logging.DEBUG)
+	graph.debug_print()
+	writemsg_level("\n", noiselevel=-1, level=logging.DEBUG)
+
+	ordered = True
+	if len(graph.order) == len(graph.root_nodes()):
+	ordered = False
+	cleanlist = [pkg.cpv for pkg in graph.order]
+	else:
+	node_refcounts = {}
+	for node in graph.order:
+	node_refcounts[node] = len(graph.parent_nodes(node))
+
+	def cmp_reference_count(node1, node2):
+	return node_refcounts[node1] - node_refcounts[node2]
+
+	graph.order.sort(key=cmp_sort_key(cmp_reference_count))
+
+	ignore_priority_range = [None]
+	ignore_priority_range.extend(
+	range(UnmergeDepPriority.MIN, UnmergeDepPriority.MAX + 1)
+	)
+	while graph:
+	for ignore_priority in ignore_priority_range:
+	nodes = graph.root_nodes(ignore_priority=ignore_priority)
+	if nodes:
+	break
+	if not nodes:
+	raise AssertionError("no root nodes")
+	if ignore_priority is not None:
+	del nodes[1:]
+	for node in nodes:
+	graph.remove(node)
+	cleanlist.append(node.cpv)
+
+	return _depclean_result(0, cleanlist, ordered, required_pkgs_total, resolver)
+	if args_set and "--pretend" not in myopts:
+	return _depclean_result(1, [], False, required_pkgs_total, resolver)
+	return _depclean_result(0, [], False, required_pkgs_total, resolver)
+
+}
+
+func action_deselect(settings, trees, opts, atoms) {
+
+	enter_invalid = "--ask-enter-invalid" in opts
+	root_config = trees[settings["EROOT"]]["root_config"]
+	world_set = root_config.sets["selected"]
+	if not hasattr(world_set, "update"):
+	writemsg_level(
+		"World @selected set does not appear to be mutable.\n",
+		level=logging.ERROR,
+		noiselevel=-1,
+)
+	return 1
+
+	pretend = "--pretend" in opts
+	locked = False
+	if not pretend and hasattr(world_set, "lock"):
+	world_set.lock()
+	locked = True
+try:
+	world_set.load()
+	world_atoms = world_set.getAtoms()
+	vardb = root_config.trees["vartree"].dbapi
+	expanded_atoms = set(atoms)
+
+	for atom in atoms:
+	if not atom.startswith(SETPREFIX):
+	if atom.cp.startswith("null/"):
+	# try to expand category from world set
+	null_cat, pn = portage.catsplit(atom.cp)
+	for world_atom in world_atoms:
+	cat, world_pn = portage.catsplit(world_atom.cp)
+	if pn == world_pn:
+	expanded_atoms.add(
+		Atom(
+			atom.replace("null", cat, 1),
+			allow_repo=True,
+		allow_wildcard=True,
+)
+)
+
+	for cpv in vardb.match(atom):
+	pkg = vardb._pkg_str(cpv, None)
+	expanded_atoms.add(Atom(f"{pkg.cp}:{pkg.slot}"))
+
+	discard_atoms = set()
+	for atom in world_set:
+	for arg_atom in expanded_atoms:
+	if arg_atom.startswith(SETPREFIX):
+	if atom.startswith(SETPREFIX) and arg_atom == atom:
+	discard_atoms.add(atom)
+	break
+	else:
+	if (
+		not atom.startswith(SETPREFIX)
+	and arg_atom.intersects(atom)
+	and not (arg_atom.slot and not atom.slot)
+	and not (arg_atom.repo and not atom.repo)
+):
+	discard_atoms.add(atom)
+	break
+	if discard_atoms:
+	for atom in sorted(discard_atoms):
+	if pretend:
+	action_desc = "Would remove"
+	else:
+	action_desc = "Removing"
+
+	if atom.startswith(SETPREFIX):
+	filename = "world_sets"
+	else:
+	filename = "world"
+
+	writemsg_stdout(
+		'>>> %s %s from "%s" favorites file...\n'
+	% (action_desc, colorize("INFORM", str(atom)), filename),
+	noiselevel=-1,
+)
+
+	if "--ask" in opts:
+	prompt = (
+		"Would you like to remove these "
+	+ "packages from your world favorites?"
+	)
+	uq = UserQuery(opts)
+	if uq.query(prompt, enter_invalid) == "No":
+	return 128 + signal.SIGINT
+
+	remaining = set(world_set)
+	remaining.difference_update(discard_atoms)
+	if not pretend:
+	world_set.replace(remaining)
+	else:
+	print('>>> No matching atoms found in "world" favorites file...')
+finally:
+	if locked:
+	world_set.unlock()
+	return os.EX_OK
+}
+
+type _info_pkgs_ver struct {
+	ver, repo_suffix, provide_suffix string
+}
+func New_info_pkgs_ver(ver, repo_suffix, provide_suffix string) *_info_pkgs_ver {
+	i := &_info_pkgs_ver{}
+	i.ver = ver
+	i.repo_suffix = repo_suffix
+	i.provide_suffix = provide_suffix
+	return i
+}
+
+func (i *_info_pkgs_ver)__lt__(other *_info_pkgs_ver) bool {
+	v, _ := versions.VerCmp(i.ver, other.ver)
+	return v < 0
+}
+
+func (i *_info_pkgs_ver) toString()string{
+return i.ver + i.repo_suffix + i.provide_suffix
+}
+
+func action_info() {
+
+	mypkgs = []
+	eroot = settings["EROOT"]
+	vardb = trees[eroot]["vartree"].dbapi
+	portdb = trees[eroot]["porttree"].dbapi
+	bindb = trees[eroot]["bintree"].dbapi
+	repos = portdb.settings.repositories
+	for x in myfiles:
+	any_match = False
+	cp_exists = bool(vardb.match(x.cp))
+	installed_match = vardb.match(x)
+	for installed in installed_match:
+	mypkgs.append((installed, "installed"))
+	any_match = True
+
+	if any_match:
+	continue
+
+	for db, pkg_type in ((portdb, "ebuild"), (bindb, "binary")):
+	if pkg_type == "binary" and "--usepkg" not in myopts:
+	continue
+
+	# Use match instead of cp_list, to account for old-style virtuals.
+	if not cp_exists and db.match(x.cp):
+	cp_exists = True
+	# Search for masked packages too.
+	if not cp_exists and hasattr(db, "xmatch") and db.xmatch("match-all", x.cp):
+	cp_exists = True
+
+	matches = db.match(x)
+	matches.reverse()
+	for match in matches:
+	if pkg_type == "binary":
+	if db.bintree.isremote(match):
+	continue
+	auxkeys = ["EAPI", "DEFINED_PHASES"]
+	metadata = dict(zip(auxkeys, db.aux_get(match, auxkeys)))
+	if (
+	metadata["EAPI"] not in ("0", "1", "2", "3")
+	and "info" in metadata["DEFINED_PHASES"].split()
+	):
+	mypkgs.append((match, pkg_type))
+	break
+
+	if not cp_exists:
+	xinfo = f'"{x.unevaluated_atom}"'
+	# Discard null/ from failed cpv_expand category expansion.
+	xinfo = xinfo.replace("null/", "")
+	if settings["ROOT"] != "/":
+	xinfo = f"{xinfo} for {eroot}"
+	writemsg(
+	"\nemerge: there are no ebuilds to satisfy %s.\n"
+	% colorize("INFORM", xinfo),
+	noiselevel=-1,
+	)
+
+	if myopts.get("--misspell-suggestions", "y") != "n":
+	writemsg("\nemerge: searching for similar names...", noiselevel=-1)
+
+	search_index = myopts.get("--search-index", "y") != "n"
+	dbs = [IndexedVardb(vardb) if search_index else vardb]
+	# if "--usepkgonly" not in myopts:
+	dbs.append(IndexedPortdb(portdb) if search_index else portdb)
+	if "--usepkg" in myopts:
+	dbs.append(bindb)
+
+	matches = similar_name_search(dbs, x)
+
+	if len(matches) == 1:
+	writemsg(
+	"\nemerge: Maybe you meant " + matches[0] + "?\n", noiselevel=-1
+	)
+	elif len(matches) > 1:
+	writemsg(
+	"\nemerge: Maybe you meant any of these: %s?\n"
+	% (", ".join(matches),),
+	noiselevel=-1,
+	)
+	else:
+	# Generally, this would only happen if
+	# all dbapis are empty.
+	writemsg(" nothing similar found.\n", noiselevel=-1)
+
+	return 1
+
+	output_buffer = []
+	append = output_buffer.append
+	root_config = trees[settings["EROOT"]]["root_config"]
+	chost = settings.get("CHOST")
+
+	append(
+	getportageversion(
+	settings["PORTDIR"],
+	None,
+	settings.profile_path,
+	chost,
+	trees[settings["EROOT"]]["vartree"].dbapi,
+	)
+	)
+
+	header_width = 65
+	header_title = "System Settings"
+	if myfiles:
+	append(header_width * "=")
+	append(header_title.rjust(int(header_width / 2 + len(header_title) / 2)))
+	append(header_width * "=")
+	append(f"System uname: {platform.platform(aliased=1)}")
+
+	vm_info = get_vm_info()
+	if "ram.total" in vm_info:
+	line = "%-9s %10d total" % ("KiB Mem:", vm_info["ram.total"] // 1024)
+	if "ram.free" in vm_info:
+	line += ",%10d free" % (vm_info["ram.free"] // 1024,)
+	append(line)
+	if "swap.total" in vm_info:
+	line = "%-9s %10d total" % ("KiB Swap:", vm_info["swap.total"] // 1024)
+	if "swap.free" in vm_info:
+	line += ",%10d free" % (vm_info["swap.free"] // 1024,)
+	append(line)
+
+	for repo in repos:
+	last_sync = portage.grabfile(
+	os.path.join(repo.location, "metadata", "timestamp.chk")
+	)
+	head_commit = None
+	if last_sync:
+	append(f"Timestamp of repository {repo.name}: {last_sync[0]}")
+	if repo.sync_type:
+	sync = portage.sync.module_controller.get_class(repo.sync_type)()
+	options = {"repo": repo}
+	try:
+	head_commit = sync.retrieve_head(options=options)
+	except NotImplementedError:
+	head_commit = (1, False)
+	if head_commit and head_commit[0] == os.EX_OK:
+	append(f"Head commit of repository {repo.name}: {head_commit[1]}")
+
+	# Searching contents for the /bin/sh provider is somewhat
+	# slow. Therefore, use the basename of the symlink target
+	# to locate the package. If this fails, then only the
+	# basename of the symlink target will be displayed. So,
+	# typical output is something like "sh bash 4.2_p53". Since
+	# realpath is used to resolve symlinks recursively, this
+	# approach is also able to handle multiple levels of symlinks
+	# such as /bin/sh -> bb -> busybox. Note that we do not parse
+	# the output of "/bin/sh --version" because many shells
+	# do not have a --version option.
+	basename = os.path.basename(
+	os.path.realpath(os.path.join(os.sep, portage.const.EPREFIX, "bin", "sh"))
+	)
+	try:
+	Atom(f"null/{basename}")
+	except InvalidAtom:
+	matches = None
+	else:
+	try:
+	# Try a match against the basename, which should work for
+	# busybox and most shells.
+	matches = trees[trees._running_eroot]["vartree"].dbapi.match(basename)
+	except portage.exception.AmbiguousPackageName:
+	# If the name is ambiguous, then restrict our match
+	# to the app-shells category.
+	matches = trees[trees._running_eroot]["vartree"].dbapi.match(
+	f"app-shells/{basename}"
+	)
+
+	if matches:
+	pkg = matches[-1]
+	name = pkg.cp
+	version = pkg.version
+	# Omit app-shells category from the output.
+	if name.startswith("app-shells/"):
+	name = name[len("app-shells/") :]
+	sh_str = f"{name} {version}"
+	else:
+	sh_str = basename
+
+	append(f"sh {sh_str}")
+
+	ld_names = []
+	if chost:
+	ld_names.append(chost + "-ld")
+	ld_names.append("ld")
+	for name in ld_names:
+	try:
+	proc = subprocess.Popen(
+	[name, "--version"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+	)
+	except OSError:
+	pass
+	else:
+	output = _unicode_decode(proc.communicate()[0]).splitlines()
+	proc.wait()
+	if proc.wait() == os.EX_OK and output:
+	append(f"ld {output[0]}")
+	break
+
+	try:
+	proc = subprocess.Popen(
+	["distcc", "--version"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+	)
+	except OSError:
+	output = (1, None)
+	else:
+	output = _unicode_decode(proc.communicate()[0]).rstrip("\n")
+	output = (proc.wait(), output)
+	if output[0] == os.EX_OK:
+	distcc_str = output[1].split("\n", 1)[0]
+	if "distcc" in settings.features:
+	distcc_str += " [enabled]"
+	else:
+	distcc_str += " [disabled]"
+	append(distcc_str)
+
+	try:
+	proc = subprocess.Popen(
+	["ccache", "-V"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+	)
+	except OSError:
+	output = (1, None)
+	else:
+	output = _unicode_decode(proc.communicate()[0]).rstrip("\n")
+	output = (proc.wait(), output)
+	if output[0] == os.EX_OK:
+	ccache_str = output[1].split("\n", 1)[0]
+	if "ccache" in settings.features:
+	ccache_str += " [enabled]"
+	else:
+	ccache_str += " [disabled]"
+	append(ccache_str)
+
+	myvars = [
+	"sys-devel/autoconf",
+	"sys-devel/automake",
+	"virtual/os-headers",
+	"sys-devel/binutils",
+	"sys-devel/libtool",
+	"dev-lang/python",
+	]
+	myvars += portage.util.grabfile(settings["PORTDIR"] + "/profiles/info_pkgs")
+	atoms = []
+	for x in myvars:
+	try:
+	x = Atom(x)
+	except InvalidAtom:
+	append("%-20s %s" % (x + ":", "[NOT VALID]"))
+	else:
+	for atom in expand_new_virt(vardb, x):
+	if not atom.blocker:
+	atoms.append((x, atom))
+
+	myvars = sorted(set(atoms))
+
+	cp_map = {}
+	cp_max_len = 0
+
+	for orig_atom, x in myvars:
+	pkg_matches = vardb.match(x)
+
+	versions = []
+	for cpv in pkg_matches:
+	matched_cp = portage.versions.cpv_getkey(cpv)
+	ver = portage.versions.cpv_getversion(cpv)
+	ver_map = cp_map.setdefault(matched_cp, {})
+	prev_match = ver_map.get(ver)
+	if prev_match is not None:
+	if prev_match.provide_suffix:
+	# prefer duplicate matches that include
+	# additional virtual provider info
+	continue
+
+	if len(matched_cp) > cp_max_len:
+	cp_max_len = len(matched_cp)
+	repo = vardb.aux_get(cpv, ["repository"])[0]
+	if repo:
+	repo_suffix = _repo_separator + repo
+	else:
+	repo_suffix = _repo_separator + "<unknown repository>"
+
+	if matched_cp == orig_atom.cp:
+	provide_suffix = ""
+	else:
+	provide_suffix = f" ({orig_atom})"
+
+	ver_map[ver] = _info_pkgs_ver(ver, repo_suffix, provide_suffix)
+
+	for cp in sorted(cp_map):
+	versions = sorted(cp_map[cp].values())
+	versions = ", ".join(ver.toString() for ver in versions)
+	append(f"{(cp + ':').ljust(cp_max_len + 1)} {versions}")
+
+	append("Repositories:\n")
+	for repo in repos:
+	append(repo.info_string())
+
+	binrepos_conf_path = os.path.join(
+	settings["PORTAGE_CONFIGROOT"], BINREPOS_CONF_FILE
+	)
+	binrepos_conf = BinRepoConfigLoader((binrepos_conf_path,), settings)
+	if binrepos_conf and any(repo.name for repo in binrepos_conf.values()):
+	append("Binary Repositories:\n")
+	for repo in reversed(list(binrepos_conf.values())):
+	# Omit repos from the PORTAGE_BINHOST variable, since they
+	# do not have a name to label them with.
+	if repo.name:
+	append(repo.info_string())
+
+	installed_sets = sorted(
+	s for s in root_config.sets["selected"].getNonAtoms() if s.startswith(SETPREFIX)
+	)
+	if installed_sets:
+	sets_line = "Installed sets: "
+	sets_line += ", ".join(installed_sets)
+	append(sets_line)
+
+	if "--verbose" in myopts:
+	myvars = list(settings)
+	else:
+	myvars = [
+	"GENTOO_MIRRORS",
+	"CONFIG_PROTECT",
+	"CONFIG_PROTECT_MASK",
+	"DISTDIR",
+	"ENV_UNSET",
+	"PKGDIR",
+	"PORTAGE_TMPDIR",
+	"PORTAGE_BINHOST",
+	"PORTAGE_BUNZIP2_COMMAND",
+	"PORTAGE_BZIP2_COMMAND",
+	"USE",
+	"CHOST",
+	"CFLAGS",
+	"CXXFLAGS",
+	"ACCEPT_KEYWORDS",
+	"ACCEPT_LICENSE",
+	"FEATURES",
+	"EMERGE_DEFAULT_OPTS",
+	]
+
+	myvars.extend(
+	portage.util.grabfile(settings["PORTDIR"] + "/profiles/info_vars")
+	)
+
+	myvars_ignore_defaults = {
+	"PORTAGE_BZIP2_COMMAND": "bzip2",
+	}
+
+	skipped_vars = ["PORTAGE_REPOSITORIES"]
+	# Deprecated variables
+	skipped_vars.extend(("PORTDIR", "PORTDIR_OVERLAY", "SYNC"))
+
+	myvars = set(myvars)
+	myvars.difference_update(skipped_vars)
+	myvars = sorted(myvars)
+
+	use_expand = settings.get("USE_EXPAND", "").split()
+	use_expand.sort()
+	unset_vars = []
+
+	for k in myvars:
+	v = settings.get(k)
+	if v is not None:
+	if k != "USE":
+	default = myvars_ignore_defaults.get(k)
+	if default is not None and default == v:
+	continue
+
+	v = _hide_url_passwd(v)
+
+	append(f'{k}="{v}"')
+	else:
+	use = set(v.split())
+	for varname in use_expand:
+	flag_prefix = varname.lower() + "_"
+	for f in list(use):
+	if f.startswith(flag_prefix):
+	use.remove(f)
+	use = list(use)
+	use.sort()
+	use = [f"USE=\"{' '.join(use)}\""]
+	for varname in use_expand:
+	myval = settings.get(varname)
+	if myval:
+	use.append(f'{varname}="{myval}"')
+	append(" ".join(use))
+	else:
+	unset_vars.append(k)
+	if unset_vars:
+	append("Unset:  " + ", ".join(unset_vars))
+	append("")
+	append("")
+	writemsg_stdout("\n".join(output_buffer), noiselevel=-1)
+	del output_buffer[:]
+
+	# If some packages were found...
+	if mypkgs:
+	# Get our global settings (we only print stuff if it varies from
+	# the current config)
+	mydesiredvars = ["CHOST", "CFLAGS", "CXXFLAGS", "FEATURES", "LDFLAGS"]
+	auxkeys = mydesiredvars + list(vardb._aux_cache_keys)
+	auxkeys.append("DEFINED_PHASES")
+	pkgsettings = portage.config(clone=settings)
+
+	# Loop through each package
+	# Only print settings if they differ from global settings
+	header_title = "Package Settings"
+	append(header_width * "=")
+	append(header_title.rjust(int(header_width / 2 + len(header_title) / 2)))
+	append(header_width * "=")
+	append("")
+	writemsg_stdout("\n".join(output_buffer), noiselevel=-1)
+	del output_buffer[:]
+
+	out = portage.output.EOutput()
+	for mypkg in mypkgs:
+	cpv = mypkg[0]
+	pkg_type = mypkg[1]
+	# Get all package specific variables
+	if pkg_type == "installed":
+	metadata = dict(zip(auxkeys, vardb.aux_get(cpv, auxkeys)))
+	elif pkg_type == "ebuild":
+	metadata = dict(zip(auxkeys, portdb.aux_get(cpv, auxkeys)))
+	elif pkg_type == "binary":
+	metadata = dict(zip(auxkeys, bindb.aux_get(cpv, auxkeys)))
+
+	pkg = Package(
+	built=(pkg_type != "ebuild"),
+	cpv=cpv,
+	installed=(pkg_type == "installed"),
+	metadata=zip(
+	Package.metadata_keys,
+	(metadata.get(x, "") for x in Package.metadata_keys),
+	),
+	root_config=root_config,
+	type_name=pkg_type,
+	)
+
+	if pkg_type == "installed":
+	append(
+	"\n%s was built with the following:"
+	% colorize("INFORM", str(pkg.cpv + _repo_separator + pkg.repo))
+	)
+	elif pkg_type == "ebuild":
+	append(
+	"\n%s would be built with the following:"
+	% colorize("INFORM", str(pkg.cpv + _repo_separator + pkg.repo))
+	)
+	elif pkg_type == "binary":
+	append(
+	"\n%s (non-installed binary) was built with the following:"
+	% colorize("INFORM", str(pkg.cpv + _repo_separator + pkg.repo))
+	)
+
+	append(f"{pkg_use_display(pkg, myopts)}")
+	if pkg_type == "installed":
+	for myvar in mydesiredvars:
+	if metadata[myvar].split() != settings.get(myvar, "").split():
+	append(f'{myvar}="{metadata[myvar]}"')
+	append("")
+	append("")
+	writemsg_stdout("\n".join(output_buffer), noiselevel=-1)
+	del output_buffer[:]
+
+	if metadata["DEFINED_PHASES"]:
+	if "info" not in metadata["DEFINED_PHASES"].split():
+	continue
+
+	writemsg_stdout(
+	f">>> Attempting to run pkg_info() for '{pkg.cpv}'\n", noiselevel=-1
+	)
+
+	if pkg_type == "installed":
+	ebuildpath = vardb.findname(pkg.cpv)
+	elif pkg_type == "ebuild":
+	ebuildpath = portdb.findname(pkg.cpv, myrepo=pkg.repo)
+	elif pkg_type == "binary":
+	binpkg_file = bindb.bintree.getname(pkg.cpv)
+	ebuild_file_name = pkg.cpv.split("/")[1] + ".ebuild"
+	try:
+	binpkg_format = get_binpkg_format(binpkg_file)
+	except InvalidBinaryPackageFormat as e:
+	out.ewarn(e)
+	continue
+
+	if binpkg_format == "xpak":
+	ebuild_file_contents = portage.xpak.tbz2(binpkg_file).getfile(
+	ebuild_file_name
+	)
+	elif binpkg_format == "gpkg":
+	ebuild_file_contents = portage.gpkg.gpkg(
+	settings, pkg.cpv, binpkg_file
+	).get_metadata(ebuild_file_name)
+	else:
+	continue
+	tmpdir = tempfile.mkdtemp()
+	ebuildpath = os.path.join(tmpdir, ebuild_file_name)
+	file = open(ebuildpath, "w")
+	file.write(ebuild_file_contents)
+	file.close()
+
+	if not ebuildpath or not os.path.exists(ebuildpath):
+	out.ewarn(f"No ebuild found for '{pkg.cpv}'")
+	continue
+
+	if pkg_type == "installed":
+	portage.doebuild(
+	ebuildpath,
+	"info",
+	settings=pkgsettings,
+	debug=(settings.get("PORTAGE_DEBUG", "") == 1),
+	mydbapi=trees[settings["EROOT"]]["vartree"].dbapi,
+	tree="vartree",
+	)
+	elif pkg_type == "ebuild":
+	portage.doebuild(
+	ebuildpath,
+	"info",
+	settings=pkgsettings,
+	debug=(settings.get("PORTAGE_DEBUG", "") == 1),
+	mydbapi=trees[settings["EROOT"]]["porttree"].dbapi,
+	tree="porttree",
+	)
+	elif pkg_type == "binary":
+	portage.doebuild(
+	ebuildpath,
+	"info",
+	settings=pkgsettings,
+	debug=(settings.get("PORTAGE_DEBUG", "") == 1),
+	mydbapi=trees[settings["EROOT"]]["bintree"].dbapi,
+	tree="bintree",
+	)
+	shutil.rmtree(tmpdir)
+}
+
+func action_regen(settings *config.Config, portdb *dbapi.portdbapi, max_jobs, max_load) *int {
+
+	xterm_titles := ! settings.Features.Features["notitles"]
+	Emergelog(xterm_titles, " === regen", "")
+	os.Stdout.Sync()
+
+	regen := NewMetadataRegen(portdb, "", nil, true, max_jobs, max_load, true)
+
+	signum := run_main_scheduler(regen)
+	if signum is not None{
+		os.Exit(128 + signum)
+	}
+
+	msg.WriteMsgStdout("done!\n", 0)
+	return regen.returncode
+}
+
+func action_search(root_config, myopts, myfiles, spinner) {
+
+	if not myfiles {
+		print("emerge: no search terms provided.")
+	}else {
+		searchinstance = search(
+			root_config,
+			spinner,
+			"--searchdesc"
+		in
+		myopts,
+			"--quiet"
+		not
+		in
+		myopts,
+			"--usepkg"
+		in
+		myopts,
+			"--usepkgonly"
+		in
+		myopts,
+			search_index = myopts.get("--search-index", "y") != "n",
+			search_similarity=myopts.get("--search-similarity"),
+			fuzzy = myopts.get("--fuzzy-search") != "n",
+			regex_auto=myopts.get("--regex-search-auto") != "n",
+	)
+		for mysearch
+		in
+	myfiles:
+	try:
+		searchinstance.execute(mysearch)
+		except
+		re.error
+		as
+	comment:
+		print(f
+		'\n!!! Regular expression error in "{mysearch}": {comment}')
+		sys.exit(1)
+		searchinstance.output()
+	}
+}
 
 func actionSync(emerge_config *EmergeConfig) int {
 	syncer := sync.NewSyncRepos(emerge_config, false)
@@ -66,7 +2337,221 @@ func actionSync(emerge_config *EmergeConfig) int {
 	}
 }
 
-func action_uninstall() {}
+func action_uninstall() {
+	ignore_missing_eq = action in ("clean", "rage-clean", "unmerge")
+	root = settings["ROOT"]
+	eroot = settings["EROOT"]
+	vardb = trees[settings["EROOT"]]["vartree"].dbapi
+	valid_atoms = []
+	lookup_owners = []
+
+	# Ensure atoms are valid before calling unmerge().
+	# For backward compat, leading '=' is not required.
+	for x in files:
+	if is_valid_package_atom(x, allow_repo=True) or (
+	ignore_missing_eq and is_valid_package_atom("=" + x)
+	):
+	try:
+	atom = dep_expand(x, mydb=vardb, settings=settings)
+	except portage.exception.AmbiguousPackageName as e:
+	msg = (
+	'The short ebuild name "'
+	+ x
+	+ '" is ambiguous.  Please specify '
+	+ "one of the following "
+	+ "fully-qualified ebuild names instead:"
+	)
+	for line in textwrap.wrap(msg, 70):
+	writemsg_level(f"!!! {line}\n", level=logging.ERROR, noiselevel=-1)
+	for i in e.args[0]:
+	writemsg_level(
+	f"    {colorize('INFORM', i)}\n",
+	level=logging.ERROR,
+	noiselevel=-1,
+	)
+	writemsg_level("\n", level=logging.ERROR, noiselevel=-1)
+	return 1
+	else:
+	if atom.use and atom.use.conditional:
+	writemsg_level(
+	(
+	"\n\n!!! '%s' contains a conditional "
+	+ "which is not allowed.\n"
+	)
+	% (x,),
+	level=logging.ERROR,
+	noiselevel=-1,
+	)
+	writemsg_level(
+	"!!! Please check ebuild(5) for full details.\n",
+	level=logging.ERROR,
+	)
+	return 1
+	valid_atoms.append(atom)
+
+	elif x.startswith(os.sep):
+	if not x.startswith(eroot):
+	writemsg_level(
+	("!!! '%s' does not start with" + " $EROOT.\n") % x,
+	level=logging.ERROR,
+	noiselevel=-1,
+	)
+	return 1
+	# Queue these up since it's most efficient to handle
+	# multiple files in a single iter_owners() call.
+	lookup_owners.append(x)
+
+	elif x.startswith(SETPREFIX) and action == "deselect":
+	valid_atoms.append(x)
+
+	elif "*" in x:
+	try:
+	ext_atom = Atom(x, allow_repo=True, allow_wildcard=True)
+	except InvalidAtom:
+	msg = []
+	msg.append(f"'{x}' is not a valid package atom.")
+	msg.append("Please check ebuild(5) for full details.")
+	writemsg_level(
+	"".join(f"!!! {line}\n" for line in msg),
+	level=logging.ERROR,
+	noiselevel=-1,
+	)
+	return 1
+
+	for cpv in vardb.cpv_all():
+	if portage.match_from_list(ext_atom, [cpv]):
+	require_metadata = False
+	atom = portage.cpv_getkey(cpv)
+	if ext_atom.operator == "=*":
+	atom = "=" + atom + "-" + portage.versions.cpv_getversion(cpv)
+	if ext_atom.slot:
+	atom += _slot_separator + ext_atom.slot
+	require_metadata = True
+	if ext_atom.repo:
+	atom += _repo_separator + ext_atom.repo
+	require_metadata = True
+
+	atom = Atom(atom, allow_repo=True)
+	if require_metadata:
+	try:
+	cpv = vardb._pkg_str(cpv, ext_atom.repo)
+	except (KeyError, InvalidData):
+	continue
+	if not portage.match_from_list(atom, [cpv]):
+	continue
+
+	valid_atoms.append(atom)
+
+	else:
+	msg = []
+	msg.append(f"'{x}' is not a valid package atom.")
+	msg.append("Please check ebuild(5) for full details.")
+	writemsg_level(
+	"".join(f"!!! {line}\n" for line in msg),
+	level=logging.ERROR,
+	noiselevel=-1,
+	)
+	return 1
+
+	if lookup_owners:
+	relative_paths = []
+	search_for_multiple = False
+	if len(lookup_owners) > 1:
+	search_for_multiple = True
+
+	for x in lookup_owners:
+	if not search_for_multiple and os.path.isdir(x):
+	search_for_multiple = True
+	relative_paths.append(x[len(root) - 1 :])
+
+	owners = set()
+	for pkg, relative_path in vardb._owners.iter_owners(relative_paths):
+	owners.add(pkg.mycpv)
+	if not search_for_multiple:
+	break
+
+	if owners:
+	for cpv in owners:
+	pkg = vardb._pkg_str(cpv, None)
+	atom = f"{pkg.cp}:{pkg.slot}"
+	valid_atoms.append(portage.dep.Atom(atom))
+	else:
+	writemsg_level(
+	("!!! '%s' is not claimed " + "by any package.\n") % lookup_owners[0],
+	level=logging.WARNING,
+	noiselevel=-1,
+	)
+
+	if files and not valid_atoms:
+	return 1
+
+	if (
+	action == "unmerge"
+	and "--quiet" not in opts
+	and "--quiet-unmerge-warn" not in opts
+	):
+	msg = (
+	"This action can remove important packages! "
+	+ "In order to be safer, use "
+	+ "`emerge -pv --depclean <atom>` to check for "
+	+ "reverse dependencies before removing packages."
+	)
+	out = portage.output.EOutput()
+	for line in textwrap.wrap(msg, 72):
+	out.ewarn(line)
+
+	if action == "deselect":
+	return action_deselect(settings, trees, opts, valid_atoms)
+
+	# Use the same logic as the Scheduler class to trigger redirection
+	# of ebuild pkg_prerm/postrm phase output to logs as appropriate
+	# for options such as --jobs, --quiet and --quiet-build.
+	max_jobs = opts.get("--jobs", 1)
+	background = (
+	max_jobs is True
+	or max_jobs > 1
+	or "--quiet" in opts
+	or opts.get("--quiet-build") == "y"
+	)
+	sched_iface = SchedulerInterface(
+	global_event_loop(), is_background=lambda: background
+	)
+
+	if background:
+	settings.unlock()
+	settings["PORTAGE_BACKGROUND"] = "1"
+	settings.backup_changes("PORTAGE_BACKGROUND")
+	settings.lock()
+
+	if action in ("clean", "rage-clean", "unmerge") or (
+	action == "prune" and "--nodeps" in opts
+	):
+	# When given a list of atoms, unmerge them in the order given.
+	ordered = action in ("rage-clean", "unmerge")
+	rval = unmerge(
+	trees[settings["EROOT"]]["root_config"],
+	opts,
+	action,
+	valid_atoms,
+	ldpath_mtimes,
+	ordered=ordered,
+	scheduler=sched_iface,
+	)
+	else:
+	rval = action_depclean(
+	settings,
+	trees,
+	ldpath_mtimes,
+	opts,
+	action,
+	valid_atoms,
+	spinner,
+	scheduler=sched_iface,
+	)
+
+	return rval
+
+}
 
 func adjust_configs(myopts map[string]string, trees *portage.TreesDict) {
 	for myroot, mytrees := range trees.Values() {
@@ -101,8 +2586,8 @@ func adjust_config(myopts map[string]string, settings *config.Config) {
 	if s, ok := settings.ValueDict["CLEAN_DELAY"]; ok {
 		if v, err := strconv.Atoi(s); err != nil {
 			//except ValueError as e:
-			util.WriteMsg(fmt.Sprintf("!!! %v\n", err), -1, nil)
-			util.WriteMsg(fmt.Sprintf("!!! Unable to parse integer: CLEAN_DELAY='%s'\n", settings.ValueDict["CLEAN_DELAY"]), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("!!! %v\n", err), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("!!! Unable to parse integer: CLEAN_DELAY='%s'\n", settings.ValueDict["CLEAN_DELAY"]), -1, nil)
 		} else {
 			CLEAN_DELAY = v
 		}
@@ -115,8 +2600,8 @@ func adjust_config(myopts map[string]string, settings *config.Config) {
 	if s, ok := settings.ValueDict["EMERGE_WARNING_DELAY"]; ok {
 		if v, err := strconv.Atoi(s); err != nil {
 			//except ValueError as e:
-			util.WriteMsg(fmt.Sprintf("!!! %v\n", err), -1, nil)
-			util.WriteMsg(fmt.Sprintf("!!! Unable to parse integer: EMERGE_WARNING_DELAY='%s'\n", settings.ValueDict["EMERGE_WARNING_DELAY"]), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("!!! %v\n", err), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("!!! Unable to parse integer: EMERGE_WARNING_DELAY='%s'\n", settings.ValueDict["EMERGE_WARNING_DELAY"]), -1, nil)
 		} else {
 			EMERGE_WARNING_DELAY = v
 		}
@@ -150,11 +2635,11 @@ func adjust_config(myopts map[string]string, settings *config.Config) {
 	if s, ok := settings.ValueDict["PORTAGE_DEBUG"]; ok {
 		if v, err := strconv.Atoi(s); err != nil {
 			//except ValueError as e:
-			util.WriteMsg(fmt.Sprintf("!!! %v\n", err), -1, nil)
-			util.WriteMsg(fmt.Sprintf("!!! Unable to parse integer: PORTAGE_DEBUG='%s'\n", settings.ValueDict["EMERGE_WARNING_DELAY"]), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("!!! %v\n", err), -1, nil)
+			msg.WriteMsg(fmt.Sprintf("!!! Unable to parse integer: PORTAGE_DEBUG='%s'\n", settings.ValueDict["EMERGE_WARNING_DELAY"]), -1, nil)
 		} else if v != 0 && v != 1 {
-			util.WriteMsg(fmt.Sprintf("!!! Invalid value: PORTAGE_DEBUG='%i'\n", PORTAGE_DEBUG), -1, nil)
-			util.WriteMsg("!!! PORTAGE_DEBUG must be either 0 or 1\n", -1, nil)
+			msg.WriteMsg(fmt.Sprintf("!!! Invalid value: PORTAGE_DEBUG='%i'\n", PORTAGE_DEBUG), -1, nil)
+			msg.WriteMsg("!!! PORTAGE_DEBUG must be either 0 or 1\n", -1, nil)
 			PORTAGE_DEBUG = 0
 		} else {
 			PORTAGE_DEBUG = v
@@ -192,11 +2677,98 @@ func adjust_config(myopts map[string]string, settings *config.Config) {
 	}
 }
 
-func display_missing_pkg_set() {}
+func display_missing_pkg_set(root_config *RootConfig, set_name string) {
+	msg1 := []string{}
+	msg1 = append(msg1, fmt.Sprintf("emerge: There are no sets to satisfy '%s'. "+"The following sets exist:\n", output.Colorize("INFORM", set_name)))
+	msg1 = append(msg1, "\n")
 
-func relative_profile_path() {}
+	for _, s := range myutil.SortedMS(root_config.sets) {
+		msg1 = append(msg1, fmt.Sprintf("    %s\n", s))
+	}
+	msg1 = append(msg1, "\n")
 
-func getportageversion() {}
+	msg.WriteMsgLevel(strings.Join(msg1, ""), 40, -1)
+}
+
+func relative_profile_path(portdir, abs_profile string) string {
+	realpath, _ := filepath.Abs(abs_profile)
+	basepath ,_:= filepath.Abs(filepath.Join(portdir, "profiles"))
+	profilever := ""
+	if strings.HasPrefix(realpath, basepath) {
+		profilever = realpath[1+len(basepath):]
+	}
+	return profilever
+}
+
+func getportageversion(portdir, _unused, profile, chost, vardb) {
+	pythonver := "python %d.%d.%d-%s-%d" % sys.version_info[:]
+	profilever = None
+	repositories = vardb.settings.repositories
+	if profile:
+	profilever = relative_profile_path(portdir, profile)
+	if profilever is None:
+try:
+	for parent in portage.grabfile(os.path.join(profile, "parent")):
+	profilever = relative_profile_path(
+		portdir, os.path.join(profile, parent)
+	)
+	if profilever is not None:
+	break
+	colon = parent.find(":")
+	if colon != -1:
+	p_repo_name = parent[:colon]
+try:
+	p_repo_loc = repositories.get_location_for_name(p_repo_name)
+	except KeyError:
+	pass
+	else:
+	profilever = relative_profile_path(
+		p_repo_loc,
+		os.path.join(
+			p_repo_loc, "profiles", parent[colon + 1 :]
+		),
+	)
+	if profilever is not None:
+	break
+	except portage.exception.PortageException:
+	pass
+
+	if profilever is None:
+try:
+	profilever = "!" + os.readlink(profile)
+	except OSError:
+	pass
+
+	if profilever is None:
+	profilever = "unavailable"
+
+	libcver = []
+	libclist = set()
+	for atom in expand_new_virt(vardb, portage.const.LIBC_PACKAGE_ATOM):
+	if not atom.blocker:
+	libclist.update(vardb.match(atom))
+	if libclist:
+	for cpv in sorted(libclist):
+	libc_split = portage.catpkgsplit(cpv)[1:]
+	if libc_split[-1] == "r0":
+	libc_split = libc_split[:-1]
+	libcver.append("-".join(libc_split))
+	else:
+	libcver = ["unavailable"]
+
+	gccver = getgccversion(chost)
+	unameout = platform.release() + " " + platform.machine()
+
+	return "Portage {} ({}, {}, {}, {}, {})".format(
+	portage.VERSION,
+	pythonver,
+	profilever,
+	gccver,
+	",".join(libcver),
+	unameout,
+	)
+
+}
 
 type EmergeConfig struct {
 	action                      string
@@ -217,7 +2789,7 @@ func LoadEmergeConfig(emergeConfig *EmergeConfig, env map[string]string, action 
 		emergeConfig = NewEmergeConfig(action, args, opts)
 	}
 	if env == nil {
-		env = util.ExpandEnv()
+		env = msg.ExpandEnv()
 	}
 	emergeConfig.Trees = portage.CreateTrees(env["PORTAGE_CONFIGROOT"], env["ROOT"], emergeConfig.Trees, util.ExpandEnv(), env["SYSROOT"], env["EPREFIX"])
 
@@ -251,15 +2823,72 @@ func check_procfs() {}
 
 func config_protect_check() {}
 
-func apply_priorities() {}
+func apply_priorities(settings *config.Config) {
+	ionice(settings)
+	nice(settings)
+	set_scheduling_policy(settings)
+}
 
-func nice() {}
+func nice() {
+//try:
+//	os.nice(int(settings.get("PORTAGE_NICENESS", "0")))
+//	except (OSError, ValueError) as e:
+//	out = portage.output.EOutput()
+//	out.eerror(
+//		f"Failed to change nice value to '{settings.get('PORTAGE_NICENESS', '0')}'"
+//	)
+//	out.eerror(f"{str(e)}\n")
+}
 
-func ionice() {}
+func ionice() {
+//
+//	ionice_cmd = settings.get("PORTAGE_IONICE_COMMAND")
+//	if ionice_cmd:
+//	ionice_cmd = portage.util.shlex_split(ionice_cmd)
+//	if not ionice_cmd:
+//	return
+//
+//	variables = {"PID": str(portage.getpid())}
+//	cmd = [varexpand(x, mydict=variables) for x in ionice_cmd]
+//
+//	try:
+//	rval = portage.process.spawn(cmd, env=os.environ)
+//	except portage.exception.CommandNotFound:
+//	# The OS kernel probably doesn't support ionice,
+//	# so return silently.
+//	return
+//
+//	if rval != os.EX_OK:
+//	out = portage.output.EOutput()
+//	out.eerror("PORTAGE_IONICE_COMMAND returned %d" % (rval,))
+//	out.eerror(
+//	"See the make.conf(5) man page for PORTAGE_IONICE_COMMAND usage instructions."
+//)
+}
 
-func setconfig_fallback() {}
+func setconfig_fallback(root_config *RootConfig) {
+	setconfig := root_config.setconfig
+	setconfig._create_default_config()
+	setconfig._parse(true)
+	root_config.sets = setconfig.GetSets()
+}
 
-func get_missing_sets() {}
+func get_missing_sets(root_config *RootConfig) []string {
+
+	missing_sets := []string{}
+
+	for _, s := range []string{
+		"selected",
+		"system",
+		"world",
+	} {
+		if !myutil.InmsT(root_config.sets, s) {
+			missing_sets = append(missing_sets,s)
+		}
+	}
+
+	return missing_sets
+}
 
 func missing_sets_warning() {}
 
@@ -274,10 +2903,14 @@ func repo_name_duplicate_check() {}
 func runAction(emergeConfig *EmergeConfig) int {
 	if map[string]bool{"help": true, "info": true, "sync": true, "version": true}[emergeConfig.action] && emergeConfig.opts["--package-moves"] != "n" &&
 		portage.Global_updates(emergeConfig.Trees,
-			emergeConfig.targetConfig.Mtimedb.dict["updates"].(map[string]string),
-			myutil.Inmss(emergeConfig.opts, "--quiet"), false) {
+			emergeConfig.targetConfig.Mtimedb.Dict["updates"].(map[string]string),
+			myutil.InmsT(emergeConfig.opts, "--quiet"), false) {
 		emergeConfig.targetConfig.Mtimedb.Commit()
 		LoadEmergeConfig(emergeConfig, nil, "", nil, nil)
+		emergeConfig.targetConfig.Settings.Unlock()
+		emergeConfig.targetConfig.Settings.ValueDict["AUTOCLEAN"] = "yes"
+		emergeConfig.targetConfig.Settings.BackupChanges("AUTOCLEAN")
+		emergeConfig.targetConfig.Settings.Lock()
 	}
 
 	_, xterm_titles := emergeConfig.targetConfig.Settings.Features.Features["notitles"]
@@ -297,49 +2930,52 @@ func runAction(emergeConfig *EmergeConfig) int {
 		emergeConfig.opts["--getbinpkg"] = "true"
 	}
 
-	if myutil.Inmss(emergeConfig.opts, "--getbinpkgonly") {
+	if myutil.InmsT(emergeConfig.opts, "--getbinpkgonly") {
 		emergeConfig.opts["--getbinpkg"] = "true"
 	}
 
-	if myutil.Inmss(emergeConfig.opts, "--getbinpkgonly") {
+	if myutil.InmsT(emergeConfig.opts, "--getbinpkgonly") {
 		emergeConfig.opts["--usepkgonly"] = "true"
 	}
 
-	if myutil.Inmss(emergeConfig.opts, "--getbinpkg") {
+	if myutil.InmsT(emergeConfig.opts, "--getbinpkg") {
 		emergeConfig.opts["--usepkg"] = "true"
 	}
 
-	if myutil.Inmss(emergeConfig.opts, "--usepkgonly") {
+	if myutil.InmsT(emergeConfig.opts, "--usepkgonly") {
 		emergeConfig.opts["--usepkg"] = "true"
 	}
-	//	if (emerge_config.action in ('search', None) and
-	//	'--usepkg' in emerge_config.opts):
-	//	for mytrees in emerge_config.trees.values():
-	//	kwargs = {}
-	//	if (mytrees is emerge_config.target_config.trees and
-	//	emerge_config.target_config is not emerge_config.running_config and
-	//	emerge_config.opts.get('--quickpkg-direct', 'n') == 'y'):
-	//	kwargs['add_repos'] = (emerge_config.running_config.trees['vartree'].dbapi,)
-	//
-	//try:
-	//	mytrees['bintree'].populate(
-	//		getbinpkgs='--getbinpkg' in emerge_config.opts,
-	//		**kwargs)
-	//	except ParseError as e:
-	//	writemsg('\n\n!!!%s.\nSee make.conf(5) for more info.\n'
-	//	% (e,), noiselevel=-1)
-	//	return 1
-	//
-	//	adjust_configs(emerge_config.opts, emerge_config.trees)
-	//
-	//	if profile_check(emerge_config.trees, emerge_config.action) != os.EX_OK:
-	//	return 1
-	//
-	//	apply_priorities(emerge_config.target_config.settings)
-	//
+		if (emergeConfig.action == "search" || emergeConfig.action == "") &&
+		myutil.InmsT(emergeConfig.opts, "--usepkg"){
+		for _, mytrees := range emergeConfig.Trees.Values() {
+			add_repos := []*dbapi.Vardbapi{}
+			if mytrees == emergeConfig.targetConfig.trees&&
+				emergeConfig.targetConfig!=emergeConfig.runningConfig &&
+				emergeConfig.opts["--quickpkg-direct"] == "y" {
+				add_repos = []*dbapi.Vardbapi{emergeConfig.runningConfig.trees.VarTree().dbapi,}
+			}
+		//try:
+			mytrees.BinTree().Populate(
+				myutil.InmsT(emergeConfig.opts, "--getbinpkg"),
+				true, add_repos)
+			//except ParseError as e:
+			//msg.WriteMsg('\n\n!!!%s.\nSee make.conf(5) for more info.\n'
+			//% (e,), noiselevel = -1)
+			//return 1
+		}
+	}
+
+		adjust_configs(emergeConfig.opts, emergeConfig.Trees)
+
+		if profile_check(emergeConfig.Trees, emergeConfig.action) != 0 {
+			return 1
+		}
+
+		apply_priorities(emergeConfig.targetConfig.Settings)
+
 	//	if ("--autounmask-continue" in emerge_config.opts and
 	//	emerge_config.opts.get("--autounmask") == "n"):
-	//	writemsg_level(
+	//	msg.WriteMsg_level(
 	//		" %s --autounmask-continue has been disabled by --autounmask=n\n" %
 	//			warn("*"), level=logging.WARNING, noiselevel=-1)
 	//
@@ -350,13 +2986,13 @@ func runAction(emergeConfig *EmergeConfig) int {
 	//	else:
 	//	problematic="PORTAGE_BINPKG_FORMAT"
 	//
-	//	writemsg_level(("emerge: %s is not set correctly. Format " + \
+	//	msg.WriteMsg_level(("emerge: %s is not set correctly. Format " + \
 	//	"'%s' is not supported.\n") % (problematic, fmt),
 	//	level=logging.ERROR, noiselevel=-1)
 	//	return 1
 
 	if emergeConfig.action == "version" {
-		//writemsg_stdout(getportageversion(
+		//msg.WriteMsg_stdout(getportageversion(
 		//	emerge_config.target_config.settings["PORTDIR"],
 		//	None,
 		//	emerge_config.target_config.settings.profile_path,
@@ -365,7 +3001,7 @@ func runAction(emergeConfig *EmergeConfig) int {
 		//	noiselevel=-1)
 		return 0
 	} else if emergeConfig.action == "help" {
-		atom.emergeHelp()
+		emergeHelp()
 		return 0
 	}
 
@@ -396,7 +3032,7 @@ func runAction(emergeConfig *EmergeConfig) int {
 	//	break
 	//
 	//	if emerge_config.action == "list-sets":
-	//	writemsg_stdout("".join("%s\n" % s for s in
+	//	msg.WriteMsg_stdout("".join("%s\n" % s for s in
 	//	sorted(emerge_config.target_config.sets)))
 	//	return os.EX_OK
 	//	if emerge_config.action == "check-news":
@@ -413,7 +3049,7 @@ func runAction(emergeConfig *EmergeConfig) int {
 	//
 	//	if emerge_config.action is None and \
 	//	"--resume" in emerge_config.opts and emerge_config.args:
-	//	writemsg("emerge: unexpected argument(s) for --resume: %s\n" %
+	//	msg.WriteMsg("emerge: unexpected argument(s) for --resume: %s\n" %
 	//		" ".join(emerge_config.args), noiselevel=-1)
 	//	return 1
 	//
@@ -442,7 +3078,7 @@ func runAction(emergeConfig *EmergeConfig) int {
 	//
 	//	if '--emptytree' in emerge_config.opts and \
 	//	'--noreplace' in emerge_config.opts:
-	//	writemsg_level("emerge: can't specify both of " + \
+	//	msg.WriteMsg_level("emerge: can't specify both of " + \
 	//	"\"--emptytree\" and \"--noreplace\".\n",
 	//		level=logging.ERROR, noiselevel=-1)
 	//	return 1
@@ -465,7 +3101,7 @@ func runAction(emergeConfig *EmergeConfig) int {
 	//	# forbid --ask when not in a terminal
 	//	# note: this breaks `emerge --ask | tee logfile`, but that doesn't work anyway.
 	//	if ("--ask" in emerge_config.opts) and (not sys.stdin.isatty()):
-	//	portage.writemsg("!!! \"--ask\" should only be used in a terminal. Exiting.\n",
+	//	portage.msg.WriteMsg("!!! \"--ask\" should only be used in a terminal. Exiting.\n",
 	//		noiselevel=-1)
 	//	return 1
 	//
@@ -514,7 +3150,7 @@ func runAction(emergeConfig *EmergeConfig) int {
 	//	# Always show portage_group_warning() when only portage group
 	//	# access is required but the user is not in the portage group.
 	//	if "--ask" in emerge_config.opts:
-	//	writemsg_stdout("This action requires %s access...\n" % \
+	//	msg.WriteMsg_stdout("This action requires %s access...\n" % \
 	//	(access_desc,), noiselevel=-1)
 	//	if portage.data.secpass < 1 and not need_superuser:
 	//	portage.data.portage_group_warning()
@@ -557,7 +3193,7 @@ func runAction(emergeConfig *EmergeConfig) int {
 	//	# At least the parent needs to exist for the lock file.
 	//		portage.util.ensure_dirs(emerge_log_dir)
 	//	except portage.exception.PortageException as e:
-	//	writemsg_level("!!! Error creating directory for " + \
+	//	msg.WriteMsg_level("!!! Error creating directory for " + \
 	//	"EMERGE_LOG_DIR='%s':\n!!! %s\n" % \
 	//	(emerge_log_dir, e),
 	//	noiselevel=-1, level=logging.ERROR)
@@ -600,7 +3236,7 @@ func runAction(emergeConfig *EmergeConfig) int {
 	//
 	//	def emergeexitsig(signum, frame):
 	//	signal.signal(signal.SIGTERM, signal.SIG_IGN)
-	//	portage.util.writemsg(
+	//	portage.util.msg.WriteMsg(
 	//		"\n\nExiting on signal %(signal)s\n" % {"signal":signum})
 	//	sys.exit(128 + signum)
 	//
@@ -608,7 +3244,7 @@ func runAction(emergeConfig *EmergeConfig) int {
 	//
 	emergeexit := func() {
 		if _, ok := emergeConfig.opts["--pretend"]; !ok {
-			emerge.emergelog(xterm_titles, " *** terminating.", "")
+			Emergelog(xterm_titles, " *** terminating.", "")
 		}
 		if xterm_titles {
 			output.XtermTitleReset()
@@ -693,18 +3329,18 @@ func runAction(emergeConfig *EmergeConfig) int {
 	//	"one of the following " + \
 	//	"fully-qualified ebuild names instead:"
 	//	for line in textwrap.wrap(msg, 70):
-	//	writemsg_level("!!! %s\n" % (line,),
+	//	msg.WriteMsg_level("!!! %s\n" % (line,),
 	//		level=logging.ERROR, noiselevel=-1)
 	//	for i in e.args[0]:
-	//	writemsg_level("    %s\n" % colorize("INFORM", i),
+	//	msg.WriteMsg_level("    %s\n" % colorize("INFORM", i),
 	//		level=logging.ERROR, noiselevel=-1)
-	//	writemsg_level("\n", level=logging.ERROR, noiselevel=-1)
+	//	msg.WriteMsg_level("\n", level=logging.ERROR, noiselevel=-1)
 	//	return 1
 	//	continue
 	//	msg = []
 	//	msg.append("'%s' is not a valid package atom." % (x,))
 	//	msg.append("Please check ebuild(5) for full details.")
-	//	writemsg_level("".join("!!! %s\n" % line for line in msg),
+	//	msg.WriteMsg_level("".join("!!! %s\n" % line for line in msg),
 	//	level=logging.ERROR, noiselevel=-1)
 	//	return 1
 	//
@@ -729,7 +3365,7 @@ func runAction(emergeConfig *EmergeConfig) int {
 	//	msg = []
 	//	msg.append("'%s' is not a valid package atom." % (x,))
 	//	msg.append("Please check ebuild(5) for full details.")
-	//	writemsg_level("".join("!!! %s\n" % line for line in msg),
+	//	msg.WriteMsg_level("".join("!!! %s\n" % line for line in msg),
 	//	level=logging.ERROR, noiselevel=-1)
 	//	return 1
 	//
@@ -749,7 +3385,7 @@ func runAction(emergeConfig *EmergeConfig) int {
 	//	# OSError. >=3.3 will throw a FileNotFoundError, which is a
 	//	# subclass of OSError.
 	//	except OSError:
-	//	writemsg("Please install eselect to use this feature.\n",
+	//	msg.WriteMsg("Please install eselect to use this feature.\n",
 	//	noiselevel=-1)
 	//	retval = action_build(emerge_config, spinner=spinner)
 	//	post_emerge(emerge_config.action, emerge_config.opts,

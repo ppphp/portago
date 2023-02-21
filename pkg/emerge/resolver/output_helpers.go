@@ -1,8 +1,9 @@
-package emerge
+package resolver
 
 import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/dep"
+	"github.com/ppphp/portago/pkg/emerge"
 	"github.com/ppphp/portago/pkg/emerge/structs"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/sets"
@@ -11,7 +12,7 @@ import (
 	"strings"
 )
 
-func localized_size(num_bytes int) string{
+func Localized_size(num_bytes int) string{
 	return fmt.Sprintf("%d KiB", num_bytes / 1024 + 1)
 }
 
@@ -24,7 +25,7 @@ type _RepoDisplay struct {
 	_repo_paths_real []T
 }
 
-func NewRepoDisplay(roots) *_RepoDisplay{
+func NewRepoDisplay(roots) *_RepoDisplay {
 	r := &_RepoDisplay{}
 	r._shown_repos = map[]{}
 	r._unknown_repo = false
@@ -115,7 +116,7 @@ type _PackageCounters struct {
 	binary int
 }
 
-func NewPackageCounters()*_PackageCounters{
+func NewPackageCounters()*_PackageCounters {
 	p := &_PackageCounters{}
 	p.upgrades = 0
 	p.downgrades = 0
@@ -193,7 +194,7 @@ func (p*_PackageCounters) __str__() string {
 	if total_installs != 0 {
 		myoutput = append(myoutput, ")")
 	}
-	myoutput= append(myoutput,fmt.Sprintf(", Size of downloads: %s" , localized_size(p.totalsize)))
+	myoutput= append(myoutput,fmt.Sprintf(", Size of downloads: %s" , Localized_size(p.totalsize)))
 	if p.restrict_fetch != 0 {
 		myoutput = append(myoutput,fmt.Sprintf( "\nFetch Restriction: %s package",p.restrict_fetch))
 		if p.restrict_fetch > 1 {
@@ -248,7 +249,7 @@ type _DisplayConfig struct {
 	pkg,
 }
 
-func NewDisplayConfig(depgraph, mylist, favorites []*dep.Atom, verbosity int) *_DisplayConfig{
+func NewDisplayConfig(depgraph *emerge.Depgraph, mylist, favorites []*dep.Atom, verbosity int) *_DisplayConfig {
 	d := &_DisplayConfig{}
 	frozen_config := depgraph._frozen_config
 	dynamic_config := depgraph._dynamic_config
@@ -350,71 +351,131 @@ old_use, is_new, feature_flags, reinst_flags, ) string {
 		return ""
 	}
 
-	enabled = []T{}
-if conf.alphabetical {
-	disabled = enabled
-	removed = enabled
-}else {
-	disabled = []T{}
-removed = []T{}
-}
-cur_iuse := set(cur_iuse)
-enabled_flags := cur_iuse.intersection(cur_use)
-removed_iuse := set(old_iuse).difference(cur_iuse)
-any_iuse := cur_iuse.union(old_iuse)
-any_iuse := list(any_iuse)
-any_iuse.sort(key = _alnum_sort_key)
+	enabled := []T{}
+	disabled := []T{}
+	removed := []T{}
+	if conf.alphabetical {
+		disabled = enabled
+		removed = enabled
+	}
+	cur_iuse := set(cur_iuse)
+	enabled_flags := cur_iuse.intersection(cur_use)
+	removed_iuse := set(old_iuse).difference(cur_iuse)
+	any_iuse := cur_iuse.union(old_iuse)
+	any_iuse := list(any_iuse)
+	any_iuse.sort(key = _alnum_sort_key)
 
-for flag in any_iuse:
-flag_str = None
-isEnabled = false
-reinst_flag = reinst_flags and flag in reinst_flags
-if flag in enabled_flags:
-isEnabled = true
-if is_new or flag in old_use and (conf.all_flags or reinst_flag):
-flag_str = red(flag)
-elif flag not in old_iuse:
-flag_str = yellow(flag) + "%*"
-elif flag not in old_use:
-flag_str = green(flag) + "*"
-elif flag in removed_iuse:
-if conf.all_flags or reinst_flag:
-flag_str = yellow("-" + flag) + "%"
-if flag in old_use:
-flag_str += "*"
-flag_str = "(" + flag_str + ")"
-removed.append(flag_str)
-continue
-else:
-if (
-is_new
-or flag in old_iuse
-and flag not in old_use
-and (conf.all_flags or reinst_flag)
-):
-flag_str = blue("-" + flag)
-elif flag not in old_iuse:
-flag_str = yellow("-" + flag)
-if flag not in iuse_forced:
-flag_str += "%"
-elif flag in old_use:
-flag_str = green("-" + flag) + "*"
-if flag_str:
-if flag in feature_flags:
-flag_str = "{" + flag_str + "}"
-elif flag in iuse_forced:
-flag_str = "(" + flag_str + ")"
-if isEnabled:
-enabled.append(flag_str) else:
-disabled.append(flag_str)
+	for flag
+	in
+any_iuse {
+		flag_str = None
+		isEnabled = false
+		reinst_flag = reinst_flags
+		and
+		flag
+		in
+		reinst_flags
+		if flag in
+	enabled_flags{
+		isEnabled = true
+		if is_new or
+		flag
+		in
+		old_use
+		and(conf.all_flags
+		or
+		reinst_flag){
+		flag_str = red(flag)
+	}else if
+		flag
+		not
+		in
+	old_iuse{
+		flag_str = output.Yellow(flag) + "%*"
+	}else if
+		flag
+		not
+		in
+	old_use{
+		flag_str = green(flag) + "*"
+	}
+	}else if
+		flag
+		in
+	removed_iuse{
+		if conf.all_flags or
+		reinst_flag{
+		flag_str = output.Yellow("-"+flag) + "%"
+		if flag in
+		old_use{
+		flag_str += "*"
+	}
+		flag_str = "(" + flag_str + ")"
+		removed.append(flag_str)
+	}
+		continue
+	}else {
+			if (
+				is_new
+				or
+			flag
+			in
+			old_iuse
+			and
+			flag
+			not
+			in
+			old_use
+			and(conf.all_flags
+			or
+			reinst_flag)
+		){
+			flag_str = blue("-" + flag)
+			}else if
+			flag
+			not
+			in
+		old_iuse{
+			flag_str = output.Yellow("-" + flag)
+			if flag not
+			in
+			iuse_forced{
+			flag_str += "%"
+		}
+		}else if
+			flag
+			in
+		old_use{
+			flag_str = green("-"+flag) + "*"
+		}
+		}
+		if flag_str {
+			if flag in
+		feature_flags{
+			flag_str = "{" + flag_str + "}"
+		}else if
+			flag
+			in
+		iuse_forced{
+			flag_str = "(" + flag_str + ")"
+			if isEnabled{
+			enabled.append(flag_str)
+		} else{
+			disabled.append(flag_str)
+		}
+		}
+		}
+	}
 
-if conf.alphabetical:
-ret = " ".join(enabled)
-else:
-ret = " ".join(enabled + disabled + removed)
-if ret:
-ret = '%s="%s" ' % (name, ret)
-return ret
+	if conf.alphabetical {
+		ret = " ".join(enabled)
+	} else {
+		ret = " ".join(enabled + disabled + removed)
+	}
+	if ret {
+		ret = '%s="%s" ' % (name, ret)
+	}
+	return ret
 }
 
 
@@ -424,68 +485,86 @@ func _tree_display(conf, mylist) {
 	executed_uninstalls := set(
 		node
 	for node
-	in
+		in
 	mylist
 	if isinstance(node, structs.Package) and
 	node.operation == "unmerge"
 	)
 
 	for uninstall
-	in
-	conf.blocker_uninstalls.leaf_nodes():
-	uninstall_parents = conf.blocker_uninstalls.parent_nodes(uninstall)
-	if not uninstall_parents {
-		continue
-	}
+		in
+	conf.blocker_uninstalls.leaf_nodes() {
+		uninstall_parents = conf.blocker_uninstalls.parent_nodes(uninstall)
+		if not uninstall_parents {
+			continue
+		}
 
 		inst_pkg = conf.pkg(
-		uninstall.cpv, "installed", uninstall.root_config, installed = true
-	)
+			uninstall.cpv, "installed", uninstall.root_config, installed = true
+		)
 
-try:
-	mygraph.remove(inst_pkg)
-	except
-KeyError:
-	pass
+	try:
+		mygraph.remove(inst_pkg)
+		except
+	KeyError:
+		pass
 
-try:
-	inst_pkg_blockers = conf.blocker_parents.child_nodes(inst_pkg)
-	except
-KeyError:
-	inst_pkg_blockers = []
+	try:
+		inst_pkg_blockers = conf.blocker_parents.child_nodes(inst_pkg)
+		except
+	KeyError:
+		inst_pkg_blockers = []T
 
-mygraph.remove(uninstall)
+		mygraph.remove(uninstall)
 
-for blocker in inst_pkg_blockers:
-mygraph.add(uninstall, blocker)
+		for blocker
+			in
+		inst_pkg_blockers:
+		mygraph.add(uninstall, blocker)
 
-for blocker in uninstall_parents:
-mygraph.add(uninstall, blocker)
-for parent in conf.blocker_parents.parent_nodes(blocker):
-if parent != inst_pkg:
-mygraph.add(blocker, parent)
+		for blocker
+			in
+		uninstall_parents:
+		mygraph.add(uninstall, blocker)
+		for parent
+			in
+		conf.blocker_parents.parent_nodes(blocker):
+		if parent != inst_pkg:
+		mygraph.add(blocker, parent)
 
-upgrade_node = next(
-conf.package_tracker.match(uninstall.root, uninstall.slot_atom), None
-)
+		upgrade_node = next(
+			conf.package_tracker.match(uninstall.root, uninstall.slot_atom), None
+		)
 
-if upgrade_node is not None and uninstall not in executed_uninstalls:
-for blocker in uninstall_parents:
-mygraph.add(upgrade_node, blocker)
+		if upgrade_node is
+		not
+		None
+		and
+		uninstall
+		not
+		in
+	executed_uninstalls:
+		for blocker
+			in
+		uninstall_parents:
+		mygraph.add(upgrade_node, blocker)
+	}
 
-if conf.unordered_display:
-display_list = _unordered_tree_display(mygraph, mylist) else:
-display_list = _ordered_tree_display(conf, mygraph, mylist)
+	if conf.unordered_display {
+		display_list = _unordered_tree_display(mygraph, mylist)
+	} else {
+		display_list = _ordered_tree_display(conf, mygraph, mylist)
+	}
 
-_prune_tree_display(display_list)
+	_prune_tree_display(display_list)
 
-return display_list
+	return display_list
 }
 
 
 func _unordered_tree_display(mygraph, mylist) {
 	display_list := []T{}
-	seen_nodes = set()
+	seen_nodes := set()
 
 print_node:=func(node, depth) {
 
@@ -495,7 +574,7 @@ print_node:=func(node, depth) {
 	}else{
 			seen_nodes[node] = true
 
-			if isinstance(node, (Blocker, structs.Package)):
+			if isinstance(node, (emerge.Blocker, structs.Package)):
 			display_list.append((node, depth, true)) else:
 			depth = -1
 
@@ -558,7 +637,7 @@ mylist:
 	for node
 	in
 parent_nodes:
-	if not isinstance(node, (Blocker, structs.Package)):
+	if not isinstance(node, (emerge.Blocker, structs.Package)):
 	continue
 	if node not
 	in
@@ -578,7 +657,7 @@ shown_edges:
 	for node
 	in
 parent_nodes:
-	if not isinstance(node, (Blocker, structs.Package)):
+	if not isinstance(node, (emerge.Blocker, structs.Package)):
 	continue
 	if node not
 	in
@@ -741,7 +820,7 @@ func (p*PkgAttrDisplay) __str__() string {
 
 	if p.new_slot || p.replace {
 		if p.replace {
-			output1 = append(output1, yellow("R"))
+			output1 = append(output1, output.Yellow("R"))
 		} else {
 			output1 = append(output1, output.Green("S"))
 		}

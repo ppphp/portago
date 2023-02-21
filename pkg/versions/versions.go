@@ -295,6 +295,7 @@ func PkgCmp(pkg1, pkg2 [3]string) (int, error) {
 	return VerCmp(strings.Join(pkg1[1:], "-"), strings.Join(pkg2[1:], "-"))
 }
 
+// _pkgsplit
 // ""
 func PkgSplit_(mypkg, eapi1 string) [3]string {
 	re := getPvRe(eapi.GetEapiAttrs(eapi1))
@@ -480,6 +481,7 @@ func (p *PkgStr[T]) GetString() string {
 	return p.String
 }
 
+// pkgsplit
 // 1, nil
 func PkgSplit(mypkg string, silent int, eapi string) [3]string {
 	catPSplit := CatPkgSplit(mypkg, 1, eapi)

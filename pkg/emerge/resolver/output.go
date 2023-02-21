@@ -1,9 +1,10 @@
-package emerge
+package resolver
 
 import (
 	"fmt"
 	"github.com/ppphp/portago/pkg/dbapi"
 	"github.com/ppphp/portago/pkg/dep"
+	"github.com/ppphp/portago/pkg/emerge"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/sets"
 	"github.com/ppphp/portago/pkg/util/msg"
@@ -15,7 +16,7 @@ import (
 // var bad = output.NewCreateColorFunc("BAD")
 
 type Display struct {
-	counters *_PackageCounters
+	counters *emerge._PackageCounters
 	verboseadd ,
 	indent,
 	repoadd,
@@ -91,19 +92,22 @@ func (d*Display) _blockers( blocker) {
 	in
 	block_parents)
 	block_parents1 := strings.Join(block_parents,  ", ")
-	if blocker.atom.blocker.overlap.forbid:
-	blocking_desc = "hard blocking"
-	else:
-	blocking_desc = "soft blocking"
-	if d.resolved != blocker.atom:
-	addl += output.Colorize(
-		d.blocker_style,
-		fmt.Sprintf(" (\"%s\" is %s %s)"
-	, str(blocker.atom).lstrip("!"), blocking_desc, block_parents1),
-) else:
-	addl += output.Colorize(
-		d.blocker_style, fmt.Sprintf(" (is %s %s)",blocking_desc, block_parents1)
+	if blocker.atom.blocker.overlap.forbid {
+		blocking_desc = "hard blocking"
+	}else {
+		blocking_desc = "soft blocking"
+	}
+	if d.resolved != blocker.atom {
+		addl += output.Colorize(
+			d.blocker_style,
+			fmt.Sprintf(" (\"%s\" is %s %s)"
+		, str(blocker.atom).lstrip("!"), blocking_desc, block_parents1),
 	)
+	}else {
+		addl += output.Colorize(
+			d.blocker_style, fmt.Sprintf(" (is %s %s)", blocking_desc, block_parents1)
+		)
+	}
 	if blocker.satisfied {
 		if ! d.conf.columns {
 			d.print_msg=append(d.print_msg, addl)
@@ -180,45 +184,55 @@ func (d*Display) _display_use( pkg, pkg_info) {
 	d.forced_flags.update(pkg.use.force)
 	d.forced_flags.update(pkg.use.mask)
 
-	cur_use = [
+	cur_use := []T{
 flag for flag in d.conf.pkg_use_enabled(pkg) if flag in pkg.iuse.all
-]
+}
+
 cur_iuse = sorted(pkg.iuse.all)
 
-if pkg_info.previous_pkg is not None:
+	old_iuse := []T{}
+	old_use := []T{}
+	is_new := true
+if pkg_info.previous_pkg is not None{
 previous_pkg = pkg_info.previous_pkg
 old_iuse = sorted(previous_pkg.iuse.all)
 old_use = previous_pkg.use.enabled
 is_new = false
-else:
-old_iuse = []
-old_use = []
-is_new = true
+}
 
-old_use = [flag for flag in old_use if flag in old_iuse]
+old_use = []T{flag for flag in old_use if flag in old_iuse}
 
 d.use_expand = pkg.use.expand
 d.use_expand_hidden = pkg.use.expand_hidden
 
 reinst_flags_map = {}
-reinstall_for_flags = d.conf.reinstall_nodes.get(pkg)
+reinstall_for_flags := d.conf.reinstall_nodes.get(pkg)
 reinst_expand_map = None
-if reinstall_for_flags:
-reinst_flags_map = d.map_to_use_expand(
-list(reinstall_for_flags), remove_hidden = false
-)
-for k in list(reinst_flags_map):
-if not reinst_flags_map[k]:
-del reinst_flags_map[k]
-if not reinst_flags_map.get("USE"):
-reinst_expand_map = reinst_flags_map.copy()
-reinst_expand_map.pop("USE", None)
+if reinstall_for_flags {
+	reinst_flags_map = d.map_to_use_expand(
+		list(reinstall_for_flags), remove_hidden = false
+	)
+	for k
+	in
+	list(reinst_flags_map) {
+		if not reinst_flags_map[k] {
+			del
+			reinst_flags_map[k]
+		}
+	}
+	if not reinst_flags_map.get("USE") {
+		reinst_expand_map = reinst_flags_map.copy()
+		reinst_expand_map.pop("USE", None)
+	}
+}
 if reinst_expand_map and not set(reinst_expand_map).difference(
 d.use_expand_hidden
-):
-d.use_expand_hidden = set(d.use_expand_hidden).difference(
-reinst_expand_map
 )
+	{
+		d.use_expand_hidden = set(d.use_expand_hidden).difference(
+			reinst_expand_map
+		)
+	}
 
 cur_iuse_map, iuse_forced = d.map_to_use_expand(cur_iuse, forced_flags= true)
 cur_use_map = d.map_to_use_expand(cur_use)
@@ -229,21 +243,23 @@ use_expand = sorted(d.use_expand)
 use_expand.insert(0, "USE")
 feature_flags = _get_feature_flags(_get_eapi_attrs(pkg.eapi))
 
-for key in use_expand:
-if key in d.use_expand_hidden:
-continue
-d.verboseadd += _create_use_string(
-d.conf,
-key.upper(),
-cur_iuse_map[key],
-iuse_forced[key],
-cur_use_map[key],
-old_iuse_map[key],
-old_use_map[key],
-is_new,
-feature_flags,
-reinst_flags_map.get(key),
-)
+for key in use_expand{
+		if key in d.use_expand_hidden{
+		continue
+	}
+		d.verboseadd += _create_use_string(
+		d.conf,
+		key.upper(),
+		cur_iuse_map[key],
+		iuse_forced[key],
+		cur_use_map[key],
+		old_iuse_map[key],
+		old_use_map[key],
+		is_new,
+		feature_flags,
+		reinst_flags_map.get(key),
+	)
+	}
 }
 
 func (d Display) pkgprint(pkg_str string, pkg_info) string {
@@ -282,75 +298,76 @@ func (d Display) pkgprint(pkg_str string, pkg_info) string {
 
 func (d*Display) verbose_size( pkg, repoadd_set, pkg_info) {
 	mysize := 0
-	if pkg.type_name in("binary", "ebuild")
-	and
-	pkg_info.merge:
-	db = pkg.root_config.trees[
-		pkg.root_config.pkg_tree_map[pkg.type_name]
-	].dbapi
-	kwargs =
-	{
+	if pkg.type_name in("binary", "ebuild")&& pkg_info.merge {
+		db = pkg.root_config.trees[
+			pkg.root_config.pkg_tree_map[pkg.type_name]
+		].dbapi
+		kwargs =
+		{
+		}
+		if pkg.type_name == "ebuild" {
+			kwargs["useflags"] = pkg_info.use
+			kwargs["myrepo"] = pkg.repo
+		}
+		myfilesdict = None
+	//try:
+		myfilesdict = db.getfetchsizes(pkg.cpv, **kwargs)
+		//except InvalidDependString as e:
+		//(depstr,) = db.aux_get(pkg.cpv,["SRC_URI"], myrepo = pkg.repo)
+		//show_invalid_depstring_notice(pkg, str(e))
+		//raise
+		//except SignatureException:
+		//pass
+		if myfilesdict == nil{
+		myfilesdict = "[empty/missing/bad digest]"
+	}else {
+			for myfetchfile
+				in
+			myfilesdict {
+				if myfetchfile not
+				in
+				d.myfetchlist{
+					mysize += myfilesdict[myfetchfile]
+					d.myfetchlist.add(myfetchfile)
+				}
+			}
+			if pkg_info.ordered {
+				d.counters.totalsize += mysize
+			}
+		}
+		d.verboseadd += Localized_size(mysize)
 	}
-	if pkg.type_name == "ebuild":
-	kwargs["useflags"] = pkg_info.use
-	kwargs["myrepo"] = pkg.repo
-	myfilesdict = None
-try:
-	myfilesdict = db.getfetchsizes(pkg.cpv, **kwargs)
-	except
-	InvalidDependString
-	as
-e:
-	(depstr,) = db.aux_get(pkg.cpv,["SRC_URI"], myrepo = pkg.repo)
-	show_invalid_depstring_notice(pkg, str(e))
-	raise
-	except
-SignatureException:
-	pass
-	if myfilesdict is
-None:
-	myfilesdict = "[empty/missing/bad digest]"
-	else:
-	for myfetchfile
-	in
-myfilesdict:
-	if myfetchfile not
-	in
-	d.myfetchlist:
-	mysize += myfilesdict[myfetchfile]
-	d.myfetchlist.add(myfetchfile)
-	if pkg_info.ordered:
-	d.counters.totalsize += mysize
-	d.verboseadd += localized_size(mysize)
 
-	if d.quiet_repo_display:
-	if pkg_info.previous_pkg is
-	not
-None:
-	repo_name_prev = pkg_info.previous_pkg.repo
-	else:
-	repo_name_prev = None
+	if d.quiet_repo_display {
+		if pkg_info.previous_pkg != nil {
+			repo_name_prev = pkg_info.previous_pkg.repo
+		}else {
+			repo_name_prev = None
+		}
 
-	if pkg.installed or
-	pkg_info.previous_pkg
-	is
-None:
-	d.repoadd = d.conf.repo_display.repoStr(pkg_info.repo_path_real)
-	else:
-	repo_path_prev = None
-	if repo_name_prev:
-	repo_path_prev = d.portdb.getRepositoryPath(repo_name_prev)
-	if repo_path_prev == pkg_info.repo_path_real:
-	d.repoadd = d.conf.repo_display.repoStr(
-		pkg_info.repo_path_real
-	)
-	else:
-	d.repoadd = fmt.Sprintf("%s=>%s" ,
-		d.conf.repo_display.repoStr(repo_path_prev),
-		d.conf.repo_display.repoStr(pkg_info.repo_path_real),
-)
-	if d.repoadd != "" {
-		repoadd_set.add(d.repoadd)
+		if pkg.installed || pkg_info.previous_pkg
+		is
+	None{
+		d.repoadd = d.conf.repo_display.repoStr(pkg_info.repo_path_real)
+	}else {
+			repo_path_prev = None
+			if repo_name_prev {
+				repo_path_prev = d.portdb.getRepositoryPath(repo_name_prev)
+			}
+			if repo_path_prev == pkg_info.repo_path_real {
+				d.repoadd = d.conf.repo_display.repoStr(
+					pkg_info.repo_path_real
+				)
+			}else {
+				d.repoadd = fmt.Sprintf("%s=>%s",
+					d.conf.repo_display.repoStr(repo_path_prev),
+					d.conf.repo_display.repoStr(pkg_info.repo_path_real),
+				)
+			}
+		}
+		if d.repoadd != "" {
+			repoadd_set.add(d.repoadd)
+		}
 	}
 }
 
@@ -400,28 +417,31 @@ func (d*Display) convert_myoldbest( pkg, pkg_info) string {
 }
 
 func (d*Display) _append_slot( pkg_str string, pkg, pkg_info) string {
-	if pkg_info.attr_display.new_slot:
-	pkg_str += _slot_separator + pkg_info.slot
-	if pkg_info.slot != pkg_info.sub_slot:
-	pkg_str += "/" + pkg_info.sub_slot
-	elif
+	if pkg_info.attr_display.new_slot {
+		pkg_str += _slot_separator + pkg_info.slot
+		if pkg_info.slot != pkg_info.sub_slot {
+			pkg_str += "/" + pkg_info.sub_slot
+		}
+	}else if
 	any(
 		x.slot+"/"+x.sub_slot != "0/0"
 	for x
 	in
 	pkg_info.oldbest_list +[pkg]
-	):
-	pkg_str += _slot_separator + pkg_info.slot
-	if pkg_info.slot != pkg_info.sub_slot or
-	any(
-		x.slot == pkg_info.slot
-	and
-	x.sub_slot != pkg_info.sub_slot
-	for x
-	in
-	pkg_info.oldbest_list
-	):
-	pkg_str += "/" + pkg_info.sub_slot
+	){
+		pkg_str += _slot_separator + pkg_info.slot
+		if pkg_info.slot != pkg_info.sub_slot or
+		any(
+			x.slot == pkg_info.slot
+		and
+		x.sub_slot != pkg_info.sub_slot
+		for x
+			in
+		pkg_info.oldbest_list
+		){
+			pkg_str += "/" + pkg_info.sub_slot
+		}
+	}
 	return pkg_str
 }
 
@@ -445,37 +465,42 @@ func (d*Display) _set_non_root_columns( pkg, pkg_info) {
 		ver_str = d._append_slot(ver_str, pkg, pkg_info)
 		ver_str = d._append_repository(ver_str, pkg, pkg_info)
 	}
-	if d.conf.quiet:
-	myprint = (
-		str(pkg_info.attr_display)
-	+" "
-	+d.indent
-	+d.pkgprint(pkg_info.cp, pkg_info)
-	)
-	myprint = myprint + darkblue(" "+ver_str) + " "
-	myprint = myprint + pkg_info.oldbest
-	myprint = myprint + darkgreen("to "+pkg.root)
-	d.verboseadd = None
-	else:
-	if not pkg_info.merge:
-	myprint = "[%s] %s%s" % (
-		d.pkgprint(pkg_info.operation.ljust(13), pkg_info),
-		d.indent,
-		d.pkgprint(pkg.cp, pkg_info),
-) else:
-	myprint = "[%s %s] %s%s" % (
-		d.pkgprint(pkg.type_name, pkg_info),
-		pkg_info.attr_display,
-		d.indent,
-		d.pkgprint(pkg.cp, pkg_info),
-)
-	if (d.newlp - output.NcLen(myprint)) > 0:
-	myprint = myprint + (" " * (d.newlp - output.NcLen(myprint)))
-	myprint = myprint + " " + darkblue("["+ver_str+"]") + " "
-	if (d.oldlp - output.NcLen(myprint)) > 0:
-	myprint = myprint + " "*(d.oldlp-output.NcLen(myprint))
-	myprint = myprint + pkg_info.oldbest
-	myprint += darkgreen("to " + pkg.root)
+	if d.conf.quiet {
+		myprint = (
+			str(pkg_info.attr_display)
+		+" "
+		+d.indent
+		+d.pkgprint(pkg_info.cp, pkg_info)
+		)
+		myprint = myprint + darkblue(" "+ver_str) + " "
+		myprint = myprint + pkg_info.oldbest
+		myprint = myprint + darkgreen("to "+pkg.root)
+		d.verboseadd = None
+	}else {
+		if not pkg_info.merge {
+			myprint = "[%s] %s%s" % (
+				d.pkgprint(pkg_info.operation.ljust(13), pkg_info),
+				d.indent,
+				d.pkgprint(pkg.cp, pkg_info),
+		)
+		}else {
+			myprint = "[%s %s] %s%s" % (
+				d.pkgprint(pkg.type_name, pkg_info),
+				pkg_info.attr_display,
+				d.indent,
+				d.pkgprint(pkg.cp, pkg_info),
+		)
+		}
+		if (d.newlp - output.NcLen(myprint)) > 0 {
+			myprint = myprint + (" " * (d.newlp - output.NcLen(myprint)))
+		}
+		myprint = myprint + " " + darkblue("["+ver_str+"]") + " "
+		if (d.oldlp - output.NcLen(myprint)) > 0 {
+			myprint = myprint + " "*(d.oldlp-output.NcLen(myprint))
+		}
+		myprint = myprint + pkg_info.oldbest
+		myprint += darkgreen("to " + pkg.root)
+	}
 	return myprint
 }
 
@@ -565,20 +590,30 @@ func (d*Display) print_verbose( show_repos) {
 
 func (d*Display) get_display_list( mylist) {
 	unsatisfied_blockers := []T{}
-ordered_nodes := []T{}
-for pkg in mylist:
-if isinstance(pkg, Blocker):
-d.counters.blocks += 1
-if pkg.satisfied:
-ordered_nodes = append(ordered_nodes, pkg)
-d.counters.blocks_satisfied += 1 else:
-unsatisfied_blockers=append(unsatisfied_blockers,pkg) else:
-ordered_nodes=append(ordered_nodes, pkg)
-if d.conf.tree_display:
-display_list = _tree_display(d.conf, ordered_nodes) else:
-display_list = [(pkg, 0, true) for pkg in ordered_nodes]
-for pkg in unsatisfied_blockers:
-display_list=append(display_list, (pkg, 0, true))
+	ordered_nodes := []T{}
+	for pkg
+	in
+mylist {
+		if isinstance(pkg, emerge.Blocker) {
+			d.counters.blocks += 1
+			if pkg.satisfied {
+				ordered_nodes = append(ordered_nodes, pkg)
+				d.counters.blocks_satisfied += 1
+			}else {
+				unsatisfied_blockers = append(unsatisfied_blockers, pkg)
+			}
+		}else {
+			ordered_nodes = append(ordered_nodes, pkg)
+		}
+	}
+	if d.conf.tree_display {
+		display_list = emerge._tree_display(d.conf, ordered_nodes)
+	} else {
+		display_list = [(pkg, 0, true) for pkg in ordered_nodes]
+}
+for pkg in unsatisfied_blockers{
+display_list = append(display_list, (pkg, 0, true))
+}
 return display_list
 }
 
@@ -592,7 +627,7 @@ func (d*Display) set_pkg_info( pkg, ordered) {
 	pkg_info.ordered = ordered
 	pkg_info.operation = pkg.operation
 	pkg_info.merge = ordered && pkg_info.operation == "merge"
-	if ! pkg_info.merge && pkg_info.operation == "merge" {
+	if !pkg_info.merge && pkg_info.operation == "merge" {
 		pkg_info.operation = "nomerge"
 	}
 	pkg_info.built = pkg.type_name != "ebuild"
@@ -602,7 +637,7 @@ func (d*Display) set_pkg_info( pkg, ordered) {
 			if pkg.type_name == "binary" {
 				d.counters.binary += 1
 			}
-		}else if pkg_info.operation == "uninstall" {
+		} else if pkg_info.operation == "uninstall" {
 			d.counters.uninst += 1
 		}
 	}
@@ -615,36 +650,47 @@ func (d*Display) set_pkg_info( pkg, ordered) {
 		raise
 		AssertionError("ebuild not found for '%s'" % pkg.cpv)
 		pkg_info.repo_path_real = filepath.Dir(filepath.Dir(filepath.Dir(pkg_info.ebuild_path)))
-	}else {
+	} else {
 		pkg_info.repo_path_real = d.portdb.getRepositoryPath(pkg.repo)
 	}
 	pkg_info.use = list(d.conf.pkg_use_enabled(pkg))
-	if ! pkg.built && pkg.operation == "merge" && "fetch" in pkg.restrict:
-	if pkg_info.ordered:
-	d.counters.restrict_fetch += 1
-	pkg_info.attr_display.fetch_restrict = true
-	if not d.portdb.getfetchsizes(
+	if !pkg.built && pkg.operation == "merge" && "fetch" in
+	pkg.restrict{
+		if pkg_info.ordered{
+		d.counters.restrict_fetch += 1
+	}
+		pkg_info.attr_display.fetch_restrict = true
+		if not d.portdb.getfetchsizes(
 		pkg.cpv, useflags = pkg_info.use, myrepo = pkg.repo
-	):
-	pkg_info.attr_display.fetch_restrict_satisfied = true
-	if pkg_info.ordered:
-	d.counters.restrict_fetch_satisfied += 1
-	else:
-	if pkg_info.ebuild_path is
-	not
-None:
-	d.restrict_fetch_list[pkg] = pkg_info
+	){
+		pkg_info.attr_display.fetch_restrict_satisfied = true
+		if pkg_info.ordered{
+		d.counters.restrict_fetch_satisfied += 1
+	}
+	} else{
+		if pkg_info.ebuild_path is
+		not
+		None{
+		d.restrict_fetch_list[pkg] = pkg_info
+	}
+	}
+	}
 
-	if d.vardb.cpv_exists(pkg.cpv):
-pkg_info.previous_pkg = d.vardb.match_pkgs(Atom("=" + pkg.cpv))[0] else:
-cp_slot_matches = d.vardb.match_pkgs(pkg.slot_atom)
-if cp_slot_matches:
-pkg_info.previous_pkg = cp_slot_matches[0] else:
-cp_matches = d.vardb.match_pkgs(Atom(pkg.cp))
-if cp_matches:
-pkg_info.previous_pkg = cp_matches[-1]
+	if d.vardb.cpv_exists(pkg.cpv) {
+		pkg_info.previous_pkg = d.vardb.match_pkgs(Atom("=" + pkg.cpv))[0]
+	} else {
+		cp_slot_matches = d.vardb.match_pkgs(pkg.slot_atom)
+		if cp_slot_matches {
+			pkg_info.previous_pkg = cp_slot_matches[0]
+		} else {
+			cp_matches = d.vardb.match_pkgs(Atom(pkg.cp))
+			if cp_matches {
+				pkg_info.previous_pkg = cp_matches[-1]
+			}
+		}
+	}
 
-return pkg_info
+	return pkg_info
 }
 
 func (d*Display) check_system_world( pkg) {
@@ -690,49 +736,66 @@ func (d*Display) _get_installed_best( pkg, pkg_info) {
 	myoldbest := []T{}
 myinslotlist := None
 installed_versions := d.vardb.match_pkgs(Atom(pkg.cp))
-if d.vardb.cpv_exists(pkg.cpv):
-pkg_info.attr_display.replace = true
-installed_version = pkg_info.previous_pkg
-if (
-installed_version.slot != pkg.slot
-or installed_version.sub_slot != pkg.sub_slot
-or not d.quiet_repo_display
-and installed_version.repo != pkg.repo
-):
-myoldbest = []T{installed_version}
-if pkg_info.ordered:
-if pkg_info.merge:
-d.counters.reinst += 1
-elif installed_versions and installed_versions[0].cp == pkg.cp:
-myinslotlist = d.vardb.match_pkgs(pkg.slot_atom)
-if myinslotlist and myinslotlist[0].cp != pkg.cp:
-myinslotlist = None
-if myinslotlist:
-myoldbest = myinslotlist[:]
-if not cpvequal(
-pkg.cpv, best([pkg.cpv] + [x.cpv for x in myinslotlist])
-):
-pkg_info.attr_display.new_version = true
-pkg_info.attr_display.downgrade = true
-if pkg_info.ordered:
-d.counters.downgrades += 1 else:
-pkg_info.attr_display.new_version = true
-if pkg_info.ordered:
-d.counters.upgrades += 1
-else:
-myoldbest = installed_versions
-pkg_info.attr_display.new = true
-pkg_info.attr_display.new_slot = true
-if pkg_info.ordered:
-d.counters.newslot += 1 else:
-pkg_info.attr_display.new = true
-if pkg_info.ordered:
-d.counters.new += 1
+if d.vardb.cpv_exists(pkg.cpv) {
+	pkg_info.attr_display.replace = true
+	installed_version = pkg_info.previous_pkg
+	if (
+		installed_version.slot != pkg.slot
+		or
+	installed_version.sub_slot != pkg.sub_slot
+	or
+	not
+	d.quiet_repo_display
+	and
+	installed_version.repo != pkg.repo
+	){
+		myoldbest = []T{installed_version}
+	}
+	if pkg_info.ordered {
+		if pkg_info.merge {
+			d.counters.reinst += 1
+		}
+	}
+}else if installed_versions and installed_versions[0].cp == pkg.cp{
+		myinslotlist = d.vardb.match_pkgs(pkg.slot_atom)
+		if myinslotlist and myinslotlist[0].cp != pkg.cp{
+		myinslotlist = None
+	}
+		if myinslotlist{
+		myoldbest = myinslotlist[:]
+		if not cpvequal(
+		pkg.cpv, best([pkg.cpv] + [x.cpv for x in myinslotlist])
+	){
+		pkg_info.attr_display.new_version = true
+		pkg_info.attr_display.downgrade = true
+		if pkg_info.ordered{
+		d.counters.downgrades += 1
+	}
+	}else{
+		pkg_info.attr_display.new_version = true
+		if pkg_info.ordered{
+		d.counters.upgrades += 1
+	}
+	}
+	}else{
+		myoldbest = installed_versions
+		pkg_info.attr_display.new = true
+		pkg_info.attr_display.new_slot = true
+		if pkg_info.ordered{
+		d.counters.newslot += 1
+	}
+	}
+	}else {
+		pkg_info.attr_display.new = true
+		if pkg_info.ordered {
+			d.counters.new += 1
+		}
+	}
 return myoldbest, myinslotlist
 }
 
 // nil, nil
-func (d*Display) __call__( depgraph, mylist, favorites  []*dep.Atom, verbosity int) int {
+func (d*Display) __call__( depgraph *emerge.Depgraph, mylist, favorites  []*dep.Atom, verbosity int) int {
 	if favorites == nil {
 		favorites = []T{}
 	}
@@ -762,7 +825,7 @@ func (d*Display) __call__( depgraph, mylist, favorites  []*dep.Atom, verbosity i
 		d.pkgsettings = d.conf.pkgsettings[pkg.root]
 		d.indent = " " * depth
 
-		if isinstance(pkg, Blocker):
+		if isinstance(pkg, emerge.Blocker):
 		d._blockers(pkg)
 		else:
 		pkg_info = d.set_pkg_info(pkg, ordered)

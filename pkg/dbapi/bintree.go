@@ -574,7 +574,7 @@ func (b *BinaryTree) _file_permissions(path string) {
 }
 
 // false, true, []string{}
-func (b *BinaryTree) Populate(getbinpkgs, getbinpkg_refresh bool, add_repos []string) {
+func (b *BinaryTree) Populate(getbinpkgs, getbinpkg_refresh bool, add_repos []*Vardbapi) {
 	if b._populating {
 		return
 	}
@@ -604,7 +604,7 @@ func (b *BinaryTree) Populate(getbinpkgs, getbinpkg_refresh bool, add_repos []st
 
 	if getbinpkgs {
 		config_path := filepath.Join(
-			b.settings.ValueDict["PORTAGE_CONFIGROOT"], _const.BinreposConfFile
+			b.settings.ValueDict["PORTAGE_CONFIGROOT"], _const.BinreposConfFile,
 		)
 		b._binrepos_conf = binrepo.NewBinRepoConfigLoader([]string{config_path,},
 			b.settings.ValueDict["EPREFIX"], b.settings.ValueDict["EROOT"],
@@ -1149,18 +1149,16 @@ func (b *BinaryTree) _populate_remote(getbinpkg_refresh bool) {
 	}
 }
 
-func (b *BinaryTree) _populate_additional(repos []string) *versions.PkgStr {
+func (b *BinaryTree) _populate_additional(repos []*Vardbapi) *versions.PkgStr {
 
 	for _, repo := range repos {
 		aux_keys = list(set(chain(repo._aux_cache_keys, repo._pkg_str_aux_keys)))
-		for versions.cpv
-			in
-		repo.cpv_all() {
-			metadata = dict(zip(aux_keys, repo.aux_get(versions.cpv, aux_keys)))
-			versions.pkg = _pkg_str(versions.cpv, metadata = metadata, settings = repo.settings, db=repo)
-			instance_key = b.dbapi._instance_key(versions.pkg)
-			b._additional_pkgs[instance_key] = versions.pkg
-			b.dbapi.cpv_inject(versions.pkg)
+		for _, cpv :=range repo.cpv_all() {
+			metadata = dict(zip(aux_keys, repo.aux_get(cpv, aux_keys)))
+			pkg := versions.NewPkgStr(cpv, metadata = metadata, settings = repo.settings, db=repo)
+			instance_key = b.dbapi._instance_key(pkg)
+			b._additional_pkgs[instance_key] = pkg
+			b.dbapi.cpv_inject(pkg)
 		}
 	}
 }

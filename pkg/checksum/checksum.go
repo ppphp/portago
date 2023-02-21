@@ -169,6 +169,14 @@ func FilterUnaccelaratedHashes(digests map[string]string) map[string]string {
 
 type HashFilter func(string) bool
 
+func HashFilterTrasparent(filterStr string) bool {
+	tokens := strings.Fields(strings.ToUpper(filterStr))
+	if len(tokens) == 0 || tokens[len(tokens)-1] == "*" {
+		tokens = nil
+	}
+	return len(tokens) == 0
+}
+
 func NewHashFilter(filterStr string) HashFilter {
 	tokens := strings.Fields(strings.ToUpper(filterStr))
 	if len(tokens) == 0 || tokens[len(tokens)-1] == "*" {

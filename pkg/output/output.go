@@ -352,6 +352,7 @@ var Fuchsia = func(text string) string { return Colorize("fuschia", text) }
 var Purple = func(text string) string { return Colorize("purple", text) }
 var Blue = func(text string) string { return Colorize("blue", text) }
 var Green = func(text string) string { return Colorize("green", text) }
+var Yellow = func(text string) string { return Colorize("yellow", text) }
 var Red = func(text string) string { return Colorize("red", text) }
 
 type consoleStyleFile struct {

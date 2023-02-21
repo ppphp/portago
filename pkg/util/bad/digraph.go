@@ -1,5 +1,10 @@
 package bad
 
+import (
+	"fmt"
+	"github.com/ppphp/portago/pkg/util/msg"
+)
+
 type Digraph struct {
 	nodes interface{}
 	order []
@@ -66,40 +71,44 @@ func(d*Digraph) remove( node) {
 
 	if node not
 	in
-	d.nodes:
-	raise
-	KeyError(node)
+	d.nodes{
+		raise
+		KeyError(node)
+	}
 
 	for parent
 		in
-	d.nodes[node][1]:
-	del
-	d.nodes[parent][0][node]
+	d.nodes[node][1] {
+		del
+		d.nodes[parent][0][node]
+	}
 	for child
 		in
-	d.nodes[node][0]:
-	del
-	d.nodes[child][1][node]
+	d.nodes[node][0] {
+		del
+		d.nodes[child][1][node]
+	}
 
 	del
 	d.nodes[node]
 	d.order.remove(node)
 }
 
-func(d*Digraph) update( other) {
-	for node
-		in
-	other.order:
-	children, parents, node = other.nodes[node]
-	if parents:
-	for parent, priorities
-		in
-	parents.items():
-	for priority
-		in
-	priorities:
-	d.add(node, parent, priority = priority) else:
-	d.add(node, None)
+func(d*Digraph) update( other*Digraph) {
+	for _, node:= range other.order {
+		children, parents, node = other.nodes[node]
+		if parents {
+			for parent, priorities:= range parents {
+				for priority
+					in
+				priorities {
+					d.add(node, parent, priority = priority)
+				}
+			}
+		}else {
+			d.add(node, None)
+		}
+	}
 }
 
 func(d*Digraph) clear() {
@@ -222,10 +231,10 @@ return children
 }
 
 func(d*Digraph) parent_nodes(node, ignore_priority=None) {
-	if ignore_priority is
-None:
-	return list(d.nodes[node][1])
-	parents = []
+	if ignore_priority ==nil {
+		return list(d.nodes[node][1])
+	}
+	parents := []
 if hasattr(ignore_priority, '__call__'):
 for parent, priorities
 in
@@ -245,48 +254,61 @@ parents.append(parent)
 return parents
 }
 
+// nil
 func(d*Digraph) leaf_nodes(ignore_priority=None) {
 
-	leaf_nodes = []
-if ignore_priority is
-None:
+	leaf_nodes := []
+if ignore_priority == nil{
 for node
 in
-d.order:
-if not d.nodes[node][0]:
+d.order{
+if not d.nodes[node][0]{
 leaf_nodes.append(node)
-elif
-hasattr(ignore_priority, '__call__'):
+}
+}
+}else if
+hasattr(ignore_priority, '__call__'){
 for node
 in
-d.order:
+d.order{
 is_leaf_node = true
 for child, priorities
 in
-d.nodes[node][0].items():
+d.nodes[node][0].items(){
 for priority
 in
-reversed(priorities):
-if not ignore_priority(priority):
+reversed(priorities){
+if not ignore_priority(priority){
 is_leaf_node = false
 break
-if not is_leaf_node:
+}
+}
+if not is_leaf_node{
 break
-if is_leaf_node:
+}
+}
+if is_leaf_node{
 leaf_nodes.append(node)
-else:
+}
+}
+}else{
 for node
 in
-d.order:
+d.order{
 is_leaf_node = true
 for child, priorities
 in
-d.nodes[node][0].items():
-if ignore_priority < priorities[-1]:
+d.nodes[node][0].items(){
+if ignore_priority < priorities[-1]{
 is_leaf_node = false
 break
-if is_leaf_node:
+}
+}
+if is_leaf_node{
 leaf_nodes.append(node)
+}
+}
+}
 return leaf_nodes
 }
 
@@ -349,37 +371,41 @@ func(d*Digraph) clone() {
 	clone.nodes =
 	{
 	}
-	memo =
+	memo :=
 	{
 	}
 	for children, parents, node
-		in
-	d.nodes.values():
-	children_clone =
+		:= range
+	d.nodes.values()
 	{
+		children_clone =
+		{
+		}
+		for child, priorities
+			in
+		children.items() {
+			priorities_clone = memo.get(id(priorities))
+			if priorities_clone == nil {
+				priorities_clone = priorities[:]
+				memo[id(priorities)] = priorities_clone
+			}
+			children_clone[child] = priorities_clone
+		}
+		parents_clone =
+		{
+		}
+		for parent, priorities
+			in
+		parents.items() {
+			priorities_clone = memo.get(id(priorities))
+			if priorities_clone == nil {
+				priorities_clone = priorities[:]
+				memo[id(priorities)] = priorities_clone
+			}
+			parents_clone[parent] = priorities_clone
+		}
+		clone.nodes[node] = (children_clone, parents_clone, node)
 	}
-	for child, priorities
-		in
-	children.items():
-	priorities_clone = memo.get(id(priorities))
-	if priorities_clone is
-None:
-	priorities_clone = priorities[:]
-	memo[id(priorities)] = priorities_clone
-	children_clone[child] = priorities_clone
-	parents_clone =
-	{
-	}
-	for parent, priorities
-		in
-	parents.items():
-	priorities_clone = memo.get(id(priorities))
-	if priorities_clone is
-None:
-	priorities_clone = priorities[:]
-	memo[id(priorities)] = priorities_clone
-	parents_clone[parent] = priorities_clone
-	clone.nodes[node] = (children_clone, parents_clone, node)
 	clone.order = d.order[:]
 	return clone
 }
@@ -393,32 +419,37 @@ KeyError:
 }
 
 func(d*Digraph) firstzero() {
-	leaf_nodes = d.leaf_nodes()
+	leaf_nodes := d.leaf_nodes()
 	if leaf_nodes:
 	return leaf_nodes[0]
 	return None
 }
 
+// nil
 func(d*Digraph) hasallzeros( ignore_priority=None) {
-	return len(d.leaf_nodes(ignore_priority = ignore_priority)) == \
+	return len(d.leaf_nodes(ignore_priority = ignore_priority)) ==
 	len(d.order)
+}
 
-	func(d *Digraph) debug_print():
-	def
-	output(s):
-	writemsg(s, noiselevel = -1)
+	func(d *Digraph) debug_print(){
+	output:= func (s string) {
+		msg.WriteMsg(s, -1, nil)
+	}
 	for node
 		in
-	d.nodes:
-	output("%s " % (node, ))
-	if d.nodes[node][0]:
-	output("depends on\n")
-	else:
-	output("(no children)\n")
-	for child, priorities
-		in
-	d.nodes[node][0].items():
-	output("  %s (%s)\n"%(child, priorities[-1], ))
+	d.nodes {
+		output(fmt.Sprintf("%s " ,node, ))
+		if d.nodes[node][0] {
+			output("depends on\n")
+		}else {
+			output("(no children)\n")
+		}
+		for child, priorities
+			in
+		d.nodes[node][0].items() {
+			output("  %s (%s)\n"%(child, priorities[-1], ))
+		}
+	}
 }
 
 func(d*Digraph) bfs( start, ignore_priority=None) {
@@ -465,6 +496,7 @@ return paths[child]
 return None
 }
 
+// nil, nil
 func(d*Digraph) get_cycles( ignore_priority=None, max_length=None) {
 	all_cycles = []
 for node
