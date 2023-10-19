@@ -475,7 +475,7 @@ func (v *Vardbapi) match(origDep string, useCache int) []*versions.PkgStr {
 			delete(v.mtdircache, myCat)
 			delete(v.matchcache, myCat)
 		}
-		return v._iter_match(myDep,
+		return v.Iter_match(myDep,
 			v.cp_list(myDep.cp, useCache))
 	}
 	st, err := os.Stat(filepath.Join(v._eroot, _const.VdbPath, myCat))
@@ -489,7 +489,7 @@ func (v *Vardbapi) match(origDep string, useCache int) []*versions.PkgStr {
 		v.matchcache[myCat] = map[[2]*dep.Atom][]*versions.PkgStr{}
 	}
 	if _, ok := v.matchcache[myCat][[2]*dep.Atom{myDep, nil}]; !ok {
-		myMatch := v._iter_match(myDep,
+		myMatch := v.Iter_match(myDep,
 			v.cp_list(myDep.cp, useCache))
 		v.matchcache[myCat][cacheKey] = myMatch
 	}

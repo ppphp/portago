@@ -52,22 +52,22 @@ func getSlotDepRe(attrs eapi.EapiAttrs) *regexp.Regexp {
 }
 
 func _match_slot[T interfaces.ISettings](atom *Atom[T], pkg *versions.PkgStr[T]) bool {
-	if pkg.Slot == atom.slot {
+	if pkg.Slot() == atom.slot {
 		if atom.subSlot == "" {
 			return true
 		}
-		if atom.subSlot == pkg.SubSlot {
+		if atom.subSlot == pkg.SubSlot() {
 			return true
 		}
 	}
 	return false
 }
 
-func matchSlot[T interfaces.ISettings](atom *Atom[T], pkg *versions.PkgStr[T]) bool {
-	if pkg.Slot == atom.slot {
+func MatchSlot[T interfaces.ISettings](atom *Atom[T], pkg *versions.PkgStr[T]) bool {
+	if pkg.Slot() == atom.slot {
 		if atom.subSlot == "" {
 			return true
-		} else if atom.subSlot == pkg.SubSlot {
+		} else if atom.subSlot == pkg.SubSlot() {
 			return true
 		}
 	}
@@ -132,9 +132,9 @@ func GetUseflagRe(eapi1 string) *regexp.Regexp {
 func cpvequal[T interfaces.ISettings](cpv1, cpv2 string) bool {
 	var Nil T
 	c1 := versions.NewPkgStr[T](cpv1, nil, Nil, "", "", "", 0, 0, "", 0, nil)
-	split1 := c1.CpvSplit
+	split1 := c1.CpvSplit()
 	c2 := versions.NewPkgStr[T](cpv2, nil, Nil, "", "", "", 0, 0, "", 0, nil)
-	split2 := c2.CpvSplit
+	split2 := c2.CpvSplit()
 	if split1[0] != split2[0] || split1[1] != split2[1] {
 		return false
 	}
@@ -1116,7 +1116,7 @@ func NewAtom[T interfaces.ISettings](s string, unevaluatedAtom *Atom[T], allowWi
 	var Nil T
 	a.cpv = versions.NewPkgStr[T](cpv, nil, Nil, "", "", "", 0, 0, "", 0, nil)
 	a.version = extendedVersion
-	a.version = a.cpv.Version
+	a.version = a.cpv.Version()
 	a.Repo = repo
 	if slot == "" {
 		a.slot = ""
@@ -1710,7 +1710,7 @@ func BestMatchToList[T interfaces.ISettings](mypkg *versions.PkgStr[T], mylist [
 	operatorValues := map[string]int{"=": 6, "~": 5, "=*": 4, ">": 2, "<": 2, ">=": 2, "<=": 2, "": 1}
 	maxvalue := -99
 	var bestm *Atom[T] = nil
-	var mypkgCpv *versions.PkgStr[T] = nil
+	var mypkgCpv interfaces.IPkgStr = nil
 	for _, x := range matchToList(mypkg, mylist) {
 		if x.extendedSyntax {
 			if x.Operator == "=*" {
@@ -1743,19 +1743,19 @@ func BestMatchToList[T interfaces.ISettings](mypkg *versions.PkgStr[T], mylist [
 			bestm = x
 		} else if opVal == maxvalue && opVal == 2 {
 			if mypkgCpv == nil {
-				mypkgCpv = mypkg.Cpv
+				mypkgCpv = mypkg.Cpv()
 			}
 			if mypkgCpv == nil {
 				var Nil T
-				mypkgCpv = versions.NewPkgStr[T](RemoveSlot(mypkg.String), nil, Nil, "", "", "", 0, 0, "", 0, nil)
+				mypkgCpv = versions.NewPkgStr[T](RemoveSlot(mypkg.String()), nil, Nil, "", "", "", 0, 0, "", 0, nil)
 			}
 			if bestm.cpv == mypkgCpv || bestm.cpv == x.cpv {
 			} else if x.cpv == mypkgCpv {
 				bestm = x
 			} else {
-				cpvList := []*versions.PkgStr[T]{bestm.cpv, mypkgCpv, x.cpv}
+				cpvList := []interfaces.IPkgStr{bestm.cpv, mypkgCpv, x.cpv}
 				sort.Slice(cpvList, func(i, j int) bool {
-					b, _ := versions.VerCmp(cpvList[i].Version, cpvList[j].Version)
+					b, _ := versions.VerCmp(cpvList[i].Version(), cpvList[j].Version())
 					return b < 0
 				})
 				if cpvList[0] == mypkgCpv || cpvList[len(cpvList)-1] == mypkgCpv {
@@ -1788,13 +1788,13 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 	}
 
 	mycpv := mydepA.cpv
-	mycpvCps := versions.CatPkgSplit(mycpv.String, 0, "")
+	mycpvCps := versions.CatPkgSplit(mycpv.String(), 0, "")
 	//slot      := mydepA.slot
 	buildId := mydepA.buildId
 
 	_, _, ver, rev := "", "", "", ""
 	if mycpvCps == [4]string{} {
-		cp := versions.CatSplit(mycpv.String)
+		cp := versions.CatSplit(mycpv.String())
 		_ = cp[0]
 		_ = cp[1]
 		ver = ""
@@ -1802,7 +1802,7 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 	} else {
 		_, _, ver, rev = mycpvCps[0], mycpvCps[1], mycpvCps[2], mycpvCps[3]
 	}
-	if mydepA.Value == mycpv.String {
+	if mydepA.Value == mycpv.String() {
 		//raise KeyError(_("Specific key requires an operator"
 		//" (%s) (try adding an '=')") % (mydep))
 	}
@@ -1820,9 +1820,9 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 	mylist := []*versions.PkgStr[T]{}
 	if mydepA.extendedSyntax {
 		for _, x := range candidateList {
-			cp := x.Cp
+			cp := x.Cp()
 			if cp == "" {
-				mysplit := versions.CatPkgSplit(RemoveSlot(x.String), 1, "")
+				mysplit := versions.CatPkgSplit(RemoveSlot(x.String()), 1, "")
 				if mysplit != [4]string{} {
 					cp = mysplit[0] + "/" + mysplit[1]
 				}
@@ -1830,7 +1830,7 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 			if cp == "" {
 				continue
 			}
-			if cp == mycpv.String || extendedCpMatch(mydepA.Cp, cp) {
+			if cp == mycpv.String() || extendedCpMatch(mydepA.Cp, cp) {
 				mylist = append(mylist, x)
 			}
 		}
@@ -1839,9 +1839,9 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 			mylist = []*versions.PkgStr[T]{}
 			ver = mydepA.version[1 : len(mydepA.version)-1]
 			for _, x := range candidateList {
-				xVer := x.Version
+				xVer := x.Version()
 				if xVer == "" {
-					xs := versions.CatPkgSplit(RemoveSlot(x.String), 1, "")
+					xs := versions.CatPkgSplit(RemoveSlot(x.String()), 1, "")
 					if xs == [4]string{} {
 						continue
 					}
@@ -1854,9 +1854,9 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 		}
 	} else if operator == "" {
 		for _, x := range candidateList {
-			cp := x.Cp
+			cp := x.Cp()
 			if cp == "" {
-				mysplit := versions.CatPkgSplit(RemoveSlot(x.String), 1, "")
+				mysplit := versions.CatPkgSplit(RemoveSlot(x.String()), 1, "")
 				if mysplit != [4]string{} {
 					cp = mysplit[0] + "/" + mysplit[1]
 				}
@@ -1870,11 +1870,12 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 		}
 	} else if operator == "=" {
 		for _, x := range candidateList {
-			xcpv := x.Cpv
+			xcpv := x.Cpv()
 			if xcpv == nil {
-				xcpv = &versions.PkgStr[T]{String: RemoveSlot(x.String)}
+				var t T
+				xcpv = versions.NewPkgStr[T]( RemoveSlot(x.String()), nil, t, "", "", "", 0, 0, "", 0, nil)
 			}
-			if !cpvequal[T](xcpv.String, mycpv.String) {
+			if !cpvequal[T](xcpv.String(), mycpv.String()) {
 				continue
 			}
 			if buildId != 0 {
@@ -1889,26 +1890,26 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 		}
 		mycpvCmp := ""
 		if myver == mycpvCps[2] {
-			mycpvCmp = mycpv.String
+			mycpvCmp = mycpv.String()
 		} else {
-			mycpvCmp = strings.Replace(mycpv.String, mydepA.Cp+"-"+mycpvCps[2], mydepA.Cp+"-"+myver, 1)
+			mycpvCmp = strings.Replace(mycpv.String(), mydepA.Cp+"-"+mycpvCps[2], mydepA.Cp+"-"+myver, 1)
 		}
 		for _, x := range candidateList {
 			pkg := x
-			if pkg.Cp == "" {
+			if pkg.Cp() == "" {
 				var Nil T
-				pkg = versions.NewPkgStr[T](RemoveSlot(x.String), nil, Nil, "", "", "", 0, 0, "", 0, nil)
+				pkg = versions.NewPkgStr[T](RemoveSlot(x.String()), nil, Nil, "", "", "", 0, 0, "", 0, nil)
 			}
-			xs := pkg.CpvSplit
+			xs := pkg.CpvSplit()
 			myver := strings.TrimPrefix(xs[2], "0")
 			if len(myver) == 0 || !unicode.IsDigit(rune(myver[0])) {
 				myver = "0" + myver
 			}
 			xcpv := ""
 			if myver == xs[2] {
-				xcpv = pkg.Cpv.String
+				xcpv = pkg.Cpv().String()
 			} else {
-				xcpv = strings.Replace(pkg.Cpv.String, pkg.Cp+"-"+xs[2], pkg.Cp+"-"+myver, 1)
+				xcpv = strings.Replace(pkg.Cpv().String(), pkg.Cp()+"-"+xs[2], pkg.Cp()+"-"+myver, 1)
 			}
 			if strings.HasPrefix(xcpv, mycpvCmp) {
 				nextChar := xcpv[len(mycpvCmp) : len(mycpvCmp)+1]
@@ -1919,9 +1920,9 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 		}
 	} else if operator == "~" {
 		for _, x := range candidateList {
-			xs := x.CpvSplit
+			xs := x.CpvSplit()
 			if xs == [4]string{} {
-				xs = versions.CatPkgSplit(RemoveSlot(x.String), 1, "")
+				xs = versions.CatPkgSplit(RemoveSlot(x.String()), 1, "")
 			}
 			if xs == [4]string{} {
 				//raise InvalidData(x)
@@ -1937,15 +1938,15 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 	} else if operator == ">" || operator == ">=" || operator == "<" || operator == "<=" {
 		for _, x := range candidateList {
 			pkg := x
-			if x.Cp == "" {
+			if x.Cp() == "" {
 				var Nil T
-				pkg = versions.NewPkgStr[T](RemoveSlot(x.String), nil, Nil, "", "", "", 0, 0, "", 0, nil)
+				pkg = versions.NewPkgStr[T](RemoveSlot(x.String()), nil, Nil, "", "", "", 0, 0, "", 0, nil)
 			}
 
-			if pkg.Cp != mydepA.Cp {
+			if pkg.Cp() != mydepA.Cp {
 				continue
 			}
-			result, err := versions.VerCmp(pkg.Version, mydepA.version)
+			result, err := versions.VerCmp(pkg.Version(), mydepA.version)
 			if err != nil {
 				msg.WriteMsg(fmt.Sprintf("\nInvalid package name: %v\n", x), -1, nil)
 				//raise
@@ -1979,11 +1980,11 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 		mylist = []*versions.PkgStr[T]{}
 		for _, x := range candidateList {
 			xPkg := x
-			if xPkg.Cpv == nil {
-				xslot := DepGetslot(x.String)
+			if xPkg.Cpv() == nil {
+				xslot := DepGetslot(x.String())
 				if xslot != "" {
 					var Nil T
-					xPkg = versions.NewPkgStr[T](RemoveSlot(x.String), nil, Nil, "", "", xslot, 0, 0, "", 0, nil)
+					xPkg = versions.NewPkgStr[T](RemoveSlot(x.String()), nil, Nil, "", "", xslot, 0, 0, "", 0, nil)
 				} else {
 					continue
 				}
@@ -1992,10 +1993,10 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 			if xPkg == nil {
 				mylist = append(mylist, x)
 			} else {
-				if xPkg.Slot == "" {
+				if xPkg.Slot() == "" {
 					mylist = append(mylist, x)
 				} else {
-					if matchSlot(mydepA, xPkg) {
+					if MatchSlot(mydepA, xPkg) {
 						mylist = append(mylist, x)
 					}
 				}
@@ -2045,9 +2046,9 @@ func MatchFromList[T interfaces.ISettings](mydep *Atom[T], candidateList []*vers
 		candidateList = mylist
 		mylist = []*versions.PkgStr[T]{}
 		for _, x := range candidateList {
-			repo := x.Repo
+			repo := x.Repo()
 			if repo == "" {
-				repo = DepGetrepo(x.String)
+				repo = DepGetrepo(x.String())
 			}
 			if repo != "" && repo != versions.UnknownRepo && repo != mydepA.Repo {
 				continue

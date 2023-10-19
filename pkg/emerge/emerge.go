@@ -18,6 +18,7 @@ import (
 	"github.com/ppphp/portago/pkg/elog"
 	"github.com/ppphp/portago/pkg/emerge/structs"
 	"github.com/ppphp/portago/pkg/exception"
+	"github.com/ppphp/portago/pkg/interfaces"
 	"github.com/ppphp/portago/pkg/locks"
 	"github.com/ppphp/portago/pkg/manifest"
 	"github.com/ppphp/portago/pkg/myutil"
@@ -51,24 +52,6 @@ import (
 )
 
 // my interface for python abstraction
-type Starter interface {
-	start()
-}
-
-type IFuture interface{
-	done() bool
-	cancel() bool
-	add_done_callback(func(IFuture, error))
-	cancelled() bool
-	exception() error
-	set_exception(error)
-	result()
-	set_result(interface{}) bool
-}
-
-type ITask interface{
-	start()
-}
 
 // ------------------emerge begins
 
@@ -81,7 +64,7 @@ type AsynchronousLock struct {
 	_use_process_by_default bool
 	// slot
 	_imp                                                        *locks.LockFileS
-	_unlock_future                                              IFuture
+	_unlock_future                                              interfaces.IFuture
 	path,_force_async,_force_dummy,_force_process,_force_thread string
 }
 
@@ -132,7 +115,7 @@ func(a *AsynchronousLock) _poll() *int {
 	return a.returncode
 }
 
-func(a *AsynchronousLock) async_unlock() IFuture {
+func(a *AsynchronousLock) async_unlock() interfaces.IFuture {
 	if a._imp == nil {
 		raise
 		AssertionError('not locked')
@@ -142,7 +125,7 @@ func(a *AsynchronousLock) async_unlock() IFuture {
 		AssertionError("already unlocked")
 	}
 
-	var unlock_future IFuture
+	var unlock_future interfaces.IFuture
 	if isinstance(a._imp, (_LockProcess, _LockThread)){
 		unlock_future = a._imp.async_unlock()
 	}else{
@@ -247,7 +230,7 @@ type _LockProcess struct {
 	path,_kill_test string
 	_acquired bool
 	_files          map[string]int
-	_unlock_future  IFuture
+	_unlock_future  interfaces.IFuture
 }
 
 func(l *_LockProcess) _start() {
@@ -416,11 +399,11 @@ func (a *AsynchronousTask) start() {
 	a._start()
 }
 
-func (a *AsynchronousTask)  async_wait() IFuture {
+func (a *AsynchronousTask)  async_wait() interfaces.IFuture {
 	waiter := a.scheduler.create_future()
 	exit_listener := func(a *AsynchronousTask) bool { return waiter.cancelled() || waiter.set_result(a.returncode) }
 	a.addExitListener(exit_listener)
-	waiter.add_done_callback(func(waiter IFuture, err error)  {
+	waiter.add_done_callback(func(waiter interfaces.IFuture, err error)  {
 		if waiter.cancelled() {
 			return a.removeExitListener(exit_listener)
 		} else {
@@ -822,7 +805,7 @@ func (b *Binpkg) _clean_exit( clean_phase) {
 }
 
 @coroutine
-func (b *Binpkg) _unpack_metadata() IFuture {
+func (b *Binpkg) _unpack_metadata() interfaces.IFuture {
 
 	dir_path := b.settings.ValueDict["PORTAGE_BUILDDIR"]
 
@@ -1028,7 +1011,7 @@ func (b *Binpkg) _install_exit(task) {
 		}
 	}
 	b._async_unlock_builddir(nil)
-	var result IFuture
+	var result interfaces.IFuture
 	if b._current_task == nil {
 		result = b.scheduler.create_future()
 		b.scheduler.call_soon(func(){result.set_result(0)})
@@ -1474,7 +1457,7 @@ func (b *_BinpkgFetcherProcess) sync_timestamp() {
 	}
 }
 
-func (b *_BinpkgFetcherProcess) async_lock() IFuture {
+func (b *_BinpkgFetcherProcess) async_lock() interfaces.IFuture {
 	if b._lock_obj != nil{
 		//raise b.AlreadyLocked((b._lock_obj, ))
 	}
@@ -1502,7 +1485,7 @@ type AlreadyLocked struct {
 	*exception.PortageException
 }
 
-func (b *_BinpkgFetcherProcess) async_unlock() IFuture {
+func (b *_BinpkgFetcherProcess) async_unlock() interfaces.IFuture {
 	if b._lock_obj == nil{
 		//raise AssertionError('already unlocked')
 	}
@@ -2521,9 +2504,9 @@ func (r *EbuildBuild) create_install_task() *EbuildMerge {
 	return task
 }
 
-func (r *EbuildBuild) _install_exit(task) IFuture {
+func (r *EbuildBuild) _install_exit(task) interfaces.IFuture {
 	r._async_unlock_builddir(nil)
-	var result IFuture
+	var result interfaces.IFuture
 	if r._current_task == nil {
 		result = r.scheduler.create_future()
 		r.scheduler.call_soon(func() {result.set_result(0)})
@@ -2591,7 +2574,7 @@ func (e*EbuildBuildDir) clean_log() {
 	}
 }
 
-func (e*EbuildBuildDir) async_lock() IFuture {
+func (e*EbuildBuildDir) async_lock() interfaces.IFuture {
 	if e._lock_obj != nil {
 		//raise
 		//e.AlreadyLocked((e._lock_obj, ))
@@ -2609,7 +2592,7 @@ func (e*EbuildBuildDir) async_lock() IFuture {
 	result := e.scheduler.create_future()
 
 	// nil
-	catdir_unlocked := func(future IFuture, exception error) {
+	catdir_unlocked := func(future interfaces.IFuture, exception error) {
 		if !(exception == nil && future.exception() == nil) {
 			if exception != nil {
 				result.set_exception(exception)
@@ -2665,10 +2648,10 @@ func (e*EbuildBuildDir) async_lock() IFuture {
 	return result
 }
 
-func (e*EbuildBuildDir) async_unlock() IFuture {
+func (e*EbuildBuildDir) async_unlock() interfaces.IFuture {
 	result := e.scheduler.create_future()
 
-	catdir_unlocked := func(future IFuture) {
+	catdir_unlocked := func(future interfaces.IFuture) {
 		if future.exception() == nil {
 			result.set_result(nil)
 		} else {
@@ -2684,13 +2667,13 @@ func (e*EbuildBuildDir) async_unlock() IFuture {
 				//except OSError:
 				//pass
 			}
-			catdir_lock.async_unlock().add_done_callback(func(future IFuture, err error) {
+			catdir_lock.async_unlock().add_done_callback(func(future interfaces.IFuture, err error) {
 				catdir_unlocked(future)
 			})
 		}
 	}
 
-	builddir_unlocked := func(future IFuture) {
+	builddir_unlocked := func(future interfaces.IFuture) {
 		if future.exception() != nil {
 			result.set_exception(future.exception())
 		} else {
@@ -2706,7 +2689,7 @@ func (e*EbuildBuildDir) async_unlock() IFuture {
 	if e._lock_obj == nil {
 		e.scheduler.call_soon(func() { result.set_result(nil) })
 	} else {
-		e._lock_obj.async_unlock().add_done_callback(func(future IFuture, err error) {
+		e._lock_obj.async_unlock().add_done_callback(func(future interfaces.IFuture, err error) {
 			builddir_unlocked(future)
 		})
 	}
@@ -3115,7 +3098,7 @@ func(e*_EbuildFetcherProcess) _get_digests() map[string]map[string]string{
 	return e._digests
 }
 
-func(e*_EbuildFetcherProcess) _async_uri_map() IFuture {
+func(e*_EbuildFetcherProcess) _async_uri_map() interfaces.IFuture {
 	if e._uri_map != nil {
 		result := e.scheduler.create_future()
 		result.set_result(e._uri_map)
@@ -3212,7 +3195,7 @@ func(e*_EbuildFetcherProcess) _eerror( lines []string) {
 	}
 }
 
-func(e*_EbuildFetcherProcess) _proc_join_done( proc, future IFuture) {
+func(e*_EbuildFetcherProcess) _proc_join_done( proc, future interfaces.IFuture) {
 	if !e.prefetch && !future.cancelled() && proc.exitcode != 0 {
 		msg_lines := []string{}
 		msg := fmt.Sprintf("Fetch failed for '%s'", e.pkg.cpv, )
@@ -4171,7 +4154,7 @@ func(p*_PostPhaseCommands) _commands_exit( task) {
 
 			future := p._soname_deps_qa()
 
-			future.add_done_callback(func(future IFuture, err error) {
+			future.add_done_callback(func(future interfaces.IFuture, err error) {
 				//return
 				//future.cancelled() || future.result()
 			})
@@ -4185,7 +4168,7 @@ func(p*_PostPhaseCommands) _commands_exit( task) {
 }
 
 @coroutine
-func(p*_PostPhaseCommands) _soname_deps_qa() IFuture {
+func(p*_PostPhaseCommands) _soname_deps_qa() interfaces.IFuture {
 
 	vardb := ebuild2.NewQueryCommand(nil, "").get_db().Values()[p.settings.ValueDict["EROOT"]].VarTree().dbapi
 
@@ -7883,7 +7866,7 @@ func (s *Scheduler) _schedule_tasks() {
 	}
 }
 
-func (s *Scheduler) _schedule_merge_wakeup( future IFuture) {
+func (s *Scheduler) _schedule_merge_wakeup( future interfaces.IFuture) {
 	if !future.cancelled() {
 		future.result()
 		if s._main_exit != nil &&
@@ -9314,8 +9297,8 @@ type  SchedulerInterface struct {
 	add_writer         func()
 	remove_reader      func(int)
 	call_soon          func(func())
-	create_future      func() IFuture
-	run_until_complete func(IFuture)
+	create_future      func() interfaces.IFuture
+	run_until_complete func(interfaces.IFuture)
 	_is_background     func() bool
 	is_running         func() bool
 	call_at,
@@ -9420,7 +9403,7 @@ func (s *SchedulerInterface) output( msg , log_path string, background bool, lev
 type AsyncTaskFuture struct {
 	*AsynchronousTask
 	// slot
-	future IFuture
+	future interfaces.IFuture
 }
 
 func (a*AsyncTaskFuture) _start() {
@@ -9433,7 +9416,7 @@ func (a*AsyncTaskFuture) _cancel() {
 	}
 }
 
-func (a*AsyncTaskFuture) _done_callback(future IFuture, err error) {
+func (a*AsyncTaskFuture) _done_callback(future interfaces.IFuture, err error) {
 	if future.cancelled() {
 		a.cancelled = true
 		i := -int(unix.SIGINT)
@@ -9448,7 +9431,7 @@ func (a*AsyncTaskFuture) _done_callback(future IFuture, err error) {
 	a._async_wait()
 }
 
-func NewAsyncTaskFuture(future IFuture)*AsyncTaskFuture {
+func NewAsyncTaskFuture(future interfaces.IFuture)*AsyncTaskFuture {
 	a := &AsyncTaskFuture{}
 	a.AsynchronousTask = NewAsynchronousTask()
 	a.future = future

@@ -735,7 +735,7 @@ func (p *portdbapi) cp_list(mycp string, use_cache int, mytree []string) []*vers
 	if p.frozen && mytree == nil {
 		cachelist := p.xcache["cp-list"][[2]string{mycp}]
 		if cachelist != nil {
-			p.xcache["match-all"][[2]string{mycp, mycp}] = cachelist
+			p.xcache["Match-all"][[2]string{mycp, mycp}] = cachelist
 			return cachelist[:]
 		}
 	}
@@ -807,7 +807,7 @@ func (p *portdbapi) cp_list(mycp string, use_cache int, mytree []string) []*vers
 	if p.frozen && mytree == nil {
 		cachelist := mylist[:]
 		p.xcache["cp-list"][[2]string{mycp}] = cachelist
-		p.xcache["match-all"][[2]string{mycp, mycp}] = cachelist
+		p.xcache["Match-all"][[2]string{mycp, mycp}] = cachelist
 	}
 	return mylist
 
@@ -815,8 +815,8 @@ func (p *portdbapi) cp_list(mycp string, use_cache int, mytree []string) []*vers
 
 func (p *portdbapi) freeze() {
 
-	for _, x := range []string{"bestmatch-visible", "cp-list", "match-all",
-		"match-all-cpv-only", "match-visible", "minimum-all",
+	for _, x := range []string{"bestmatch-visible", "cp-list", "Match-all",
+		"Match-all-cpv-only", "Match-visible", "minimum-all",
 		"minimum-all-ignore-profile", "minimum-visible"} {
 		p.xcache[x] = map[[2]string][]*versions.PkgStr{}
 	}
@@ -859,7 +859,7 @@ func (p *portdbapi) async_xmatch(level string, origdep *dep.Atom) []*versions.Pk
 	if mydep.repo != "" {
 		mytree = p.treemap[mydep.repo]
 		if mytree == "" {
-			if strings.HasPrefix(level, "match-") {
+			if strings.HasPrefix(level, "Match-") {
 				myval = []*versions.PkgStr{}
 			} else {
 				myval = []*versions.PkgStr{versions.NewPkgStr("",nil, nil, "", "", "", 0, 0, "", 0, nil)}
@@ -869,16 +869,16 @@ func (p *portdbapi) async_xmatch(level string, origdep *dep.Atom) []*versions.Pk
 
 	if myval != nil {
 		//pass
-	} else if level == "match-all-cpv-only" {
+	} else if level == "Match-all-cpv-only" {
 		if mydep.value == mykey {
-			level = "match-all"
+			level = "Match-all"
 			myval = p.cp_list(mykey, 1, []string{mytree})
 		} else {
 			myval = dep.matchFromList(mydep,
 				p.cp_list(mykey, 1, []string{mytree}))
 		}
-	} else if myutil.Ins([]string{"bestmatch-visible", "match-all",
-		"match-visible", "minimum-all", "minimum-all-ignore-profile",
+	} else if myutil.Ins([]string{"bestmatch-visible", "Match-all",
+		"Match-visible", "minimum-all", "minimum-all-ignore-profile",
 		"minimum-visible"}, level) {
 		if mydep.value == mykey {
 			mylist = p.cp_list(mykey, 1, []string{mytree})
@@ -888,8 +888,8 @@ func (p *portdbapi) async_xmatch(level string, origdep *dep.Atom) []*versions.Pk
 		}
 
 		ignore_profile := level == "minimum-all-ignore-profile"
-		visibility_filter := !myutil.Ins([]string{"match-all", "minimum-all", "minimum-all-ignore-profile"}, level)
-		single_match := !myutil.Ins([]string{"match-all", "match-visible"}, level)
+		visibility_filter := !myutil.Ins([]string{"Match-all", "minimum-all", "minimum-all-ignore-profile"}, level)
+		single_match := !myutil.Ins([]string{"Match-all", "Match-visible"}, level)
 		myval = []*versions.PkgStr{}
 		aux_keys := []string{}
 		for k := range p._aux_cache_keys {
@@ -967,7 +967,7 @@ func (p *portdbapi) async_xmatch(level string, origdep *dep.Atom) []*versions.Pk
 
 // 1
 func (p *portdbapi) match(mydep  *dep.Atom, use_cache int)[]*versions.PkgStr {
-	return p.xmatch("match-visible", mydep)
+	return p.xmatch("Match-visible", mydep)
 }
 
 func (p *portdbapi) _visible(cpv *versions.PkgStr, metadata map[string]string) bool {
@@ -1148,7 +1148,7 @@ func (p *PortageTree) dep_bestmatch(mydep  *dep.Atom) *versions.PkgStr {
 }
 
 func (p *PortageTree) dep_match(mydep  *dep.Atom) []*versions.PkgStr {
-	mymatch := p.dbapi.xmatch("match-visible", mydep)
+	mymatch := p.dbapi.xmatch("Match-visible", mydep)
 	if mymatch == nil {
 		return []*versions.PkgStr{}
 	}

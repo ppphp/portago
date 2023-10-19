@@ -142,7 +142,7 @@ func (v *VirtualManager) _populate_treeVirtuals(vartree interfaces.IVarTree) {
 		}
 		v._treeVirtuals[provideA.Cp] = []string{}
 		for _, cpv := range cpvList {
-			v._treeVirtuals[provideA.Cp] = append(v._treeVirtuals[provideA.Cp], cpv.GetCp())
+			v._treeVirtuals[provideA.Cp] = append(v._treeVirtuals[provideA.Cp], cpv.Cp())
 		}
 	}
 }

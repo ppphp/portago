@@ -1,23 +1,37 @@
 package dbapi
 
 import (
-	"github.com/ppphp/portago/pkg/ebuild/config"
+	"github.com/ppphp/portago/pkg/interfaces"
 	"github.com/ppphp/portago/pkg/portage"
 	"github.com/ppphp/portago/pkg/versions"
 	"sort"
 )
 
-type fakedbapi struct {
-	*dbapi
+type fakedbapi[T interfaces.ISettings] struct {
+	*dbapi[T]
 	_exclusive_slots bool
 	cpvdict          map[string]map[string]string
-	cpdict           map[string][]*versions.PkgStr
-	_match_cache     map[[2]string][]*versions.PkgStr
-	_instance_key    func(*versions.PkgStr, bool) *versions.PkgStr
+	cpdict           map[string][]interfaces.IPkgStr
+	_match_cache     map[[2]string][]interfaces.IPkgStr
+	_instance_key    func(interfaces.IPkgStr, bool) interfaces.IPkgStr
 	_multi_instance  bool
 }
 
-func (f *fakedbapi) _set_multi_instance(multi_instance bool) {
+// nil, true, false
+func NewFakeDbApi[T interfaces.ISettings](settings T, exclusive_slots, multi_instance bool) *fakedbapi[T] {
+	f := &fakedbapi[T]{dbapi: NewDbapi[T](), _exclusive_slots: exclusive_slots,
+		cpvdict: map[string]map[string]string{},
+		cpdict:  map[string][]interfaces.IPkgStr{}}
+	if settings == nil {
+		settings = portage.Settings()
+	}
+	f.settings = settings
+	f._match_cache = map[[2]string][]interfaces.IPkgStr{}
+	f._set_multi_instance(multi_instance)
+	return f
+}
+
+func (f *fakedbapi[T]) _set_multi_instance(multi_instance bool) {
 	if len(f.cpvdict) != 0 {
 		//raise AssertionError("_set_multi_instance called after "
 		//"packages have already been added")
@@ -31,13 +45,13 @@ func (f *fakedbapi) _set_multi_instance(multi_instance bool) {
 }
 
 // false
-func (f *fakedbapi) _instance_key_cpv(cpv *versions.PkgStr, support_string bool) *versions.PkgStr {
+func (f *fakedbapi[T]) _instance_key_cpv(cpv interfaces.IPkgStr, support_string bool) interfaces.IPkgStr {
 	return cpv
 }
 
 // false
-func (f *fakedbapi) _instance_key_multi_instance(cpv *versions.PkgStr, support_string bool) *versions.PkgStr {
-	return versions.NewPkgStr(cpv.string, nil, nil, "", "", "", cpv.buildTime, cpv.buildId, cpv.fileSize, cpv.mtime, nil)
+func (f *fakedbapi[T]) _instance_key_multi_instance(cpv interfaces.IPkgStr, support_string bool) interfaces.IPkgStr {
+	return versions.NewPkgStr[T](cpv.String, nil, nil, "", "", "", cpv.BuildTime, cpv.BuildId, cpv.FileSize, cpv.Mtime, nil)
 	//except AttributeError:
 	//if ! support_string{
 	//	//raise
@@ -59,42 +73,41 @@ func (f *fakedbapi) _instance_key_multi_instance(cpv *versions.PkgStr, support_s
 	//raise KeyError(cpv)
 }
 
-func (f *fakedbapi) clear() {
+func (f *fakedbapi[T]) clear() {
 	f._clear_cache()
 	f.cpvdict = map[string]map[string]string{}
-	f.cpdict = map[string][]*versions.PkgStr{}
+	f.cpdict = map[string][]interfaces.IPkgStr{}
 }
 
-func (f *fakedbapi) _clear_cache() {
+func (f *fakedbapi[T]) _clear_cache() {
 	if f._categories != nil {
 		f._categories = nil
 	}
 	if len(f._match_cache) > 0 {
-		f._match_cache = map[[2]string][]*versions.PkgStr{}
+		f._match_cache = map[[2]string][]interfaces.IPkgStr{}
 	}
 }
 
 // 1
-func (f *fakedbapi) match(origdep string, use_cache int) []*versions.PkgStr {
+func (f *fakedbapi[T]) Match(origdep string, use_cache int) []interfaces.IPkgStr {
 	atom := dep_expandS(origdep, f.dbapi, 1, f.settings)
-	cacheKey := [2]string{atom.value, atom.unevaluatedAtom.value}
+	cacheKey := [2]string{atom.Value, atom.UnevaluatedAtom().Value}
 	result := f._match_cache[cacheKey]
 	if result != nil {
 		return result[:]
 	}
-	result = f._iter_match(atom, f.cp_list(atom.cp, 1))
+	result = f.Iter_match(atom, f.cp_list(atom.Cp, 1))
 	f._match_cache[cacheKey] = result
 	return result[:]
 }
 
-func (f *fakedbapi) cpv_exists(mycpv *versions.PkgStr) bool {
-	_, ok := f.cpvdict[f._instance_key(mycpv,
-		true).string]
+func (f *fakedbapi[T]) cpv_exists(mycpv interfaces.IPkgStr) bool {
+	_, ok := f.cpvdict[f._instance_key(mycpv, true).String]
 	return ok
 }
 
 // 1
-func (f *fakedbapi) cp_list(mycp string, use_cache int) []*versions.PkgStr {
+func (f *fakedbapi[T]) cp_list(mycp string, use_cache int) []interfaces.IPkgStr {
 	cacheKey := [2]string{mycp, mycp}
 	cacheList := f._match_cache[cacheKey]
 	if cacheList != nil {
@@ -102,7 +115,7 @@ func (f *fakedbapi) cp_list(mycp string, use_cache int) []*versions.PkgStr {
 	}
 	cpvList := f.cpdict[mycp]
 	if cpvList == nil {
-		cpvList = []*versions.PkgStr{}
+		cpvList = []interfaces.IPkgStr{}
 	}
 	f._cpv_sort_ascending(cpvList)
 	f._match_cache[cacheKey] = cpvList
@@ -110,7 +123,7 @@ func (f *fakedbapi) cp_list(mycp string, use_cache int) []*versions.PkgStr {
 }
 
 // false
-func (f *fakedbapi) cp_all(sortt bool) []string {
+func (f *fakedbapi[T]) cp_all(sortt bool) []string {
 	s := []string{}
 	for x := range f.cpdict {
 		s = append(s, x)
@@ -121,7 +134,7 @@ func (f *fakedbapi) cp_all(sortt bool) []string {
 	return s
 }
 
-func (f *fakedbapi) cpv_all() []string {
+func (f *fakedbapi[T]) cpv_all() []string {
 	if f._multi_instance {
 		ss := []string{}
 		for k := range f.cpvdict {
@@ -137,31 +150,31 @@ func (f *fakedbapi) cpv_all() []string {
 	}
 }
 
-func (f *fakedbapi) cpv_inject(mycpv *versions.PkgStr, metadata map[string]string) {
+func (f *fakedbapi[T]) cpv_inject(mycpv interfaces.IPkgStr, metadata map[string]string) {
 	f._clear_cache()
 
-	myCp := mycpv.cp
-	mySlot := mycpv.slot
+	myCp := mycpv.Cp
+	mySlot := mycpv.Slot
 	if myCp == "" || (mySlot == "" && metadata != nil && metadata["SLOT"] != "") {
 
 		if metadata == nil {
-			mycpv = versions.NewPkgStr(mycpv.string, nil, nil, "", "", "", 0, 0, "", 0, f.dbapi)
+			mycpv = versions.NewPkgStr[T](mycpv.String, nil, nil, "", "", "", 0, 0, "", 0, f.dbapi)
 		} else {
-			mycpv = versions.NewPkgStr(mycpv.string, metadata, f.settings, "", "", "", 0, 0, "", 0, f.dbapi)
+			mycpv = versions.NewPkgStr[T](mycpv.String, metadata, f.settings, "", "", "", 0, 0, "", 0, f.dbapi)
 		}
-		myCp = mycpv.cp
-		mySlot = mycpv.slot
+		myCp = mycpv.Cp
+		mySlot = mycpv.Slot
 	}
 
 	instanceKey := f._instance_key(mycpv, false)
-	f.cpvdict[instanceKey.string] = metadata
+	f.cpvdict[instanceKey.String] = metadata
 	if !f._exclusive_slots {
 		mySlot = ""
 	}
 	if _, ok := f.cpdict[myCp]; mySlot != "" && ok {
 		for _, cpv := range f.cpdict[myCp] {
 			if instanceKey != f._instance_key(cpv, false) {
-				otherSlot := cpv.slot
+				otherSlot := cpv.Slot
 				if otherSlot != "" {
 					if mySlot == otherSlot {
 						f.cpv_remove(cpv)
@@ -174,10 +187,10 @@ func (f *fakedbapi) cpv_inject(mycpv *versions.PkgStr, metadata map[string]strin
 
 	cpList := f.cpdict[myCp]
 	if cpList == nil {
-		cpList = []*versions.PkgStr{}
+		cpList = []interfaces.IPkgStr{}
 	}
 	tmp := cpList
-	cpList = []*versions.PkgStr{}
+	cpList = []interfaces.IPkgStr{}
 	for _, x := range tmp {
 		if f._instance_key(x, false) != instanceKey {
 			cpList = append(cpList, x)
@@ -187,15 +200,15 @@ func (f *fakedbapi) cpv_inject(mycpv *versions.PkgStr, metadata map[string]strin
 	f.cpdict[myCp] = cpList
 }
 
-func (f *fakedbapi) cpv_remove(mycpv *versions.PkgStr) {
+func (f *fakedbapi[T]) cpv_remove(mycpv interfaces.IPkgStr) {
 	f._clear_cache()
-	myCp := versions.cpvGetKey(mycpv.string, "")
+	myCp := versions.CpvGetKey(mycpv.String, "")
 	instanceKey := f._instance_key(mycpv, false)
-	delete(f.cpvdict, instanceKey.string)
+	delete(f.cpvdict, instanceKey.String)
 	cpList := f.cpdict[myCp]
 	if cpList != nil {
 		tmp := cpList
-		cpList = []*versions.PkgStr{}
+		cpList = []interfaces.IPkgStr{}
 		for _, x := range tmp {
 			if f._instance_key(x, false) != instanceKey {
 				cpList = append(cpList, x)
@@ -210,8 +223,8 @@ func (f *fakedbapi) cpv_remove(mycpv *versions.PkgStr) {
 }
 
 // nil
-func (f *fakedbapi) aux_get(mycpv *versions.PkgStr, wants []string) []string {
-	metadata := f.cpvdict[f._instance_key(mycpv, true).string]
+func (f *fakedbapi[T]) aux_get(mycpv interfaces.IPkgStr, wants []string) []string {
+	metadata := f.cpvdict[f._instance_key(mycpv, true).String]
 	if metadata == nil {
 		//raise KeyError(mycpv)
 	}
@@ -222,27 +235,13 @@ func (f *fakedbapi) aux_get(mycpv *versions.PkgStr, wants []string) []string {
 	return ret
 }
 
-func (f *fakedbapi) aux_update(cpv *versions.PkgStr, values map[string]string) {
+func (f *fakedbapi[T]) aux_update(cpv interfaces.IPkgStr, values map[string]string) {
 	f._clear_cache()
-	metadata := f.cpvdict[f._instance_key(cpv, true).string]
+	metadata := f.cpvdict[f._instance_key(cpv, true).String]
 	if metadata == nil {
 		//raise KeyError(cpv)
 	}
 	for k, v := range values {
 		metadata[k] = v
 	}
-}
-
-// nil, true, false
-func NewFakeDbApi(settings *config.Config, exclusive_slots, multi_instance bool) *fakedbapi {
-	f := &fakedbapi{dbapi: NewDbapi(), _exclusive_slots: exclusive_slots,
-		cpvdict: map[string]map[string]string{},
-		cpdict:  map[string][]*versions.PkgStr{}}
-	if settings == nil {
-		settings = portage.Settings()
-	}
-	f.settings = settings
-	f._match_cache = map[[2]string][]*versions.PkgStr{}
-	f._set_multi_instance(multi_instance)
-	return f
 }

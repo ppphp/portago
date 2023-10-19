@@ -20,7 +20,7 @@ func (f *FetchlistDict[T]) GetItem(pkg_key string) []string {
 
 func (f *FetchlistDict[T]) __contains__(cpv interfaces.IPkgStr) bool {
 	for _, i := range f.__iter__() {
-		if cpv.GetString() == i.GetString() {
+		if cpv.String() == i.String() {
 			return true
 		}
 	}

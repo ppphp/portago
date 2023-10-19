@@ -2,17 +2,17 @@ package xpak
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/pkg/src"
-	"github.com/ppphp/portago/pkg/util/msg"
-	"github.com/ppphp/portago/pkg/util/permissions"
 	"io"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
+
+	"github.com/ppphp/portago/pkg/src"
+	"github.com/ppphp/portago/pkg/util/msg"
+	"github.com/ppphp/portago/pkg/util/permissions"
 )
 
 func addtolist(mylist []string, curdir string) {
@@ -58,11 +58,11 @@ func xpak(rootdir, outfile string) []byte {
 			continue
 		}
 
-		s, _ := ioutil.ReadFile(filepath.Join(rootdir, x))
+		s, _ := os.ReadFile(filepath.Join(rootdir, x))
 		mydata[x] = string(s)
 	}
 
-	xpak_segment := xpak_mem(mydata)
+	xpak_segment := Xpak_mem(mydata)
 	if outfile != "" {
 		outf, _ := os.OpenFile(outfile, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 		outf.Write(xpak_segment)
@@ -73,7 +73,7 @@ func xpak(rootdir, outfile string) []byte {
 	}
 }
 
-func xpak_mem(mydata map[string]string) []byte {
+func Xpak_mem(mydata map[string]string) []byte {
 	mydata_encoded := map[string]string{}
 	for k, v := range mydata {
 		mydata_encoded[k] = v
@@ -97,7 +97,7 @@ func xpak_mem(mydata map[string]string) []byte {
 
 func xsplit(infile string) bool {
 	myfile, _ := os.Open(infile)
-	mydat, _ := ioutil.ReadAll(myfile)
+	mydat, _ := io.ReadAll(myfile)
 	myfile.Close()
 	splits := xsplit_mem(string(mydat))
 	if splits == [2]string{} {
@@ -280,14 +280,14 @@ func (t *tbz2) compose(datadir string, cleanup int) {
 // 0, true
 func (t *tbz2) Recompose(datadir string, cleanup int, break_hardlinks bool) {
 	xpdata := xpak(datadir, "")
-	t.recompose_mem(string(xpdata), break_hardlinks)
+	t.Recompose_mem(string(xpdata), break_hardlinks)
 	if cleanup != 0 {
 		t.cleanup(datadir)
 	}
 }
 
 // true
-func (t *tbz2) recompose_mem(xpdata string, break_hardlinks bool) int {
+func (t *tbz2) Recompose_mem(xpdata string, break_hardlinks bool) int {
 	t.scan()
 
 	if break_hardlinks && t.filestat != nil && t.filestat.Sys().(*syscall.Stat_t).Nlink > 1 {
@@ -357,7 +357,7 @@ func (t *tbz2) scan() int {
 		_, err = a.Seek(-16, 2)
 	}
 	if err == nil {
-		trailer, err1 := ioutil.ReadAll(a)
+		trailer, err1 := io.ReadAll(a)
 		err = err1
 		t.infosize = 0
 		t.xpaksize = 0
@@ -491,7 +491,7 @@ func (t *tbz2) unpackinfo(mydest string) int {
 	return 1
 }
 
-func (t *tbz2) get_data() map[string]string {
+func (t *tbz2) Get_data() map[string]string {
 	if t.scan() == 0 {
 		return map[string]string{}
 	}

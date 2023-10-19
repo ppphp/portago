@@ -341,23 +341,38 @@ func CatPkgSplit(mydata string, silent int, eapi string) [4]string {
 
 type PkgStr[T interfaces.ISettings] struct {
 	interfaces.IPkgStr
-	String                                                        string
-	Metadata                                                      map[string]string
+	string                                                        string
+	metadata                                                      map[string]string
 	settings                                                      T
-	Eapi, Repo, Slot, fileSize, Cp, Version, SubSlot, slotInvalid string
+	eapi, repo, slot, fileSize, cp, version, subSlot, slotInvalid string
 
 	db                        interfaces.IDbApi
-	BuildId, BuildTime, mtime int
+	buildId, buildTime, mtime int
 	_stable                   *bool
-	CpvSplit                  [4]string
-	Cpv                       *PkgStr[T]
+	cpvSplit                  [4]string
+	cpv                       interfaces.IPkgStr
 }
+
+func (p*PkgStr[T]) String() string {return p.string}
+func (p*PkgStr[T]) Metadata() map[string]string {return p.metadata}
+func (p*PkgStr[T]) Eapi() string {return p.eapi}
+func (p*PkgStr[T]) Repo() string {return p.repo}
+func (p*PkgStr[T]) Slot() string {return p.slot}
+func (p*PkgStr[T]) FileSize() string {return p.fileSize}
+func (p*PkgStr[T]) Cp() string {return p.cp}
+func (p*PkgStr[T]) Version() string {return p.version}
+func (p*PkgStr[T]) SubSlot() string {return p.subSlot}
+func (p*PkgStr[T]) BuildId() int {return p.buildId}
+func (p*PkgStr[T]) BuildTime() int {return p.buildTime}
+func (p*PkgStr[T]) Mtime() int {return p.mtime}
+func (p*PkgStr[T]) CpvSplit() [4]string {return p.cpvSplit}
+func (p*PkgStr[T]) Cpv() interfaces.IPkgStr {return p.cpv}
 
 // nil, nil, "", "", "", 0, 0, "", 0, nil
 func NewPkgStr[T interfaces.ISettings](cpv string, metadata map[string]string, settings T, eapi1, repo, slot string, build_time, build_id int, file_size string, mtime int, db interfaces.IDbApi) *PkgStr[T] {
-	p := &PkgStr[T]{String: cpv}
+	p := &PkgStr[T]{string: cpv}
 	if metadata != nil {
-		p.Metadata = metadata
+		p.metadata = metadata
 		if a, ok := metadata["SLOT"]; ok {
 			slot = a
 		}
@@ -389,42 +404,42 @@ func NewPkgStr[T interfaces.ISettings](cpv string, metadata map[string]string, s
 		p.db = db
 	}
 	if eapi1 != "" {
-		p.Eapi = eapi1
+		p.eapi = eapi1
 	}
-	p.BuildTime = build_time
+	p.buildTime = build_time
 	p.fileSize = file_size
-	p.BuildId = build_id
+	p.buildId = build_id
 	p.mtime = mtime
-	p.CpvSplit = CatPkgSplit(cpv, 1, eapi1)
-	if p.CpvSplit == [4]string{} {
+	p.cpvSplit = CatPkgSplit(cpv, 1, eapi1)
+	if p.cpvSplit == [4]string{} {
 		//raise InvalidData(cpv)
 	}
-	p.Cp = p.CpvSplit[0] + "/" + p.CpvSplit[1]
-	if p.CpvSplit[len(p.CpvSplit)-1] == "r0" && cpv[len(cpv)-3:] != "-r0" {
-		p.Version = strings.Join(p.CpvSplit[2:4], "-")
+	p.cp = p.cpvSplit[0] + "/" + p.cpvSplit[1]
+	if p.cpvSplit[len(p.cpvSplit)-1] == "r0" && cpv[len(cpv)-3:] != "-r0" {
+		p.version = strings.Join(p.cpvSplit[2:4], "-")
 	} else {
-		p.Version = strings.Join(p.CpvSplit[2:], "-")
+		p.version = strings.Join(p.cpvSplit[2:], "-")
 	}
-	p.Cpv = p
+	p.cpv = p
 	if slot != "" {
 		eapiAttrs := eapi.GetEapiAttrs(eapi1)
 		slotMatch := getSlotRe(eapiAttrs).FindAllString(slot, -1)
 		if len(slotMatch) == 0 {
-			p.Slot = "0"
-			p.SubSlot = "0"
+			p.slot = "0"
+			p.subSlot = "0"
 			p.slotInvalid = slot
 		} else {
 			if eapiAttrs.SlotOperator {
 				slotSplit := strings.Split(slot, "/")
-				p.Slot = slotSplit[0]
+				p.slot = slotSplit[0]
 				if len(slotSplit) > 1 {
-					p.SubSlot = slotSplit[1]
+					p.subSlot = slotSplit[1]
 				} else {
-					p.SubSlot = slotSplit[0]
+					p.subSlot = slotSplit[0]
 				}
 			} else {
-				p.Slot = slot
-				p.SubSlot = slot
+				p.slot = slot
+				p.subSlot = slot
 			}
 		}
 		if repo != "" {
@@ -432,7 +447,7 @@ func NewPkgStr[T interfaces.ISettings](cpv string, metadata map[string]string, s
 			if repo == "" {
 				repo = UnknownRepo
 			}
-			p.Repo = repo
+			p.repo = repo
 		}
 	}
 	return p
@@ -468,17 +483,9 @@ func (p *PkgStr[T]) Stable() bool {
 
 func (p *PkgStr[T]) binpkg_format() string {
 	//try:
-	return p.Metadata["BINPKG_FORMAT"]
+	return p.metadata["BINPKG_FORMAT"]
 	//except (AttributeError, KeyError):
 	//raise AttributeError("binpkg_format")
-}
-
-// interface
-func (p *PkgStr[T]) GetCp() string {
-	return p.Cp
-}
-func (p *PkgStr[T]) GetString() string {
-	return p.String
 }
 
 // pkgsplit

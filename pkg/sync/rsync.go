@@ -2,7 +2,6 @@ package sync
 
 import (
 	"fmt"
-	"github.com/ppphp/portago/atom"
 	"github.com/ppphp/portago/pkg/const"
 	"github.com/ppphp/portago/pkg/data"
 	"github.com/ppphp/portago/pkg/myutil"
@@ -29,7 +28,7 @@ const(
 )
 
 type RsyncSync struct {
-	*atom.newBase
+	*newBase
 	max_age               int
 	verify_jobs           int
 	timeout               int

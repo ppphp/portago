@@ -9,6 +9,7 @@ import (
 	"github.com/ppphp/portago/pkg/eapi"
 	ebuild2 "github.com/ppphp/portago/pkg/ebuild/config"
 	"github.com/ppphp/portago/pkg/emerge"
+	"github.com/ppphp/portago/pkg/interfaces"
 	"github.com/ppphp/portago/pkg/myutil"
 	"github.com/ppphp/portago/pkg/output"
 	"github.com/ppphp/portago/pkg/portage/vars"
@@ -261,7 +262,7 @@ func Db() *TreesDict {
 	return _db
 }
 
-func Settings() *ebuild2.Config {
+func Settings() interfaces.ISettings {
 	if _settings != nil {
 		return _settings
 	}
