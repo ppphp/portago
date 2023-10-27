@@ -1,5 +1,6 @@
 package resolver
 
+import dep2 "github.com/ppphp/portage/pkg/dep"
 
 type  circular_dependency_handler struct {
 	MAX_AFFECTING_USE int
@@ -214,7 +215,7 @@ func(c*circular_dependency_handler) _find_suggestions() {
 				}
 			}
 			//try:
-			reduced_dep = use_reduce(dep, uselist = current_use, flat = True)
+			reduced_dep = dep2.UseReduce(dep, uselist = current_use, flat = True)
 			//except InvalidDependString:
 			//if not parent.installed:
 			//raise
@@ -351,12 +352,12 @@ func(c*circular_dependency_handler) _find_suggestions() {
 
 func(c*circular_dependency_handler) debug_print()
 	{
-		graph = self.graph.copy()
+		graph := c.graph.copy()
 		for {
-			root_nodes = graph.root_nodes(
+			root_nodes := graph.root_nodes(
 				ignore_priority = DepPrioritySatisfiedRange.ignore_medium_soft
 			)
-			if not root_nodes {
+			if len(root_nodes) == 0 {
 				break
 			}
 			graph.difference_update(root_nodes)

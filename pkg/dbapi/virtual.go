@@ -1,10 +1,11 @@
 package dbapi
 
 import (
+	"sort"
+
 	"github.com/ppphp/portago/pkg/interfaces"
 	"github.com/ppphp/portago/pkg/portage"
 	"github.com/ppphp/portago/pkg/versions"
-	"sort"
 )
 
 type fakedbapi[T interfaces.ISettings] struct {
@@ -243,5 +244,46 @@ func (f *fakedbapi[T]) aux_update(cpv interfaces.IPkgStr, values map[string]stri
 	}
 	for k, v := range values {
 		metadata[k] = v
+	}
+}
+
+type testdbapi struct {
+	cpvs map[string]interfaces.IPkgStr
+}
+
+func NewTestDbapi() *testdbapi {
+	return &testdbapi{
+		cpvs: make(map[string]interfaces.IPkgStr),
+	}
+}
+
+func (t *testdbapi) cpv_inject(mycpv interfaces.IPkgStr, metadata map[string]string) {
+	t.cpvs[mycpv.String()] = mycpv
+}
+
+func (t *testdbapi) cpv_remove(mycpv interfaces.IPkgStr) {
+	delete(t.cpvs, mycpv.String())
+}
+
+func (t *testdbapi) aux_get(mycpv interfaces.IPkgStr, wants []string) []string {
+	metadata := make(map[string]string)
+	if cpv, ok := t.cpvs[mycpv.String()]; ok {
+		if cpv.Metadata() != nil {
+			metadata = cpv.Metadata()
+		}
+	}
+	ret := []string{}
+	for _, x := range wants {
+		ret = append(ret, metadata[x])
+	}
+	return ret
+}
+
+func (t *testdbapi) aux_update(cpv interfaces.IPkgStr, values map[string]string) {
+	if cpv, ok := t.cpvs[cpv.String()]; ok {
+		metadata := cpv.Metadata()
+		for k, v := range values {
+			metadata[k] = v
+		}
 	}
 }
