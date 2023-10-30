@@ -84,6 +84,7 @@ type ReadOnlyRestriction struct {
 	info string
 }
 
+// ""
 func NewReadOnlyRestriction(info string) *ReadOnlyRestriction {
 	return &ReadOnlyRestriction{
 		info: info,

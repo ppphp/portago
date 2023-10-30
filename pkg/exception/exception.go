@@ -377,3 +377,9 @@ type UntrustedSignature struct {
 func NewUntrustedSignature(value interface{}) *UntrustedSignature {
 	return &UntrustedSignature{NewSignatureException(value)}
 }
+
+type NotImplementedError struct{}
+
+func (e NotImplementedError) Error() string {
+	return "Not implemented"
+}
