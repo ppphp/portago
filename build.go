@@ -4,6 +4,7 @@ import "fmt"
 
 import (
 	_ "github.com/ppphp/portago/pkg/binrepo"
+	_ "github.com/ppphp/portago/pkg/cache"
 	//_ "github.com/ppphp/portago/pkg/ebuild/cache"
 	_ "github.com/ppphp/portago/pkg/checksum"
 	_ "github.com/ppphp/portago/pkg/const"
