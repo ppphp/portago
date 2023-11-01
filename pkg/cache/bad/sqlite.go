@@ -76,6 +76,24 @@ func NewDatabase(location string, label string, readonly bool, config map[string
 	return db, nil
 }
 
+func (db *database) __getstate__() map[string]interface{} {
+	state := make(map[string]interface{})
+	for k, v := range db.__dict__ {
+		state[k] = v
+	}
+	// These attributes are not picklable, so they are automatically
+	// regenerated after unpickling.
+	state["_db_module"] = nil
+	state["_db_error"] = nil
+	state["_db_connection_info"] = nil
+	return state
+}
+
+func (db *database) __setstate__(state map[string]interface{}) {
+	db.__dict__ = state
+	db._import_sqlite()
+}
+
 func (db *database) _import_sqlite() error {
 	// sqlite3 is optional with >=python-2.5
 	if _, err := sqlite3.Version(); err != nil {

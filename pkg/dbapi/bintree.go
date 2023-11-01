@@ -24,7 +24,6 @@ import (
 	"github.com/ppphp/portago/pkg/xpak"
 	"github.com/ppphp/shlex"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -42,7 +41,7 @@ type bindbapi[T interfaces.ISettings] struct {
 	bintree  *BinaryTree
 	move_ent func([]string, func(string) bool) int
 
-	_aux_chache  map[string]string
+	_aux_cache  map[string]string
 	auxCacheKeys map[string]bool
 }
 
@@ -78,8 +77,39 @@ func NewBinDbApi[T interfaces.ISettings](mybintree *BinaryTree, settings T, excl
 		"_mtime_":true,
 	}
 	//b._aux_cache_slot_dict
-	b._aux_chache = map[string]string{}
+	b._aux_cache = map[string]string{}
+	b._aux_cache_slot_dict_cache = nil
 	return b
+}
+
+func (b *bindbapi[T]) _aux_cache_slot_dict() slotDict {
+	if b._aux_cache_slot_dict_cache == nil {
+		b._aux_cache_slot_dict_cache = make(slotDict, len(b.auxCacheKeys))
+		for key := range b.auxCacheKeys {
+			b._aux_cache_slot_dict_cache[key] = make(map[string]string)
+		}
+	}
+	return b._aux_cache_slot_dict_cache
+}
+
+func (b *bindbapi[T]) __getstate__() map[string]interface{} {
+	state := make(map[string]interface{}, len(b.__dict__))
+	for key, value := range b.__dict__ {
+		state[key] = value
+	}
+	state["_aux_cache_slot_dict_cache"] = nil
+	state["_instance_key"] = nil
+	return state
+}
+func (b *bindbapi[T]) __setstate__(state map[string]interface{}) {
+	for key, value := range state {
+		b.__dict__[key] = value
+	}
+	if b._multi_instance {
+		b._instance_key = b._instance_key_multi_instance()
+	} else {
+		b._instance_key = b._instance_key_cpv()
+	}
 }
 
 func (b *bindbapi[T]) writable() bool {
@@ -1050,7 +1080,7 @@ func (b *BinaryTree) _populate_remote(getbinpkg_refresh bool) {
 						//raise EnvironmentError("FETCHCOMMAND is unset")
 					}
 				}
-				fd, _ := ioutil.TempFile(os.TempDir(), "")
+				fd, _ := os.CreateTemp(os.TempDir(), "")
 				tmp_dirname, tmp_basename := os.TempDir(), fd.Name()
 				fd.Close()
 

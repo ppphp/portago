@@ -3,14 +3,15 @@ package emerge
 import (
 	"bytes"
 	"fmt"
-	"github.com/ppphp/portago/pkg/checksum"
-	"github.com/ppphp/portago/pkg/myutil"
-	"github.com/ppphp/portago/pkg/output"
-	"github.com/ppphp/portago/pkg/versions"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"github.com/ppphp/portago/pkg/checksum"
+	"github.com/ppphp/portago/pkg/myutil"
+	"github.com/ppphp/portago/pkg/output"
+	"github.com/ppphp/portago/pkg/versions"
 )
 
 type BinpkgVerifier struct {

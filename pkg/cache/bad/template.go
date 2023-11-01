@@ -157,7 +157,7 @@ func (db *database) __setitem__(cpv string, values map[string]interface{}) error
 	// set a cpv to values
 	// This shouldn't be overriden in derived classes since it handles the readonly checks
 	if db.readonly {
-		return cache_errors.ReadOnlyRestriction{}
+		return NewReadOnlyRestriction("")
 	}
 	d := make(map[string]interface{})
 	if db.cleanseKeys {
@@ -269,24 +269,15 @@ func (db *database) Del(cpv string) error {
 	return nil
 }
 
-func (db *database) __contains__(cpv string) bool {
-	// This method should always be overridden.  It is provided only for backward compatibility with modules that override has_key instead.  It will automatically raise a NotImplementedError if has_key has not been overridden.
-	if db.HasKey == (*database).HasKey {
-		// prevent a possible recursive loop
-		panic(NotImplementedError{})
-	}
-	warnings.warn(
-		"portage.cache.template.database.has_key() is deprecated, override __contains__ instead",
-		DeprecationWarning,
-	)
-	return db.HasKey(cpv)
+func (db *database) __contains__(cpv string) (bool, error) {
+	return false, exception.NotImplementedError{}
 }
 
 func (db *database) __iter__() []string {
 	// This method should always be overridden.  It is provided only for backward compatibility with modules that override iterkeys instead.  It will automatically raise a NotImplementedError if iterkeys has not been overridden.
 	if db.IterKeys == (*database).IterKeys {
 		// prevent a possible recursive loop
-		panic(NotImplementedError{})
+		panic(exception.NotImplementedError{})
 	}
 	return db.IterKeys()
 }
@@ -395,11 +386,12 @@ func md5Deserializer(md5 string) (string, error) {
 	return md5, nil
 }
 
-func mtimeDeserializer(mtime string) (int64, error) {
-	return strconv.ParseInt(mtime, 10, 64)
+func mtimeDeserializer(mtime string) (string, error) {
+	_, err := strconv.ParseInt(mtime, 10, 64)
+	return mtime, err
 }
 
-var chfDeserializers = map[string]func(string) (interface{}, error){
+var chfDeserializers = map[string]func(string) (string, error){
 	"md5":   md5Deserializer,
 	"mtime": mtimeDeserializer,
 }
