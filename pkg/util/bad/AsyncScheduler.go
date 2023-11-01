@@ -1,10 +1,14 @@
 package bad
 
-import "time"
+import (
+	"time"
+
+	"github.com/ppphp/portago/pkg/emerge"
+)
 
 type AsyncScheduler struct {
-	AsynchronousTask
-	PollScheduler
+	*emerge.AsynchronousTask
+	*emerge.PollScheduler
 	maxJobs        int
 	maxLoad        interface{}
 	errorCount     int
@@ -102,7 +106,7 @@ func (s *AsyncScheduler) Start() {
 }
 
 func (s *AsyncScheduler) Cleanup() {
-	s.PollScheduler.Cleanup()
+	s.PollScheduler.clean_up()
 	if s.loadavgCheckId != nil {
 		s.loadavgCheckId.Stop()
 		s.loadavgCheckId = nil
@@ -111,5 +115,5 @@ func (s *AsyncScheduler) Cleanup() {
 
 func (s *AsyncScheduler) AsyncWait() {
 	s.Cleanup()
-	s.AsynchronousTask.AsyncWait()
+	s.AsynchronousTask.async_wait()
 }
